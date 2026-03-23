@@ -61,7 +61,7 @@
       "agent": "@deploy-manager",
       "phase": "deploy",
       "status": "failed",
-      "error": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (pre-existing: OIDC SP lacks Entra ID app-registration privileges — 403 Authorization_RequestDenied; infra was already applied locally)"
+      "error": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (3rd attempt, same root cause): OIDC service principal lacks Entra ID Application.ReadWrite.All — 403 Authorization_RequestDenied on azuread_application.main and azuread_application.cicd; azurerm_resource_group.main needs state import. No code changes since last attempt. Requires Azure IAM admin to grant Application.ReadWrite.All to the GitHub Actions OIDC SP, and terraform state import for the pre-existing resource group. Infrastructure was already applied locally."
     },
     {
       "key": "integration-test",
@@ -109,6 +109,16 @@
       "timestamp": "2026-03-23T18:29:04.798Z",
       "itemKey": "poll-ci",
       "message": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (pre-existing: OIDC SP lacks Entra ID app-registration privileges — 403 Authorization_RequestDenied; infra was already applied locally)"
+    },
+    {
+      "timestamp": "2026-03-23T18:34:11.832Z",
+      "itemKey": "poll-ci",
+      "message": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (same pre-existing issue, 2nd attempt): OIDC SP lacks Entra ID Application.ReadWrite.All privileges — 403 Authorization_RequestDenied on azuread_application.main and azuread_application.cicd; also azurerm_resource_group.main already exists and needs state import. This is an Azure IAM permissions issue, not fixable from code. Infra was already applied locally."
+    },
+    {
+      "timestamp": "2026-03-23T18:39:08.733Z",
+      "itemKey": "poll-ci",
+      "message": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (3rd attempt, same root cause): OIDC service principal lacks Entra ID Application.ReadWrite.All — 403 Authorization_RequestDenied on azuread_application.main and azuread_application.cicd; azurerm_resource_group.main needs state import. No code changes since last attempt. Requires Azure IAM admin to grant Application.ReadWrite.All to the GitHub Actions OIDC SP, and terraform state import for the pre-existing resource group. Infrastructure was already applied locally."
     }
   ]
 }
