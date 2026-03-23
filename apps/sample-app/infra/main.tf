@@ -10,6 +10,17 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  # Remote backend — shares state between local dev and CI.
+  # The storage account is managed by this config (azurerm_storage_account.func_runtime);
+  # the "tfstate" container was bootstrapped via a one-time az/SDK call.
+  backend "azurerm" {
+    resource_group_name  = "rg-sample-app-dev"
+    storage_account_name = "stsampleapp001"
+    container_name       = "tfstate"
+    key                  = "sample-app.terraform.tfstate"
+    use_azuread_auth     = false
+  }
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
