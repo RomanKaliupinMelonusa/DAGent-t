@@ -1,0 +1,145 @@
+{
+  "feature": "fullstack-deploy-test",
+  "stepsCompleted": [
+    {
+      "key": "schema-dev",
+      "agent": "@schema-dev",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Switched esbuild from ESM to CJS format to fix Azure Functions runtime 'Dynamic require of util' error caused by __require shims in bundled @azure/functions webpack code. Consolidated two separate APIM APIs (demo-auth at /demo-auth, sample at /sample) into a single unified API at root path '' with operation-level auth policy on /hello only, so frontend needs only one NEXT_PUBLIC_API_BASE_URL=gateway_url."
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [],
+      "docNote": "Added NEXT_PUBLIC_API_PATH_PREFIX env var to apiClient.ts for APIM /sample path prefix. Updated deploy-frontend.yml to pass NEXT_PUBLIC_API_PATH_PREFIX and NEXT_PUBLIC_AUTH_API_PATH secrets during build. These env vars allow the frontend to route API calls through APIM's separate /demo-auth and /sample path prefixes."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Switched esbuild from ESM to CJS format to fix Azure Functions runtime 'Dynamic require of util' error caused by __require shims in bundled @azure/functions webpack code. Consolidated two separate APIM APIs (demo-auth at /demo-auth, sample at /sample) into a single unified API at root path '' with operation-level auth policy on /hello only, so frontend needs only one NEXT_PUBLIC_API_BASE_URL=gateway_url."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Switched esbuild from ESM to CJS format to fix Azure Functions runtime 'Dynamic require of util' error caused by __require shims in bundled @azure/functions webpack code. Consolidated two separate APIM APIs (demo-auth at /demo-auth, sample at /sample) into a single unified API at root path '' with operation-level auth policy on /hello only, so frontend needs only one NEXT_PUBLIC_API_BASE_URL=gateway_url."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [],
+      "docNote": "Added NEXT_PUBLIC_API_PATH_PREFIX env var to apiClient.ts for APIM /sample path prefix. Updated deploy-frontend.yml to pass NEXT_PUBLIC_API_PATH_PREFIX and NEXT_PUBLIC_AUTH_API_PATH secrets during build. These env vars allow the frontend to route API calls through APIM's separate /demo-auth and /sample path prefixes."
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Switched esbuild from ESM to CJS format to fix Azure Functions runtime 'Dynamic require of util' error caused by __require shims in bundled @azure/functions webpack code. Consolidated two separate APIM APIs (demo-auth at /demo-auth, sample at /sample) into a single unified API at root path '' with operation-level auth policy on /hello only, so frontend needs only one NEXT_PUBLIC_API_BASE_URL=gateway_url."
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "Removed 3 unused UI primitives from frontend/src/components/ui/primitives.tsx: Textarea (lines 67-82), Badge (lines 84-109), Spinner (lines 111-122). All had zero references confirmed via Roam AST analysis. Also identified ApiErrorResponseSchema/ApiErrorResponse in backend/src/schemas/index.ts as unused in app code but kept because they are exercised by schema tests (21 tests) and are part of the API contract. No other dead code found. All frontend (21/21) and backend (39/39) tests pass."
+    }
+  ],
+  "allFilesChanged": [],
+  "summaryIntents": []
+}

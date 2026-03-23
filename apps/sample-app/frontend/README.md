@@ -32,6 +32,18 @@ Controlled by `NEXT_PUBLIC_AUTH_MODE`:
    ```
 3. Update the scope in `src/lib/authConfig.ts` to match your app registration
 
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXT_PUBLIC_AUTH_MODE` | `"entra"` | Auth mode: `"demo"` or `"entra"` |
+| `NEXT_PUBLIC_API_BASE_URL` | `"http://localhost:7071/api"` | Backend API base URL (APIM gateway URL in production) |
+| `NEXT_PUBLIC_API_PATH_PREFIX` | `""` | Path prefix appended after base URL (e.g. `/sample` for APIM routing) |
+| `NEXT_PUBLIC_ENTRA_CLIENT_ID` | — | Entra ID app registration client ID (entra mode only) |
+| `NEXT_PUBLIC_ENTRA_TENANT_ID` | — | Entra ID tenant ID (entra mode only) |
+
+The API client constructs URLs as: `${BASE_URL}${API_PATH_PREFIX}${path}`.
+
 ## Key Files
 
 | File | Purpose |
@@ -42,6 +54,19 @@ Controlled by `NEXT_PUBLIC_AUTH_MODE`:
 | `src/lib/apiClient.ts` | Authenticated fetch wrapper (dual-mode headers) |
 | `src/components/DemoLoginForm.tsx` | Login form UI |
 | `src/components/NavBar.tsx` | Dual-mode navigation bar |
+| `src/components/ui/primitives.tsx` | Shared UI primitives (Button, Input, Card) |
+
+## Testing
+
+```bash
+npm test              # run all 21 unit tests
+npm run test:watch    # watch mode
+```
+
+Test files:
+- `src/__tests__/DemoLoginForm.test.tsx` — Login form component tests
+- `src/__tests__/apiClient.test.ts` — API client dual-mode header tests
+- `src/__tests__/demoAuthContext.test.tsx` — Demo auth context state tests
 
 ## Build
 
