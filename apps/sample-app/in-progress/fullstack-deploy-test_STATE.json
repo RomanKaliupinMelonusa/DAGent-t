@@ -84,8 +84,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Removed 3 unused UI primitives from frontend/src/components/ui/primitives.tsx: Textarea (lines 67-82), Badge (lines 84-109), Spinner (lines 111-122). All had zero references confirmed via Roam AST analysis. Also identified ApiErrorResponseSchema/ApiErrorResponse in backend/src/schemas/index.ts as unused in app code but kept because they are exercised by schema tests (21 tests) and are part of the API contract. No other dead code found. All frontend (21/21) and backend (39/39) tests pass."
     },
     {
       "key": "docs-archived",
