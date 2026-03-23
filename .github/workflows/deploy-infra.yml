@@ -83,6 +83,22 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: terraform init
 
+      # The CI service principal lacks Microsoft Graph (Azure AD) permissions.
+      # Remove orphaned azuread resources from state so refresh doesn't 403.
+      - name: Remove orphaned Azure AD resources from state
+        working-directory: ${{ env.APP_PATH }}/infra
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CICD_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform state rm 'azuread_application.main[0]' 2>/dev/null || true
+          terraform state rm 'azuread_application.main' 2>/dev/null || true
+          terraform state rm 'azuread_service_principal.main[0]' 2>/dev/null || true
+          terraform state rm 'azuread_service_principal.main' 2>/dev/null || true
+          terraform state rm 'random_uuid.oauth2_scope_id[0]' 2>/dev/null || true
+          terraform state rm 'random_uuid.oauth2_scope_id' 2>/dev/null || true
+
       - name: Terraform Plan
         id: plan
         working-directory: ${{ env.APP_PATH }}/infra

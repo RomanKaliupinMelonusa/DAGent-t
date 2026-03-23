@@ -281,7 +281,7 @@ locals {
                       require-scheme="Bearer">
           <openid-config url="https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/v2.0/.well-known/openid-configuration" />
           <audiences>
-            <audience>${azuread_application.main[0].client_id}</audience>
+            <audience>${var.auth_mode == "entra" ? azuread_application.main[0].client_id : "unused"}</audience>
             <audience>api://sample-app-${var.environment}</audience>
           </audiences>
           <issuers>
