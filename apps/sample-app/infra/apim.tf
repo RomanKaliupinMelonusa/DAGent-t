@@ -15,9 +15,12 @@
 # 1. Entra ID App Registration
 # =============================================================================
 
-resource "random_uuid" "oauth2_scope_id" {}
+resource "random_uuid" "oauth2_scope_id" {
+  count = var.auth_mode == "entra" ? 1 : 0
+}
 
 resource "azuread_application" "main" {
+  count            = var.auth_mode == "entra" ? 1 : 0
   display_name     = "sample-app-api-${var.environment}"
   sign_in_audience = "AzureADMyOrg"
   identifier_uris  = ["api://sample-app-${var.environment}"]
@@ -30,7 +33,7 @@ resource "azuread_application" "main" {
       admin_consent_description  = "Allow the application to access the Sample App API on behalf of the signed-in user."
       admin_consent_display_name = "Access Sample App API"
       enabled                    = true
-      id                         = random_uuid.oauth2_scope_id.result
+      id                         = random_uuid.oauth2_scope_id[0].result
       type                       = "User"
       user_consent_description   = "Allow the application to access the Sample App API on your behalf."
       user_consent_display_name  = "Access Sample App API"
@@ -49,7 +52,8 @@ resource "azuread_application" "main" {
 }
 
 resource "azuread_service_principal" "main" {
-  client_id = azuread_application.main.client_id
+  count     = var.auth_mode == "entra" ? 1 : 0
+  client_id = azuread_application.main[0].client_id
   owners    = [data.azurerm_client_config.current.object_id]
   tags      = ["sample-app", var.environment, "managed-by-terraform"]
 }
