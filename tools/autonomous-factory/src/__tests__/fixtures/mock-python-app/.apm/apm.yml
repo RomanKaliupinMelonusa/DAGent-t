@@ -1,0 +1,46 @@
+name: mock-python-service
+version: 1.0.0
+description: "A mock Python microservice for testing multi-app support"
+tokenBudget: 4500
+
+agents:
+  backend-dev:
+    instructions: [always]
+    mcp: []
+    skills: []
+  backend-unit-test:
+    instructions: [always]
+    mcp: []
+    skills: []
+  push-code:
+    instructions: [always]
+    mcp: []
+    skills: []
+  poll-ci:
+    instructions: [always]
+    mcp: []
+    skills: []
+  integration-test:
+    instructions: [always]
+    mcp: []
+    skills: []
+  create-pr:
+    instructions: [always]
+    mcp: []
+    skills: []
+
+config:
+  urls:
+    functionApp: "https://mock-python-svc.azurewebsites.net"
+  directories:
+    backend: src
+    frontend: null
+    infra: infra
+    e2e: null
+    packages: null
+  testCommands:
+    backendUnit: "cd {appRoot} && pytest -v"
+    frontendUnit: null
+    integration: "cd {appRoot} && pytest tests/integration -v"
+  commitScopes:
+    backend: ["src/", "infra/", "in-progress/"]

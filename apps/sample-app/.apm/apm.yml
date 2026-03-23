@@ -1,0 +1,74 @@
+name: sample-app
+version: 1.0.0
+description: "Azure Web App + microservices — sample template for agentic pipeline"
+tokenBudget: 6000
+
+agents:
+  schema-dev:
+    instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    mcp: [roam-code]
+    skills: [test-schema-validation]
+  backend-dev:
+    instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    mcp: [roam-code]
+    skills: [test-backend-unit]
+  frontend-dev:
+    instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    mcp: [roam-code]
+    skills: [test-frontend-unit, build-frontend]
+  backend-unit-test:
+    instructions: [always, tooling/roam-test-intelligence.md]
+    mcp: [roam-code]
+    skills: [test-backend-unit]
+  frontend-unit-test:
+    instructions: [always, tooling/roam-test-intelligence.md]
+    mcp: [roam-code]
+    skills: [test-frontend-unit]
+  integration-test:
+    instructions: [always, backend/integration-testing.md, tooling/cloud-telemetry.md]
+    mcp: []
+    skills: [test-integration]
+  live-ui:
+    instructions: [always, frontend/e2e-testing-mandate.md, tooling/roam-tool-rules.md, tooling/cloud-telemetry.md]
+    mcp: [roam-code, playwright]
+    skills: []
+  code-cleanup:
+    instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    mcp: [roam-code]
+    skills: []
+  docs-archived:
+    instructions: [always, tooling/roam-tool-rules.md]
+    mcp: [roam-code]
+    skills: []
+  create-pr:
+    instructions: [always, tooling/roam-tool-rules.md]
+    mcp: [roam-code]
+    skills: []
+  push-code:
+    instructions: [always]
+    mcp: []
+    skills: []
+  poll-ci:
+    instructions: [always]
+    mcp: []
+    skills: []
+
+config:
+  urls:
+    swa: "${SWA_URL}"
+    functionApp: "${FUNCTION_APP_URL}"
+    apim: "${APIM_URL}"
+  azureResources:
+    functionAppName: "${AZURE_FUNCTION_APP_NAME}"
+    resourceGroup: "${AZURE_RESOURCE_GROUP}"
+    appInsightsName: "${AZURE_APP_INSIGHTS_NAME}"
+  directories:
+    backend: backend
+    frontend: frontend
+    infra: infra
+    e2e: e2e
+  testCommands:
+    backendUnit: "cd {appRoot}/backend && npx jest --verbose"       # TODO: Adapt to your test runner
+    frontendUnit: "cd {appRoot}/frontend && npx jest --verbose"     # TODO: Adapt to your test runner
+    integration: "cd {appRoot}/backend && npm run test:integration"  # TODO: Adapt to your integration tests
+

@@ -1,0 +1,104 @@
+# =============================================================================
+# Agentic Feature Pipeline — Copilot SDK Headless Orchestrator
+# =============================================================================
+# Runs the full agentic feature pipeline autonomously using the Copilot SDK.
+# Triggered manually via workflow_dispatch with a feature slug and workflow type.
+#
+# Prerequisites:
+#   1. Feature spec exists: <app-path>/in-progress/<slug>_SPEC.md
+#   2. GitHub Secret: COPILOT_PAT (PAT with copilot scope for SDK auth)
+#
+# References:
+#   - tools/autonomous-factory/src/watchdog.ts
+# =============================================================================
+
+name: Agentic Feature Pipeline
+
+concurrency:
+  group: agentic-pipeline
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature-slug:
+        description: 'Feature slug (e.g., my-feature)'
+        required: true
+        type: string
+      app-path:
+        description: 'App directory relative to repo root (e.g., apps/sample-app)'
+        required: true
+        type: string
+        default: 'apps/sample-app'
+      workflow-type:
+        description: 'Pipeline workflow type'
+        required: true
+        type: choice
+        options:
+          - Backend
+          - Frontend
+          - Full-Stack
+          - Infra
+      base-branch:
+        description: 'Base branch for PR target (default: main)'
+        required: false
+        type: string
+        default: 'main'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  run-pipeline:
+    name: Run Agentic Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install orchestrator dependencies
+        run: cd tools/autonomous-factory && npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create feature branch
+        run: bash tools/autonomous-factory/agent-branch.sh create-feature ${{ inputs.feature-slug }}
+        env:
+          BASE_BRANCH: ${{ inputs.base-branch }}
+
+      - name: Initialize pipeline
+        run: npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-type }}"
+        env:
+          APP_ROOT: ${{ inputs.app-path }}
+
+      - name: Authenticate Copilot SDK
+        run: gh auth login --with-token <<< "${{ secrets.COPILOT_PAT }}"
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+
+      - name: Run Agentic Pipeline
+        run: npm run agent:run -- --app ${{ inputs.app-path }} ${{ inputs.feature-slug }}
+        env:
+          POLL_MAX_RETRIES: "60"
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          APP_ROOT: ${{ inputs.app-path }}
+        timeout-minutes: 120

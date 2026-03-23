@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsx:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node tools/autonomous-factory/build-instructions.mjs --app=apps/sample-app)",
+      "WebSearch",
+      "Bash(find /workspaces/branded-ecom-genai-platform/tools -name *.md -path *docs*)"
+    ]
+  }
+}

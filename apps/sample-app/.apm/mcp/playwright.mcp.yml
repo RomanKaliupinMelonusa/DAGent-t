@@ -1,0 +1,17 @@
+name: playwright
+description: "Playwright browser automation for live-ui E2E testing"
+type: local
+command: "{repoRoot}/tools/autonomous-factory/node_modules/.bin/playwright-mcp"
+args:
+  - "--headless"
+  - "--no-sandbox"
+  - "--browser"
+  - "chromium"
+  - "--save-session"
+  - "--output-dir"
+  - "{appRoot}/in-progress/screenshots"
+  - "--caps"
+  - "vision"
+cwd: "{appRoot}"
+tools: ["*"]
+availability: required

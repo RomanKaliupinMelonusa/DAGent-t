@@ -1,0 +1,36 @@
+# =============================================================================
+# Development Environment Variables — dev.tfvars.example
+# =============================================================================
+# Copy to dev.tfvars and fill in your values:
+#   cp dev.tfvars.example dev.tfvars
+#
+# In CI, these are injected via TF_VAR_* env vars from GitHub Secrets:
+#   AZURE_SUBSCRIPTION_ID  → TF_VAR_subscription_id
+#   APIM_PUBLISHER_EMAIL   → TF_VAR_apim_publisher_email
+#   FRONTEND_URL           → TF_VAR_frontend_url
+#   AUTH_MODE              → TF_VAR_auth_mode
+#   DEMO_CREDENTIALS       → TF_VAR_demo_credentials (JSON: {"username":"…","password":"…"})
+# =============================================================================
+
+subscription_id = ""              # Azure Subscription ID
+
+location        = "eastus2"
+environment     = "dev"
+resource_suffix = "001"
+
+# APIM Configuration
+apim_publisher_name  = "Sample App"
+apim_publisher_email = ""         # Your email address
+
+# Frontend URL (set after SWA deployment, then re-apply)
+# Must include trailing slash per azuread provider requirement.
+# frontend_url = "https://your-swa.azurestaticapps.net/"
+
+# Authentication Mode: "entra" (default) or "demo"
+auth_mode = "demo"
+
+# Demo credentials (only used when auth_mode = "demo")
+demo_credentials = {
+  username = "demo"
+  password = "demopass"
+}

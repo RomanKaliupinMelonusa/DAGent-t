@@ -1,0 +1,62 @@
+{
+  "name": "Agentic Pipeline Platform",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+
+  "remoteEnv": {
+    "NODE_VERSION": "22.15"
+  },
+
+  "runArgs": [
+    "--shm-size=2gb",
+    "--ipc=host"
+  ],
+
+  "mounts": [
+    "source=agentic-pipeline-azure-cli,target=/home/node/.azure,type=volume"
+  ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": { "version": "2.73.0" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  },
+
+  "postCreateCommand": "npm install && cd tools/autonomous-factory && npm install && cd ../.. && npx --yes playwright install --with-deps chromium && bash tools/autonomous-factory/setup-roam.sh && az extension add --name application-insights --yes 2>/dev/null",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "hashicorp.terraform",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-azurefunctions",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "files.watcherExclude": {
+          "**/.roam/**": true,
+          "**/in-progress/**": true,
+          "**/archive/**": true,
+          "**/node_modules/**": true,
+          "**/test-results/**": true
+        },
+        "search.exclude": {
+          "**/.roam": true,
+          "**/in-progress": true,
+          "**/archive": true,
+          "**/test-results": true
+        }
+      }
+    }
+  },
+
+  "containerEnv": {
+    "SHELL": "/bin/zsh",
+    "ROAM_PYTHON": "/home/node/.roam-venv/bin/python"
+  }
+}

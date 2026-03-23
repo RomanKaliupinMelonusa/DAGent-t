@@ -1,0 +1,79 @@
+# =============================================================================
+# Frontend Deployment — Azure Static Web Apps
+# =============================================================================
+# Builds the frontend static export and deploys to Azure Static Web Apps.
+#
+# Triggered on pushes to main that modify frontend code.
+#
+# Prerequisites:
+#   - SWA_DEPLOYMENT_TOKEN → from Azure Portal > Static Web App > Manage deployment token
+#   - NEXT_PUBLIC_* vars set as GitHub Actions repository secrets
+# =============================================================================
+
+name: Deploy Frontend
+
+concurrency:
+  group: azure-shared-env
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths:
+      - 'apps/*/frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      app-path:
+        description: 'App directory relative to repo root'
+        required: true
+        type: string
+        default: 'apps/sample-app'
+
+permissions:
+  contents: read
+
+env:
+  APP_PATH: ${{ inputs.app-path || 'apps/sample-app' }}
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy to SWA
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: ${{ env.APP_PATH }}/frontend
+        run: npm run test:coverage
+
+      - name: Build static export
+        working-directory: ${{ env.APP_PATH }}/frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_AUTH_MODE: ${{ secrets.NEXT_PUBLIC_AUTH_MODE }}
+        run: npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: ${{ env.APP_PATH }}/frontend/out
+          skip_app_build: true
+          skip_api_build: true

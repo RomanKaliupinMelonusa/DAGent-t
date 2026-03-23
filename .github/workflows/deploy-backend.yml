@@ -1,0 +1,111 @@
+# =============================================================================
+# Backend Deployment — Azure Functions (Zip Deploy via OIDC)
+# =============================================================================
+# Builds the TypeScript backend, runs lint + tests, and deploys to Azure
+# Functions using OIDC federated credentials (zero stored secrets).
+#
+# Triggered on pushes to main that modify backend code.
+#
+# Prerequisites:
+#   1. GitHub Secrets:
+#      - AZURE_CICD_CLIENT_ID   → terraform output cicd_client_id
+#      - AZURE_TENANT_ID        → terraform output entra_tenant_id
+#      - AZURE_SUBSCRIPTION_ID  → var.subscription_id
+#   2. GitHub Variables:
+#      - AZURE_FUNCTION_APP_NAME → name of your Azure Function App
+# =============================================================================
+
+name: Deploy Backend
+
+concurrency:
+  group: azure-shared-env
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths:
+      - 'apps/*/backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+    inputs:
+      app-path:
+        description: 'App directory relative to repo root'
+        required: true
+        type: string
+        default: 'apps/sample-app'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP_PATH: ${{ inputs.app-path || 'apps/sample-app' }}
+
+jobs:
+  build-test-deploy:
+    name: Build, Test & Deploy to Azure Functions
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        working-directory: ${{ env.APP_PATH }}/backend
+        run: npm run lint
+
+      - name: Run tests with coverage
+        working-directory: ${{ env.APP_PATH }}/backend
+        run: npm run test:coverage
+
+      - name: Build (esbuild bundle)
+        working-directory: ${{ env.APP_PATH }}/backend
+        run: npm run build
+
+      - name: Prepare deploy artifact
+        run: |
+          mkdir -p deploy
+          cp ${{ env.APP_PATH }}/backend/host.json deploy/
+          cp -r ${{ env.APP_PATH }}/backend/dist deploy/
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('${{ env.APP_PATH }}/backend/package.json', 'utf8'));
+            const deploy = {
+              name: pkg.name,
+              version: pkg.version,
+              type: pkg.type,
+              main: pkg.main,
+              dependencies: {
+                '@azure/functions': pkg.dependencies['@azure/functions']
+              }
+            };
+            fs.writeFileSync('deploy/package.json', JSON.stringify(deploy, null, 2));
+          "
+          cd deploy && npm install --omit=dev
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CICD_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
+          package: deploy/

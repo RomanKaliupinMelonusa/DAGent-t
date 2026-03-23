@@ -1,0 +1,7 @@
+name: roam-code
+description: "Roam semantic code intelligence — AST-based structural analysis, blast radius, test gaps"
+type: local
+command: roam
+args: [mcp]
+tools: ["*"]
+availability: optional

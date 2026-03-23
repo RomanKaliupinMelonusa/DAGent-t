@@ -1,0 +1,34 @@
+{
+  "name": "agentic-pipeline-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to PR",
+  "workspaces": [
+    "apps/**",
+    "tools/*"
+  ],
+  "scripts": {
+    "pipeline:init": "node tools/autonomous-factory/pipeline-state.mjs init",
+    "pipeline:complete": "node tools/autonomous-factory/pipeline-state.mjs complete",
+    "pipeline:fail": "node tools/autonomous-factory/pipeline-state.mjs fail",
+    "pipeline:reset-ci": "node tools/autonomous-factory/pipeline-state.mjs reset-ci",
+    "pipeline:status": "node tools/autonomous-factory/pipeline-state.mjs status",
+    "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
+    "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",
+    "pipeline:doc-note": "node tools/autonomous-factory/pipeline-state.mjs doc-note",
+    "pipeline:set-url": "node tools/autonomous-factory/pipeline-state.mjs set-url",
+    "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
+    "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
+    "agent:run": "cd tools/autonomous-factory && npx tsx src/watchdog.ts",
+    "build:instructions": "node tools/autonomous-factory/build-instructions.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  },
+  "overrides": {
+    "fast-xml-parser": ">=5.5.6"
+  }
+}

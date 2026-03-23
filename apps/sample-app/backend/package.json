@@ -1,0 +1,30 @@
+{
+  "name": "sample-app-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Azure Functions backend for sample-app — demo auth + your API",
+  "main": "dist/src/functions/*.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prestart": "npm run clean && npm run build",
+    "start": "func start",
+    "test": "jest --verbose",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.3.0",
+    "typescript": "^5.8.0"
+  }
+}

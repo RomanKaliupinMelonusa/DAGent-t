@@ -1,0 +1,36 @@
+# =============================================================================
+# .roamignore — Exclude non-source directories from roam-code indexing
+# =============================================================================
+
+# Build outputs
+backend/dist/
+frontend/.next/
+frontend/out/
+packages/*/dist/
+
+# Dependencies
+node_modules/
+
+# Test artifacts
+test-results/
+frontend/test-results/
+in-progress/screenshots/
+playwright-report/
+blob-report/
+coverage/
+
+# Terraform state & ephemeral files
+infra/.terraform/
+*.tfstate
+*.tfstate.backup
+tfplan*
+
+# Archives (not current code)
+docs/archive/
+archive/
+
+# Generated / lock files
+package-lock.json
+
+# Roam's own database
+.roam/

@@ -1,0 +1,56 @@
+# =============================================================================
+# Demo Auth API — OpenAPI 3.0.3
+# =============================================================================
+# Only deployed when auth_mode = "demo".
+# Validates shared credentials and returns a demo token for subsequent API calls.
+# =============================================================================
+openapi: "3.0.3"
+info:
+  title: Demo Auth API
+  version: "1.0.0"
+  description: Demo authentication endpoint for shared username/password login.
+paths:
+  /auth/login:
+    post:
+      operationId: demoLogin
+      summary: Authenticate with demo credentials
+      description: Validates username/password and returns a demo token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  displayName:
+                    type: string
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Demo auth is disabled

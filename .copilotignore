@@ -1,0 +1,20 @@
+# Ignore Roam Semantic Graph (Binary/DB)
+**/.roam/**
+
+# Ignore all app-scoped pipeline state and massive logs
+in-progress/*.json
+in-progress/*.mjs
+in-progress/*.ts
+in-progress/*_PLAYWRIGHT-LOG.md
+in-progress/*_TERMINAL-LOG.md
+in-progress/screenshots/
+**/archive/**
+
+# Ignore Dependencies
+**/node_modules/**
+
+# Ignore E2E Testing Artifacts
+**/test-results/**
+**/playwright-report/**
+**/blob-report/**
+**/screenshots/**

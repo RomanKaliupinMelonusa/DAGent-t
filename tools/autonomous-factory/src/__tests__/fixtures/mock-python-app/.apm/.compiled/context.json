@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "compiledAt": "2026-03-22T04:09:45.828Z",
+  "tokenBudget": 4500,
+  "agents": {
+    "backend-dev": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    },
+    "backend-unit-test": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    },
+    "push-code": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    },
+    "poll-ci": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    },
+    "integration-test": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    },
+    "create-pr": {
+      "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
+      "tokenCount": 43,
+      "mcp": {},
+      "skills": {}
+    }
+  },
+  "config": {
+    "urls": {
+      "functionApp": "https://mock-python-svc.azurewebsites.net"
+    },
+    "directories": {
+      "backend": "src",
+      "frontend": null,
+      "infra": "infra",
+      "e2e": null,
+      "packages": null
+    },
+    "testCommands": {
+      "backendUnit": "cd {appRoot} && pytest -v",
+      "frontendUnit": null,
+      "integration": "cd {appRoot} && pytest tests/integration -v"
+    },
+    "commitScopes": {
+      "backend": [
+        "src/",
+        "infra/",
+        "in-progress/"
+      ]
+    }
+  }
+}

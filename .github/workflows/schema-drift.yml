@@ -1,0 +1,41 @@
+# =============================================================================
+# Schema Drift Detection — CI Workflow
+# =============================================================================
+# Runs on every PR to detect schema drift between your shared schemas and
+# API specifications.
+#
+# TODO: Customize this workflow for your application's schema validation
+#       approach (Zod, JSON Schema, OpenAPI, Protobuf, etc.)
+# =============================================================================
+
+name: Schema Drift Check
+
+on:
+  pull_request:
+    paths:
+      - 'apps/*/backend/src/types/**'
+      - 'apps/*/infra/api-specs/**'
+
+jobs:
+  schema-drift:
+    name: Detect Schema Drift
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # TODO: Add your schema validation command here
+      # Example: npm run validate:schemas -w your-app-backend
+      - name: Check schema drift
+        run: echo "Schema drift check — configure your validation command in this workflow"
