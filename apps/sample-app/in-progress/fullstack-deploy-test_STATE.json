@@ -27,15 +27,16 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added Jest config (jest.config.cjs) with ts-jest and jsdom. Created 20 unit tests across 3 suites: DemoLoginForm (5 tests), apiClient/apiFetch (8 tests), demoAuthContext (7 tests). Fixed Playwright version conflict via root override. Frontend Next.js static export builds cleanly with 3 routes (/, /about, /_not-found)."
     },
     {
       "key": "backend-unit-test",
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -43,7 +44,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
