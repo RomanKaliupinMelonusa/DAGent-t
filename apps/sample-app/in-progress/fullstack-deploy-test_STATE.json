@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

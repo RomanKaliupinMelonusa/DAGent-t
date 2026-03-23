@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prestart": "npm run clean && npm run build",
     "start": "func start",
