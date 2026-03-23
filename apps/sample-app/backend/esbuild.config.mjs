@@ -38,6 +38,12 @@ await esbuild.build({
   outbase: ".",
   sourcemap: true,
   minify: false, // Keep readable for debugging in App Insights
+  // Shim CJS require() for bundled dependencies that use require('util') etc.
+  // esbuild's __require helper checks if `require` is defined — this banner
+  // provides a real require via createRequire so Node built-ins resolve at runtime.
+  banner: {
+    js: 'import { createRequire as __esbuild_createRequire } from "module"; const require = __esbuild_createRequire(import.meta.url);',
+  },
   // Node built-ins (crypto, fs, etc.) are auto-externalized by platform:"node"
   // @azure/functions-core is provided by the Azure Functions host runtime at
   // startup — it must NOT be bundled.
