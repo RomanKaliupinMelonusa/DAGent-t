@@ -48,7 +48,13 @@ Follow the [bootstrap sequence](.github/AGENTIC-WORKFLOW.md#bootstrap-sequence-f
 ```bash
 # Authenticate (inside DevContainer)
 gh auth login
-az login
+
+# Azure login — IMPORTANT: The azuread Terraform provider requires the
+# Microsoft Graph scope. A basic `az login` is NOT enough — Terraform will
+# fail with AADSTS50076 (MFA required) when planning/applying infra.
+# Always use the --scope flag below for the initial login:
+az login --scope https://graph.microsoft.com/.default
+az account set --subscription "<your-subscription-id>"
 
 # Create a feature spec
 mkdir -p apps/sample-app/in-progress
@@ -69,7 +75,7 @@ npm run agent:run -- --app apps/sample-app my-feature
 - **DevContainer:** Required — see step 1 above
 - **CI/CD configured:** GitHub Secrets and Azure OIDC credentials — see step 2 above
 - **GitHub CLI auth:** `gh auth status` must show a valid token
-- **Azure CLI auth:** `az account show` must succeed (for live deploy/test phases)
+- **Azure CLI auth:** `az login --scope https://graph.microsoft.com/.default` — the Graph scope is required by the `azuread` Terraform provider. A plain `az login` will fail with MFA errors during `terraform plan/apply`.
 - **App config:** `apps/sample-app/.apm/apm.yml` must exist — URLs and Azure resource names must match GitHub secrets ([linking table](.github/AGENTIC-WORKFLOW.md#linking-cicd-secrets-to-apm-config))
 
 ### Adapting for Your Project

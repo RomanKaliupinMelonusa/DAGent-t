@@ -624,7 +624,11 @@ The DevContainer must be configured for Playwright browser testing:
 gh auth login
 
 # 2. Azure CLI — required for integration tests, deployment verification, and pre-flight checks
-az login
+#    IMPORTANT: Use the --scope flag below. The azuread Terraform provider needs
+#    Microsoft Graph access. A plain `az login` will fail with AADSTS50076
+#    (MFA required for Graph) when running terraform plan/apply.
+az login --scope https://graph.microsoft.com/.default
+az account set --subscription "<your-subscription-id>"
 ```
 
 The watchdog runs `az account show` as a pre-flight check and warns early if Azure auth is missing. GitHub CLI auth is checked implicitly when the Copilot SDK initializes.
