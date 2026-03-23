@@ -76,8 +76,8 @@
       "label": "Live UI Validated",
       "agent": "@frontend-ui-test",
       "phase": "post-deploy",
-      "status": "pending",
-      "error": null
+      "status": "failed",
+      "error": "{\"fault_domain\":\"both\",\"diagnostic_trace\":\"Frontend APIM URL mismatch causes Failed to fetch on login. Deployed frontend NEXT_PUBLIC_API_BASE_URL=https://apim-sample-app-001.azure-api.net (no path prefix), but APIM APIs are at /demo-auth (auth) and /sample (hello). Frontend calls POST https://apim-sample-app-001.azure-api.net/auth/login -> APIM 404 (no CORS headers) -> browser blocks -> Failed to fetch. Same for GET /hello -> 404. APIM works correctly when called with prefixes: POST /demo-auth/auth/login returns 200, GET /sample/hello returns 200. Fix needed: either (A) frontend code change to support separate auth/sample base URLs (add NEXT_PUBLIC_AUTH_BASE_URL env var to demoAuthContext.tsx, set NEXT_PUBLIC_API_BASE_URL=.../sample, NEXT_PUBLIC_AUTH_BASE_URL=.../demo-auth), or (B) infra change to consolidate both APIM APIs under single /api path prefix. Playwright: 2 passed (form renders, invalid creds show error), 2 failed (login with valid creds, sign-out flow). Backend functions are healthy (2/2 loaded, respond correctly via direct curl).\"}"
     },
     {
       "key": "code-cleanup",
@@ -154,6 +154,11 @@
       "timestamp": "2026-03-23T20:38:20.462Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 3/5: Function app func-sample-app-001 still has 0 functions loaded after esbuild fix (commit 11d1675). Previous error was ERR_MODULE_NOT_FOUND for zod. New error from App Insights (2026-03-23T20:21:54Z): Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Dynamic require of \"util\" is not supported. Root cause: esbuild.config.mjs uses format:\"esm\" which cannot handle CJS require('util') calls in bundled dependencies. Fix: either (1) add \"util\" and other Node built-ins to the external array in esbuild.config.mjs, (2) switch format to \"cjs\", or (3) add banner with import { createRequire } from \"module\"; const require = createRequire(import.meta.url); to shim require() for Node built-ins. All endpoints return HTTP 404 — no integration tests could run.. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-23T21:10:04.960Z",
+      "itemKey": "live-ui",
+      "message": "{\"fault_domain\":\"both\",\"diagnostic_trace\":\"Frontend APIM URL mismatch causes Failed to fetch on login. Deployed frontend NEXT_PUBLIC_API_BASE_URL=https://apim-sample-app-001.azure-api.net (no path prefix), but APIM APIs are at /demo-auth (auth) and /sample (hello). Frontend calls POST https://apim-sample-app-001.azure-api.net/auth/login -> APIM 404 (no CORS headers) -> browser blocks -> Failed to fetch. Same for GET /hello -> 404. APIM works correctly when called with prefixes: POST /demo-auth/auth/login returns 200, GET /sample/hello returns 200. Fix needed: either (A) frontend code change to support separate auth/sample base URLs (add NEXT_PUBLIC_AUTH_BASE_URL env var to demoAuthContext.tsx, set NEXT_PUBLIC_API_BASE_URL=.../sample, NEXT_PUBLIC_AUTH_BASE_URL=.../demo-auth), or (B) infra change to consolidate both APIM APIs under single /api path prefix. Playwright: 2 passed (form renders, invalid creds show error), 2 failed (login with valid creds, sign-out flow). Backend functions are healthy (2/2 loaded, respond correctly via direct curl).\"}"
     }
   ]
 }
