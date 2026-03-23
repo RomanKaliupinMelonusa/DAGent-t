@@ -65,10 +65,18 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 
 ## Sample Protected API
 
-The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the full dual-mode auth pattern end-to-end. APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key.
+All endpoints are served through a single **unified APIM API** at the root path (`""`). The spec is defined in `api-specs/api-unified.openapi.yaml`.
+
+| Operation | Auth Policy | Description |
+|-----------|-------------|-------------|
+| `POST /auth/login` | None (open) | Demo authentication endpoint |
+| `GET /hello` | `check-header` (demo) / `validate-jwt` (entra) | Protected greeting |
+
+CORS and backend routing (Function App via function key) are applied at the API level. Auth policies are applied at the operation level on `/hello` only. The frontend uses a single `NEXT_PUBLIC_API_BASE_URL` pointing to the APIM gateway — no path prefix needed.
 
 ## Adding Your Own APIs
 
-1. Create an OpenAPI 3.0.3 spec in `api-specs/`
-2. Add a new `azurerm_api_management_api` resource in `apim.tf` (see `azurerm_api_management_api.sample` for the pattern)
-3. Add a dual-mode policy using the existing `local.sample_policy_entra` / `local.sample_policy_demo` templates, or create new policy locals for different auth requirements
+1. Add new operations to `api-specs/api-unified.openapi.yaml`
+2. The `azurerm_api_management_api.unified` resource in `apim.tf` imports the spec automatically
+3. For protected endpoints, add an operation-level policy similar to `azurerm_api_management_api_operation_policy.hello`
+4. Use the existing `local.hello_op_policy_entra` / `local.hello_op_policy_demo` patterns for dual-mode auth
