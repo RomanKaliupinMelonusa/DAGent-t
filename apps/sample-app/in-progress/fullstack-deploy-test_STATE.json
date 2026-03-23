@@ -18,8 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Refactored fn-demo-login.ts and fn-hello.ts to import from shared schemas (backend/src/schemas/index.ts), eliminating local schema duplication. Added fn-hello.test.ts with 7 tests including schema conformance validation. No schema drift, no breaking changes."
     },
     {
       "key": "frontend-dev",
