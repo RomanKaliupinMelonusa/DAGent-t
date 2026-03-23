@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Added createRequire banner to esbuild.config.mjs to fix 'Dynamic require of util is not supported' runtime error in deployed Azure Functions. The banner provides a real require() via createRequire(import.meta.url) so esbuild's __require CJS shim resolves Node built-ins in ESM output."
+      "docNote": "Switched esbuild from ESM to CJS format to fix Azure Functions runtime 'Dynamic require of util' error caused by __require shims in bundled @azure/functions webpack code. Consolidated two separate APIM APIs (demo-auth at /demo-auth, sample at /sample) into a single unified API at root path '' with operation-level auth policy on /hello only, so frontend needs only one NEXT_PUBLIC_API_BASE_URL=gateway_url."
     },
     {
       "key": "frontend-dev",
@@ -44,7 +44,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
