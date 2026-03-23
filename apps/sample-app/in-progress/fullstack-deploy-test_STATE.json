@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Switched build from tsc to esbuild bundling (esbuild.config.mjs). All npm deps (zod, @azure/functions) are now inlined into each function bundle, eliminating node_modules from the deploy artifact. Only @azure/functions-core remains external (provided by Azure Functions runtime). Deploy workflow no longer runs npm install in the artifact directory."
+      "docNote": "Added createRequire banner to esbuild.config.mjs to fix 'Dynamic require of util is not supported' runtime error in deployed Azure Functions. The banner provides a real require() via createRequire(import.meta.url) so esbuild's __require CJS shim resolves Node built-ins in ESM output."
     },
     {
       "key": "frontend-dev",
