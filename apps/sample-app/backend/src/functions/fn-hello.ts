@@ -18,6 +18,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
+import type { HelloResponse } from "../schemas/index.js";
 
 async function hello(
   request: HttpRequest,
@@ -27,12 +28,14 @@ async function hello(
 
   context.log(`Hello endpoint called with name=${name}`);
 
+  const body: HelloResponse = {
+    message: `Hello, ${name}!`,
+    timestamp: new Date().toISOString(),
+  };
+
   return {
     status: 200,
-    jsonBody: {
-      message: `Hello, ${name}!`,
-      timestamp: new Date().toISOString(),
-    },
+    jsonBody: body,
   };
 }
 

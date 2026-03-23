@@ -21,17 +21,8 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { z } from "zod";
 import { timingSafeEqual } from "crypto";
-
-// ---------------------------------------------------------------------------
-// Request Schema
-// ---------------------------------------------------------------------------
-
-const DemoLoginRequestSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-});
+import { DemoLoginRequestSchema } from "../schemas/index.js";
 
 // ---------------------------------------------------------------------------
 // Constant-time string comparison
