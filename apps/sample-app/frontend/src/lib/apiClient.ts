@@ -19,6 +19,8 @@ import { getDemoToken } from "./demoAuthContext";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:7071/api";
+const API_PATH_PREFIX =
+  process.env.NEXT_PUBLIC_API_PATH_PREFIX ?? "";
 const authMode = process.env.NEXT_PUBLIC_AUTH_MODE ?? "entra";
 
 // ---------------------------------------------------------------------------
@@ -93,7 +95,7 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const authHeaders = await getAuthHeaders();
 
-  const url = `${BASE_URL}${path}`;
+  const url = `${BASE_URL}${API_PATH_PREFIX}${path}`;
   let response: Response;
 
   try {

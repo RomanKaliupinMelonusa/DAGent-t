@@ -18,7 +18,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Added createRequire banner to esbuild.config.mjs to fix 'Dynamic require of util is not supported' runtime error in deployed Azure Functions. The banner provides a real require() via createRequire(import.meta.url) so esbuild's __require CJS shim resolves Node built-ins in ESM output."
     },
@@ -27,7 +27,7 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Added Jest config (jest.config.cjs) with ts-jest and jsdom. Created 20 unit tests across 3 suites: DemoLoginForm (5 tests), apiClient/apiFetch (8 tests), demoAuthContext (7 tests). Fixed Playwright version conflict via root override. Frontend Next.js static export builds cleanly with 3 routes (/, /about, /_not-found)."
     },
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -44,7 +44,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -76,8 +76,8 @@
       "label": "Live UI Validated",
       "agent": "@frontend-ui-test",
       "phase": "post-deploy",
-      "status": "failed",
-      "error": "{\"fault_domain\":\"both\",\"diagnostic_trace\":\"Frontend APIM URL mismatch causes Failed to fetch on login. Deployed frontend NEXT_PUBLIC_API_BASE_URL=https://apim-sample-app-001.azure-api.net (no path prefix), but APIM APIs are at /demo-auth (auth) and /sample (hello). Frontend calls POST https://apim-sample-app-001.azure-api.net/auth/login -> APIM 404 (no CORS headers) -> browser blocks -> Failed to fetch. Same for GET /hello -> 404. APIM works correctly when called with prefixes: POST /demo-auth/auth/login returns 200, GET /sample/hello returns 200. Fix needed: either (A) frontend code change to support separate auth/sample base URLs (add NEXT_PUBLIC_AUTH_BASE_URL env var to demoAuthContext.tsx, set NEXT_PUBLIC_API_BASE_URL=.../sample, NEXT_PUBLIC_AUTH_BASE_URL=.../demo-auth), or (B) infra change to consolidate both APIM APIs under single /api path prefix. Playwright: 2 passed (form renders, invalid creds show error), 2 failed (login with valid creds, sign-out flow). Backend functions are healthy (2/2 loaded, respond correctly via direct curl).\"}"
+      "status": "pending",
+      "error": null
     },
     {
       "key": "code-cleanup",
@@ -159,6 +159,11 @@
       "timestamp": "2026-03-23T21:10:04.960Z",
       "itemKey": "live-ui",
       "message": "{\"fault_domain\":\"both\",\"diagnostic_trace\":\"Frontend APIM URL mismatch causes Failed to fetch on login. Deployed frontend NEXT_PUBLIC_API_BASE_URL=https://apim-sample-app-001.azure-api.net (no path prefix), but APIM APIs are at /demo-auth (auth) and /sample (hello). Frontend calls POST https://apim-sample-app-001.azure-api.net/auth/login -> APIM 404 (no CORS headers) -> browser blocks -> Failed to fetch. Same for GET /hello -> 404. APIM works correctly when called with prefixes: POST /demo-auth/auth/login returns 200, GET /sample/hello returns 200. Fix needed: either (A) frontend code change to support separate auth/sample base URLs (add NEXT_PUBLIC_AUTH_BASE_URL env var to demoAuthContext.tsx, set NEXT_PUBLIC_API_BASE_URL=.../sample, NEXT_PUBLIC_AUTH_BASE_URL=.../demo-auth), or (B) infra change to consolidate both APIM APIs under single /api path prefix. Playwright: 2 passed (form renders, invalid creds show error), 2 failed (login with valid creds, sign-out flow). Backend functions are healthy (2/2 loaded, respond correctly via direct curl).\"}"
+    },
+    {
+      "timestamp": "2026-03-23T21:10:26.907Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 4/5: Frontend APIM URL mismatch causes Failed to fetch on login. Deployed frontend NEXT_PUBLIC_API_BASE_URL=https://apim-sample-app-001.azure-api.net (no path prefix), but APIM APIs are at /demo-auth (auth) and /sample (hello). Frontend calls POST https://apim-sample-app-001.azure-api.net/auth/login -> APIM 404 (no CORS headers) -> browser blocks -> Failed to fetch. Same for GET /hello -> 404. APIM works correctly when called with prefixes: POST /demo-auth/auth/login returns 200, GET /sample/hello returns 200. Fix needed: either (A) frontend code change to support separate auth/sample base URLs (add NEXT_PUBLIC_AUTH_BASE_URL env var to demoAuthContext.tsx, set NEXT_PUBLIC_API_BASE_URL=.../sample, NEXT_PUBLIC_AUTH_BASE_URL=.../demo-auth), or (B) infra change to consolidate both APIM APIs under single /api path prefix. Playwright: 2 passed (form renders, invalid creds show error), 2 failed (login with valid creds, sign-out flow). Backend functions are healthy (2/2 loaded, respond correctly via direct curl).. Reset 7 items: backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, live-ui, push-code, poll-ci"
     }
   ]
 }

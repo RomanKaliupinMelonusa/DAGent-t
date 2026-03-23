@@ -4,6 +4,7 @@
 
 // MUST set auth mode BEFORE importing apiClient (module-level constant)
 process.env.NEXT_PUBLIC_AUTH_MODE = "demo";
+process.env.NEXT_PUBLIC_API_PATH_PREFIX = "/sample";
 
 import { apiFetch, ApiError } from "@/lib/apiClient";
 
@@ -36,13 +37,25 @@ describe("apiFetch", () => {
     await apiFetch("/hello");
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/hello"),
+      expect.stringContaining("/sample/hello"),
       expect.objectContaining({
         headers: expect.objectContaining({
           "X-Demo-Token": "test-token-abc",
         }),
       }),
     );
+  });
+
+  it("includes API_PATH_PREFIX in the request URL", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ message: "Hello" }),
+    });
+
+    await apiFetch("/hello?name=Demo");
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/sample/hello?name=Demo");
   });
 
   it("returns parsed JSON on success", async () => {
