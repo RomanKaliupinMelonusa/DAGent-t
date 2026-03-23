@@ -60,8 +60,8 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
-      "error": null
+      "status": "failed",
+      "error": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (pre-existing: OIDC SP lacks Entra ID app-registration privileges — 403 Authorization_RequestDenied; infra was already applied locally)"
     },
     {
       "key": "integration-test",
@@ -104,5 +104,11 @@
       "error": null
     }
   ],
-  "errorLog": []
+  "errorLog": [
+    {
+      "timestamp": "2026-03-23T18:29:04.798Z",
+      "itemKey": "poll-ci",
+      "message": "Deploy Backend PASSED, Deploy Frontend PASSED, Deploy Infrastructure FAILED (pre-existing: OIDC SP lacks Entra ID app-registration privileges — 403 Authorization_RequestDenied; infra was already applied locally)"
+    }
+  ]
 }
