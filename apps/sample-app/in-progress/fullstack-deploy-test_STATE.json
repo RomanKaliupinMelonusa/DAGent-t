@@ -27,9 +27,9 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Added Jest config (jest.config.cjs) with ts-jest and jsdom. Created 20 unit tests across 3 suites: DemoLoginForm (5 tests), apiClient/apiFetch (8 tests), demoAuthContext (7 tests). Fixed Playwright version conflict via root override. Frontend Next.js static export builds cleanly with 3 routes (/, /about, /_not-found)."
+      "docNote": "Added NEXT_PUBLIC_API_PATH_PREFIX env var to apiClient.ts for APIM /sample path prefix. Updated deploy-frontend.yml to pass NEXT_PUBLIC_API_PATH_PREFIX and NEXT_PUBLIC_AUTH_API_PATH secrets during build. These env vars allow the frontend to route API calls through APIM's separate /demo-auth and /sample path prefixes."
     },
     {
       "key": "backend-unit-test",
