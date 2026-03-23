@@ -29,7 +29,7 @@ output "key_vault_name" {
 
 output "entra_client_id" {
   description = "Entra ID app registration client ID — use as NEXT_PUBLIC_ENTRA_CLIENT_ID."
-  value       = azuread_application.main.client_id
+  value       = var.auth_mode == "entra" ? azuread_application.main[0].client_id : ""
 }
 
 output "entra_tenant_id" {
