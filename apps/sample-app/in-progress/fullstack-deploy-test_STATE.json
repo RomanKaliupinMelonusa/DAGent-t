@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Refactored fn-demo-login.ts and fn-hello.ts to import from shared schemas (backend/src/schemas/index.ts), eliminating local schema duplication. Added fn-hello.test.ts with 7 tests including schema conformance validation. No schema drift, no breaking changes."
+      "docNote": "Switched build from tsc to esbuild bundling (esbuild.config.mjs). All npm deps (zod, @azure/functions) are now inlined into each function bundle, eliminating node_modules from the deploy artifact. Only @azure/functions-core remains external (provided by Azure Functions runtime). Deploy workflow no longer runs npm install in the artifact directory."
     },
     {
       "key": "frontend-dev",
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -68,8 +68,8 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "pending",
-      "error": null
+      "status": "failed",
+      "error": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"Function app func-sample-app-001 still has 0 functions loaded after esbuild fix (commit 11d1675). Previous error was ERR_MODULE_NOT_FOUND for zod. New error from App Insights (2026-03-23T20:21:54Z): Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Dynamic require of \\\"util\\\" is not supported. Root cause: esbuild.config.mjs uses format:\\\"esm\\\" which cannot handle CJS require(\\u0027util\\u0027) calls in bundled dependencies. Fix: either (1) add \\\"util\\\" and other Node built-ins to the external array in esbuild.config.mjs, (2) switch format to \\\"cjs\\\", or (3) add banner with import { createRequire } from \\\"module\\\"; const require = createRequire(import.meta.url); to shim require() for Node built-ins. All endpoints return HTTP 404 — no integration tests could run.\"}"
     },
     {
       "key": "live-ui",
@@ -144,6 +144,11 @@
       "timestamp": "2026-03-23T19:56:09.496Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 2/5: Timeout after 1200000ms waiting for session.idle. Reset 5 items: backend-dev, backend-unit-test, live-ui, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-23T20:25:34.972Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"Function app func-sample-app-001 still has 0 functions loaded after esbuild fix (commit 11d1675). Previous error was ERR_MODULE_NOT_FOUND for zod. New error from App Insights (2026-03-23T20:21:54Z): Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Dynamic require of \\\"util\\\" is not supported. Root cause: esbuild.config.mjs uses format:\\\"esm\\\" which cannot handle CJS require(\\u0027util\\u0027) calls in bundled dependencies. Fix: either (1) add \\\"util\\\" and other Node built-ins to the external array in esbuild.config.mjs, (2) switch format to \\\"cjs\\\", or (3) add banner with import { createRequire } from \\\"module\\\"; const require = createRequire(import.meta.url); to shim require() for Node built-ins. All endpoints return HTTP 404 — no integration tests could run.\"}"
     }
   ]
 }
