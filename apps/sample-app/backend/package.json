@@ -16,7 +16,8 @@
     "test": "jest --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "validate:schemas": "jest --verbose src/schemas/__tests__/"
+    "validate:schemas": "jest --verbose src/schemas/__tests__/",
+    "test:integration": "RUN_INTEGRATION=true jest --verbose --testPathPatterns=integration"
   },
   "dependencies": {
     "@azure/functions": "^4.7.0",

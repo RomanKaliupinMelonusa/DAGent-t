@@ -68,7 +68,7 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
