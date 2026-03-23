@@ -14,7 +14,8 @@
     "start": "func start",
     "test": "jest --verbose",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "validate:schemas": "jest --verbose src/schemas/__tests__/"
   },
   "dependencies": {
     "@azure/functions": "^4.7.0",
