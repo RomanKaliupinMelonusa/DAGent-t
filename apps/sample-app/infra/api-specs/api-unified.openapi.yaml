@@ -1,0 +1,87 @@
+# =============================================================================
+# Unified API — OpenAPI 3.0.3
+# =============================================================================
+# Combines demo auth and sample endpoints into a single APIM API so the
+# frontend can use a single NEXT_PUBLIC_API_BASE_URL with no path prefix.
+#
+# Operations:
+#   POST /auth/login  — Demo authentication (no APIM auth policy)
+#   GET  /hello       — Protected greeting (APIM auth policy applied)
+# =============================================================================
+openapi: "3.0.3"
+info:
+  title: Sample App API
+  version: "1.0.0"
+  description: Unified API for demo auth and sample endpoints.
+paths:
+  /auth/login:
+    post:
+      operationId: demoLogin
+      summary: Authenticate with demo credentials
+      description: Validates username/password and returns a demo token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  displayName:
+                    type: string
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Demo auth is disabled
+  /hello:
+    get:
+      operationId: hello
+      summary: Get a greeting
+      description: Returns a greeting message. Protected by APIM auth policy.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+            default: World
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          description: Unauthorized — missing or invalid auth token

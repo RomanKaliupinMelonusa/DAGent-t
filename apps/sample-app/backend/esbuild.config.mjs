@@ -2,17 +2,22 @@
 // esbuild Configuration — Azure Functions v4 Bundle
 // =============================================================================
 // Bundles each function entry point with ALL npm dependencies (zod, etc.)
-// into self-contained ESM modules. This eliminates the need for node_modules
+// into self-contained CJS modules. This eliminates the need for node_modules
 // in the deploy artifact, avoiding npm workspace hoisting issues.
+//
+// CJS format is used because @azure/functions contains webpack-bundled CJS code.
+// ESM format generates __require() shims that fail in the Azure Functions runtime.
+// CJS natively supports require() so no shims are needed.
 //
 // Output mirrors the tsc directory structure so host.json + package.json
 // "main" field continue to work unchanged:
 //   dist/src/functions/fn-hello.js
 //   dist/src/functions/fn-demo-login.js
+//   dist/package.json  (type: "commonjs" override)
 // =============================================================================
 
 import * as esbuild from "esbuild";
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Auto-discover function entry points (exclude test files)
@@ -33,21 +38,24 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   target: "node22",
-  format: "esm",
+  format: "cjs",
   outdir: "dist",
   outbase: ".",
   sourcemap: true,
   minify: false, // Keep readable for debugging in App Insights
-  // Shim CJS require() for bundled dependencies that use require('util') etc.
-  // esbuild's __require helper checks if `require` is defined — this banner
-  // provides a real require via createRequire so Node built-ins resolve at runtime.
-  banner: {
-    js: 'import { createRequire as __esbuild_createRequire } from "module"; const require = __esbuild_createRequire(import.meta.url);',
-  },
-  // Node built-ins (crypto, fs, etc.) are auto-externalized by platform:"node"
+  // Node built-ins (crypto, fs, etc.) are auto-externalized by platform:"node".
+  // CJS format natively supports require() — no shim/banner needed.
   // @azure/functions-core is provided by the Azure Functions host runtime at
   // startup — it must NOT be bundled.
   external: ["@azure/functions-core"],
 });
 
-console.log("Build complete — bundled", entryPoints.length, "functions");
+// Write a dist-level package.json so Node.js treats the CJS output files
+// correctly, even if the source root has "type": "module".
+mkdirSync("dist", { recursive: true });
+writeFileSync(
+  join("dist", "package.json"),
+  JSON.stringify({ type: "commonjs" }, null, 2) + "\n",
+);
+
+console.log("Build complete — bundled", entryPoints.length, "functions (CJS)");

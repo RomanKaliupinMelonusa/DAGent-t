@@ -159,17 +159,25 @@ resource "azurerm_api_management_backend" "func" {
 }
 
 # =============================================================================
-# 4. Demo Auth API (demo mode only)
+# 4. Unified API — Single API with all endpoints (no path prefix)
+# =============================================================================
+# Combines demo auth and sample endpoints into ONE APIM API so the frontend
+# can use a single NEXT_PUBLIC_API_BASE_URL = gateway_url (no path prefix).
+#
+# Operations:
+#   POST /auth/login — Demo authentication (no APIM auth check)
+#   GET  /hello      — Protected greeting (APIM auth policy per mode)
+#
+# CORS is applied at the API level. Auth is applied at the operation level.
 # =============================================================================
 
-resource "azurerm_api_management_api" "demo_auth" {
-  count                 = var.auth_mode == "demo" ? 1 : 0
-  name                  = "api-demo-auth"
+resource "azurerm_api_management_api" "unified" {
+  name                  = "api-unified"
   api_management_name   = azurerm_api_management.main.name
   resource_group_name   = azurerm_resource_group.main.name
   revision              = "1"
-  display_name          = "Demo Auth API"
-  path                  = "demo-auth"
+  display_name          = "Sample App API"
+  path                  = ""
   protocols             = ["https"]
   subscription_required = false
 
@@ -177,13 +185,16 @@ resource "azurerm_api_management_api" "demo_auth" {
 
   import {
     content_format = "openapi"
-    content_value  = file("${path.module}/api-specs/api-demo-auth.openapi.yaml")
+    content_value  = file("${path.module}/api-specs/api-unified.openapi.yaml")
   }
 }
 
-resource "azurerm_api_management_api_policy" "demo_auth" {
-  count               = var.auth_mode == "demo" ? 1 : 0
-  api_name            = azurerm_api_management_api.demo_auth[0].name
+# ---------------------------------------------------------------------------
+# API-level policy: CORS + backend routing (applies to all operations)
+# ---------------------------------------------------------------------------
+
+resource "azurerm_api_management_api_policy" "unified" {
+  api_name            = azurerm_api_management_api.unified.name
   api_management_name = azurerm_api_management.main.name
   resource_group_name = azurerm_resource_group.main.name
 
@@ -199,69 +210,6 @@ resource "azurerm_api_management_api_policy" "demo_auth" {
             <origin>${azurerm_api_management.main.gateway_url}</origin>
           </allowed-origins>
           <allowed-methods>
-            <method>POST</method>
-            <method>OPTIONS</method>
-          </allowed-methods>
-          <allowed-headers>
-            <header>Content-Type</header>
-          </allowed-headers>
-        </cors>
-      </inbound>
-      <backend><base /></backend>
-      <outbound><base /></outbound>
-      <on-error><base /></on-error>
-    </policies>
-  XML
-}
-
-# =============================================================================
-# 5. Sample API — Protected endpoint with dual-mode auth
-# =============================================================================
-# GET /hello — demonstrates the auth policy pattern end-to-end.
-# In demo mode:  APIM validates X-Demo-Token via check-header
-# In entra mode: APIM validates Bearer JWT via validate-jwt
-# =============================================================================
-
-resource "azurerm_api_management_api" "sample" {
-  name                  = "api-sample"
-  api_management_name   = azurerm_api_management.main.name
-  resource_group_name   = azurerm_resource_group.main.name
-  revision              = "1"
-  display_name          = "Sample API"
-  path                  = "sample"
-  protocols             = ["https"]
-  subscription_required = false
-
-  service_url = "https://${azurerm_function_app_flex_consumption.main.default_hostname}/api"
-
-  import {
-    content_format = "openapi"
-    content_value  = file("${path.module}/api-specs/api-sample.openapi.yaml")
-  }
-
-  depends_on = [azurerm_api_management_api.demo_auth]
-}
-
-# =============================================================================
-# 6. Dual-Mode Auth Policies
-# =============================================================================
-# Entra mode: validate-jwt (Bearer token from MSAL)
-# Demo mode:  check-header (X-Demo-Token from sessionStorage)
-# =============================================================================
-
-locals {
-  # Entra mode policy — validates JWT from MSAL
-  sample_policy_entra = <<-XML
-    <policies>
-      <inbound>
-        <base />
-        <cors allow-credentials="false">
-          <allowed-origins>
-            ${var.environment == "dev" ? "<origin>http://localhost:3000</origin>" : ""}
-            ${local.frontend_origin != "" ? "<origin>${local.frontend_origin}</origin>" : ""}
-            <origin>${azurerm_api_management.main.gateway_url}</origin>
-          </allowed-origins>
-          <allowed-methods>
             <method>GET</method>
             <method>POST</method>
             <method>PATCH</method>
@@ -274,6 +222,30 @@ locals {
             <header>Content-Type</header>
           </allowed-headers>
         </cors>
+      </inbound>
+      <backend><base /></backend>
+      <outbound><base /></outbound>
+      <on-error><base /></on-error>
+    </policies>
+  XML
+}
+
+# =============================================================================
+# 5. Operation-Level Policies — Dual-Mode Auth on /hello
+# =============================================================================
+# The /auth/login operation inherits only CORS + backend from the API policy.
+# The /hello operation adds auth validation on top.
+#
+# Entra mode: validate-jwt (Bearer token from MSAL)
+# Demo mode:  check-header (X-Demo-Token from sessionStorage)
+# =============================================================================
+
+locals {
+  # Entra mode — validates JWT from MSAL
+  hello_op_policy_entra = <<-XML
+    <policies>
+      <inbound>
+        <base />
         <validate-jwt header-name="Authorization"
                       failed-validation-httpcode="401"
                       failed-validation-error-message="Unauthorized. Access token is missing or invalid."
@@ -288,7 +260,6 @@ locals {
             <issuer>https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/v2.0</issuer>
           </issuers>
         </validate-jwt>
-        <set-backend-service backend-id="${azurerm_api_management_backend.func.name}" />
       </inbound>
       <backend><base /></backend>
       <outbound><base /></outbound>
@@ -296,34 +267,14 @@ locals {
     </policies>
   XML
 
-  # Demo mode policy — validates X-Demo-Token header
-  sample_policy_demo = <<-XML
+  # Demo mode — validates X-Demo-Token header
+  hello_op_policy_demo = <<-XML
     <policies>
       <inbound>
         <base />
-        <cors allow-credentials="false">
-          <allowed-origins>
-            ${var.environment == "dev" ? "<origin>http://localhost:3000</origin>" : ""}
-            ${local.frontend_origin != "" ? "<origin>${local.frontend_origin}</origin>" : ""}
-            <origin>${azurerm_api_management.main.gateway_url}</origin>
-          </allowed-origins>
-          <allowed-methods>
-            <method>GET</method>
-            <method>POST</method>
-            <method>PATCH</method>
-            <method>DELETE</method>
-            <method>OPTIONS</method>
-          </allowed-methods>
-          <allowed-headers>
-            <header>Authorization</header>
-            <header>X-Demo-Token</header>
-            <header>Content-Type</header>
-          </allowed-headers>
-        </cors>
         <check-header name="X-Demo-Token" failed-check-httpcode="401" failed-check-error-message="Unauthorized. Demo token is missing or invalid." ignore-case="false">
           <value>{{demo-token}}</value>
         </check-header>
-        <set-backend-service backend-id="${azurerm_api_management_backend.func.name}" />
       </inbound>
       <backend><base /></backend>
       <outbound><base /></outbound>
@@ -332,11 +283,12 @@ locals {
   XML
 }
 
-resource "azurerm_api_management_api_policy" "sample" {
-  api_name            = azurerm_api_management_api.sample.name
+resource "azurerm_api_management_api_operation_policy" "hello" {
+  api_name            = azurerm_api_management_api.unified.name
   api_management_name = azurerm_api_management.main.name
   resource_group_name = azurerm_resource_group.main.name
-  xml_content         = var.auth_mode == "entra" ? local.sample_policy_entra : local.sample_policy_demo
+  operation_id        = "hello"
+  xml_content         = var.auth_mode == "entra" ? local.hello_op_policy_entra : local.hello_op_policy_demo
 }
 
 # =============================================================================
