@@ -88,14 +88,10 @@ jobs:
               name: pkg.name,
               version: pkg.version,
               type: pkg.type,
-              main: pkg.main,
-              dependencies: {
-                '@azure/functions': pkg.dependencies['@azure/functions']
-              }
+              main: pkg.main
             };
             fs.writeFileSync('deploy/package.json', JSON.stringify(deploy, null, 2));
           "
-          cd deploy && npm install --omit=dev
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2

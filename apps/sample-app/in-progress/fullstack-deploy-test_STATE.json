@@ -18,7 +18,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Refactored fn-demo-login.ts and fn-hello.ts to import from shared schemas (backend/src/schemas/index.ts), eliminating local schema duplication. Added fn-hello.test.ts with 7 tests including schema conformance validation. No schema drift, no breaking changes."
     },
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -68,8 +68,8 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "failed",
-      "error": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"Function app func-sample-app-001 has 0 functions loaded. All endpoints return HTTP 404. Root cause from App Insights (2026-03-23T19:38:15Z): ERR_MODULE_NOT_FOUND — Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Cannot find package \\u0027zod\\u0027 imported from /home/site/wwwroot/dist/src/schemas/index.js. The zod dependency is missing from the deployed package. The deploy-backend CI zip likely excluded node_modules or zod is not in backend/package.json dependencies. Fix: ensure zod is listed in backend/package.json dependencies (not just devDependencies) and that the CI zip includes node_modules. Affected endpoints: GET /api/hello (404), POST /api/auth/login (404). No integration tests could run — 0 functions are registered.\"}"
+      "status": "pending",
+      "error": null
     },
     {
       "key": "live-ui",
@@ -129,6 +129,21 @@
       "timestamp": "2026-03-23T19:43:20.943Z",
       "itemKey": "integration-test",
       "message": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"Function app func-sample-app-001 has 0 functions loaded. All endpoints return HTTP 404. Root cause from App Insights (2026-03-23T19:38:15Z): ERR_MODULE_NOT_FOUND — Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Cannot find package \\u0027zod\\u0027 imported from /home/site/wwwroot/dist/src/schemas/index.js. The zod dependency is missing from the deployed package. The deploy-backend CI zip likely excluded node_modules or zod is not in backend/package.json dependencies. Fix: ensure zod is listed in backend/package.json dependencies (not just devDependencies) and that the CI zip includes node_modules. Affected endpoints: GET /api/hello (404), POST /api/auth/login (404). No integration tests could run — 0 functions are registered.\"}"
+    },
+    {
+      "timestamp": "2026-03-23T19:45:08.875Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: Function app func-sample-app-001 has 0 functions loaded. All endpoints return HTTP 404. Root cause from App Insights (2026-03-23T19:38:15Z): ERR_MODULE_NOT_FOUND — Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Cannot find package 'zod' imported from /home/site/wwwroot/dist/src/schemas/index.js. The zod dependency is missing from the deployed package. The deploy-backend CI zip likely excluded node_modules or zod is not in backend/package.json dependencies. Fix: ensure zod is listed in backend/package.json dependencies (not just devDependencies) and that the CI zip includes node_modules. Affected endpoints: GET /api/hello (404), POST /api/auth/login (404). No integration tests could run — 0 functions are registered.. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-23T19:56:08.272Z",
+      "itemKey": "live-ui",
+      "message": "Timeout after 1200000ms waiting for session.idle"
+    },
+    {
+      "timestamp": "2026-03-23T19:56:09.496Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 2/5: Timeout after 1200000ms waiting for session.idle. Reset 5 items: backend-dev, backend-unit-test, live-ui, push-code, poll-ci"
     }
   ]
 }
