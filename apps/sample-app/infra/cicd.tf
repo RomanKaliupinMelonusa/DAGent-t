@@ -22,6 +22,10 @@ resource "azuread_application" "cicd" {
   display_name = "sample-app-cicd-${var.environment}"
   owners       = [data.azurerm_client_config.current.object_id]
   tags         = ["sample-app", var.environment, "cicd", "managed-by-terraform"]
+
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 resource "azuread_service_principal" "cicd" {
