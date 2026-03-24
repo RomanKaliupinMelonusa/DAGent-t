@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Fixed deploy artifact: removed type:module from generated package.json in deploy-backend.yml (line ~91) — CJS esbuild output requires no type field or Node.js misparses it as ESM, causing 0 functions loaded at runtime. Also fixed Jest 30+ --testPathPatterns flag in backend package.json."
+      "docNote": "Fixed deploy workflow: removed type:module from deploy package.json generation (deploy-backend.yml). esbuild outputs CJS but type=module caused Node to reject CJS with require-is-not-defined pre-init. @branded/schemas + zod already bundled by esbuild; no schema drift."
     },
     {
       "key": "frontend-dev",
