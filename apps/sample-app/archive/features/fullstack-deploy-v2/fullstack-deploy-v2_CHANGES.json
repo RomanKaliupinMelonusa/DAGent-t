@@ -1,0 +1,173 @@
+{
+  "feature": "fullstack-deploy-v2",
+  "stepsCompleted": [
+    {
+      "key": "schema-dev",
+      "agent": "@schema-dev",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [],
+      "docNote": "Integrated @branded/schemas into frontend: apiClient.ts now supports optional Zod schema validation param, demoAuthContext validates login responses with DemoLoginResponseSchema, page.tsx uses HelloResponseSchema. Added apiClient + DemoLoginForm unit tests (14 passing) and authenticated-hello E2E spec (4 tests). Added jest.config.ts with next/jest and @branded/schemas module mapping."
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [],
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-code",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "Removed dead code from frontend/src/components/ui/primitives.tsx: Textarea component, Badge component (+ BadgeVariant type, badgeVariants const), Spinner component, and un-exported ButtonVariant/ButtonSize types (still used internally). Also removed unused TextareaHTMLAttributes import. Net: -56 lines. All 14 frontend tests + 20 backend tests pass. No other dead code found in backend, frontend, or e2e directories."
+    }
+  ],
+  "allFilesChanged": [],
+  "summaryIntents": [
+    "Deterministic push — no agent session",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed"
+  ]
+}

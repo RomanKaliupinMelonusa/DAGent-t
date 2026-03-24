@@ -1,0 +1,155 @@
+{
+  "feature": "fullstack-deploy-v2",
+  "workflowType": "Full-Stack",
+  "started": "2026-03-24",
+  "deployedUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/2",
+  "implementationNotes": "PR #2 created for merge to main",
+  "items": [
+    {
+      "key": "schema-dev",
+      "label": "Development Complete — Schemas",
+      "agent": "@schema-dev",
+      "phase": "pre-deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "backend-dev",
+      "label": "Development Complete — Backend",
+      "agent": "@backend-dev",
+      "phase": "pre-deploy",
+      "status": "done",
+      "error": null,
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
+    },
+    {
+      "key": "frontend-dev",
+      "label": "Development Complete — Frontend",
+      "agent": "@frontend-dev",
+      "phase": "pre-deploy",
+      "status": "done",
+      "error": null,
+      "docNote": "Integrated @branded/schemas into frontend: apiClient.ts now supports optional Zod schema validation param, demoAuthContext validates login responses with DemoLoginResponseSchema, page.tsx uses HelloResponseSchema. Added apiClient + DemoLoginForm unit tests (14 passing) and authenticated-hello E2E spec (4 tests). Added jest.config.ts with next/jest and @branded/schemas module mapping."
+    },
+    {
+      "key": "backend-unit-test",
+      "label": "Unit Tests Passed — Backend",
+      "agent": "@backend-test",
+      "phase": "pre-deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "label": "Unit Tests Passed — Frontend",
+      "agent": "@frontend-ui-test",
+      "phase": "pre-deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "push-code",
+      "label": "Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "poll-ci",
+      "label": "CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "code-cleanup",
+      "label": "Dead Code Eliminated",
+      "agent": "@code-cleanup",
+      "phase": "finalize",
+      "status": "done",
+      "error": null,
+      "docNote": "Removed dead code from frontend/src/components/ui/primitives.tsx: Textarea component, Badge component (+ BadgeVariant type, badgeVariants const), Spinner component, and un-exported ButtonVariant/ButtonSize types (still used internally). Also removed unused TextareaHTMLAttributes import. Net: -56 lines. All 14 frontend tests + 20 backend tests pass. No other dead code found in backend, frontend, or e2e directories."
+    },
+    {
+      "key": "docs-archived",
+      "label": "Docs Updated & Archived",
+      "agent": "@docs-expert",
+      "phase": "finalize",
+      "status": "done",
+      "error": null
+    },
+    {
+      "key": "create-pr",
+      "label": "PR Created & Merged to Main",
+      "agent": "@pr-creator",
+      "phase": "finalize",
+      "status": "done",
+      "error": null
+    }
+  ],
+  "errorLog": [
+    {
+      "timestamp": "2026-03-24T01:09:37.691Z",
+      "itemKey": "push-code",
+      "message": "Timeout after 900000ms waiting for session.idle"
+    },
+    {
+      "timestamp": "2026-03-24T01:28:35.858Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"All endpoints return HTTP 404 — 0 functions loaded on func-sample-app-001. App Insights error trace (2026-03-24T01:22:42): Error [ERR_MODULE_NOT_FOUND]: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Cannot find package @branded/schemas imported from /home/site/wwwroot/dist/src/functions/fn-demo-login.js. Root cause: deploy-backend.yml Prepare deploy artifact step only packages @azure/functions dependency, but fn-demo-login.js has a runtime import of @branded/schemas (DemoLoginRequestSchema used for request validation). The compiled JS preserves this import. Fix: Either (1) add @branded/schemas + zod to the deploy package.json dependencies, or (2) switch backend build to esbuild bundling so all dependencies are inlined and no external packages are needed at deploy time. This also causes fn-hello to be unreachable because the function host reports 0 functions loaded / No HTTP routes mapped when any entry point file fails to import.\"}"
+    },
+    {
+      "timestamp": "2026-03-24T01:30:51.784Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: All endpoints return HTTP 404 — 0 functions loaded on func-sample-app-001. App Insights error trace (2026-03-24T01:22:42): Error [ERR_MODULE_NOT_FOUND]: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: Cannot find package @branded/schemas imported from /home/site/wwwroot/dist/src/functions/fn-demo-login.js. Root cause: deploy-backend.yml Prepare deploy artifact step only packages @azure/functions dependency, but fn-demo-login.js has a runtime import of @branded/schemas (DemoLoginRequestSchema used for request validation). The compiled JS preserves this import. Fix: Either (1) add @branded/schemas + zod to the deploy package.json dependencies, or (2) switch backend build to esbuild bundling so all dependencies are inlined and no external packages are needed at deploy time. This also causes fn-hello to be unreachable because the function host reports 0 functions loaded / No HTTP routes mapped when any entry point file fails to import.. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-24T01:48:48.142Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail — every endpoint returns HTTP 404 (0 functions loaded on func-sample-app-001). Root cause: deploy-backend.yml Prepare deploy artifact step copies type: pkg.type into the deploy package.json, producing {\\\"type\\\":\\\"module\\\"} in the deployed artifact. But esbuild.config.mjs outputs format: \\\"cjs\\\" (CommonJS). Node.js sees type=module and tries to parse CJS files as ESM, failing with require-is-not-defined before the function host initializes (App Insights shows zero telemetry — crash happens pre-init). Fix: In .github/workflows/deploy-backend.yml, remove the line `type: pkg.type` from the Prepare deploy artifact step (line ~91 in committed code). An unstaged local fix already exists in the working tree but was never committed. The deploy package.json must NOT include type:module when esbuild outputs CJS. Additionally: backend package.json test:integration script uses deprecated --testPathPattern (should be --testPathPatterns for Jest 30+) — fixed locally. Failed tests: fn-hello(live): returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live): returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).\"}"
+    },
+    {
+      "timestamp": "2026-03-24T01:49:04.006Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 2/5: All 7 integration tests fail — every endpoint returns HTTP 404 (0 functions loaded on func-sample-app-001). Root cause: deploy-backend.yml Prepare deploy artifact step copies type: pkg.type into the deploy package.json, producing {\"type\":\"module\"} in the deployed artifact. But esbuild.config.mjs outputs format: \"cjs\" (CommonJS). Node.js sees type=module and tries to parse CJS files as ESM, failing with require-is-not-defined before the function host initializes (App Insights shows zero telemetry — crash happens pre-init). Fix: In .github/workflows/deploy-backend.yml, remove the line `type: pkg.type` from the Prepare deploy artifact step (line ~91 in committed code). An unstaged local fix already exists in the working tree but was never committed. The deploy package.json must NOT include type:module when esbuild outputs CJS. Additionally: backend package.json test:integration script uses deprecated --testPathPattern (should be --testPathPatterns for Jest 30+) — fixed locally. Failed tests: fn-hello(live): returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live): returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-24T02:01:10.503Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail with HTTP 404 (0 functions loaded on func-sample-app-001). App Insights has zero telemetry — crash happens pre-init. Root cause: TWO unfixed issues in committed code at HEAD (21aa823): (1) .github/workflows/deploy-backend.yml line 94 still has `type: pkg.type` which copies type:module into the deploy package.json. (2) apps/sample-app/backend/package.json still has \\\"type\\\":\\\"module\\\". esbuild outputs format:cjs but Node.js sees type=module and rejects CJS with require-is-not-defined before Functions host starts. A working-tree fix exists in .github/workflows/deploy-backend.yml (removes the type: pkg.type line) but was NEVER COMMITTED — git status shows `M .github/workflows/deploy-backend.yml`. Fix: commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type) and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live) returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).\"}"
+    },
+    {
+      "timestamp": "2026-03-24T02:01:21.333Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 3/5: All 7 integration tests fail with HTTP 404 (0 functions loaded on func-sample-app-001). App Insights has zero telemetry — crash happens pre-init. Root cause: TWO unfixed issues in committed code at HEAD (21aa823): (1) .github/workflows/deploy-backend.yml line 94 still has `type: pkg.type` which copies type:module into the deploy package.json. (2) apps/sample-app/backend/package.json still has \"type\":\"module\". esbuild outputs format:cjs but Node.js sees type=module and rejects CJS with require-is-not-defined before Functions host starts. A working-tree fix exists in .github/workflows/deploy-backend.yml (removes the type: pkg.type line) but was NEVER COMMITTED — git status shows `M .github/workflows/deploy-backend.yml`. Fix: commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type) and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live) returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    },
+    {
+      "timestamp": "2026-03-24T02:12:41.160Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail with HTTP 404 (0 functions loaded). App Insights confirms: ReferenceError: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: module is not defined in ES module scope. /home/site/wwwroot/package.json contains type:module but esbuild outputs CJS (format:cjs). Root cause: .github/workflows/deploy-backend.yml line 94 still has type: pkg.type in committed code at HEAD (43e1155), which copies type:module into the deploy package.json. A working-tree fix exists (git status shows M .github/workflows/deploy-backend.yml removing that line) but was NEVER COMMITTED — commit ff85a2f only changed state/log files, not the workflow file itself. Fix: (1) commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type), (2) push and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) 3/3 failed (expected 200/200/400, all got 404); fn-demo-login(live) 4/4 failed (expected 200/401/400/400, all got 404).\"}"
+    },
+    {
+      "timestamp": "2026-03-24T02:12:58.520Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 4/5: All 7 integration tests fail with HTTP 404 (0 functions loaded). App Insights confirms: ReferenceError: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: module is not defined in ES module scope. /home/site/wwwroot/package.json contains type:module but esbuild outputs CJS (format:cjs). Root cause: .github/workflows/deploy-backend.yml line 94 still has type: pkg.type in committed code at HEAD (43e1155), which copies type:module into the deploy package.json. A working-tree fix exists (git status shows M .github/workflows/deploy-backend.yml removing that line) but was NEVER COMMITTED — commit ff85a2f only changed state/log files, not the workflow file itself. Fix: (1) commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type), (2) push and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) 3/3 failed (expected 200/200/400, all got 404); fn-demo-login(live) 4/4 failed (expected 200/401/400/400, all got 404).. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
+    }
+  ]
+}

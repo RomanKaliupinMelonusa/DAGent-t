@@ -1,11 +1,10 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+/** @type {import('jest').Config} */
 module.exports = {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
   roots: ["<rootDir>/src"],
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
-    "^@branded/schemas$": "<rootDir>/../packages/schemas/src/index.ts",
   },
   transform: {
     "^.+\\.tsx?$": [
@@ -13,9 +12,6 @@ module.exports = {
       {
         useESM: true,
         tsconfig: "tsconfig.json",
-        diagnostics: {
-          ignoreDiagnostics: [151002],
-        },
       },
     ],
   },

@@ -17,6 +17,7 @@
 #   backend  → backend/ packages/ infra/ in-progress/
 #   frontend → frontend/ packages/ e2e/ in-progress/
 #   infra    → infra/ in-progress/
+#   cicd     → .github/ in-progress/
 #   docs     → docs/ archive/ in-progress/ README.md frontend/README.md .github/
 #   pipeline → in-progress/
 #
@@ -28,7 +29,7 @@
 
 set -euo pipefail
 
-SCOPE="${1:?ERROR: scope is required (backend|frontend|infra|docs|pipeline|pr|e2e)}"
+SCOPE="${1:?ERROR: scope is required (backend|frontend|infra|cicd|docs|pipeline|pr|e2e)}"
 MESSAGE="${2:?ERROR: commit message is required}"
 shift 2
 
@@ -52,6 +53,9 @@ else
     infra)
       PATHS=("${AR}/infra/" "${AR}/in-progress/")
       ;;
+    cicd)
+      PATHS=(".github/" "${AR}/in-progress/")
+      ;;
     docs)
       PATHS=("${AR}/docs/" "${AR}/archive/" "${AR}/in-progress/" README.md "${AR}/frontend/README.md" "${AR}/.github/")
       ;;
@@ -65,10 +69,10 @@ else
       PATHS=("${AR}/e2e/" "${AR}/in-progress/")
       ;;
     all)
-      PATHS=("${AR}/backend/" "${AR}/frontend/" "${AR}/packages/" "${AR}/infra/" "${AR}/e2e/" "${AR}/in-progress/")
+      PATHS=("${AR}/backend/" "${AR}/frontend/" "${AR}/packages/" "${AR}/infra/" "${AR}/e2e/" "${AR}/in-progress/" ".github/")
       ;;
     *)
-      echo "ERROR: Unknown scope '${SCOPE}'. Use: backend, frontend, infra, docs, pipeline, pr, e2e, all" >&2
+      echo "ERROR: Unknown scope '${SCOPE}'. Use: backend, frontend, infra, cicd, docs, pipeline, pr, e2e, all" >&2
       exit 1
       ;;
   esac

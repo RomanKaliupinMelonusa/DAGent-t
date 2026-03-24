@@ -64,6 +64,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build shared schemas
+        working-directory: ${{ env.APP_PATH }}/packages/schemas
+        run: npm run build
+
       - name: Lint
         working-directory: ${{ env.APP_PATH }}/backend
         run: npm run lint
@@ -87,7 +91,6 @@ jobs:
             const deploy = {
               name: pkg.name,
               version: pkg.version,
-              type: pkg.type,
               main: pkg.main,
               dependencies: {
                 '@azure/functions': pkg.dependencies['@azure/functions']

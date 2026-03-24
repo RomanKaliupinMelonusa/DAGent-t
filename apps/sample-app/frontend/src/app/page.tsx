@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import { apiFetch, ApiError } from "@/lib/apiClient";
+import { HelloResponseSchema, type HelloResponse } from "@branded/schemas";
 import { Button } from "@/components/ui/primitives";
-
-interface HelloResponse {
-  message: string;
-  timestamp: string;
-}
 
 export default function HomePage() {
   const [response, setResponse] = useState<HelloResponse | null>(null);
@@ -18,7 +14,11 @@ export default function HomePage() {
     setError(null);
     setIsLoading(true);
     try {
-      const data = await apiFetch<HelloResponse>("/hello?name=Demo");
+      const data = await apiFetch<HelloResponse>(
+        "/hello?name=Demo",
+        {},
+        HelloResponseSchema,
+      );
       setResponse(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));

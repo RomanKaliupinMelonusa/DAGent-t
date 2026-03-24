@@ -82,6 +82,11 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
     case "backend+infra":
       resetKeys.push("backend-dev", "backend-unit-test");
       break;
+    case "cicd":
+      // CI/CD workflow file issue — route to push-code + poll-ci for the
+      // deploy-manager agent which has the correct commit scope for .github/
+      resetKeys.push("push-code", "poll-ci");
+      break;
     case "environment":
       // Not a code bug — only reset the post-deploy item itself.
       return [itemKey].filter((k) => !naItems.has(k));
@@ -129,15 +134,31 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "handler", "event binding", "javascript error", "console error",
     "click", "data mapping",
   ];
+  const cicdSignals = [
+    "deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml",
+    ".github/workflows", "workflow", "ci failed", "ci timeout",
+    "deploy artifact", "package.json type", "type:module",
+    "never committed", "working-tree fix",
+  ];
 
   const hasBackend = backendSignals.some((s) => msg.includes(s));
   const hasFrontend = frontendSignals.some((s) => msg.includes(s));
+  const hasCicd = cicdSignals.some((s) => msg.includes(s));
 
-  if (hasBackend) {
-    resetKeys.push("backend-dev", "backend-unit-test");
-  }
-  if (hasFrontend) {
-    resetKeys.push("frontend-dev", "frontend-unit-test");
+  // CI/CD workflow issues take priority — dev agents can't fix .github/ files
+  if (hasCicd && !hasBackend && !hasFrontend) {
+    resetKeys.push("push-code", "poll-ci");
+  } else {
+    if (hasBackend) {
+      resetKeys.push("backend-dev", "backend-unit-test");
+    }
+    if (hasFrontend) {
+      resetKeys.push("frontend-dev", "frontend-unit-test");
+    }
+    // If CI/CD signals co-occur with backend/frontend, also reset deploy items
+    if (hasCicd) {
+      resetKeys.push("push-code", "poll-ci");
+    }
   }
 
   // Can't determine root cause → reset everything applicable

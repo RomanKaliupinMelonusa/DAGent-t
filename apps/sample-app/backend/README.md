@@ -1,19 +1,36 @@
 # backend/
 
-Azure Functions backend with demo auth login endpoint.
+Azure Functions backend with shared Zod schema validation and dual-mode auth.
 
 ## Quick Start
 
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests
+npm test                       # run unit tests (20 passing)
 npm start                      # start Functions host on :7071
 ```
 
-## Demo Auth Endpoint
+## Endpoints
 
-**`POST /api/auth/login`** — validates shared credentials, returns a demo token.
+### `GET /api/hello`
+
+Sample protected endpoint demonstrating the dual-mode auth pattern. Auth is enforced at the APIM gateway — the function itself uses `authLevel: "function"`.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | query string | no | Greeting name (max 100 chars, defaults to "World") |
+
+**Success (200):**
+```json
+{ "message": "Hello, World!", "timestamp": "2026-03-24T00:00:00.000Z" }
+```
+
+**Errors:** 400 (name exceeds 100 chars)
+
+### `POST /api/auth/login`
+
+Demo-mode credential validation. Returns 404 when `AUTH_MODE=entra`.
 
 | Field | Type | Required |
 |-------|------|----------|
@@ -26,6 +43,17 @@ npm start                      # start Functions host on :7071
 ```
 
 **Errors:** 400 (invalid input), 401 (wrong credentials), 404 (demo mode disabled)
+
+## Shared Schemas
+
+Both endpoints use Zod schemas from `@branded/schemas` for request validation and response typing. See [`packages/schemas/README.md`](../packages/schemas/README.md).
+
+| Endpoint | Schema |
+|----------|--------|
+| `GET /hello` response | `HelloResponseSchema` |
+| `POST /auth/login` request | `DemoLoginRequestSchema` |
+| `POST /auth/login` response | `DemoLoginResponseSchema` |
+| All error responses | `ApiErrorResponseSchema` |
 
 ## AUTH_MODE Feature Flag
 
@@ -43,6 +71,15 @@ npm start                      # start Functions host on :7071
 | `DEMO_PASS` | — | Demo password |
 | `DEMO_TOKEN` | — | Token returned on successful login |
 
+## Tests
+
+Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
+| `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
+
 ## Adding Your Own Functions
 
-Add new Azure Functions in `src/functions/`. Each function registers itself via `app.http()` or `app.storageQueue()` etc. See `fn-demo-login.ts` for the pattern.
+Add new Azure Functions in `src/functions/`. Each function registers itself via `app.http()` or `app.storageQueue()` etc. See `fn-demo-login.ts` for the pattern. Define request/response schemas in `@branded/schemas` for type-safe validation.

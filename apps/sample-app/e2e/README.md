@@ -18,6 +18,13 @@ npx playwright test                # run all E2E tests
 npx playwright test --ui           # interactive mode
 ```
 
+## Test Specs
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `login.spec.ts` | 4 | Demo login flow — form rendering, credential validation, session persistence |
+| `authenticated-hello.spec.ts` | 4 | Post-login API call — /hello response display, navigation while authenticated, sign-out |
+
 ## Environment Variables
 
 | Variable | Default | Purpose |
@@ -32,7 +39,7 @@ npx playwright test --ui           # interactive mode
 Use the demo auth fixture for tests that need an authenticated session:
 
 ```typescript
-import { test, expect } from "../fixtures/demo-auth.fixture";
+import { test, expect } from "./fixtures/demo-auth.fixture";
 
 test("authenticated test", async ({ authenticatedPage }) => {
   await authenticatedPage.goto("/");
