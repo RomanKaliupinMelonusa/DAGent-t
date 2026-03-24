@@ -91,7 +91,6 @@ jobs:
             const deploy = {
               name: pkg.name,
               version: pkg.version,
-              type: pkg.type,
               main: pkg.main,
               dependencies: {
                 '@azure/functions': pkg.dependencies['@azure/functions']

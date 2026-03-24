@@ -18,7 +18,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Fixed deploy workflow: removed type:module from deploy package.json generation (deploy-backend.yml). esbuild outputs CJS but type=module caused Node to reject CJS with require-is-not-defined pre-init. @branded/schemas + zod already bundled by esbuild; no schema drift."
     },
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -68,8 +68,8 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "failed",
-      "error": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail with HTTP 404 (0 functions loaded). App Insights confirms: ReferenceError: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: module is not defined in ES module scope. /home/site/wwwroot/package.json contains type:module but esbuild outputs CJS (format:cjs). Root cause: .github/workflows/deploy-backend.yml line 94 still has type: pkg.type in committed code at HEAD (43e1155), which copies type:module into the deploy package.json. A working-tree fix exists (git status shows M .github/workflows/deploy-backend.yml removing that line) but was NEVER COMMITTED — commit ff85a2f only changed state/log files, not the workflow file itself. Fix: (1) commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type), (2) push and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) 3/3 failed (expected 200/200/400, all got 404); fn-demo-login(live) 4/4 failed (expected 200/401/400/400, all got 404).\"}"
+      "status": "pending",
+      "error": null
     },
     {
       "key": "live-ui",
@@ -144,6 +144,11 @@
       "timestamp": "2026-03-24T02:12:41.160Z",
       "itemKey": "integration-test",
       "message": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail with HTTP 404 (0 functions loaded). App Insights confirms: ReferenceError: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: module is not defined in ES module scope. /home/site/wwwroot/package.json contains type:module but esbuild outputs CJS (format:cjs). Root cause: .github/workflows/deploy-backend.yml line 94 still has type: pkg.type in committed code at HEAD (43e1155), which copies type:module into the deploy package.json. A working-tree fix exists (git status shows M .github/workflows/deploy-backend.yml removing that line) but was NEVER COMMITTED — commit ff85a2f only changed state/log files, not the workflow file itself. Fix: (1) commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type), (2) push and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) 3/3 failed (expected 200/200/400, all got 404); fn-demo-login(live) 4/4 failed (expected 200/401/400/400, all got 404).\"}"
+    },
+    {
+      "timestamp": "2026-03-24T02:12:58.520Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 4/5: All 7 integration tests fail with HTTP 404 (0 functions loaded). App Insights confirms: ReferenceError: Worker was unable to load entry point dist/src/functions/fn-demo-login.js: module is not defined in ES module scope. /home/site/wwwroot/package.json contains type:module but esbuild outputs CJS (format:cjs). Root cause: .github/workflows/deploy-backend.yml line 94 still has type: pkg.type in committed code at HEAD (43e1155), which copies type:module into the deploy package.json. A working-tree fix exists (git status shows M .github/workflows/deploy-backend.yml removing that line) but was NEVER COMMITTED — commit ff85a2f only changed state/log files, not the workflow file itself. Fix: (1) commit the existing working-tree change to .github/workflows/deploy-backend.yml (remove line 94: type: pkg.type), (2) push and redeploy. The deploy package.json must NOT include type:module when esbuild outputs CJS. Failed tests: fn-hello(live) 3/3 failed (expected 200/200/400, all got 404); fn-demo-login(live) 4/4 failed (expected 200/401/400/400, all got 404).. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
     }
   ]
 }
