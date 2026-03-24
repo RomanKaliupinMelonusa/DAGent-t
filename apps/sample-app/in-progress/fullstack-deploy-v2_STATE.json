@@ -18,8 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Integrated @branded/schemas into both Azure Functions (fn-hello, fn-demo-login), replacing inline Zod schemas. Added input validation (name length limit) to fn-hello. Added 9 unit tests for fn-hello. Fixed build script to clean dist/ before tsc to prevent ESM/CJS module type conflicts."
     },
     {
       "key": "frontend-dev",
