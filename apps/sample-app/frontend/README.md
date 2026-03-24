@@ -1,6 +1,6 @@
 # frontend/
 
-Next.js frontend with dual-mode authentication (demo + Entra ID).
+Next.js frontend with dual-mode authentication (demo + Entra ID) and runtime Zod schema validation.
 
 ## Quick Start
 
@@ -32,16 +32,42 @@ Controlled by `NEXT_PUBLIC_AUTH_MODE`:
    ```
 3. Update the scope in `src/lib/authConfig.ts` to match your app registration
 
+## Runtime Schema Validation
+
+API responses are validated at runtime using shared Zod schemas from `@branded/schemas`. The `apiFetch()` function accepts an optional Zod schema parameter:
+
+```typescript
+import { HelloResponseSchema } from "@branded/schemas";
+import { apiFetch } from "@/lib/apiClient";
+
+// Validated — throws ApiError("VALIDATION_ERROR") if response doesn't match schema
+const data = await apiFetch("/hello", {}, HelloResponseSchema);
+```
+
+Error responses are always parsed against `ApiErrorResponseSchema` for structured error handling.
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/app/providers.tsx` | Dual-mode auth provider (DemoProviders / EntraProviders) |
-| `src/lib/demoAuthContext.tsx` | React context for demo auth state |
+| `src/lib/demoAuthContext.tsx` | React context for demo auth state (validates with `DemoLoginResponseSchema`) |
 | `src/lib/authConfig.ts` | MSAL configuration for Entra ID |
-| `src/lib/apiClient.ts` | Authenticated fetch wrapper (dual-mode headers) |
+| `src/lib/apiClient.ts` | Authenticated fetch wrapper with optional Zod validation |
 | `src/components/DemoLoginForm.tsx` | Login form UI |
 | `src/components/NavBar.tsx` | Dual-mode navigation bar |
+| `src/components/ui/primitives.tsx` | Shared UI primitives (Button, Input, Card) |
+
+## Tests
+
+Unit tests use Jest with `next/jest`. Run with `npm test`.
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `src/lib/__tests__/apiClient.test.ts` | 9 | Dual-mode auth headers, error parsing, Zod validation |
+| `src/components/__tests__/DemoLoginForm.test.tsx` | 5 | Login form rendering, submission, error handling |
+
+**Total: 14 unit tests passing.**
 
 ## Build
 

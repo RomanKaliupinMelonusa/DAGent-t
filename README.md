@@ -284,6 +284,6 @@ Stripe's Minions validate this at massive scale. This pipeline validates it at t
 
 ---
 
-**Stack:** TypeScript, @github/copilot-sdk, GitHub Actions, Playwright, Terraform, roam-code, Zod
+**Stack:** TypeScript, @github/copilot-sdk, GitHub Actions, Playwright, Terraform, roam-code, Zod, @branded/schemas
 
 #AgenticCoding #DeveloperTools #AIEngineering #DevOps #SystemsArchitecture #OpenSource
