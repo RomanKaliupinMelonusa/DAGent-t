@@ -52,8 +52,8 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
-      "error": null
+      "status": "failed",
+      "error": "Timeout after 900000ms waiting for session.idle"
     },
     {
       "key": "poll-ci",
@@ -104,5 +104,11 @@
       "error": null
     }
   ],
-  "errorLog": []
+  "errorLog": [
+    {
+      "timestamp": "2026-03-24T01:09:37.691Z",
+      "itemKey": "push-code",
+      "message": "Timeout after 900000ms waiting for session.idle"
+    }
+  ]
 }
