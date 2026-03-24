@@ -114,8 +114,8 @@ Two teams, working independently — one inside a $95B fintech company, one as a
 | **Orchestration** | Deterministic TypeScript loop with DAG state machine | "Blueprints" — state machines with interwoven deterministic and agentic nodes |
 | **Agent specialization** | 12 domain-specific agents with per-agent prompts | Task-specific agents with curated tool subsets |
 | **Context management** | APM compiler with token budgets + modular rules | Scoped rules (Cursor format) + MCP tools via "Toolshed" (~500 tools) |
-| **CI integration** | Push → poll CI → auto-fix → re-push (bounded cycles) | Push → CI run → autofix → agent fix → second CI run (bounded to 2 iterations) |
-| **Failure recovery** | Structured triage → fault domain → targeted reroute | CI failures route back to agent nodes for local remediation |
+| **CI integration** | Deterministic deploy bypasses (no LLM) → poll CI → auto-fix → re-push (bounded cycles) | Push → CI run → autofix → agent fix → second CI run (bounded to 2 iterations) |
+| **Failure recovery** | Structured triage → compound fault domains → targeted reroute + dedup circuit breakers | CI failures route back to agent nodes for local remediation |
 | **Safety boundary** | Circuit breakers: 10 retries, 5 reroute cycles, session timeouts | 2 CI iteration limit; quarantined devboxes with no production access |
 
 > **Deterministic orchestration wrapping LLM execution, configured per project, with bounded failure recovery and CI/CD as a first-class pipeline phase.**
@@ -144,8 +144,8 @@ flowchart LR
     end
 
     subgraph POST["Post-Deploy"]
-        IT["integration-test"]
-        LU["live-ui"]
+        direction TB
+        IT["integration-test"] --> LU["live-ui"]
     end
 
     subgraph FIN["Finalize"]
@@ -154,11 +154,11 @@ flowchart LR
     end
 
     BUT & FUT --> PC
-    PCI --> IT & LU
+    PCI --> IT
     IT & LU --> CC
 
-    IT -.->|"fault: backend"| BD
-    LU -.->|"fault: frontend"| FD
+    IT -.->|"fault: backend+infra"| BD
+    LU -.->|"fault: frontend+infra"| FD
 
     style PRE fill:#e3f2fd
     style DEP fill:#fff9c4
@@ -166,7 +166,9 @@ flowchart LR
     style FIN fill:#f3e5f5
 ```
 
-The dashed arrows show the self-healing reroute. Test agents are pipeline steps, not afterthoughts — `backend-unit-test` and `frontend-unit-test` **write new tests** for the code that dev agents just created. Post-deploy, `integration-test` and `live-ui` generate tests against live infrastructure. The full testing lifecycle in one pipeline run: **write code → write tests → deploy → validate against live infra → self-heal on failure.**
+The dashed arrows show the self-healing reroute — now with **compound fault domains** (`backend+infra`, `frontend+infra`) that tell the triage engine exactly which layers failed. Test agents are pipeline steps, not afterthoughts — `backend-unit-test` and `frontend-unit-test` **write new tests** for the code that dev agents just created. Post-deploy, `integration-test` runs first; `live-ui` runs only after integration tests pass — there's no point spending 17 minutes of Playwright against a backend that's already failing. The full testing lifecycle in one pipeline run: **write code → write tests → deploy → validate against live infra → self-heal on failure.**
+
+The deploy phase itself (`push-code`, `poll-ci`) runs as **deterministic bypasses** — the orchestrator executes `agent-commit.sh` and `poll-ci.sh` directly without spinning up an LLM session. Agent fallback kicks in only if the scripts fail. Mechanical operations don't need reasoning.
 
 Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
 
@@ -216,12 +218,14 @@ If any agent's assembled rules exceed the token budget, **compilation fails** �
 When post-deploy tests fail (and they will), the pipeline doesn't retry blindly. The failing agent emits a structured diagnostic:
 
 ```json
-{ "fault_domain": "backend", "diagnostic_trace": "500 on /api/generate — missing OPENAI_ENDPOINT env var" }
+{ "fault_domain": "frontend+infra", "diagnostic_trace": "CORS 403 on /api/generate — APIM not routing to backend origin" }
 ```
 
-The triage engine maps the fault domain to the correct development agents, resets them to `pending`, injects the error context into their next prompt, and re-enters the loop. If the fault is `frontend`, only frontend-dev and frontend-unit-test are reset — not the entire pipeline.
+The triage engine maps the fault domain to the correct development agents, resets them to `pending`, injects the error context into their next prompt, and re-enters the loop. **Compound fault domains** like `frontend+infra` and `backend+infra` reduce blast radius — a CORS failure resets only frontend-dev and frontend-unit-test, not the entire pipeline. Environment-level faults (IAM permission errors, missing service principals) are detected by signal matching and halt the pipeline rather than wasting redevelopment cycles on problems code changes can't fix.
 
-Circuit breakers prevent infinite loops: 5 redevelopment cycles, 10 retries per item, hard session timeouts. The pipeline halts rather than burns.
+Circuit breakers prevent infinite loops: 5 redevelopment cycles, 10 retries per item, hard session timeouts. A **deduplication circuit breaker** goes further — if an agent fails with the same error and no code has changed since the last attempt, the pipeline halts immediately rather than burning tokens on an identical retry.
+
+**Shift-left validation** catches deployment-blocking errors before code leaves the dev phase. Backend-dev validates that compiled artifacts actually load as Azure Function entry points before marking its work complete. A missing export or CJS/ESM format mismatch is caught in development — not 20 minutes later during deployment.
 
 What triggers recovery is real infrastructure validation. The `live-ui` agent doesn't execute a pre-written test suite — it **creates Playwright E2E scenarios** tailored to the feature it just built, runs them with headless Chromium against the deployed app. It authenticates through the real auth flow, validates CORS headers, routing, and rendered DOM state — all against production-like infrastructure, not mocked endpoints. The `integration-test` agent does the same at the API layer, catching deployment-specific failures (missing env vars, incorrect route bindings, Terraform-created resources not yet propagated) that unit tests structurally cannot.
 
@@ -252,8 +256,10 @@ Agents **cannot** run raw `git add`, `git commit`, or `git push`. They cannot ed
 
 | What the agent wants to do | What it actually calls | Why it matters |
 |---|---|---|
-| Commit code | `agent-commit.sh <scope> "<msg>"` | Scoped staging — `backend` scope only stages `backend/`, `packages/`, `infra/`. Can't accidentally commit `.env` files |
+| Commit code | `agent-commit.sh <scope> "<msg>"` | Scoped staging — `backend` scope only stages `backend/`, `packages/`, `infra/`. Pre-commit rebase prevents push conflicts. Can't accidentally commit `.env` files |
 | Push to remote | `agent-branch.sh push` | Validates branch is not `main`. Retries once on network failure. Rejects if no commits ahead |
+| Deploy phase (push-code) | Deterministic bypass — no LLM session | Orchestrator runs `agent-commit.sh all` + `agent-branch.sh push` directly. Agent fallback only on script failure |
+| Wait for CI (poll-ci) | Deterministic bypass — no LLM session | Orchestrator runs `poll-ci.sh` directly with a 20-minute timeout. No tokens spent on waiting |
 | Mark work done | `npm run pipeline:complete` | Phase-gated — rejects if prior phase has incomplete items. State mutation is atomic and logged |
 | Record failure | `npm run pipeline:fail` | Appends to error log. Auto-halts after 10 failures (circuit breaker) |
 

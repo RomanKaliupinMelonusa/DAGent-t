@@ -76,6 +76,12 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
     case "both":
       resetKeys.push("backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
       break;
+    case "frontend+infra":
+      resetKeys.push("frontend-dev", "frontend-unit-test");
+      break;
+    case "backend+infra":
+      resetKeys.push("backend-dev", "backend-unit-test");
+      break;
     case "environment":
       // Not a code bug — only reset the post-deploy item itself.
       return [itemKey].filter((k) => !naItems.has(k));
@@ -99,6 +105,10 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "no credentials", "login required", "identity not found",
     "managed identity", "devcontainer", "defaultazurecredential",
     "interactive login", "device code",
+    // Azure IAM permission errors (non-code-fixable)
+    "authorization_requestdenied", "application.readwrite",
+    "does not have authorization",
+    "insufficient privileges", "access is denied",
   ];
 
   if (envSignals.some((s) => msg.includes(s))) {

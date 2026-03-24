@@ -125,8 +125,8 @@ stateDiagram-v2
     PostDeployCheck --> Done: tests pass
     PostDeployCheck --> TriageFailure: tests fail
 
-    TriageFailure --> BackendReroute: keywords: API, endpoint,\n500, CORS, backend
-    TriageFailure --> FrontendReroute: keywords: UI, component,\nrender, frontend
+    TriageFailure --> BackendReroute: fault: backend\nor backend+infra
+    TriageFailure --> FrontendReroute: fault: frontend\nor frontend+infra
 
     state CycleCheck <<choice>>
     BackendReroute --> CycleCheck
@@ -150,7 +150,7 @@ stateDiagram-v2
 |-----------|---------|-----------|
 | **Dev items** (schema-dev, backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
 | **Test items** (backend-unit-test, frontend-unit-test) | 10 min | Scoped to test writing, fewer files |
-| **Deploy items** (push-code, poll-ci) | 30 min | CI polling waits for external workflows |
+| **Deploy items** (push-code, poll-ci) | 15 min | Deterministic shell bypasses (no LLM); agent fallback on failure |
 | **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries |
 | **Finalize items** (code-cleanup, docs-expert, create-pr) | 15 min | Scoped cleanup and documentation tasks |
 

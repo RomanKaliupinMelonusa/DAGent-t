@@ -144,7 +144,7 @@ flowchart TD
 
     subgraph VERIFY["Post-Deploy Verification"]
         INT["integration-test<br/>(live backend endpoints)"]
-        LIVE["live-ui<br/>(Playwright on live app)"]
+        INT --> LIVE["live-ui<br/>(Playwright on live app)"]
     end
 
     subgraph RECOVERY["Recovery"]
@@ -167,7 +167,7 @@ flowchart TD
     SESSIONS --> SYS
     COMMIT --> BATCH
     BATCH -->|deploy items| PUSH
-    POLL --> INT & LIVE
+    POLL --> INT
     INT & LIVE -->|pass| CLEAN
     INT & LIVE -->|fail| TRIAGE
     TRIAGE --> RESET
@@ -193,13 +193,13 @@ When post-deploy verification fails, the pipeline doesn't stop — it triages th
 
 ## Key Capabilities
 
-1. **DAG-Scheduled Parallel Execution** — 12 pipeline items across 4 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Full-stack features complete in ~6 batches instead of 12 serial steps. Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
+1. **DAG-Scheduled Parallel Execution** — 12 pipeline items across 4 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification runs sequentially (`integration-test` before `live-ui`) to avoid wasting Playwright time against a failing backend. Deploy-phase items (`push-code`, `poll-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
    → *Deep dive: [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md)*
 
 2. **APM: Agent Package Manager** — Each agent receives *only* the rules relevant to its domain from modular `.md` instruction fragments. Token budget enforcement (`6,000 tokens`) prevents context degradation as rules grow. Built on [Microsoft's APM](https://github.com/microsoft/apm) standard.
    → *Deep dive: [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md)*
 
-3. **Self-Healing Recovery Loop** — Post-deploy test failures produce a structured `TriageDiagnostic` with fault domain routing. The triage engine resets only the responsible dev agents and injects error context into their next prompt. Circuit breakers prevent infinite loops.
+3. **Self-Healing Recovery Loop** — Post-deploy test failures produce a structured `TriageDiagnostic` with compound fault domain routing (`backend+infra`, `frontend+infra`) that targets only the responsible layers. A deduplication circuit breaker halts retries when the same error repeats with no code changes. Shift-left validation in dev agents catches deployment-blocking errors (missing deps, CJS/ESM mismatches) before code leaves the pre-deploy phase.
    → *Deep dive: [01-watchdog.md](tools/autonomous-factory/docs/01-watchdog.md)*
 
 4. **Real Browser Testing** — The `live-ui` agent creates Playwright E2E scenarios and runs them with headless Chromium against the deployed app. It authenticates through demo credentials (`demo` / `demopass`) programmatically, validates CORS, routing, and rendered DOM. `integration-test` validates live backend endpoints with schema verification. Demo auth mode is required for these agents to run without Entra ID configuration.
@@ -227,8 +227,8 @@ Stripe's Minions produce **1,300+ PRs per week** with zero human-written code. T
 | **Orchestration** | Deterministic TypeScript loop with DAG state machine | "Blueprints" — state machines with interwoven deterministic and agentic nodes |
 | **Agent specialization** | 12 domain-specific agents with per-agent prompts | Task-specific agents with curated tool subsets |
 | **Context management** | APM compiler with token budgets + modular rules | Scoped rules (Cursor format) + MCP tools via "Toolshed" (~500 tools) |
-| **CI integration** | Push → poll CI → auto-fix → re-push (bounded cycles) | Push → CI run → autofix → agent fix → second CI run (bounded to 2 iterations) |
-| **Failure recovery** | Structured triage → fault domain → targeted reroute | CI failures route back to agent nodes for local remediation |
+| **CI integration** | Deterministic deploy bypasses (no LLM) → poll CI → auto-fix → re-push (bounded cycles) | Push → CI run → autofix → agent fix → second CI run (bounded to 2 iterations) |
+| **Failure recovery** | Structured triage → compound fault domains → targeted reroute + dedup circuit breakers | CI failures route back to agent nodes for local remediation |
 | **Safety boundary** | Circuit breakers: 10 retries, 5 reroute cycles, session timeouts | 2 CI iteration limit; quarantined devboxes with no production access |
 | **Per-project config** | `.apm/apm.yml` per app (agents, rules, MCP, skills, budgets) | Per-codebase rule files + per-user tool configurations |
 

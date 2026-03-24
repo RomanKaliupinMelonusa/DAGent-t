@@ -125,8 +125,9 @@ flowchart LR
     end
 
     subgraph POST["Post-Deploy"]
+        direction TB
         IT["integration-test"]
-        LU["live-ui"]
+        IT --> LU["live-ui"]
     end
 
     subgraph FIN["Finalize"]
@@ -134,7 +135,7 @@ flowchart LR
     end
 
     BUT & FUT --> PC
-    PCI --> IT & LU
+    PCI --> IT
     IT & LU --> CC
 
     style PRE fill:#e3f2fd
@@ -151,7 +152,7 @@ flowchart LR
 |-----------|---------|----------|
 | Development | 20 min | backend-dev, frontend-dev, schema-dev |
 | Unit Tests | 10 min | backend-unit-test, frontend-unit-test |
-| Deployment | 30 min | push-code, poll-ci |
+| Deployment | 15 min | push-code, poll-ci |
 | Post-Deploy | 15 min | integration-test, live-ui |
 | Finalization | 15 min | code-cleanup, docs-archived, create-pr |
 
@@ -223,10 +224,13 @@ All paths are relative to `APP_ROOT` (defaults to repo root if unset). When the 
 | `pipeline` | `in-progress/` |
 | `pr` | `archive/`, `in-progress/`, `PR_BODY.md` |
 | `e2e` | `e2e/`, `in-progress/` |
+| `all` | All directories (backend, frontend, infra, packages, e2e, in-progress, docs, archive) |
 
 Usage: `bash tools/autonomous-factory/agent-commit.sh <scope> "<message>" [explicit-paths...]`
 
 **Auto-staging:** `agent-commit.sh` automatically stages `package-lock.json` whenever any `package.json` is in the staged changeset. This prevents lockfile desync that causes `npm ci` failures in CI.
+
+**Pre-commit rebase:** Before staging, `agent-commit.sh` runs `git pull --rebase origin <branch>` to minimize merge conflicts when parallel agents (e.g., `backend-dev` and `frontend-dev`) commit to the same branch.
 
 ### `tools/autonomous-factory/agent-branch.sh`
 

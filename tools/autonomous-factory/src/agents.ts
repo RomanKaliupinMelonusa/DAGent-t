@@ -173,6 +173,24 @@ Before marking your work complete, leave a doc-note summarizing your architectur
 npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "<1-2 sentence summary of what you changed architecturally>"
 \`\`\`
 Example: \`npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "Added SSE streaming to /generate endpoint via new fn-generate-stream.ts. No schema drift."\`
+
+## Pre-Completion Validation (MANDATORY)
+
+Before calling pipeline:complete, verify the esbuild output is loadable:
+\`\`\`bash
+cd ${ctx.appRoot}/backend && npm run build
+# Verify each function entry point loads without errors
+for f in ${ctx.appRoot}/backend/dist/src/functions/fn-*.js; do
+  node -e "require('$f')" || { echo "FATAL: $f failed to load"; exit 1; }
+done
+\`\`\`
+If any require() call fails, fix the build configuration before proceeding.
+Common fixes:
+- Missing dependency → add to backend/package.json dependencies (not devDependencies) and ensure esbuild bundles it
+- "Dynamic require of X" → switch esbuild format to "cjs" (Azure Functions v4 requires CJS)
+- Module not found → add the module to esbuild.config.mjs external array
+Do NOT mark backend-dev complete until all function entry points load successfully.
+
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "backend")}`;
 }
 
@@ -279,8 +297,8 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 | Value | When to use |
 |---|---|
 | \`backend\` | Wrong response shape, logic errors, missing fields, 500 errors, test assertion failures |
-| \`backend\` | CORS issues, 502/503, missing APIM routes, gateway errors (infra routes to backend-dev) |
-| \`environment\` | Auth failures, \`az login\` required, cannot retrieve function key, managed identity errors |
+| \`backend+infra\` | Backend works directly but fails through APIM — missing APIM routes, gateway config, Function App env vars |
+| \`environment\` | Auth failures, \`az login\` required, cannot retrieve function key, managed identity errors, IAM permission denied |
 
 **\`diagnostic_trace\` must include:**
 - Test names that failed and their assertion errors
@@ -583,6 +601,8 @@ EOF
 | Page shows loading spinner indefinitely | API call hanging or not firing | \`backend\` |
 | Console shows JavaScript errors | Client-side runtime error | \`frontend\` |
 | Data displays but is wrong/stale | Backend or frontend data mapping issue | \`both\` |
+| CORS preflight blocked | APIM policy or infra config issue | \`frontend+infra\` |
+| Page loads but API returns 404 via APIM (direct Function URL works) | APIM route mismatch | \`backend+infra\` |
 | Both API errors AND UI rendering bugs | Mixed root cause | \`both\` |
 | Auth/credential/managed-identity errors | Environment, not a code bug | \`environment\` |
 
@@ -644,10 +664,12 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 **\`fault_domain\` values:**
 | Value | When to use |
 |---|---|
-| \`backend\` | HTTP 5xx, CORS failures, empty responses, missing endpoints, API timeouts, gateway errors |
+| \`backend\` | HTTP 5xx, empty responses, missing endpoints, API timeouts, backend logic errors |
 | \`frontend\` | Element not found, wrong text/rendering, broken navigation, UI assertion failures, client-side JS errors |
+| \`frontend+infra\` | UI works locally but fails deployed — APIM URL mismatch, CORS policy blocking, SWA routing misconfigured |
+| \`backend+infra\` | Backend works directly but fails through APIM — gateway errors, missing APIM operations, Function App env vars |
 | \`both\` | Both API errors AND UI rendering bugs in the same session |
-| \`environment\` | Auth/credential failures, Azure CLI not authenticated, managed identity issues |
+| \`environment\` | Auth/credential failures, Azure CLI not authenticated, managed identity issues, IAM permission denied |
 
 **\`diagnostic_trace\` must include:**
 - Exact error details (status codes, response bodies, element selectors that failed)

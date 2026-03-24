@@ -25,7 +25,7 @@ flowchart LR
 
     subgraph POST["Post-Deploy"]
         IT["integration-test"]
-        LU["live-ui"]
+        IT --> LU["live-ui"]
     end
 
     subgraph FINAL["Finalize"]
@@ -39,7 +39,7 @@ flowchart LR
     FD --> FUT
     BUT & FUT --> PC
     PC --> PCI
-    PCI --> IT & LU
+    PCI --> IT
     IT & LU --> CC
     CC --> DE --> PR
 
@@ -60,8 +60,8 @@ flowchart LR
 | `frontend-unit-test` | frontend-dev | backend-unit-test |
 | `push-code` | backend-unit-test, frontend-unit-test | — |
 | `poll-ci` | push-code | — |
-| `integration-test` | poll-ci | live-ui |
-| `live-ui` | poll-ci | integration-test |
+| `integration-test` | poll-ci | — |
+| `live-ui` | poll-ci, integration-test | — |
 | `code-cleanup` | integration-test, live-ui | — |
 | `docs-expert` | code-cleanup | — |
 | `create-pr` | docs-expert | — |
@@ -78,7 +78,8 @@ flowchart TB
         FS2 --> FS4["backend-unit-test"]
         FS3 --> FS5["frontend-unit-test"]
         FS4 & FS5 --> FS6["push-code"] --> FS7["poll-ci"]
-        FS7 --> FS8["integration-test"] & FS9["live-ui"]
+        FS7 --> FS8["integration-test"]
+        FS8 --> FS9["live-ui"]
         FS8 & FS9 --> FS10["code-cleanup"] --> FS11["docs-expert"] --> FS12["create-pr"]
     end
 
@@ -173,10 +174,12 @@ sequenceDiagram
 
     W->>TF: triageFailure(errorMessage)
 
-    alt Keywords: API, endpoint, 500, CORS, backend
+    alt Keywords: API, endpoint, 500, backend
         TF-->>W: route → backend-dev, backend-unit-test
     else Keywords: UI, component, render, frontend
         TF-->>W: route → frontend-dev, frontend-unit-test
+    else Compound: backend+infra or frontend+infra
+        TF-->>W: route → single-layer dev + test items
     else Ambiguous
         TF-->>W: route → both dev + test items
     end

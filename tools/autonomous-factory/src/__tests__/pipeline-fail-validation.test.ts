@@ -110,6 +110,20 @@ describe("cmdFail CLI validation — post-deploy items", () => {
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
     assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
   });
+
+  it("accepts frontend+infra fault domain for live-ui", () => {
+    const msg = JSON.stringify({ fault_domain: "frontend+infra", diagnostic_trace: "APIM route mismatch" });
+    const result = runCli(`fail ${TEST_SLUG} live-ui '${msg}'`);
+    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+    assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
+  });
+
+  it("accepts backend+infra fault domain for integration-test", () => {
+    const msg = JSON.stringify({ fault_domain: "backend+infra", diagnostic_trace: "Function app missing env var" });
+    const result = runCli(`fail ${TEST_SLUG} integration-test '${msg}'`);
+    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+    assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------

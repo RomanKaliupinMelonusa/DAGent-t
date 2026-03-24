@@ -35,7 +35,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const TIMEOUT_DEV      = 1_200_000; // 20 min (dev items — heaviest workload)
 const TIMEOUT_TEST     = 600_000;   // 10 min (unit test items — just running tests)
 const TIMEOUT_DEFAULT  = 900_000;   // 15 min (fallback)
-const TIMEOUT_DEPLOY   = 1_800_000; // 30 min (push-code, poll-ci — CI can take time)
+const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now deterministic; fallback agent gets 15 min)
 const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
 
 const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev"]);
@@ -142,6 +142,8 @@ interface ItemSummary {
   toolCounts: Record<string, number>;
   /** Error message if the step failed */
   errorMessage?: string;
+  /** Git HEAD after this attempt — used for identical-error dedup */
+  headAfterAttempt?: string;
 }
 
 interface ShellEntry {
@@ -162,6 +164,28 @@ interface PlaywrightLogEntry {
 
 /** Collected summaries across the whole pipeline run */
 const pipelineSummaries: ItemSummary[] = [];
+
+/**
+ * Circuit breaker: skip retrying an item if the error is identical to the
+ * previous attempt AND no code was committed in between (nothing changed).
+ */
+function shouldSkipRetry(itemKey: string): boolean {
+  const prevAttempts = pipelineSummaries.filter(
+    (s) => s.key === itemKey && s.outcome !== "completed",
+  );
+  if (prevAttempts.length < 2) return false;
+
+  const last = prevAttempts[prevAttempts.length - 1];
+  const prev = prevAttempts[prevAttempts.length - 2];
+  if (!last.errorMessage || !prev.errorMessage) return false;
+
+  // Check if error is identical
+  if (last.errorMessage !== prev.errorMessage) return false;
+
+  // Check if any code was committed since last attempt
+  if (!last.headAfterAttempt || !prev.headAfterAttempt) return false;
+  return last.headAfterAttempt === prev.headAfterAttempt;
+}
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -485,6 +509,33 @@ async function main(): Promise<void> {
   ): Promise<{ summary: ItemSummary; halt: boolean; createPr: boolean }> {
     attemptCounts[next.key] = (attemptCounts[next.key] ?? 0) + 1;
 
+    // Circuit breaker: skip if identical error + no code changed since last attempt
+    if (attemptCounts[next.key] > 2 && shouldSkipRetry(next.key)) {
+      console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
+      const skipSummary: ItemSummary = {
+        key: next.key,
+        label: next.label,
+        agent: next.agent ?? "unknown",
+        phase: next.phase ?? "unknown",
+        attempt: attemptCounts[next.key],
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        durationMs: 0,
+        outcome: "failed",
+        intents: ["Circuit breaker: identical error, no code changes — skipped"],
+        messages: [],
+        filesRead: [],
+        filesChanged: [],
+        shellCommands: [],
+        toolCounts: {},
+        errorMessage: "Circuit breaker: identical error repeated without code changes",
+      };
+      try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
+      pipelineSummaries.push(skipSummary);
+      writePipelineSummary(slug);
+      return { summary: skipSummary, halt: true, createPr: false };
+    }
+
     console.log(
       `\n${"═".repeat(70)}\n  Phase: ${next.phase} | Item: ${next.key} | Agent: ${next.agent}\n${"═".repeat(70)}`,
     );
@@ -594,6 +645,78 @@ async function main(): Promise<void> {
         if (hasInfraChanges && !hasFrontendChanges) {
           console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
         }
+      }
+    }
+
+    // ── Deterministic push-code bypass (no agent session) ─────────────────
+    if (next.key === "push-code") {
+      console.log("  📦 push-code: Running deterministic push (no agent session)");
+      try {
+        const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
+        const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
+
+        // Commit any uncommitted changes across all scopes
+        try {
+          execSync(`bash "${commitScript}" all "feat(${slug}): push code for CI"`, {
+            cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+            env: { ...process.env, APP_ROOT: appRoot },
+          });
+        } catch { /* no changes to commit — OK */ }
+
+        // Push via branch wrapper (validates branch, retries once)
+        execSync(`bash "${branchScript}" push`, {
+          cwd: repoRoot, stdio: "inherit", timeout: 60_000,
+          env: { ...process.env, BASE_BRANCH: baseBranch },
+        });
+
+        // Mark complete
+        await completeItem(slug, next.key);
+        console.log("  ✅ push-code complete (deterministic)");
+
+        itemSummary.outcome = "completed";
+        itemSummary.finishedAt = new Date().toISOString();
+        itemSummary.durationMs = Date.now() - stepStart;
+        itemSummary.intents.push("Deterministic push — no agent session");
+        pipelineSummaries.push(itemSummary);
+        writePipelineSummary(slug);
+        writeTerminalLog(slug);
+        return { summary: itemSummary, halt: false, createPr: false };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`  ✖ Deterministic push failed: ${message}`);
+        console.log("  🔄 Falling back to agent session for push-code diagnosis...");
+        // Fall through to the normal agent session path below
+      }
+    }
+
+    // ── Deterministic poll-ci bypass (no agent session) ─────────────────
+    if (next.key === "poll-ci") {
+      console.log("  ⏳ poll-ci: Running deterministic CI poll (no agent session)");
+      try {
+        const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
+        execSync(`bash "${pollScript}"`, {
+          cwd: repoRoot, stdio: "inherit",
+          timeout: 1_200_000,  // 20 min max for CI to complete
+          env: { ...process.env, POLL_MAX_RETRIES: "60" },
+        });
+
+        // All CI workflows passed
+        await completeItem(slug, next.key);
+        console.log("  ✅ poll-ci complete (all workflows passed)");
+
+        itemSummary.outcome = "completed";
+        itemSummary.finishedAt = new Date().toISOString();
+        itemSummary.durationMs = Date.now() - stepStart;
+        itemSummary.intents.push("Deterministic CI poll — all workflows passed");
+        pipelineSummaries.push(itemSummary);
+        writePipelineSummary(slug);
+        writeTerminalLog(slug);
+        return { summary: itemSummary, halt: false, createPr: false };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`  ✖ CI poll failed or had failures: ${message}`);
+        console.log("  🔄 Falling back to agent session for CI failure diagnosis...");
+        // Fall through to the normal agent session path below
       }
     }
 
@@ -868,6 +991,9 @@ async function main(): Promise<void> {
     // Record timing
     itemSummary.finishedAt = new Date().toISOString();
     itemSummary.durationMs = Date.now() - stepStart;
+
+    // Record HEAD for circuit breaker (identical-error dedup)
+    try { itemSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
 
     pipelineSummaries.push(itemSummary);
     writePipelineSummary(slug);

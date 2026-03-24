@@ -255,3 +255,56 @@ describe("triageFailure (malformed JSON → keyword fallback)", () => {
     assert.ok(keys.includes("live-ui"));
   });
 });
+
+// ---------------------------------------------------------------------------
+// triageFailure — IAM/permission env signals (Fix 6c)
+// ---------------------------------------------------------------------------
+
+describe("triageFailure (IAM/permission env signals)", () => {
+  it("routes authorization_requestdenied as environment (keyword fallback)", () => {
+    const result = triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA);
+    assert.deepStrictEqual(result, ["poll-ci"]);
+  });
+
+  it("routes insufficient privileges as environment (keyword fallback)", () => {
+    const result = triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA);
+    assert.deepStrictEqual(result, ["poll-ci"]);
+  });
+
+  it("routes 'access is denied' as environment (keyword fallback)", () => {
+    const result = triageFailure("integration-test", "Access is denied: service principal lacks permissions", NO_NA);
+    assert.deepStrictEqual(result, ["integration-test"]);
+  });
+
+  it("does NOT route CORS 403 as environment (should route as backend)", () => {
+    const result = triageFailure("live-ui", "CORS error: 403 Forbidden on OPTIONS /api/endpoint", NO_NA);
+    // Should NOT classify as environment — should match backend signals (cors, api, endpoint)
+    assert.ok(result.includes("backend-dev"), `Expected backend-dev in: ${result}`);
+    assert.ok(!result.every(k => k === "live-ui"), "Should not be environment-only");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triageFailure — frontend+infra / backend+infra fault domains (Fix 7a)
+// ---------------------------------------------------------------------------
+
+describe("triageFailure (compound fault domains)", () => {
+  it("routes frontend+infra to frontend-dev + frontend-unit-test", () => {
+    const msg = makeJsonMsg("frontend+infra", "APIM route mismatch");
+    const result = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(result, ["frontend-dev", "frontend-unit-test", "live-ui"]);
+  });
+
+  it("routes backend+infra to backend-dev + backend-unit-test", () => {
+    const msg = makeJsonMsg("backend+infra", "Function app missing env var");
+    const result = triageFailure("integration-test", msg, NO_NA);
+    assert.deepStrictEqual(result, ["backend-dev", "backend-unit-test", "integration-test"]);
+  });
+
+  it("filters N/A items from frontend+infra", () => {
+    const msg = makeJsonMsg("frontend+infra", "CORS misconfigured");
+    const na = new Set(["frontend-unit-test"]);
+    const result = triageFailure("live-ui", msg, na);
+    assert.deepStrictEqual(result, ["frontend-dev", "live-ui"]);
+  });
+});

@@ -83,7 +83,7 @@ export const ITEM_DEPENDENCIES = {
   "push-code":          ["backend-unit-test", "frontend-unit-test"],
   "poll-ci":            ["push-code"],
   "integration-test":   ["poll-ci"],
-  "live-ui":            ["poll-ci"],
+  "live-ui":            ["poll-ci", "integration-test"],
   "code-cleanup":       ["integration-test", "live-ui"],
   "docs-archived":      ["code-cleanup"],
   "create-pr":          ["docs-archived"],

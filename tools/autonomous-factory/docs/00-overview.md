@@ -213,7 +213,7 @@ flowchart LR
 
     subgraph POST["Post-Deploy"]
         PD1["integration-test"]
-        PD2["live-ui"]
+        PD1 --> PD2["live-ui"]
     end
 
     subgraph FIN["Finalize"]
@@ -233,7 +233,7 @@ flowchart LR
     P3 --> P5
     P4 & P5 --> DEP
     D1 --> D2
-    D2 --> POST
+    D2 --> PD1
     PD1 & PD2 --> FIN
     F1 --> F2 --> F3
 

@@ -56,8 +56,8 @@ flowchart TB
 | 3 | `frontend-dev` | pre-deploy | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
 | 4 | `backend-unit-test` | pre-deploy | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
 | 5 | `frontend-unit-test` | pre-deploy | — | 10 min | claude-opus-4.6 | roam-test-intelligence |
-| 6 | `push-code` | deploy | — | 30 min | claude-opus-4.6 | (always only) |
-| 7 | `poll-ci` | deploy | — | 30 min | claude-opus-4.6 | (always only) |
+| 6 | `push-code` | deploy | — | 15 min | claude-opus-4.6 | (always only) |
+| 7 | `poll-ci` | deploy | — | 15 min | claude-opus-4.6 | (always only) |
 | 8 | `integration-test` | post-deploy | — | 15 min | claude-opus-4.6 | integration-testing |
 | 9 | `live-ui` | post-deploy | playwright, roam | 15 min | claude-opus-4.6 | roam-tool-rules, e2e-testing-mandate |
 | 10 | `code-cleanup` | finalize | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
@@ -293,6 +293,8 @@ When post-deploy tests fail, `triageFailure()` in watchdog.ts routes the fix to 
 |----------|-----------|-------------|
 | `API`, `endpoint`, `500`, `CORS`, `backend`, `function`, `azure` | Backend | backend-dev, backend-unit-test |
 | `UI`, `component`, `render`, `frontend`, `page`, `navigation` | Frontend | frontend-dev, frontend-unit-test |
+| (structured: `backend+infra`) | Backend layer | backend-dev, backend-unit-test |
+| (structured: `frontend+infra`) | Frontend layer | frontend-dev, frontend-unit-test |
 | (ambiguous / mixed) | Both | All dev + test items |
 
 ---
