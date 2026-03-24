@@ -19,6 +19,10 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import {
+  DemoLoginResponseSchema,
+  type DemoLoginResponse,
+} from "@branded/schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,10 +99,17 @@ export function DemoAuthProvider({ children }: DemoAuthProviderProps) {
 
   const login = useCallback(
     async (username: string, password: string): Promise<void> => {
+      // Input validation — reject empty strings before hitting the network
+      const trimmedUser = username.trim();
+      const trimmedPass = password.trim();
+      if (!trimmedUser || !trimmedPass) {
+        throw new Error("Username and password are required.");
+      }
+
       const response = await fetch(`${BASE_URL}${AUTH_API_PATH}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: trimmedUser, password: trimmedPass }),
       });
 
       if (!response.ok) {
@@ -110,10 +121,15 @@ export function DemoAuthProvider({ children }: DemoAuthProviderProps) {
         );
       }
 
-      const { token, displayName } = (await response.json()) as {
-        token: string;
-        displayName: string;
-      };
+      const json: unknown = await response.json();
+
+      // Runtime validation with shared Zod schema
+      const parsed = DemoLoginResponseSchema.safeParse(json);
+      if (!parsed.success) {
+        throw new Error("Unexpected login response format.");
+      }
+
+      const { token, displayName }: DemoLoginResponse = parsed.data;
 
       sessionStorage.setItem(
         STORAGE_KEY,
