@@ -13,10 +13,10 @@
 - [x] Development Complete — Schemas (@schema-dev)
 - [x] Development Complete — Backend (@backend-dev)
 - [x] Development Complete — Frontend (@frontend-dev)
-- [ ] Unit Tests Passed — Backend (@backend-test)
-- [ ] Unit Tests Passed — Frontend (@frontend-ui-test)
+- [x] Unit Tests Passed — Backend (@backend-test)
+- [x] Unit Tests Passed — Frontend (@frontend-ui-test)
 ### Deploy
-- [ ] Code Pushed to Origin (@deploy-manager)
+- [x] Code Pushed to Origin (@deploy-manager)
 - [ ] CI Workflows Passed (@deploy-manager)
 ### Post-Deploy
 - [ ] Integration Tests Passed (@backend-test)
