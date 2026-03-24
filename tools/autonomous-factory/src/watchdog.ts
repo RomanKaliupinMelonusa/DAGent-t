@@ -1208,13 +1208,28 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
       `${featureSlug}_CHANGES.json`,
     ];
 
-    // Dynamically find the SPEC file (handles uppercase slug, hyphens vs underscores)
+    // Dynamically find the SPEC file (handles uppercase slug, hyphens vs underscores,
+    // and legacy naming like FULLSTACK_DEPLOY_SPEC.md that lacks the slug prefix)
     const entries = fs.readdirSync(inProgress);
     const specTarget1 = `${featureSlug}_spec.md`.toLowerCase();
     const specTarget2 = `${featureSlug.replace(/-/g, "_")}_spec.md`.toLowerCase();
-    const specFile = entries.find(
-      (f) => f.toLowerCase() === specTarget1 || f.toLowerCase() === specTarget2,
-    );
+    const specFile = entries.find((f) => {
+      const lower = f.toLowerCase();
+      if (lower === specTarget1 || lower === specTarget2) return true;
+      // Fallback: match any file ending in _spec.md or _deploy_spec.md that isn't
+      // from another feature (i.e. not prefixed with a different slug)
+      if (lower.endsWith("_spec.md") || lower.endsWith("_deploy_spec.md")) {
+        // Accept if no other slug prefix is present (standalone spec files)
+        const hasSlugPrefix = lower.startsWith(featureSlug.toLowerCase())
+          || lower.startsWith(featureSlug.replace(/-/g, "_").toLowerCase());
+        const isGenericSpec = !lower.includes("_state.") && !entries.some(
+          (other) => other !== f && other.toLowerCase().startsWith(lower.split("_spec")[0])
+            && other.toLowerCase().endsWith("_state.json"),
+        );
+        return hasSlugPrefix || isGenericSpec;
+      }
+      return false;
+    });
     if (specFile) artifacts.push(specFile);
 
     for (const artifact of artifacts) {

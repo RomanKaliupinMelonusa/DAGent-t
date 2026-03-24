@@ -333,6 +333,32 @@ Prerequisites: GitHub CLI auth (`gh auth status`), Azure CLI auth (for live depl
 
 ---
 
+## Post-Run Triage: Agents Reviewing Agents
+
+After executing the pipeline on a [full-stack deployment feature](apps/sample-app/in-progress/FULLSTACK_DEPLOY_SPEC.md) — provisioning Azure infra, deploying backend Functions + frontend SWA, wiring APIM, and validating end-to-end with Playwright — I did something simple: I asked a regular Copilot agent to review the pipeline's own execution logs and triage the run.
+
+The result is a [structured post-mortem](https://github.com/RomanKaliupinMelonusa/DAGent-t/blob/feature/fullstack-deploy-v2/apps/sample-app/in-progress/fullstack-deploy-v2_PIPELINE-TRIAGE.md) that identified the exact architectural gap the pipeline couldn't self-heal: `agent-commit.sh`'s scope model prevented `@backend-dev` from committing a CI/CD workflow fix it had already applied to the working tree — burning 3 out of 4 redevelopment cycles on the same unfixed bug. The triage agent caught it in one pass by correlating the error log, git status, and commit history.
+
+This points toward something more interesting than a one-off review.
+
+### The Greedy Triage Hypothesis
+
+What if the pipeline collected the last 3–5 post-run triages, fed them into an analysis pass, and applied the findings before the next run? A greedy technique: after each execution, an agent reviews the logs, compares against previous triages, and proposes concrete changes to the pipeline's own configuration — commit scopes, fault domain routing, agent instruction fragments, circuit breaker thresholds. Not a full retrain. Just a bounded, incremental improvement pass grounded in observed failures.
+
+The triages from `fullstack-deploy-v2` alone surface three actionable patches: add a `cicd` commit scope, add a `cicd` fault domain to the triage router, and wire a duplicate-error circuit breaker. All three are mechanical changes an agent could propose and execute with high confidence.
+
+### Toward a Pipeline Deviation Metric
+
+This also opens the door to something RL-adjacent: a generic metric for how far a pipeline run deviated from the **ideal execution path**. Define a north star — the DAG's happy path with zero failures, zero redevelopment cycles, minimum token spend. Each run produces a trace. The deviation metric could be as simple as:
+
+$$\delta = \frac{\text{actual steps executed}}{\text{DAG minimum steps}} \times \left(1 + \alpha \cdot \text{redevelopment cycles} + \beta \cdot \text{duplicate errors}\right)$$
+
+Where $\alpha$ and $\beta$ weight the cost of recovery loops and repeated failures. A perfect run scores $\delta = 1.0$. The `fullstack-deploy-v2` run (33 steps vs. 12 minimum, 4 redev cycles, 3 duplicate errors) would score roughly $\delta \approx 2.75 \times (1 + 4\alpha + 3\beta)$ — a clear signal that something structural needs fixing, not just retry logic.
+
+Track $\delta$ across runs. When it trends upward, the pipeline is degrading. When a triage-driven patch drops it back toward 1.0, the patch worked. This isn't reinforcement learning in the full sense — there's no reward model or policy gradient — but it captures the same feedback loop: **observe, measure deviation from ideal, apply correction, measure again.** The deterministic audit trail the pipeline already produces is the training data.
+
+---
+
 ## What's Next
 
 **Near-term:** Extract Azure-specific rules into pluggable "stack packs" so the core engine ships clean. Build reference packs for AWS (Lambda + CDK), GCP (Cloud Functions + Pulumi), and vanilla Docker/K8s.
