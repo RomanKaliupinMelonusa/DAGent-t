@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -68,7 +68,7 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -76,7 +76,7 @@
       "label": "Live UI Validated",
       "agent": "@frontend-ui-test",
       "phase": "post-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
