@@ -229,4 +229,4 @@ I'd love technical feedback — especially on gaps in the architecture or if you
 
 ---
 
-*If you're building deterministic agent orchestration or evaluating this pattern for your org, I'd love to compare notes. [The repo](https://github.com/rkaliupin/DAGent) is open and I'm actively developing it. I'm Roman Kaliupin — currently building this full-time and open to engineering roles where this kind of systems work matters.*
+*If you're building deterministic agent orchestration or evaluating this pattern for your org, I'd love to compare notes. [The repo](https://github.com/rkaliupin/DAGent) is open and I'm actively developing it. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*
