@@ -298,6 +298,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 |---|---|
 | \`backend\` | Wrong response shape, logic errors, missing fields, 500 errors, test assertion failures |
 | \`backend+infra\` | Backend works directly but fails through APIM — missing APIM routes, gateway config, Function App env vars |
+| \`cicd\` | CI/CD workflow file issue — deploy artifact misconfigured, wrong package.json fields in deploy step, workflow YAML errors. Use when the fix is in \`.github/workflows/\` |
 | \`environment\` | Auth failures, \`az login\` required, cannot retrieve function key, managed identity errors, IAM permission denied |
 
 **\`diagnostic_trace\` must include:**
