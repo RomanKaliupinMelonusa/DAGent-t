@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Fixed deploy workflow: removed type:module from deploy package.json generation (deploy-backend.yml). esbuild outputs CJS but type=module caused Node to reject CJS with require-is-not-defined pre-init. @branded/schemas + zod already bundled by esbuild; no schema drift."
+      "docNote": "Fixed deploy-backend.yml: removed type:pkg.type from deploy package.json generation — Node.js was seeing type:module with CJS esbuild output causing all functions to fail loading. No schema or API changes."
     },
     {
       "key": "frontend-dev",
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
