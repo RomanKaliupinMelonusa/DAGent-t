@@ -1,0 +1,106 @@
+{
+  "feature": "fullstack-deploy-v2",
+  "workflowType": "Full-Stack",
+  "started": "2026-03-24",
+  "deployedUrl": null,
+  "implementationNotes": null,
+  "items": [
+    {
+      "key": "schema-dev",
+      "label": "Development Complete — Schemas",
+      "agent": "@schema-dev",
+      "phase": "pre-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "backend-dev",
+      "label": "Development Complete — Backend",
+      "agent": "@backend-dev",
+      "phase": "pre-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "frontend-dev",
+      "label": "Development Complete — Frontend",
+      "agent": "@frontend-dev",
+      "phase": "pre-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "backend-unit-test",
+      "label": "Unit Tests Passed — Backend",
+      "agent": "@backend-test",
+      "phase": "pre-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "label": "Unit Tests Passed — Frontend",
+      "agent": "@frontend-ui-test",
+      "phase": "pre-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "push-code",
+      "label": "Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "poll-ci",
+      "label": "CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "code-cleanup",
+      "label": "Dead Code Eliminated",
+      "agent": "@code-cleanup",
+      "phase": "finalize",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "docs-archived",
+      "label": "Docs Updated & Archived",
+      "agent": "@docs-expert",
+      "phase": "finalize",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "create-pr",
+      "label": "PR Created & Merged to Main",
+      "agent": "@pr-creator",
+      "phase": "finalize",
+      "status": "pending",
+      "error": null
+    }
+  ],
+  "errorLog": []
+}
