@@ -84,8 +84,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Removed dead code from frontend/src/components/ui/primitives.tsx: Textarea component, Badge component (+ BadgeVariant type, badgeVariants const), Spinner component, and un-exported ButtonVariant/ButtonSize types (still used internally). Also removed unused TextareaHTMLAttributes import. Net: -56 lines. All 14 frontend tests + 20 backend tests pass. No other dead code found in backend, frontend, or e2e directories."
     },
     {
       "key": "docs-archived",
