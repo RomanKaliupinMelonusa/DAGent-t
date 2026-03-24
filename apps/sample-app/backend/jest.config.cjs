@@ -5,6 +5,7 @@ module.exports = {
   roots: ["<rootDir>/src"],
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
+    "^@branded/schemas$": "<rootDir>/../packages/schemas/src/index.ts",
   },
   transform: {
     "^.+\\.tsx?$": [

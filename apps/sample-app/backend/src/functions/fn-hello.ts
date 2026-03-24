@@ -18,6 +18,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
+import type { HelloResponse } from "@branded/schemas";
 
 async function hello(
   request: HttpRequest,
@@ -25,14 +26,27 @@ async function hello(
 ): Promise<HttpResponseInit> {
   const name = request.query.get("name") ?? "World";
 
+  // Input validation: limit name length to prevent abuse
+  if (name.length > 100) {
+    return {
+      status: 400,
+      jsonBody: {
+        error: "INVALID_INPUT",
+        message: "Name parameter must be 100 characters or fewer.",
+      },
+    };
+  }
+
   context.log(`Hello endpoint called with name=${name}`);
+
+  const body: HelloResponse = {
+    message: `Hello, ${name}!`,
+    timestamp: new Date().toISOString(),
+  };
 
   return {
     status: 200,
-    jsonBody: {
-      message: `Hello, ${name}!`,
-      timestamp: new Date().toISOString(),
-    },
+    jsonBody: body,
   };
 }
 
