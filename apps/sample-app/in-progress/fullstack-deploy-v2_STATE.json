@@ -18,9 +18,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Switched backend build from tsc to esbuild bundling (CJS format). @branded/schemas and zod are now inlined into function entry points — deploy artifact only needs @azure/functions as external dependency. Removed 'type: module' from deploy package.json to match CJS output."
+      "docNote": "Fixed deploy artifact: removed type:module from generated package.json in deploy-backend.yml (line ~91) — CJS esbuild output requires no type field or Node.js misparses it as ESM, causing 0 functions loaded at runtime. Also fixed Jest 30+ --testPathPatterns flag in backend package.json."
     },
     {
       "key": "frontend-dev",

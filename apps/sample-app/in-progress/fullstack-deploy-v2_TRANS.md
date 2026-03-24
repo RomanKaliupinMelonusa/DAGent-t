@@ -11,7 +11,7 @@
 ## Checklist
 ### Pre-Deploy
 - [x] Development Complete — Schemas (@schema-dev)
-- [ ] Development Complete — Backend (@backend-dev)
+- [x] Development Complete — Backend (@backend-dev)
 - [x] Development Complete — Frontend (@frontend-dev)
 - [ ] Unit Tests Passed — Backend (@backend-test)
 - [x] Unit Tests Passed — Frontend (@frontend-ui-test)
