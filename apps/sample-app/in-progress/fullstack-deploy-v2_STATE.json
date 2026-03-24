@@ -18,7 +18,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Switched backend build from tsc to esbuild bundling (CJS format). @branded/schemas and zod are now inlined into function entry points — deploy artifact only needs @azure/functions as external dependency. Removed 'type: module' from deploy package.json to match CJS output."
     },
@@ -36,7 +36,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -52,7 +52,7 @@
       "label": "Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -60,7 +60,7 @@
       "label": "CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -68,8 +68,8 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "failed",
-      "error": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail — every endpoint returns HTTP 404 (0 functions loaded on func-sample-app-001). Root cause: deploy-backend.yml Prepare deploy artifact step copies type: pkg.type into the deploy package.json, producing {\\\"type\\\":\\\"module\\\"} in the deployed artifact. But esbuild.config.mjs outputs format: \\\"cjs\\\" (CommonJS). Node.js sees type=module and tries to parse CJS files as ESM, failing with require-is-not-defined before the function host initializes (App Insights shows zero telemetry — crash happens pre-init). Fix: In .github/workflows/deploy-backend.yml, remove the line `type: pkg.type` from the Prepare deploy artifact step (line ~91 in committed code). An unstaged local fix already exists in the working tree but was never committed. The deploy package.json must NOT include type:module when esbuild outputs CJS. Additionally: backend package.json test:integration script uses deprecated --testPathPattern (should be --testPathPatterns for Jest 30+) — fixed locally. Failed tests: fn-hello(live): returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live): returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).\"}"
+      "status": "pending",
+      "error": null
     },
     {
       "key": "live-ui",
@@ -124,6 +124,11 @@
       "timestamp": "2026-03-24T01:48:48.142Z",
       "itemKey": "integration-test",
       "message": "{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 7 integration tests fail — every endpoint returns HTTP 404 (0 functions loaded on func-sample-app-001). Root cause: deploy-backend.yml Prepare deploy artifact step copies type: pkg.type into the deploy package.json, producing {\\\"type\\\":\\\"module\\\"} in the deployed artifact. But esbuild.config.mjs outputs format: \\\"cjs\\\" (CommonJS). Node.js sees type=module and tries to parse CJS files as ESM, failing with require-is-not-defined before the function host initializes (App Insights shows zero telemetry — crash happens pre-init). Fix: In .github/workflows/deploy-backend.yml, remove the line `type: pkg.type` from the Prepare deploy artifact step (line ~91 in committed code). An unstaged local fix already exists in the working tree but was never committed. The deploy package.json must NOT include type:module when esbuild outputs CJS. Additionally: backend package.json test:integration script uses deprecated --testPathPattern (should be --testPathPatterns for Jest 30+) — fixed locally. Failed tests: fn-hello(live): returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live): returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).\"}"
+    },
+    {
+      "timestamp": "2026-03-24T01:49:04.006Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 2/5: All 7 integration tests fail — every endpoint returns HTTP 404 (0 functions loaded on func-sample-app-001). Root cause: deploy-backend.yml Prepare deploy artifact step copies type: pkg.type into the deploy package.json, producing {\"type\":\"module\"} in the deployed artifact. But esbuild.config.mjs outputs format: \"cjs\" (CommonJS). Node.js sees type=module and tries to parse CJS files as ESM, failing with require-is-not-defined before the function host initializes (App Insights shows zero telemetry — crash happens pre-init). Fix: In .github/workflows/deploy-backend.yml, remove the line `type: pkg.type` from the Prepare deploy artifact step (line ~91 in committed code). An unstaged local fix already exists in the working tree but was never committed. The deploy package.json must NOT include type:module when esbuild outputs CJS. Additionally: backend package.json test:integration script uses deprecated --testPathPattern (should be --testPathPatterns for Jest 30+) — fixed locally. Failed tests: fn-hello(live): returns 200 default greeting (got 404), returns 200 custom greeting (got 404), returns 400 long name (got 404); fn-demo-login(live): returns 200 valid creds (got 404), returns 401 invalid creds (got 404), returns 400 missing fields (got 404), returns 400 invalid JSON (got 404).. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-code, poll-ci"
     }
   ]
 }

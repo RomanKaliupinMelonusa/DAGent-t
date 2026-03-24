@@ -17,7 +17,7 @@
     "test": "jest --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:integration": "RUN_INTEGRATION=true jest --testPathPattern=integration --verbose"
+    "test:integration": "RUN_INTEGRATION=true jest --testPathPatterns=integration --verbose"
   },
   "dependencies": {
     "@azure/functions": "^4.7.0",
