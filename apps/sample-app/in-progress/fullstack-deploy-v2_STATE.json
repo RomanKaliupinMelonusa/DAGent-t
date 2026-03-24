@@ -27,8 +27,9 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Integrated @branded/schemas into frontend: apiClient.ts now supports optional Zod schema validation param, demoAuthContext validates login responses with DemoLoginResponseSchema, page.tsx uses HelloResponseSchema. Added apiClient + DemoLoginForm unit tests (14 passing) and authenticated-hello E2E spec (4 tests). Added jest.config.ts with next/jest and @branded/schemas module mapping."
     },
     {
       "key": "backend-unit-test",
