@@ -64,6 +64,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build shared schemas
+        working-directory: ${{ env.APP_PATH }}/packages/schemas
+        run: npm run build
+
       - name: Lint
         working-directory: ${{ env.APP_PATH }}/backend
         run: npm run lint
