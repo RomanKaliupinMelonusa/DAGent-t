@@ -25,6 +25,8 @@ page.on('response', response => { if (!response.ok()) failedRequests.push(`${res
 
 If a UI assertion fails in the generated test, the `catch` block MUST append the `consoleLogs` and `failedRequests` arrays to the test failure output. This ensures the triage loop receives full browser context alongside the assertion error.
 
+**Important:** Wrap the **entire test body** in a single try/catch — do NOT wrap individual `expect()` calls. Playwright's auto-retrying assertions (`toBeVisible()`, `toHaveText()`, etc.) rely on their own timeout and retry semantics. Wrapping them individually defeats the retry contract and produces false negatives.
+
 Pattern:
 ```typescript
 try {
