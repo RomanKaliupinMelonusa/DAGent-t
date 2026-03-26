@@ -158,12 +158,14 @@ flowchart LR
 
     GAPS["roam_test_gaps"] --> UNCOVERED["Shows exact\nuncovered code paths"]
     UNCOVERED --> WRITE["Test agent writes\ntests for gaps"]
+    UNCOVERED --> E2E["live-ui writes\nPlaywright scenarios\nfor hidden states"]
 
     style AFFECTED fill:#e8f5e9,stroke:#2e7d32
     style GAPS fill:#f3e5f5,stroke:#7b1fa2
+    style E2E fill:#fff3e0,stroke:#e65100
 ```
 
-> `roam_affected_tests` maps code changes to specific test files. `roam_test_gaps` shows the test agent exactly which code paths lack coverage — no guessing.
+> `roam_affected_tests` maps code changes to specific test files. `roam_test_gaps` shows the test agent exactly which code paths lack coverage — no guessing. The `live-ui` agent uses `roam_test_gaps` post-deploy to write Playwright E2E scenarios targeting hidden states (error branches, loading guards, conditional renders) identified by AST diff.
 
 ### 5. Automated Governance Gate — Code Quality Enforcement
 
@@ -272,7 +274,7 @@ flowchart LR
 
     subgraph APPLIED ["Applied To"]
         DEV["Dev agents\n→ rules + efficiency"]
-        TEST["Test agents\n→ test intelligence"]
+        TEST["Test agents + live-ui\n→ test intelligence"]
         FIN["Finalize agents\n→ rules only"]
     end
 

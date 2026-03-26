@@ -496,9 +496,30 @@ npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backen
 \`\`\`
 Do NOT proceed to Playwright tests if API validation fails — they will show misleading errors.
 
-### Phase 3: Verify Feature E2E Tests Exist (Required)
+### Phase 3: AST-Driven Test Gap Analysis + Verify Feature E2E Tests (Required)
 
-Before running anything in the browser, verify that the \`@frontend-dev\` agent wrote Playwright E2E tests for this feature.
+#### Phase 3a: Code-Driven Test Gap Analysis (Roam)
+
+Before checking whether E2E tests exist, use structural intelligence to identify exactly which logical branches need coverage. This ensures you write tests for **hidden states** (error paths, loading states, conditional renders) — not just the happy path.
+
+1. Identify the frontend components modified in this PR:
+   \`\`\`bash
+   git diff ${ctx.baseBranch}...HEAD --name-only -- '${ctx.appRoot}/frontend/src/**'
+   \`\`\`
+2. Call \`roam_test_gaps ${ctx.appRoot}\` against those modified files. This returns the AST diff of uncovered code paths — e.g., "The error branch in \`CopyDetailModal.tsx\` line 38 has no test", "The loading state guard in \`useGenerations.ts\` line 22 is untested".
+3. Call \`roam_testmap ${ctx.appRoot}\` on the same files to see the current test→source mapping. Cross-reference with the gaps to avoid writing E2E scenarios for branches already covered by unit tests.
+4. From the AST diff results, identify **every logical branch** that lacks BOTH unit and E2E coverage:
+   - **Error states:** \`catch\` blocks, error boundaries, \`isError\` conditionals, fallback UI
+   - **Loading states:** skeleton screens, spinners, \`isLoading\` guards
+   - **Empty states:** "No items found" vs populated data
+   - **Conditional renders:** feature flags, auth-gated content, permission checks
+   - **Edge cases:** form validation errors, network timeouts, stale data
+5. For each identified gap, write an explicit Playwright scenario in \`${ctx.appRoot}/e2e/${ctx.featureSlug}.spec.ts\` that forces the application into that state and asserts the correct behavior. Use network interception (\`page.route()\`) to simulate API errors and empty responses.
+6. If Roam MCP tools are unavailable, skip this sub-phase and proceed to Phase 3b. Note the limitation in the Playwright log.
+
+#### Phase 3b: Verify Feature E2E Tests Exist
+
+Verify that the \`@frontend-dev\` agent wrote Playwright E2E tests for this feature (or that you wrote them in Phase 3a).
 
 \`\`\`bash
 # List all E2E spec files
@@ -508,7 +529,7 @@ ls -la ${ctx.appRoot}/e2e/*.spec.ts
 git diff ${ctx.baseBranch}...HEAD --name-only -- '${ctx.appRoot}/e2e/*.spec.ts'
 \`\`\`
 
-If \`git diff\` shows **no new or modified E2E spec files**, this is a problem. You must write the missing E2E tests:
+If \`git diff\` shows **no new or modified E2E spec files** and Phase 3a did not produce any, this is a problem. You must write the missing E2E tests:
 
 1. Read the feature spec \`${ctx.specPath}\` to understand the UI workflow.
 2. Create \`${ctx.appRoot}/e2e/${ctx.featureSlug}.spec.ts\` following the patterns in \`${ctx.appRoot}/e2e/smoke.spec.ts\` and \`${ctx.appRoot}/e2e/login.spec.ts\`.
@@ -630,7 +651,7 @@ Without these four details, the developer agent cannot diagnose the issue. Never
 To **pass this step**, ALL of these must be true:
 - Phase 1 HTTP smoke checks passed (200 status, HTML loads)
 - Phase 2 API network validation passed (all endpoints reachable through APIM with correct CORS headers)
-- Phase 3 confirmed feature E2E tests exist with functional assertions (not just render checks)
+- Phase 3 confirmed feature E2E tests exist with functional assertions (not just render checks), and Phase 3a gap analysis gaps (if Roam was available) are covered by written scenarios
 - Phase 4 Playwright E2E tests passed (full regression or feature-scoped, as determined by spec)
 - Phase 5 agent browser QA passed, or was correctly skipped (diff contained only documentation/pipeline files)
 

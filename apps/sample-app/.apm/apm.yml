@@ -29,7 +29,7 @@ agents:
     mcp: []
     skills: [test-integration]
   live-ui:
-    instructions: [always, frontend/e2e-testing-mandate.md, tooling/roam-tool-rules.md, tooling/cloud-telemetry.md]
+    instructions: [always, frontend/e2e-testing-mandate.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
     skills: []
   code-cleanup:

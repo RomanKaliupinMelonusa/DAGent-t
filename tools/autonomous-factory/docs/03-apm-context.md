@@ -219,7 +219,7 @@ flowchart LR
     I --> P1
     T1 --> P1 & P2 & P3 & P7 & P8 & P9 & P10
     T2 --> P1 & P2 & P3 & P8
-    T3 --> P4 & P5
+    T3 --> P4 & P5 & P7
     T4 --> P6 & P7
     BS --> P3
     FE --> P7
@@ -239,7 +239,7 @@ flowchart LR
 | `backend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
 | `frontend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
 | `integration-test` | `always`, `backend/integration-testing.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 = **8** |
-| `live-ui` | `always`, `frontend/e2e-testing-mandate.md`, `tooling/roam-tool-rules.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 + 1 = **9** |
+| `live-ui` | `always`, `frontend/e2e-testing-mandate.md`, `tooling/roam-tool-rules.md`, `tooling/roam-test-intelligence.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 + 1 + 1 = **10** |
 | `code-cleanup` | `always`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 = **8** |
 | `docs-archived` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
 | `create-pr` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |

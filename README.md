@@ -263,6 +263,8 @@ Stripe's Minions validate this at massive scale. This pipeline validates it at t
 
 ## What's Next
 
+See [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) for standing feature deep-dives — architectural analyses of planned enhancements with implementation plans.
+
 - **Near-term:** Extract Azure-specific rules into pluggable "stack packs" — core engine ships clean
 - **Mid-term:** Cloud-hosted parallel execution — multiple features on separate branches with automatic conflict resolution
 - **Long-term:** Pipeline analytics from execution logs — which rules cause recovery cycles, which agents burn tokens, which features struggle
@@ -281,6 +283,7 @@ Stripe's Minions validate this at massive scale. This pipeline validates it at t
 | [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) | APM manifest, rule resolution, token budgets |
 | [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) | Pipeline DAG, workflow types, redevelopment reroute |
 | [05-agents.md](tools/autonomous-factory/docs/05-agents.md) | 12 specialist agents, MCP assignments, prompt anatomy |
+| [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) | Standing feature deep-dives with implementation plans |
 
 ---
 

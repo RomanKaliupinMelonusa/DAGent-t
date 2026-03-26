@@ -39,6 +39,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | APM context system & rule engine | `tools/autonomous-factory/docs/03-apm-context.md` |
 | Pipeline state machine & DAG | `tools/autonomous-factory/docs/04-state-machine.md` |
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
+| Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |

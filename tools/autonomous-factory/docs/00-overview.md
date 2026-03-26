@@ -299,5 +299,6 @@ flowchart LR
 | **03** | [03-apm-context.md](03-apm-context.md) | Rule resolution pipeline, persona mapping, token budgets |
 | **04** | [04-state-machine.md](04-state-machine.md) | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
 | **05** | [05-agents.md](05-agents.md) | 12 specialist agents, MCP assignments, prompt anatomy, auto-skip |
+| **06** | [06-roadmap/](06-roadmap/) | Standing feature deep-dives with implementation plans |
 
 **Operational hub:** [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) — project structure, configuration, commands, safety guardrails, and how to run.
