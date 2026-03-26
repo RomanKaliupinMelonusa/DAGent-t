@@ -27,7 +27,7 @@ flowchart TB
     subgraph POST["Post-Deploy Phase"]
         direction LR
         A8["🔌 integration-test\nLive API tests\nvia APIM endpoint"]
-        A9["🖥️ live-ui\nPlaywright E2E\nvs live SWA"]
+        A9["🖥️ live-ui\nAST-driven E2E + deep\ndiagnostic interception"]
     end
 
     subgraph FIN["Finalize Phase"]
@@ -59,7 +59,7 @@ flowchart TB
 | 6 | `push-code` | deploy | — | 15 min | claude-opus-4.6 | (always only) |
 | 7 | `poll-ci` | deploy | — | 15 min | claude-opus-4.6 | (always only) |
 | 8 | `integration-test` | post-deploy | — | 15 min | claude-opus-4.6 | integration-testing |
-| 9 | `live-ui` | post-deploy | playwright, roam | 15 min | claude-opus-4.6 | roam-tool-rules, e2e-testing-mandate |
+| 9 | `live-ui` | post-deploy | playwright, roam | 15 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
 | 10 | `code-cleanup` | finalize | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
 | 11 | `docs-expert` | finalize | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
 | 12 | `create-pr` | finalize | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
@@ -201,7 +201,7 @@ flowchart TD
 | `backendDevPrompt()` | backend-dev | Azure Functions v4, Terraform, BrandedAgentService |
 | `frontendDevPrompt()` | frontend-dev | Next.js 16, React 19, Playwright E2E mandate |
 | `backendTestPrompt()` | backend-unit-test, integration-test | Jest unit tests (pre-deploy) OR integration tests (post-deploy) |
-| `frontendUiTestPrompt()` | frontend-unit-test, live-ui | Jest (pre-deploy) OR Playwright E2E (post-deploy) |
+| `frontendUiTestPrompt()` | frontend-unit-test, live-ui | Jest (pre-deploy) OR AST-driven Playwright E2E with deep diagnostic interception (post-deploy) |
 | `deployManagerPrompt()` | push-code, poll-ci | Push branch, validate lockfile, poll CI |
 | `codeCleanupPrompt()` | code-cleanup | roam_flag_dead, roam_orphan_routes, roam_dark_matter |
 | `docsExpertPrompt()` | docs-expert | _CHANGES.json, doc-notes, architecture docs |
@@ -228,7 +228,7 @@ flowchart TB
         DE11["roam_mutate"]
     end
 
-    subgraph TEST_AGENTS["Test Agents (backend/frontend-unit-test)"]
+    subgraph TEST_AGENTS["Test Agents (backend/frontend-unit-test, live-ui)"]
         direction LR
         TE1["roam_test_gaps"]
         TE2["roam_testmap"]
