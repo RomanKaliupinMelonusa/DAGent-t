@@ -48,6 +48,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
 | APM compiler & context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Active feature workspace | `apps/sample-app/in-progress/` |
+| CI/CD: Integration tests & builds | `.github/workflows/ci-integration.yml` |
 | CI/CD: Backend deploy | `.github/workflows/deploy-backend.yml` |
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
 | CI/CD: Infra plan/apply | `.github/workflows/deploy-infra.yml` |

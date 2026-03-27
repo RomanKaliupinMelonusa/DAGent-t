@@ -125,14 +125,27 @@ stateDiagram-v2
     PostDeployCheck --> Done: tests pass
     PostDeployCheck --> TriageFailure: tests fail
 
+    state PollCICheck <<choice>>
+    Running --> PollCICheck: poll-ci item?
+    PollCICheck --> PollCISuccess: all workflows pass
+    PollCICheck --> PollCITriage: CI failure or cancelled
+
+    PollCISuccess --> Done
+    PollCITriage --> TriageFailure: deterministic triage\n(no agent session)
+
     TriageFailure --> BackendReroute: fault: backend\nor backend+infra
     TriageFailure --> FrontendReroute: fault: frontend\nor frontend+infra
+    TriageFailure --> SchemaReroute: fault: schema
+    TriageFailure --> EnvPause: fault: environment\nor cancelled/timeout
 
     state CycleCheck <<choice>>
     BackendReroute --> CycleCheck
     FrontendReroute --> CycleCheck
+    SchemaReroute --> CycleCheck
     CycleCheck --> Redevelopment: cycle < 5
     CycleCheck --> PipelineHalted: cycle = 5
+
+    EnvPause --> RetryPending: retry poll-ci only
 
     Redevelopment --> ReIndex: roam index (re-index)
     ReIndex --> Running: resetForDev()\n→ dev items re-enter loop
@@ -150,7 +163,7 @@ stateDiagram-v2
 |-----------|---------|-----------|
 | **Dev items** (schema-dev, backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
 | **Test items** (backend-unit-test, frontend-unit-test) | 10 min | Scoped to test writing, fewer files |
-| **Deploy items** (push-code, poll-ci) | 15 min | Deterministic shell bypasses (no LLM); agent fallback on failure |
+| **Deploy items** (push-code, poll-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-ci` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
 | **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries |
 | **Finalize items** (code-cleanup, docs-expert, create-pr) | 15 min | Scoped cleanup and documentation tasks |
 
@@ -233,7 +246,7 @@ classDiagram
 |----------|---------|----------|
 | `main()` | Entry point — init, pre-flight, Phase 0, main loop | CLI |
 | `runItemSession()` | Execute one pipeline item in a Copilot SDK session | Main loop |
-| `triageFailure()` | Keyword-based routing of post-deploy failures to dev items | Main loop |
+| `triageFailure()` | Keyword/structured routing of post-deploy and CI failures to dev items | Main loop |
 | `getTimeout()` | Session timeout by item type | `runItemSession()` |
 | `getAutoSkipBaseRef()` | Git ref for change detection (auto-skip optimization) | Main loop |
 | `getGitChangedFiles()` | Files changed since a git ref via `git diff --name-only` | Auto-skip |
