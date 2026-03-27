@@ -54,6 +54,7 @@ export const ApmConfigSchema = z.object({
   directories: z.record(z.string(), z.nullable(z.string())),
   testCommands: z.record(z.string(), z.nullable(z.string())).optional(),
   commitScopes: z.record(z.string(), z.array(z.string())).optional(),
+  ciJobs: z.record(z.string(), z.string()).optional(),
   preflight: z
     .object({
       apimRouteCheck: z

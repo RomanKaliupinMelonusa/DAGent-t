@@ -9,13 +9,19 @@
 #   3  — One or more workflows were manually cancelled.
 #
 # Environment variables:
-#   POLL_MAX_RETRIES  — Max polling iterations (default: 10)
-#   IN_PROGRESS_DIR   — Directory to write CI_FAILURE.log diagnostic file
-#   SLUG              — Feature slug for diagnostic file naming
+#   POLL_MAX_RETRIES       — Max polling iterations (default: 10)
+#   IN_PROGRESS_DIR        — Directory to write CI_FAILURE.log diagnostic file
+#   SLUG                   — Feature slug for diagnostic file naming
+#   CI_JOB_MATCH_BACKEND   — Substring to match backend CI job names (default: "Backend")
+#   CI_JOB_MATCH_FRONTEND  — Substring to match frontend CI job names (default: "Frontend")
+#   CI_JOB_MATCH_SCHEMAS   — Substring to match schema CI job names (default: "Schemas")
 #
-# When CI fails (exit 1), truncated failure logs are written to a diagnostic
-# file at $IN_PROGRESS_DIR/${SLUG}_CI-FAILURE.log. This file is the single
-# source of truth for triage — completely decoupled from stdout polling noise.
+# When CI fails (exit 1), the diagnostic file receives:
+#   1. A DOMAIN: header line — metadata-driven routing tag derived from which
+#      CI jobs failed (e.g. "DOMAIN: backend" or "DOMAIN: backend,frontend").
+#      The triage engine reads this for deterministic routing without parsing logs.
+#   2. Truncated failure logs — raw CI output for LLM context.
+#
 # The orchestrator reads this file instead of parsing stdout.
 #
 # Designed to be called by @deploy-manager agent after pushing a feature branch.
@@ -76,11 +82,53 @@ while true; do
       echo "  TRUNCATED CI FAILURE LOGS (last 250 lines per failed run)"
       echo "═══════════════════════════════════════════════════════════════"
 
+      # ── Metadata-driven domain detection ──────────────────────────────
+      # Query structured job metadata to determine WHICH domain failed,
+      # instead of relying on brittle text-matching of log content.
+      # Job name matching is configurable via CI_JOB_MATCH_* env vars
+      # (set by APM config), with sensible defaults.
+      JOB_MATCH_BACKEND="${CI_JOB_MATCH_BACKEND:-Backend}"
+      JOB_MATCH_FRONTEND="${CI_JOB_MATCH_FRONTEND:-Frontend}"
+      JOB_MATCH_SCHEMAS="${CI_JOB_MATCH_SCHEMAS:-Schemas}"
+
+      FAILED_DOMAINS=()
+      for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
+        FAILED_JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' 2>/dev/null || true)
+        while IFS= read -r jobName; do
+          [ -z "$jobName" ] && continue
+          if echo "$jobName" | grep -qi "$JOB_MATCH_SCHEMAS"; then
+            # schemas not already in array
+            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "schemas"; then
+              FAILED_DOMAINS+=("schemas")
+            fi
+          fi
+          if echo "$jobName" | grep -qi "$JOB_MATCH_BACKEND"; then
+            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "backend"; then
+              FAILED_DOMAINS+=("backend")
+            fi
+          fi
+          if echo "$jobName" | grep -qi "$JOB_MATCH_FRONTEND"; then
+            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "frontend"; then
+              FAILED_DOMAINS+=("frontend")
+            fi
+          fi
+        done <<< "$FAILED_JOBS"
+      done
+
+      # Build comma-separated domain tag (e.g. "backend,frontend")
+      if [ ${#FAILED_DOMAINS[@]} -eq 0 ]; then
+        DOMAIN_TAG="unknown"
+      else
+        DOMAIN_TAG=$(IFS=,; echo "${FAILED_DOMAINS[*]}")
+      fi
+      echo "  📋 CI metadata: DOMAIN: $DOMAIN_TAG"
+
       # Write failure logs to diagnostic file (if path available) AND stdout.
       # The diagnostic file is the pure error payload for triage — free of
       # polling noise. Stdout is for terminal visibility only.
       if [ -n "$DIAG_FILE" ]; then
         : > "$DIAG_FILE"  # truncate / create
+        echo "DOMAIN: $DOMAIN_TAG" >> "$DIAG_FILE"
       fi
 
       for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
