@@ -223,7 +223,7 @@ flowchart LR
     end
 
     subgraph RECOVERY["Recovery Paths"]
-        R1["CI failure\n→ resetCi()"]
+        R1["CI failure in poll-ci\n→ triageFailure()\n→ resetForDev()"]
         R2["Post-deploy failure\n→ triageFailure()\n→ resetForDev()"]
     end
 
@@ -238,7 +238,7 @@ flowchart LR
     F1 --> F2 --> F3
 
     D2 -.->|"CI fails"| R1
-    R1 -.->|"reset deploy items"| DEP
+    R1 -.->|"reset dev+deploy items"| PRE
     PD1 -.->|"test fails"| R2
     PD2 -.->|"test fails"| R2
     R2 -.->|"reset dev+test items"| PRE

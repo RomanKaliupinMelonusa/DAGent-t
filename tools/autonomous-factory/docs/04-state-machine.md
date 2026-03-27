@@ -170,18 +170,28 @@ sequenceDiagram
     participant PS as pipeline-state.mjs
     participant R as roam index
 
-    Note over W: Post-deploy item<br/>(integration-test or live-ui)<br/>fails after deployment
+    Note over W: Post-deploy item<br/>(poll-ci, integration-test,<br/>or live-ui) fails
 
-    W->>TF: triageFailure(errorMessage)
+    W->>TF: triageFailure(itemKey, errorMessage)
 
-    alt Keywords: API, endpoint, 500, backend
+    alt Structured JSON: fault_domain=backend
+        TF-->>W: route → backend-dev, backend-unit-test
+    else Structured JSON: fault_domain=frontend
+        TF-->>W: route → frontend-dev, frontend-unit-test
+    else Structured JSON: fault_domain=cicd
+        TF-->>W: route → push-code, poll-ci
+    else Structured JSON: fault_domain=environment
+        TF-->>W: route → itemKey only (not a code bug)
+    else Keywords: API, endpoint, 500, backend
         TF-->>W: route → backend-dev, backend-unit-test
     else Keywords: UI, component, render, frontend
         TF-->>W: route → frontend-dev, frontend-unit-test
-    else Compound: backend+infra or frontend+infra
-        TF-->>W: route → single-layer dev + test items
-    else Ambiguous
-        TF-->>W: route → both dev + test items
+    else Keywords: packages/schemas, @branded/schemas
+        TF-->>W: route → schema-dev + all dev/test items
+    else Keywords: ci_run_cancelled_manually, ci is still running
+        TF-->>W: route → itemKey only (environment, not a code bug)
+    else Ambiguous (no keyword match)
+        TF-->>W: route → schema-dev + all dev/test items
     end
 
     W->>S: resetForDev(slug, itemKeys, reason)
@@ -198,6 +208,22 @@ sequenceDiagram
         Note over W: 🛑 Max redevelopment<br/>cycles reached
     end
 ```
+
+### poll-ci Deterministic Triage Path
+
+When `poll-ci` fails, the orchestrator handles triage **inline** — no Copilot agent session is created. The flow is:
+
+1. `poll-ci.sh` runs with `stdio: "pipe"` and `maxBuffer: 5MB`
+2. On failure, the script fetches truncated runner logs (`gh run view --log-failed | tail -n 250`) and echoes them to stdout
+3. Node's `execSync` throws — the catch block extracts `err.stdout` (CI logs) and `err.stderr`
+4. `failItem(slug, "poll-ci", capturedLogs)` persists the failure
+5. `triageFailure("poll-ci", capturedLogs, naItems)` routes to the correct dev items
+6. `resetForDev(slug, resetKeys, errorMsg)` resets the pipeline
+7. The function returns directly — no fall-through to the SDK session path
+
+**Cancelled runs** emit `CI_RUN_CANCELLED_MANUALLY`, which matches `envSignals` in `triageByKeywords()` → routes to environment fault domain (retry `poll-ci` only, don't reset dev items).
+
+**Poll timeouts** (exit code 2) emit `"CI is still running"`, which also matches `envSignals` → same retry-only behavior.
 
 ---
 

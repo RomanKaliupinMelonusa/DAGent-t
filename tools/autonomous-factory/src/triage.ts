@@ -114,6 +114,10 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "authorization_requestdenied", "application.readwrite",
     "does not have authorization",
     "insufficient privileges", "access is denied",
+    // CI poll timeout — not a code bug, agent should yield to human
+    "ci is still running", "exiting poll to prevent",
+    // Manually cancelled CI runs — not a code bug, pipeline should pause
+    "ci_run_cancelled_manually",
   ];
 
   if (envSignals.some((s) => msg.includes(s))) {
@@ -136,24 +140,35 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
   ];
   const cicdSignals = [
     "deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml",
-    ".github/workflows", "workflow", "ci failed", "ci timeout",
+    "ci-integration.yml", ".github/workflows", "workflow file",
+    "ci failed", "ci timeout",
     "deploy artifact", "package.json type", "type:module",
     "never committed", "working-tree fix",
+  ];
+  const schemaSignals = [
+    "packages/schemas", "@branded/schemas", "schema-dev",
+    "schema validation", "schema build",
   ];
 
   const hasBackend = backendSignals.some((s) => msg.includes(s));
   const hasFrontend = frontendSignals.some((s) => msg.includes(s));
   const hasCicd = cicdSignals.some((s) => msg.includes(s));
+  const hasSchema = schemaSignals.some((s) => msg.includes(s));
 
   // CI/CD workflow issues take priority — dev agents can't fix .github/ files
-  if (hasCicd && !hasBackend && !hasFrontend) {
+  if (hasCicd && !hasBackend && !hasFrontend && !hasSchema) {
     resetKeys.push("push-code", "poll-ci");
   } else {
-    if (hasBackend) {
-      resetKeys.push("backend-dev", "backend-unit-test");
-    }
-    if (hasFrontend) {
-      resetKeys.push("frontend-dev", "frontend-unit-test");
+    if (hasSchema) {
+      // Schema failures cascade to both backend and frontend
+      resetKeys.push("schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
+    } else {
+      if (hasBackend) {
+        resetKeys.push("backend-dev", "backend-unit-test");
+      }
+      if (hasFrontend) {
+        resetKeys.push("frontend-dev", "frontend-unit-test");
+      }
     }
     // If CI/CD signals co-occur with backend/frontend, also reset deploy items
     if (hasCicd) {
@@ -163,7 +178,7 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
 
   // Can't determine root cause → reset everything applicable
   if (resetKeys.length === 0) {
-    resetKeys.push("backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
+    resetKeys.push("schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
   }
 
   resetKeys.push(itemKey);

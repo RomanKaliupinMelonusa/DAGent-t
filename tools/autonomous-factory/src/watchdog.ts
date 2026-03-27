@@ -45,7 +45,7 @@ const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
 /** Post-deploy items that can trigger a redevelopment reroute on failure */
-const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test"]);
+const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-ci"]);
 
 /**
  * Delay (ms) after CI deployment completes before running post-deploy tests.
@@ -690,7 +690,9 @@ async function main(): Promise<void> {
     // After CI reports deployment success, Azure Functions and SWA can take
     // 30-60s to propagate the new code. Without this delay, integration tests
     // hit stale deployment artifacts and produce false 404 failures.
-    if (POST_DEPLOY_ITEMS.has(next.key) && attemptCounts[next.key] <= 1) {
+    // Note: Uses LONG_ITEMS (live-ui, integration-test) not POST_DEPLOY_ITEMS,
+    // because poll-ci doesn't need Azure propagation time.
+    if (LONG_ITEMS.has(next.key) && attemptCounts[next.key] <= 1) {
       console.log(`  ⏳ Waiting ${POST_DEPLOY_PROPAGATION_DELAY_MS / 1000}s for deployment propagation before ${next.key}...`);
       await new Promise((resolve) => setTimeout(resolve, POST_DEPLOY_PROPAGATION_DELAY_MS));
     }
@@ -753,11 +755,16 @@ async function main(): Promise<void> {
       console.log("  ⏳ poll-ci: Running deterministic CI poll (no agent session)");
       try {
         const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
-        execSync(`bash "${pollScript}"`, {
-          cwd: repoRoot, stdio: "inherit",
+        const pollOutput = execSync(`bash "${pollScript}"`, {
+          cwd: repoRoot, stdio: "pipe",
+          maxBuffer: 5 * 1024 * 1024,  // 5MB — prevent ENOBUFS from verbose gh CLI JSON
           timeout: 1_200_000,  // 20 min max for CI to complete
           env: { ...process.env, POLL_MAX_RETRIES: "60" },
         });
+
+        // Re-echo stdout for terminal visibility (pipe suppresses live output)
+        const successLog = pollOutput.toString();
+        if (successLog) console.log(successLog);
 
         // All CI workflows passed
         await completeItem(slug, next.key);
@@ -771,11 +778,73 @@ async function main(): Promise<void> {
         writePipelineSummary(slug);
         writeTerminalLog(slug);
         return { summary: itemSummary, halt: false, createPr: false };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (err: unknown) {
+        // execSync attaches stdout/stderr buffers to the Error on non-zero exit.
+        // Capture the CI failure logs (including truncated runner output from poll-ci.sh)
+        // so the triage loop can inspect them for fault-domain keywords.
+        const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+        const ciLogs = execErr.stdout?.toString() ?? "";
+        const ciStderr = execErr.stderr?.toString() ?? "";
+        const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+
+        // Re-echo for terminal visibility
+        if (ciLogs) console.log(ciLogs);
+        if (ciStderr) console.error(ciStderr);
+
+        const message = execErr.message ?? String(err);
         console.error(`  ✖ CI poll failed or had failures: ${message}`);
-        console.log("  🔄 Falling back to agent session for CI failure diagnosis...");
-        // Fall through to the normal agent session path below
+
+        // Persist failure with the truncated CI logs into pipeline state
+        // so the POST_DEPLOY_ITEMS triage loop can route to resetForDev.
+        const failureContext = capturedOutput || message;
+        await failItem(slug, next.key, failureContext);
+
+        // Route directly through POST_DEPLOY_ITEMS triage — no agent session needed.
+        // The CI logs contain sufficient signal for deterministic keyword triage.
+        itemSummary.outcome = "failed";
+        itemSummary.errorMessage = failureContext;
+        itemSummary.finishedAt = new Date().toISOString();
+        itemSummary.durationMs = Date.now() - stepStart;
+        pipelineSummaries.push(itemSummary);
+        writePipelineSummary(slug);
+        writeTerminalLog(slug);
+
+        const state = await getStatus(slug);
+        const naItems = new Set(
+          state.items.filter((i) => i.status === "na").map((i) => i.key),
+        );
+        const diagnostic = parseTriageDiagnostic(failureContext);
+        const errorMsg = diagnostic ? diagnostic.diagnostic_trace : failureContext;
+        const resetKeys = triageFailure(next.key, failureContext, naItems);
+
+        console.log(`\n  🔄 CI failure in poll-ci — rerouting to redevelopment`);
+        console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
+
+        try {
+          const result = await resetForDev(slug, resetKeys, errorMsg);
+          if (result.halted) {
+            console.error(
+              `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
+            );
+            return { summary: itemSummary, halt: true, createPr: false };
+          }
+          console.log(
+            `     Redevelopment cycle ${result.cycleCount}/5 — pipeline will restart from dev`,
+          );
+
+          // Re-index semantic graph after redevelopment reroute
+          if (roamAvailable) {
+            console.log("  🧠 Re-indexing semantic graph after CI failure reroute...");
+            try {
+              execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
+            } catch { /* non-fatal */ }
+          }
+        } catch {
+          console.error("  ✖ Could not trigger redevelopment reroute. Exiting.");
+          return { summary: itemSummary, halt: true, createPr: false };
+        }
+
+        return { summary: itemSummary, halt: false, createPr: false };
       }
     }
 
