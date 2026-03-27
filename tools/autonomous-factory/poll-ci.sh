@@ -15,6 +15,7 @@
 #   CI_JOB_MATCH_BACKEND   — Substring to match backend CI job names (default: "Backend")
 #   CI_JOB_MATCH_FRONTEND  — Substring to match frontend CI job names (default: "Frontend")
 #   CI_JOB_MATCH_SCHEMAS   — Substring to match schema CI job names (default: "Schemas")
+#   CI_JOB_MATCH_INFRA     — Substring to match infra CI job names (default: "Terraform")
 #
 # When CI fails (exit 1), the diagnostic file receives:
 #   1. A DOMAIN: header line — metadata-driven routing tag derived from which
@@ -90,6 +91,7 @@ while true; do
       JOB_MATCH_BACKEND="${CI_JOB_MATCH_BACKEND:-Backend}"
       JOB_MATCH_FRONTEND="${CI_JOB_MATCH_FRONTEND:-Frontend}"
       JOB_MATCH_SCHEMAS="${CI_JOB_MATCH_SCHEMAS:-Schemas}"
+      JOB_MATCH_INFRA="${CI_JOB_MATCH_INFRA:-Terraform}"
 
       FAILED_DOMAINS=()
       for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
@@ -110,6 +112,12 @@ while true; do
           if echo "$jobName" | grep -qi "$JOB_MATCH_FRONTEND"; then
             if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "frontend"; then
               FAILED_DOMAINS+=("frontend")
+            fi
+          fi
+          # Infra/Terraform failures route to backend domain (backend-dev owns infra/)
+          if echo "$jobName" | grep -qi "$JOB_MATCH_INFRA"; then
+            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "backend"; then
+              FAILED_DOMAINS+=("backend")
             fi
           fi
         done <<< "$FAILED_JOBS"

@@ -512,6 +512,7 @@ async function runPollCi(
               CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,
               CI_JOB_MATCH_FRONTEND: (config.apmContext.config.ciJobs as Record<string, string>).frontend,
               CI_JOB_MATCH_SCHEMAS: (config.apmContext.config.ciJobs as Record<string, string>).schemas,
+              CI_JOB_MATCH_INFRA: (config.apmContext.config.ciJobs as Record<string, string>).infra,
             }
           : {}),
       },

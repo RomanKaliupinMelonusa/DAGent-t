@@ -75,4 +75,5 @@ config:
     backend: "Backend"     # Substring match against GitHub Actions job names
     frontend: "Frontend"
     schemas: "Schemas"
+    infra: "Terraform"     # Infra failures route to backend-dev (owns infra/ directory)
 
