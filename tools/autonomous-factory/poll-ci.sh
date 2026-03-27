@@ -32,11 +32,16 @@ while true; do
 
     # Check the latest run per workflow — only fail if the most recent run failed.
     # This avoids false positives from stale failures that have since been re-triggered.
+    # IMPORTANT: Skip cancelled runs — only status=failure triggers the triage loop.
     HAS_FAILURE=0
+    FAILED_RUN_IDS=()
     while IFS=$'\t' read -r wfName conclusion runId; do
-      if [ "$conclusion" != "success" ]; then
+      if [ "$conclusion" = "cancelled" ]; then
+        echo "⊘ SKIPPED (cancelled): $wfName (run $runId)"
+      elif [ "$conclusion" != "success" ]; then
         echo "❌ FAILED: $wfName (run $runId) — conclusion: $conclusion"
         HAS_FAILURE=1
+        FAILED_RUN_IDS+=("$runId")
       else
         echo "✔ PASSED: $wfName (run $runId)"
       fi
@@ -45,6 +50,16 @@ while true; do
 
     if [ "$HAS_FAILURE" -eq 1 ]; then
       echo "❌ ERROR: One or more CI workflows failed! Check GitHub Actions."
+      echo ""
+      echo "═══════════════════════════════════════════════════════════════"
+      echo "  TRUNCATED CI FAILURE LOGS (last 250 lines per failed run)"
+      echo "═══════════════════════════════════════════════════════════════"
+      for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
+        echo ""
+        echo "── Run $RUN_ID ──────────────────────────────────────────────"
+        gh run view "$RUN_ID" --log-failed | tail -n 250 || echo "(could not fetch logs for run $RUN_ID)"
+        echo "── End Run $RUN_ID ──────────────────────────────────────────"
+      done
       exit 1
     fi
     exit 0

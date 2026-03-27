@@ -174,8 +174,9 @@ describe("triageFailure (keyword fallback)", () => {
     assert.ok(keys.includes("live-ui"));
   });
 
-  it("no matching keywords → resets everything", () => {
+  it("no matching keywords → resets everything including schema-dev", () => {
     const keys = triageFailure("live-ui", "something totally unknown broke", NO_NA);
+    assert.ok(keys.includes("schema-dev"));
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("backend-unit-test"));
     assert.ok(keys.includes("frontend-dev"));
@@ -186,6 +187,31 @@ describe("triageFailure (keyword fallback)", () => {
   it("environment keywords → only resets itemKey", () => {
     const keys = triageFailure("live-ui", "az login required, credentials missing", NO_NA);
     assert.deepStrictEqual(keys, ["live-ui"]);
+  });
+
+  it("poll timeout keywords → only resets itemKey (not a code bug)", () => {
+    const keys = triageFailure("poll-ci", "⏳ CI is still running. Exiting poll to prevent Copilot timeout.", NO_NA);
+    assert.deepStrictEqual(keys, ["poll-ci"]);
+  });
+
+  it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
+    const keys = triageFailure("poll-ci", "FAIL packages/schemas/src/__tests__/auth.test.ts", NO_NA);
+    assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("backend-dev"));
+    assert.ok(keys.includes("backend-unit-test"));
+    assert.ok(keys.includes("frontend-dev"));
+    assert.ok(keys.includes("frontend-unit-test"));
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("poll-ci.sh status line 'workflows' does NOT trigger cicd path", () => {
+    // poll-ci.sh prints "All CI workflows completed" — must not match cicdSignals
+    const keys = triageFailure("poll-ci", "✔ All CI workflows completed.\n❌ FAILED: CI Integration (run 123)\nFAIL some unknown test error", NO_NA);
+    // Should fall through to reset-everything (no specific backend/frontend/cicd/schema signal)
+    assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("backend-dev"));
+    assert.ok(keys.includes("frontend-dev"));
+    assert.ok(keys.includes("poll-ci"));
   });
 
   it("filters out N/A items in keyword fallback", () => {
