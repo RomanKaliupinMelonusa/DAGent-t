@@ -89,14 +89,23 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph ENTRY["Entry Point"]
-        W["watchdog.ts\n(~1900 lines)"]
+        W["watchdog.ts\n(~360 lines)"]
     end
 
     subgraph CORE["Core Modules"]
-        A["agents.ts\n(~1600 lines)\nPrompt Factory"]
-        PA["apm-compiler.ts\n(~256 lines)\nRule Engine"]
-        S["state.ts\n(~110 lines)\nTyped Wrapper"]
-        T["types.ts\n(~60 lines)\nShared Types"]
+        SR["session-runner.ts\n(~950 lines)\nSession Lifecycle"]
+        A["agents.ts\n(~1400 lines)\nPrompt Factory"]
+        PA["apm-compiler.ts\n(~310 lines)\nRule Engine"]
+        S["state.ts\n(~130 lines)\nTyped Wrapper"]
+        T["types.ts\n(~145 lines)\nShared Types + Constants"]
+    end
+
+    subgraph SUPPORT["Supporting Modules"]
+        PF["preflight.ts\nPre-flight Checks"]
+        RP["reporting.ts\nSummary + Logs"]
+        AS["auto-skip.ts\nGit Change Detection"]
+        CI["context-injection.ts\nRetry/Revert Prompts"]
+        TR["triage.ts\nFailure Classification"]
     end
 
     subgraph INFRA["Infrastructure"]
@@ -120,10 +129,17 @@ flowchart LR
     end
 
     W -->|"getAgentConfig()"| A
+    W -->|"runItemSession()"| SR
     W -->|"getNextAvailable()"| S
     W -->|"agent-commit.sh"| AC
     W -->|"agent-branch.sh"| AB
     W -->|"roam index"| ROAM
+    SR -->|"getAgentConfig()"| A
+    SR -->|"triageFailure()"| TR
+    SR -->|"autoSkip"| AS
+    SR -->|"flushReports()"| RP
+    SR -->|"context injection"| CI
+    W -->|"preflight"| PF
     A -->|"getRulesForAgent()"| PA
     A -->|"roamMcpConfig()"| ROAM
     A -->|"playwright config"| PW

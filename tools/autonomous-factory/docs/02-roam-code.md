@@ -229,7 +229,7 @@ flowchart LR
 sequenceDiagram
     participant DC as DevContainer<br/>postCreateCommand
     participant SH as setup-roam.sh
-    participant W as watchdog.ts
+    participant W as watchdog.ts /\npreflight.ts
     participant SDK as Copilot SDK<br/>Session
     participant MCP as roam mcp<br/>(local process)
     participant DB as .roam/index.db
@@ -353,7 +353,7 @@ Full 102-tool inventory: `roam mcp --list-tools`
 |------|--------|----------|-------|
 | `roam_health` | Quantified quality gate (0–100 score) | **P1** | push-code pre-check |
 | `roam_verify_imports` | Catches hallucinated imports in agent code | **P1** | post-change rules |
-| `roam_diagnose_issue` | Structural root cause (replaces keyword triage) | **P1** | watchdog.ts |
+| `roam_diagnose_issue` | Structural root cause (replaces keyword triage) | **P1** | triage.ts |
 | `roam_algo` | 23 anti-pattern detectors (O(n²), N+1) | **P2** | code-cleanup agent |
 | `roam_secrets` | Secret leakage scan | **P2** | pre-flight checks |
 | `roam_clones` | AST clone detection (dedup agent code) | **P2** | code-cleanup agent |
