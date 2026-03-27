@@ -114,8 +114,12 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "authorization_requestdenied", "application.readwrite",
     "does not have authorization",
     "insufficient privileges", "access is denied",
-    // CI poll timeout — not a code bug, agent should yield to human
-    "ci is still running", "exiting poll to prevent",
+    // CI poll timeout — defense-in-depth safety net. Exit code 2 is
+    // intercepted at the session-runner boundary before triage runs, but
+    // if it leaks through, this prevents misrouting as a code bug.
+    // NOTE: "ci is still running" was removed — it contaminated triage
+    // when poll-ci stdout mixed polling status with real CI error logs.
+    "exiting poll to prevent",
     // Manually cancelled CI runs — not a code bug, pipeline should pause
     "ci_run_cancelled_manually",
   ];
@@ -150,8 +154,20 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "schema validation", "schema build",
   ];
 
-  const hasBackend = backendSignals.some((s) => msg.includes(s));
-  const hasFrontend = frontendSignals.some((s) => msg.includes(s));
+  // Directory-path signals — CI-provider agnostic. Compilers, linters, and
+  // test runners universally include file paths in error output. These catch
+  // CI build errors that runtime keywords ("500", "CORS") miss.
+  // Note: /packages/schemas/ is intentionally NOT here — it's handled by
+  // schemaSignals which correctly cascades to ALL downstream (not just backend).
+  const directoryPathSignals = {
+    backend: ["/backend/"],
+    frontend: ["/frontend/", "/e2e/"],
+  };
+
+  const hasBackend = backendSignals.some((s) => msg.includes(s))
+    || directoryPathSignals.backend.some((s) => msg.includes(s));
+  const hasFrontend = frontendSignals.some((s) => msg.includes(s))
+    || directoryPathSignals.frontend.some((s) => msg.includes(s));
   const hasCicd = cicdSignals.some((s) => msg.includes(s));
   const hasSchema = schemaSignals.some((s) => msg.includes(s));
 
