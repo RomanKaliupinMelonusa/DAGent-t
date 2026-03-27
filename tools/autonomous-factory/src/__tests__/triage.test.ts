@@ -194,6 +194,11 @@ describe("triageFailure (keyword fallback)", () => {
     assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
+  it("manually cancelled CI run → only resets itemKey (not a code bug)", () => {
+    const keys = triageFailure("poll-ci", "❌ ERROR: One or more CI workflows were manually cancelled.\nCI_RUN_CANCELLED_MANUALLY", NO_NA);
+    assert.deepStrictEqual(keys, ["poll-ci"]);
+  });
+
   it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
     const keys = triageFailure("poll-ci", "FAIL packages/schemas/src/__tests__/auth.test.ts", NO_NA);
     assert.ok(keys.includes("schema-dev"));

@@ -116,6 +116,8 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "insufficient privileges", "access is denied",
     // CI poll timeout — not a code bug, agent should yield to human
     "ci is still running", "exiting poll to prevent",
+    // Manually cancelled CI runs — not a code bug, pipeline should pause
+    "ci_run_cancelled_manually",
   ];
 
   if (envSignals.some((s) => msg.includes(s))) {

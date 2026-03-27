@@ -32,12 +32,16 @@ while true; do
 
     # Check the latest run per workflow — only fail if the most recent run failed.
     # This avoids false positives from stale failures that have since been re-triggered.
-    # IMPORTANT: Skip cancelled runs — only status=failure triggers the triage loop.
+    # Track failures and cancellations separately.
+    # Cancelled runs must NOT silently pass — they represent un-tested code.
+    # However, we don't dump runner logs for cancelled runs (there are none).
     HAS_FAILURE=0
+    HAS_CANCELLED=0
     FAILED_RUN_IDS=()
     while IFS=$'\t' read -r wfName conclusion runId; do
       if [ "$conclusion" = "cancelled" ]; then
-        echo "⊘ SKIPPED (cancelled): $wfName (run $runId)"
+        echo "⊘ CANCELLED: $wfName (run $runId)"
+        HAS_CANCELLED=1
       elif [ "$conclusion" != "success" ]; then
         echo "❌ FAILED: $wfName (run $runId) — conclusion: $conclusion"
         HAS_FAILURE=1
@@ -60,6 +64,11 @@ while true; do
         gh run view "$RUN_ID" --log-failed | tail -n 250 || echo "(could not fetch logs for run $RUN_ID)"
         echo "── End Run $RUN_ID ──────────────────────────────────────────"
       done
+      exit 1
+    fi
+    if [ "$HAS_CANCELLED" -eq 1 ]; then
+      echo "❌ ERROR: One or more CI workflows were manually cancelled."
+      echo "CI_RUN_CANCELLED_MANUALLY"
       exit 1
     fi
     exit 0

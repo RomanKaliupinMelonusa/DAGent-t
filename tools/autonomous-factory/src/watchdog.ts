@@ -757,6 +757,7 @@ async function main(): Promise<void> {
         const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
         const pollOutput = execSync(`bash "${pollScript}"`, {
           cwd: repoRoot, stdio: "pipe",
+          maxBuffer: 5 * 1024 * 1024,  // 5MB — prevent ENOBUFS from verbose gh CLI JSON
           timeout: 1_200_000,  // 20 min max for CI to complete
           env: { ...process.env, POLL_MAX_RETRIES: "60" },
         });
