@@ -168,7 +168,7 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    participant W as watchdog.ts
+    participant W as watchdog.ts /\nsession-runner.ts
     participant TF as triageFailure()
     participant S as state.ts
     participant PS as pipeline-state.mjs

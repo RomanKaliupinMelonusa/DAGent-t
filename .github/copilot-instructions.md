@@ -41,6 +41,11 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
+| Session runner (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
+| Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
+| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
 | Sample app instruction fragments | `apps/sample-app/.apm/instructions/**/*.md` |
@@ -66,8 +71,13 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | What | Where |
 |---|---|
 | Orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
+| Session runner (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
+| Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
+| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | State machine API binding | `tools/autonomous-factory/src/state.ts` |
 | GitHub Actions workflow | `.github/workflows/agentic-feature.yml` |
 

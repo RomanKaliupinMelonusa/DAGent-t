@@ -26,6 +26,7 @@ const APM_DIR = path.join(APP_ROOT, ".apm");
 
 // All agent keys from pipeline-state.mjs ALL_ITEMS
 const ALL_AGENT_KEYS = [
+  "schema-dev",
   "backend-dev",
   "frontend-dev",
   "backend-unit-test",
@@ -115,7 +116,7 @@ describe("APM Context Loader", () => {
     assert.equal(output.version, "1.0.0");
     assert.ok(output.compiledAt);
     assert.ok(output.tokenBudget > 0);
-    assert.ok(Object.keys(output.agents).length === 11);
+    assert.ok(Object.keys(output.agents).length === ALL_AGENT_KEYS.length);
   });
 
   it("loadApmContext validates token budgets", () => {

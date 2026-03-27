@@ -287,7 +287,7 @@ flowchart LR
 
 ## Failure Classification Keywords
 
-When post-deploy tests fail, `triageFailure()` in watchdog.ts routes the fix to the right dev agent:
+When post-deploy tests fail, `triageFailure()` in `triage.ts` (called from `session-runner.ts`) routes the fix to the right dev agent:
 
 | Keywords | Routes To | Items Reset |
 |----------|-----------|-------------|

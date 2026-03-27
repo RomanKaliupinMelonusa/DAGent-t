@@ -10,6 +10,17 @@ import { TriageDiagnosticSchema } from "../triage-schema.mjs";
 
 export { TriageDiagnosticSchema };
 
+// ---------------------------------------------------------------------------
+// Pipeline item category constants — shared across session-runner and
+// context-injection to avoid duplication.
+// ---------------------------------------------------------------------------
+
+/** Item keys that represent dev agents */
+export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev"]);
+
+/** Post-deploy items whose failures get injected as downstream context or can trigger redevelopment reroute */
+export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-ci"]);
+
 export interface PipelineItem {
   key: string;
   label: string;
@@ -73,3 +84,61 @@ export type FaultDomain = TriageDiagnostic["fault_domain"];
 
 /** Structured triage diagnostic — inferred from the Zod schema. */
 export type TriageDiagnostic = z.infer<typeof TriageDiagnosticSchema>;
+
+// ---------------------------------------------------------------------------
+// Session telemetry — data structures collected by the orchestrator's
+// session runner and consumed by reporting functions.
+// ---------------------------------------------------------------------------
+
+/** Summary of decisions collected from each item's session */
+export interface ItemSummary {
+  key: string;
+  label: string;
+  agent: string;
+  phase: string;
+  attempt: number;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  outcome: "completed" | "failed" | "error";
+  /** Agent-reported intents (high-level "what I'm doing" messages) */
+  intents: string[];
+  /** Final assistant messages (full text, not truncated) */
+  messages: string[];
+  /** Files read by the agent */
+  filesRead: string[];
+  /** Files written or edited by the agent */
+  filesChanged: string[];
+  /** Shell commands executed with exit context */
+  shellCommands: ShellEntry[];
+  /** Tool call counts by category */
+  toolCounts: Record<string, number>;
+  /** Error message if the step failed */
+  errorMessage?: string;
+  /** Git HEAD after this attempt — used for identical-error dedup */
+  headAfterAttempt?: string;
+  /** Accumulated input tokens from assistant.usage events */
+  inputTokens: number;
+  /** Accumulated output tokens from assistant.usage events */
+  outputTokens: number;
+  /** Accumulated cache-read tokens (prompt caching) */
+  cacheReadTokens: number;
+  /** Accumulated cache-creation tokens */
+  cacheWriteTokens: number;
+}
+
+export interface ShellEntry {
+  command: string;
+  timestamp: string;
+  /** Whether this was a pipeline:complete/fail or agent-commit call */
+  isPipelineOp: boolean;
+}
+
+/** Detailed Playwright log entry */
+export interface PlaywrightLogEntry {
+  timestamp: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  success?: boolean;
+  result?: string;
+}

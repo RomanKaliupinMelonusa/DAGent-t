@@ -1,7 +1,9 @@
-# Orchestrator — watchdog.ts
+# Orchestrator — watchdog.ts & Session Modules
 
 > The deterministic headless loop that drives the entire pipeline.
-> Source: `tools/autonomous-factory/src/watchdog.ts` (~1900 lines)
+> Entry point: `tools/autonomous-factory/src/watchdog.ts` (~360 lines)
+> Session runner: `tools/autonomous-factory/src/session-runner.ts` (~950 lines)
+> Supporting modules: `preflight.ts`, `reporting.ts`, `auto-skip.ts`, `context-injection.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
@@ -67,18 +69,20 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant W as watchdog.ts
+    participant SR as session-runner.ts
     participant A as agents.ts
     participant PA as APM Compiled Context
     participant SDK as CopilotClient
     participant MCP as MCP Servers
     participant S as state.ts
 
-    W->>A: getAgentConfig(itemKey, context, compiled)
+    W->>SR: runItemSession(client, item, config, state)
+    SR->>A: getAgentConfig(itemKey, context, compiled)
     A->>PA: compiled.agents[agentKey]
     PA-->>A: { rules, mcp, skills }
     A-->>W: { systemMessage, model, mcpServers }
 
-    W->>SDK: createSession(systemMessage, mcpServers)
+    SR->>SDK: createSession(systemMessage, mcpServers)
     activate SDK
 
     Note over SDK: Event Listeners Active
@@ -93,15 +97,15 @@ sequenceDiagram
     end
 
     alt Session Completes
-        SDK-->>W: session.complete
-        W->>S: completeItem(slug, key)
+        SDK-->>SR: session.complete
+        SR->>S: completeItem(slug, key)
     else Session Fails
-        SDK-->>W: session.error / timeout
-        W->>S: failItem(slug, key, message)
+        SDK-->>SR: session.error / timeout
+        SR->>S: failItem(slug, key, message)
     end
     deactivate SDK
 
-    W->>W: Record ItemSummary<br/>(intents, files, tools, duration)
+    SR->>SR: Record ItemSummary<br/>(intents, files, tools, duration)
 ```
 
 ---
@@ -110,7 +114,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Running: runItemSession()
+    [*] --> Running: runItemSession()\nin session-runner.ts
 
     Running --> Completed: session completes
     Running --> Failed: session error/timeout
@@ -249,20 +253,30 @@ classDiagram
 
 ## Key Functions Reference
 
-| Function | Purpose | Called By |
-|----------|---------|----------|
-| `main()` | Entry point — init, pre-flight, Phase 0, main loop | CLI |
-| `runItemSession()` | Execute one pipeline item in a Copilot SDK session | Main loop |
-| `triageFailure()` | Keyword/structured routing of post-deploy and CI failures to dev items | Main loop |
-| `getTimeout()` | Session timeout by item type | `runItemSession()` |
-| `getAutoSkipBaseRef()` | Git ref for change detection (auto-skip optimization) | Main loop |
-| `getGitChangedFiles()` | Files changed since a git ref via `git diff --name-only` | Auto-skip |
-| `writePipelineSummary()` | Generate `_SUMMARY.md` | Post-loop |
-| `writeTerminalLog()` | Generate `_TERMINAL-LOG.md` | Post-loop |
-| `writePlaywrightLog()` | Generate `_PLAYWRIGHT-LOG.md` | Post-loop |
-| `archiveFeatureFiles()` | Move `in-progress/` → `archive/features/slug/` | After create-pr |
-| `effectiveDevAttempts` | `Math.max(attemptCounts[key], persistedCycleCount)` — unified attempt counter resilient to orchestrator restarts | `runItemSession()` |
-| `circuitBreakerBypassed` | One-time bypass set for DEV items — defers circuit breaker so the clean-slate revert warning can fire | `runItemSession()` |
+| Function | Module | Purpose | Called By |
+|----------|--------|---------|----------|
+| `main()` | watchdog.ts | Entry point — init, pre-flight, Phase 0, main loop | CLI |
+| `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After create-pr |
+| `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
+| `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
+| `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
+| `getTimeout()` | session-runner.ts | Session timeout by item type | `runAgentSession()` |
+| `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
+| `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |
+| `checkInProgressArtifacts()` | preflight.ts | Check for stale artifacts from previous runs | `main()` |
+| `checkAzureAuth()` | preflight.ts | Verify Azure CLI auth before pipeline start | `main()` |
+| `buildRoamIndex()` | preflight.ts | Phase 0 semantic graph build | `main()` |
+| `getAutoSkipBaseRef()` | auto-skip.ts | Git ref for change detection (auto-skip optimization) | `tryAutoSkip()` |
+| `getGitChangedFiles()` | auto-skip.ts | Files changed since a git ref via `git diff --name-only` | Auto-skip |
+| `buildRetryContext()` | context-injection.ts | Prompt augmentation for retry attempts | `runAgentSession()` |
+| `buildDownstreamFailureContext()` | context-injection.ts | Inject post-deploy errors into dev agent prompts | `runAgentSession()` |
+| `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | `runAgentSession()` |
+| `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runAgentSession()` |
+| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-expert | `runAgentSession()` |
+| `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` | `flushReports()` |
+| `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` | `flushReports()` |
+| `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
+| `triageFailure()` | triage.ts | Keyword/structured routing of post-deploy failures to dev items | `handleFailureReroute()` |
 
 ---
 
