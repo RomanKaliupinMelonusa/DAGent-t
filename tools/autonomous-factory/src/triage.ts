@@ -4,10 +4,11 @@
  * Determines which dev items need to be reset when a post-deploy agent
  * (live-ui, integration-test) reports a failure.
  *
- * Primary path:  Agent outputs a JSON `TriageDiagnostic` — `fault_domain`
- *                drives deterministic routing.
- * Fallback path: Plain-text message — legacy keyword matching preserved
- *                for SDK-level crashes the agent cannot instrument.
+ * Routing tiers (evaluated in order):
+ *   1. Unfixable error detection → immediate pipeline halt ("blocked")
+ *   2. Agent-emitted JSON `TriageDiagnostic` → deterministic fault_domain
+ *   3. CI metadata `DOMAIN:` header → deterministic job-based routing
+ *   4. Legacy keyword matching → fallback for SDK crashes
  *
  * The LLM classifies the error; the DAG state machine controls execution.
  */
@@ -16,8 +17,38 @@ import { TriageDiagnosticSchema } from "./types.js";
 import type { FaultDomain, TriageDiagnostic } from "./types.js";
 
 // ---------------------------------------------------------------------------
+// Unfixable error signals — no agent can fix these
+// ---------------------------------------------------------------------------
+
+const UNFIXABLE_SIGNALS = [
+  // Azure AD/Entra specific error codes — definitively non-code-fixable
+  "authorization_requestdenied",
+  "aadsts700016",
+  "aadsts7000215",
+  "application.readwrite",
+  // Azure resource-level permission errors
+  "insufficient privileges",
+  "does not have authorization",
+  // Azure resource existence errors
+  "subscription not found",
+  "resource group not found",
+] as const;
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Check whether an error contains signals that no agent can fix.
+ * Returns the matching signal reason, or `null` if fixable.
+ */
+export function isUnfixableError(errorMessage: string): string | null {
+  const msg = errorMessage.toLowerCase();
+  for (const signal of UNFIXABLE_SIGNALS) {
+    if (msg.includes(signal)) return signal;
+  }
+  return null;
+}
 
 /**
  * Examine the failure message from a post-deploy item and determine which
@@ -26,6 +57,9 @@ import type { FaultDomain, TriageDiagnostic } from "./types.js";
  * Filters out items that are N/A for this workflow type.
  * Returns the item keys to pass to `resetForDev` (deploy items are added
  * automatically by the state machine).
+ *
+ * Returns an empty array `[]` when the error is unfixable ("blocked") —
+ * the caller must halt the pipeline immediately.
  */
 export function triageFailure(
   itemKey: string,
@@ -33,15 +67,36 @@ export function triageFailure(
   naItems: Set<string>,
   directories?: Record<string, string | null>,
 ): string[] {
-  // --- Primary path: structured JSON contract ---
+  // --- Tier 0: Unfixable error detection → immediate halt ---
+  const unfixableReason = isUnfixableError(errorMessage);
+  if (unfixableReason) {
+    console.log(`  🛑 Unfixable error detected: "${unfixableReason}" — pipeline must halt`);
+    return [];
+  }
+
+  // --- Tier 1: structured JSON contract (agent-emitted) ---
   const diagnostic = parseTriageDiagnostic(errorMessage);
   if (diagnostic) {
     console.log(`  🎯 Structured triage: fault_domain=${diagnostic.fault_domain}`);
     return applyFaultDomain(diagnostic.fault_domain, itemKey, naItems);
   }
 
-  // --- Fallback path: legacy keyword matching (SDK crashes, malformed output) ---
-  console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON found)");
+  // --- Tier 2: CI metadata DOMAIN: header (from poll-ci.sh) ---
+  const headerResult = parseDomainHeader(errorMessage);
+  if (headerResult) {
+    if (headerResult.hasSchemas) {
+      // Schema failures cascade to schema-dev + all downstream dev/test items.
+      // applyFaultDomain("both") would miss schema-dev, so expand explicitly.
+      console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain} (schema cascade)`);
+      const keys = ["schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", itemKey];
+      return keys.filter((k) => !naItems.has(k));
+    }
+    console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain}`);
+    return applyFaultDomain(headerResult.domain, itemKey, naItems);
+  }
+
+  // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
+  console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON or DOMAIN header found)");
   return triageByKeywords(itemKey, errorMessage, naItems, directories);
 }
 
@@ -59,6 +114,42 @@ export function parseTriageDiagnostic(message: string): TriageDiagnostic | null 
 
   const result = TriageDiagnosticSchema.safeParse(parsed);
   return result.success ? result.data : null;
+}
+
+/**
+ * Parse the `DOMAIN:` header from the first line of a CI diagnostic file.
+ * Returns a routing result if the header is present and maps to known domains,
+ * or `null` if the header is absent, empty, or maps to "unknown".
+ *
+ * Format: `DOMAIN: backend,frontend` (comma-separated domains)
+ * Mapping:
+ *   - "backend"            → { domain: "backend", hasSchemas: false }
+ *   - "frontend"           → { domain: "frontend", hasSchemas: false }
+ *   - "backend,frontend"   → { domain: "both", hasSchemas: false }
+ *   - "schemas"            → { domain: "both", hasSchemas: true }
+ *   - "schemas,backend"    → { domain: "both", hasSchemas: true }
+ *   - "unknown"            → null (fall through to keyword matching)
+ */
+export function parseDomainHeader(message: string): { domain: FaultDomain; hasSchemas: boolean } | null {
+  const firstLine = message.split("\n")[0]?.trim() ?? "";
+  const match = /^DOMAIN:\s*(.+)$/i.exec(firstLine);
+  if (!match) return null;
+
+  const domains = match[1].split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+  if (domains.length === 0 || domains.includes("unknown")) return null;
+
+  const hasBackend = domains.includes("backend");
+  const hasFrontend = domains.includes("frontend");
+  const hasSchemas = domains.includes("schemas");
+
+  // Schemas cascade to all downstream
+  if (hasSchemas) return { domain: "both", hasSchemas: true };
+  if (hasBackend && hasFrontend) return { domain: "both", hasSchemas: false };
+  if (hasBackend) return { domain: "backend", hasSchemas: false };
+  if (hasFrontend) return { domain: "frontend", hasSchemas: false };
+
+  // Unrecognized domain tags → fall through to keyword matching
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +221,9 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       // deploy-manager agent which has the correct commit scope for .github/
       resetKeys.push("push-code", "poll-ci");
       break;
+    case "blocked":
+      // Unfixable error — no items to reset, pipeline must halt.
+      return [];
     case "environment":
       // Not a code bug — only reset the post-deploy item itself.
       return [itemKey].filter((k) => !naItems.has(k));
@@ -153,15 +247,16 @@ function triageByKeywords(
   const resetKeys: string[] = [];
 
   // Environment / auth signals — NOT code bugs, redevelopment won't help.
+  // NOTE: Hard IAM blocks (authorization_requestdenied, insufficient privileges,
+  // does not have authorization) are intercepted earlier by Tier 0 (isUnfixableError)
+  // and never reach this function. The signals below are soft auth failures that
+  // can resolve on retry (e.g., token expiry, credential refresh).
   const envSignals = [
     "az login", "credentials", "auth not available", "not authenticated",
     "no credentials", "login required", "identity not found",
     "managed identity", "devcontainer", "defaultazurecredential",
     "interactive login", "device code",
-    // Azure IAM permission errors (non-code-fixable)
-    "authorization_requestdenied", "application.readwrite",
-    "does not have authorization",
-    "insufficient privileges", "access is denied",
+    "access is denied",
     // CI poll timeout — defense-in-depth safety net. Exit codes 2/3 are
     // intercepted at the session-runner boundary before triage runs, but
     // if it leaks through, this prevents misrouting as a code bug.

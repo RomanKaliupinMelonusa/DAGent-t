@@ -158,13 +158,13 @@ ${apmContext.agents["backend-dev"].rules}
 5. Implement the backend logic and/or infrastructure changes following the patterns above.
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
 7. Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` to verify tests pass.
-8. If you created or modified integration tests, verify they compile: \`cd ${ctx.appRoot}/backend && npx tsc --noEmit\`.
-9. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
+8. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
    - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
+9. **Local Quality Gate (MANDATORY):** Run \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. Both type-check and lint must pass with zero errors before committing. If either fails, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
 10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
-10. If tests fail and you cannot fix after 2 attempts, record the failure.
+11. If tests fail and you cannot fix after 2 attempts, record the failure.
 
 ## Documentation Handoff
 
@@ -389,15 +389,16 @@ ${apmContext.agents["frontend-dev"].rules}
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
 7. Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` to verify tests pass.
 8. **Run full Next.js build** to catch type errors that \`tsc --noEmit\` may miss: \`cd ${ctx.appRoot}/frontend && npx next build 2>&1 | tail -30\`. Fix any TypeScript errors before proceeding.
-9. **Write or update Playwright E2E tests** in \`${ctx.appRoot}/e2e/\` for the feature's UI workflow. This is mandatory.
-10. Verify E2E tests compile: \`npx playwright test --config ${ctx.appRoot}/playwright.config.ts --list\`.
-11. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
+9. **Local Quality Gate (MANDATORY):** Run \`cd ${ctx.appRoot}/frontend && npm run lint\`. Lint must pass with zero errors before proceeding. (The Next.js build in step 8 already covers type-checking.) This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
+10. **Write or update Playwright E2E tests** in \`${ctx.appRoot}/e2e/\` for the feature's UI workflow. This is mandatory.
+11. Verify E2E tests compile: \`npx playwright test --config ${ctx.appRoot}/playwright.config.ts --list\`.
+12. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
    - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
-12. Verify lockfile is in sync: \`cd ${ctx.repoRoot} && npm ci --ignore-scripts 2>&1 | tail -5\`. If it fails, run \`npm install --ignore-scripts\`.
-13. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"${ctx.commitScopes?.frontend ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
-14. If tests fail and you cannot fix after 2 attempts, record the failure.
+13. Verify lockfile is in sync: \`cd ${ctx.repoRoot} && npm ci --ignore-scripts 2>&1 | tail -5\`. If it fails, run \`npm install --ignore-scripts\`.
+14. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"${ctx.commitScopes?.frontend ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
+15. If tests fail and you cannot fix after 2 attempts, record the failure.
 
 ## Documentation Handoff
 
@@ -1196,7 +1197,8 @@ You do NOT modify:
    - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
-9. Commit: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(schemas): <description>"\`
+9. **Local Quality Gate (MANDATORY):** Run \`cd ${ctx.appRoot}/packages/schemas && npm run build && npx jest --verbose\`. Both build and tests must pass with zero errors before committing. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
+10. Commit: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(schemas): <description>"\`
 
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "backend")}`;
 }

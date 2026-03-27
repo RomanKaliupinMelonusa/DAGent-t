@@ -7,7 +7,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { triageFailure, parseTriageDiagnostic } from "../triage.js";
+import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError } from "../triage.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -300,24 +300,26 @@ describe("triageFailure (malformed JSON → keyword fallback)", () => {
 // ---------------------------------------------------------------------------
 
 describe("triageFailure (IAM/permission env signals)", () => {
-  it("routes authorization_requestdenied as environment (keyword fallback)", () => {
+  it("routes authorization_requestdenied as blocked (unfixable — Tier 0)", () => {
     const result = triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA);
-    assert.deepStrictEqual(result, ["poll-ci"]);
+    // Unfixable IAM error → empty array (blocked), not environment retry
+    assert.deepStrictEqual(result, []);
   });
 
-  it("routes insufficient privileges as environment (keyword fallback)", () => {
+  it("routes insufficient privileges as blocked (unfixable — Tier 0)", () => {
     const result = triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA);
-    assert.deepStrictEqual(result, ["poll-ci"]);
+    // "Insufficient privileges" is an unfixable signal
+    assert.deepStrictEqual(result, []);
   });
 
-  it("routes 'access is denied' as environment (keyword fallback)", () => {
-    const result = triageFailure("integration-test", "Access is denied: service principal lacks permissions", NO_NA);
-    assert.deepStrictEqual(result, ["integration-test"]);
+  it("routes 'does not have authorization' as blocked (unfixable — Tier 0)", () => {
+    const result = triageFailure("integration-test", "Principal does not have authorization to perform this action", NO_NA);
+    assert.deepStrictEqual(result, []);
   });
 
-  it("does NOT route CORS 403 as environment (should route as backend)", () => {
+  it("does NOT route CORS 403 as unfixable (should route as backend)", () => {
     const result = triageFailure("live-ui", "CORS error: 403 Forbidden on OPTIONS /api/endpoint", NO_NA);
-    // Should NOT classify as environment — should match backend signals (cors, api, endpoint)
+    // CORS 403 is fixable (code/infra issue) — should match backend signals (cors, api, endpoint)
     assert.ok(result.includes("backend-dev"), `Expected backend-dev in: ${result}`);
     assert.ok(!result.every(k => k === "live-ui"), "Should not be environment-only");
   });
@@ -512,5 +514,219 @@ describe("triageFailure (triage poisoning regression)", () => {
     // Should NOT return just ["poll-ci"] (the old broken behavior)
     assert.ok(keys.length > 1, `Expected reset-everything, got: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseDomainHeader — CI metadata routing (Phase 1)
+// ---------------------------------------------------------------------------
+
+describe("parseDomainHeader", () => {
+  it("parses DOMAIN: backend", () => {
+    const result = parseDomainHeader("DOMAIN: backend\n── Run 123 ──\nsome logs");
+    assert.deepStrictEqual(result, { domain: "backend", hasSchemas: false });
+  });
+
+  it("parses DOMAIN: frontend", () => {
+    const result = parseDomainHeader("DOMAIN: frontend\nCI error logs here");
+    assert.deepStrictEqual(result, { domain: "frontend", hasSchemas: false });
+  });
+
+  it("parses DOMAIN: backend,frontend as both", () => {
+    const result = parseDomainHeader("DOMAIN: backend,frontend\nlogs");
+    assert.deepStrictEqual(result, { domain: "both", hasSchemas: false });
+  });
+
+  it("parses DOMAIN: schemas with hasSchemas flag", () => {
+    const result = parseDomainHeader("DOMAIN: schemas\nlogs");
+    assert.deepStrictEqual(result, { domain: "both", hasSchemas: true });
+  });
+
+  it("parses DOMAIN: schemas,backend with hasSchemas flag", () => {
+    const result = parseDomainHeader("DOMAIN: schemas,backend\nlogs");
+    assert.deepStrictEqual(result, { domain: "both", hasSchemas: true });
+  });
+
+  it("returns null for DOMAIN: unknown", () => {
+    assert.equal(parseDomainHeader("DOMAIN: unknown\nlogs"), null);
+  });
+
+  it("returns null when no DOMAIN: header present", () => {
+    assert.equal(parseDomainHeader("── Run 123 ──\nBackend error logs"), null);
+  });
+
+  it("returns null for empty message", () => {
+    assert.equal(parseDomainHeader(""), null);
+  });
+
+  it("is case-insensitive for DOMAIN: prefix", () => {
+    const result = parseDomainHeader("domain: backend\nlogs");
+    assert.deepStrictEqual(result, { domain: "backend", hasSchemas: false });
+  });
+
+  it("handles whitespace in domain values", () => {
+    const result = parseDomainHeader("DOMAIN:  backend , frontend \nlogs");
+    assert.deepStrictEqual(result, { domain: "both", hasSchemas: false });
+  });
+});
+
+describe("triageFailure with DOMAIN: header (Tier 2)", () => {
+  it("DOMAIN: backend routes to backend-dev + backend-unit-test", () => {
+    const msg = "DOMAIN: backend\n── Run 123 ──\nerror TS2591: Cannot find name 'crypto'";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    assert.ok(keys.includes("backend-unit-test"), `Expected backend-unit-test in: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
+    // Must NOT include frontend items
+    assert.ok(!keys.includes("frontend-dev"), `Unexpected frontend-dev in: ${keys}`);
+  });
+
+  it("DOMAIN: frontend routes to frontend-dev + frontend-unit-test", () => {
+    const msg = "DOMAIN: frontend\n── Run 123 ──\nESLint error in component";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
+    assert.ok(keys.includes("frontend-unit-test"), `Expected frontend-unit-test in: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
+    assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
+  });
+
+  it("DOMAIN: backend,frontend routes to all dev+test items", () => {
+    const msg = "DOMAIN: backend,frontend\n── Run 123 ──\nmixed errors";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("backend-dev"));
+    assert.ok(keys.includes("backend-unit-test"));
+    assert.ok(keys.includes("frontend-dev"));
+    assert.ok(keys.includes("frontend-unit-test"));
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("DOMAIN: schemas cascades to schema-dev + all downstream", () => {
+    const msg = "DOMAIN: schemas\n── Run 123 ──\nschema build error";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("DOMAIN: unknown falls through to keyword matching", () => {
+    // "unknown" should NOT be treated as a domain — fall through.
+    // The keyword "backend" in the logs should route to backend.
+    const msg = "DOMAIN: unknown\n── Run 123 ──\n/backend/ error TS2591";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("backend-dev"), `Expected keyword fallback to find backend: ${keys}`);
+  });
+
+  it("no DOMAIN: header falls through to keyword matching (backward compat)", () => {
+    const msg = "── Run 123 ──\nerror TS2591 in /backend/src/functions/fn-demo.ts";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.includes("backend-dev"), `Expected keyword fallback to find backend: ${keys}`);
+  });
+
+  it("structured JSON takes priority over DOMAIN: header", () => {
+    // If the message is valid JSON, tier 1 (JSON) should win over tier 2 (DOMAIN:)
+    const jsonMsg = makeJsonMsg("frontend", "Element not found");
+    const keys = triageFailure("poll-ci", jsonMsg, NO_NA);
+    assert.ok(keys.includes("frontend-dev"));
+    assert.ok(!keys.includes("backend-dev"));
+  });
+
+  it("DOMAIN: header respects N/A filtering", () => {
+    const msg = "DOMAIN: backend\nlogs";
+    const naItems = new Set(["backend-unit-test"]);
+    const keys = triageFailure("poll-ci", msg, naItems);
+    assert.ok(keys.includes("backend-dev"));
+    assert.ok(!keys.includes("backend-unit-test"), `backend-unit-test should be filtered (N/A)`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isUnfixableError — Fatal fast-fail circuit breaker (Phase 3)
+// ---------------------------------------------------------------------------
+
+describe("isUnfixableError", () => {
+  it("detects Insufficient privileges", () => {
+    assert.equal(isUnfixableError("Error: Insufficient privileges to perform operation"), "insufficient privileges");
+  });
+
+  it("detects Authorization_RequestDenied", () => {
+    assert.equal(isUnfixableError("Authorization_RequestDenied: Caller does not have permission"), "authorization_requestdenied");
+  });
+
+  it("detects AADSTS700016", () => {
+    assert.equal(isUnfixableError("AADSTS700016: Application not found in tenant"), "aadsts700016");
+  });
+
+  it("detects AADSTS7000215", () => {
+    assert.equal(isUnfixableError("AADSTS7000215: Invalid client secret provided"), "aadsts7000215");
+  });
+
+  it("detects 'does not have authorization'", () => {
+    assert.equal(isUnfixableError("Principal does not have authorization to perform action"), "does not have authorization");
+  });
+
+  it("detects 'subscription not found'", () => {
+    assert.equal(isUnfixableError("The subscription '...' could not be found — subscription not found"), "subscription not found");
+  });
+
+  it("detects 'resource group not found'", () => {
+    assert.equal(isUnfixableError("Resource group not found: rg-sample-dev"), "resource group not found");
+  });
+
+  it("returns null for fixable errors", () => {
+    assert.equal(isUnfixableError("error TS2591: Cannot find name 'crypto'"), null);
+  });
+
+  it("returns null for empty message", () => {
+    assert.equal(isUnfixableError(""), null);
+  });
+
+  it("returns null for CORS 403 (fixable — not IAM)", () => {
+    assert.equal(isUnfixableError("CORS error: 403 Forbidden on OPTIONS /api/endpoint"), null);
+  });
+
+  it("is case-insensitive", () => {
+    assert.equal(isUnfixableError("AUTHORIZATION_REQUESTDENIED: no permission"), "authorization_requestdenied");
+  });
+});
+
+describe("triageFailure with unfixable errors (Tier 0)", () => {
+  it("returns empty array for Authorization_RequestDenied (blocked)", () => {
+    const msg = "Authorization_RequestDenied: cannot access resource";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("returns empty array for Authorization_RequestDenied even with backend keywords", () => {
+    // The error mentions "backend" and "API", but unfixable takes priority
+    const msg = "Authorization_RequestDenied: Backend API principal does not have permission";
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("returns empty array for subscription not found", () => {
+    const msg = "Error: subscription not found — check Azure portal configuration";
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("structured JSON 'blocked' domain returns empty array", () => {
+    const msg = makeJsonMsg("blocked", "IAM error — platform team must fix");
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("CORS 403 is NOT unfixable (routes normally to backend)", () => {
+    const msg = "CORS error: 403 Forbidden on OPTIONS /api/endpoint";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
+    assert.ok(keys.includes("backend-dev"));
+  });
+
+  it("fixable errors still route normally (not blocked)", () => {
+    const msg = "error TS2591: Cannot find name 'crypto' in /backend/src/functions/fn-demo.ts";
+    const keys = triageFailure("poll-ci", msg, NO_NA);
+    assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
+    assert.ok(keys.includes("backend-dev"));
   });
 });

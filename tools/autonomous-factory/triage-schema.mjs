@@ -19,7 +19,7 @@ import { z } from "zod";
  */
 export const TriageDiagnosticSchema = z.object({
   /** Which domain owns the bug — drives the reset-key selection. */
-  fault_domain: z.enum(["backend", "frontend", "both", "environment", "frontend+infra", "backend+infra", "cicd"]),
+  fault_domain: z.enum(["backend", "frontend", "both", "environment", "frontend+infra", "backend+infra", "cicd", "blocked"]),
 
   /** Human-readable trace: stack traces, URLs, status codes, App Insights output. */
   diagnostic_trace: z.string().min(1),

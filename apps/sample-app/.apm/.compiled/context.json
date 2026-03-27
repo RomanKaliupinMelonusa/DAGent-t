@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-03-27T03:11:33.553Z",
+  "compiledAt": "2026-03-27T20:56:32.044Z",
   "tokenBudget": 6000,
   "agents": {
     "schema-dev": {
@@ -238,6 +238,12 @@
       "backendUnit": "cd {appRoot}/backend && npx jest --verbose",
       "frontendUnit": "cd {appRoot}/frontend && npx jest --verbose",
       "integration": "cd {appRoot}/backend && npm run test:integration"
+    },
+    "ciJobs": {
+      "backend": "Backend",
+      "frontend": "Frontend",
+      "schemas": "Schemas",
+      "infra": "Terraform"
     }
   }
 }

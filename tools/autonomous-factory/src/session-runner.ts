@@ -501,7 +501,21 @@ async function runPollCi(
       cwd: repoRoot, stdio: "pipe",
       maxBuffer: 5 * 1024 * 1024,  // 5MB — prevent ENOBUFS from verbose gh CLI JSON
       timeout: 1_200_000,  // 20 min max for CI to complete
-      env: { ...process.env, POLL_MAX_RETRIES: "60", IN_PROGRESS_DIR: inProgressDir, SLUG: slug },
+      env: {
+        ...process.env,
+        POLL_MAX_RETRIES: "60",
+        IN_PROGRESS_DIR: inProgressDir,
+        SLUG: slug,
+        // Pass APM ciJobs config as flattened env vars (Bash-friendly)
+        ...(config.apmContext.config?.ciJobs
+          ? {
+              CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,
+              CI_JOB_MATCH_FRONTEND: (config.apmContext.config.ciJobs as Record<string, string>).frontend,
+              CI_JOB_MATCH_SCHEMAS: (config.apmContext.config.ciJobs as Record<string, string>).schemas,
+              CI_JOB_MATCH_INFRA: (config.apmContext.config.ciJobs as Record<string, string>).infra,
+            }
+          : {}),
+      },
     });
 
     // Re-echo stdout for terminal visibility (pipe suppresses live output)
@@ -824,6 +838,14 @@ async function handleFailureReroute(
   );
   const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
   const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
+
+  // Empty array = unfixable error ("blocked" fault domain) — halt immediately
+  if (resetKeys.length === 0) {
+    console.error(`\n  🛑 BLOCKED: Unfixable error detected in ${itemKey} — escalating to human.`);
+    console.error(`     The pipeline cannot fix this error. A Platform Engineer must intervene.`);
+    try { await failItem(slug, itemKey, `BLOCKED: Unfixable error — ${errorMsg}`); } catch { /* best-effort */ }
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
