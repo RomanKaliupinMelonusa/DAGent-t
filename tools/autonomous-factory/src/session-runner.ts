@@ -532,17 +532,18 @@ async function runPollCi(
 
     const message = execErr.message ?? String(err);
 
-    // ── Exit code 2: CI poll timeout — NOT a code bug ─────────────────
+    // ── Exit code 2 (timeout) / 3 (cancellation) — NOT code bugs ─────
     // Intercept at the boundary before triage ever sees the output.
     // failItem() is sufficient — getNextAvailable() picks up "failed"
     // items, so the main loop will retry poll-ci on the next iteration.
     // After 10 cumulative failures the pipeline halts (correct for
-    // persistent infrastructure slowness).
-    if (execErr.status === 2) {
-      console.warn("  ⏳ CI polling timed out (exit 2). Will retry on next loop.");
-      await failItem(slug, "poll-ci", "CI polling timed out — will retry");
+    // persistent infrastructure slowness or repeated cancellations).
+    if (execErr.status === 2 || execErr.status === 3) {
+      const reason = execErr.status === 2 ? "timed out" : "was manually cancelled";
+      console.warn(`  ⏳ CI polling ${reason}. Will retry on next loop.`);
+      await failItem(slug, "poll-ci", `CI polling ${reason} — will retry`);
       itemSummary.outcome = "failed";
-      itemSummary.errorMessage = "CI polling timed out — will retry";
+      itemSummary.errorMessage = `CI polling ${reason} — will retry`;
       itemSummary.finishedAt = new Date().toISOString();
       itemSummary.durationMs = Date.now() - stepStart;
       pipelineSummaries.push(itemSummary);
@@ -556,8 +557,8 @@ async function runPollCi(
     // Read the pure CI failure content from the diagnostic file written
     // by poll-ci.sh (exit 1 path). This is completely free of polling
     // status noise ("CI is still running..."). Fall back to stdout
-    // capture only if the file doesn't exist (script crash, manual
-    // cancellation — handled by CI_RUN_CANCELLED_MANUALLY envSignal).
+    // capture only if the file doesn't exist (script crash edge case —
+    // cancellations are intercepted above via exit code 3).
     let failureContext: string;
     try {
       const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
@@ -821,7 +822,8 @@ async function handleFailureReroute(
   const naItems = new Set(
     pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
   );
-  const resetKeys = triageFailure(itemKey, rawError, naItems);
+  const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);

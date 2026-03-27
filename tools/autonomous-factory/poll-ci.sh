@@ -6,6 +6,7 @@
 #   0  — All workflows completed successfully.
 #   1  — One or more workflows failed (CI build errors).
 #   2  — CI still running after max retries (agent should yield to human).
+#   3  — One or more workflows were manually cancelled.
 #
 # Environment variables:
 #   POLL_MAX_RETRIES  — Max polling iterations (default: 10)
@@ -97,13 +98,12 @@ while true; do
       done
       exit 1
     fi
-    # Cancelled runs: do NOT write a diagnostic file — not a code bug.
-    # The orchestrator will fall back to stdout and the CI_RUN_CANCELLED_MANUALLY
-    # env signal in triage.ts will route it correctly.
+    # Cancelled runs: exit 3 — not a code bug, no diagnostic file.
+    # The orchestrator intercepts exit 3 at the boundary (same as exit 2)
+    # and never routes it through triage.
     if [ "$HAS_CANCELLED" -eq 1 ]; then
       echo "❌ ERROR: One or more CI workflows were manually cancelled."
-      echo "CI_RUN_CANCELLED_MANUALLY"
-      exit 1
+      exit 3
     fi
     # Success: clean up any prior diagnostic file from a previous failed cycle
     if [ -n "$DIAG_FILE" ] && [ -f "$DIAG_FILE" ]; then

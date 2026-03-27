@@ -27,7 +27,12 @@ import type { FaultDomain, TriageDiagnostic } from "./types.js";
  * Returns the item keys to pass to `resetForDev` (deploy items are added
  * automatically by the state machine).
  */
-export function triageFailure(itemKey: string, errorMessage: string, naItems: Set<string>): string[] {
+export function triageFailure(
+  itemKey: string,
+  errorMessage: string,
+  naItems: Set<string>,
+  directories?: Record<string, string | null>,
+): string[] {
   // --- Primary path: structured JSON contract ---
   const diagnostic = parseTriageDiagnostic(errorMessage);
   if (diagnostic) {
@@ -37,7 +42,7 @@ export function triageFailure(itemKey: string, errorMessage: string, naItems: Se
 
   // --- Fallback path: legacy keyword matching (SDK crashes, malformed output) ---
   console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON found)");
-  return triageByKeywords(itemKey, errorMessage, naItems);
+  return triageByKeywords(itemKey, errorMessage, naItems, directories);
 }
 
 /**
@@ -59,6 +64,44 @@ export function parseTriageDiagnostic(message: string): TriageDiagnostic | null 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/** Default directory-path signals used when no APM directories config is provided */
+const DEFAULT_DIR_SIGNALS: { backend: string[]; frontend: string[] } = {
+  backend: ["/backend/"],
+  frontend: ["/frontend/", "/e2e/"],
+};
+
+/**
+ * Build directory-path triage signals from APM config.directories.
+ * Maps APM directory keys to triage domains:
+ *   - backend, infra → backend domain
+ *   - frontend, e2e → frontend domain
+ * Schemas are intentionally excluded — handled by schemaSignals which
+ * correctly cascades to ALL downstream (not just one domain).
+ */
+function buildDirectoryPathSignals(
+  directories?: Record<string, string | null>,
+): { backend: string[]; frontend: string[] } {
+  if (!directories) return DEFAULT_DIR_SIGNALS;
+
+  const backendKeys = ["backend", "infra"];
+  const frontendKeys = ["frontend", "e2e"];
+
+  const toPatterns = (keys: string[]): string[] =>
+    keys
+      .map((k) => directories[k])
+      .filter((v): v is string => v != null && v.length > 0)
+      .map((v) => `/${v}/`);
+
+  const backend = toPatterns(backendKeys);
+  const frontend = toPatterns(frontendKeys);
+
+  // Fall back to defaults if APM config yields empty arrays (misconfigured manifest)
+  return {
+    backend: backend.length > 0 ? backend : DEFAULT_DIR_SIGNALS.backend,
+    frontend: frontend.length > 0 ? frontend : DEFAULT_DIR_SIGNALS.frontend,
+  };
+}
 
 /**
  * Map a validated `FaultDomain` to the set of pipeline item keys that need reset.
@@ -100,7 +143,12 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
  * Legacy keyword-based triage preserved as a fallback for unstructured error
  * messages (e.g. SDK session crashes the agent cannot instrument).
  */
-function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<string>): string[] {
+function triageByKeywords(
+  itemKey: string,
+  errorMessage: string,
+  naItems: Set<string>,
+  directories?: Record<string, string | null>,
+): string[] {
   const msg = errorMessage.toLowerCase();
   const resetKeys: string[] = [];
 
@@ -114,14 +162,12 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
     "authorization_requestdenied", "application.readwrite",
     "does not have authorization",
     "insufficient privileges", "access is denied",
-    // CI poll timeout — defense-in-depth safety net. Exit code 2 is
+    // CI poll timeout — defense-in-depth safety net. Exit codes 2/3 are
     // intercepted at the session-runner boundary before triage runs, but
     // if it leaks through, this prevents misrouting as a code bug.
     // NOTE: "ci is still running" was removed — it contaminated triage
     // when poll-ci stdout mixed polling status with real CI error logs.
     "exiting poll to prevent",
-    // Manually cancelled CI runs — not a code bug, pipeline should pause
-    "ci_run_cancelled_manually",
   ];
 
   if (envSignals.some((s) => msg.includes(s))) {
@@ -157,12 +203,9 @@ function triageByKeywords(itemKey: string, errorMessage: string, naItems: Set<st
   // Directory-path signals — CI-provider agnostic. Compilers, linters, and
   // test runners universally include file paths in error output. These catch
   // CI build errors that runtime keywords ("500", "CORS") miss.
-  // Note: /packages/schemas/ is intentionally NOT here — it's handled by
-  // schemaSignals which correctly cascades to ALL downstream (not just backend).
-  const directoryPathSignals = {
-    backend: ["/backend/"],
-    frontend: ["/frontend/", "/e2e/"],
-  };
+  // Dynamically built from APM config.directories when available; falls back
+  // to hardcoded defaults for apps without APM manifests.
+  const directoryPathSignals = buildDirectoryPathSignals(directories);
 
   const hasBackend = backendSignals.some((s) => msg.includes(s))
     || directoryPathSignals.backend.some((s) => msg.includes(s));

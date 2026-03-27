@@ -197,8 +197,14 @@ describe("triageFailure (keyword fallback)", () => {
   });
 
   it("manually cancelled CI run → only resets itemKey (not a code bug)", () => {
-    const keys = triageFailure("poll-ci", "❌ ERROR: One or more CI workflows were manually cancelled.\nCI_RUN_CANCELLED_MANUALLY", NO_NA);
-    assert.deepStrictEqual(keys, ["poll-ci"]);
+    // With exit code 3, cancellation is intercepted at the session-runner
+    // boundary and never reaches triage. This test verifies that even if
+    // the cancellation message leaks through, it falls to reset-everything
+    // (safe default) rather than misrouting as environment.
+    const keys = triageFailure("poll-ci", "\u274c ERROR: One or more CI workflows were manually cancelled.", NO_NA);
+    // No envSignal match → reset everything (safe default)
+    assert.ok(keys.length > 1, `Expected reset-everything, got: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
   });
 
   it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
@@ -346,7 +352,8 @@ describe("triageFailure (compound fault domains)", () => {
 // triageFailure — directory-path-based CI error routing (Fix: triage poisoning)
 // ---------------------------------------------------------------------------
 
-describe("triageFailure (directory-path routing)", () => {
+describe("triageFailure (directory-path routing)", () => {  // Default APM directories matching sample-app layout
+  const SAMPLE_DIRS = { backend: "backend", frontend: "frontend", infra: "infra", e2e: "e2e" };
   it("backend directory path → routes to backend-dev", () => {
     // Pure CI error content — no polling noise (file-based diagnostic handoff)
     const ciLog = [
@@ -355,7 +362,7 @@ describe("triageFailure (directory-path routing)", () => {
       "Backend — Lint, Test & Build\tType-check (tsc --noEmit)\t##[error]Process completed with exit code 2.",
       "── End Run 12345 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("backend-unit-test"), `Expected backend-unit-test in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -368,7 +375,7 @@ describe("triageFailure (directory-path routing)", () => {
       "Frontend — Lint, Test & Build\tLint\tESLint couldn't find an eslint.config file.",
       "── End Run 12345 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-unit-test"), `Expected frontend-unit-test in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -383,7 +390,7 @@ describe("triageFailure (directory-path routing)", () => {
       "Frontend — Lint, Test & Build\tLint\tnpm error path /apps/sample-app/frontend",
       "── End Run 67890 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -391,7 +398,7 @@ describe("triageFailure (directory-path routing)", () => {
 
   it("no recognizable directory paths → resets everything (safe default)", () => {
     const ciLog = "Some completely opaque error with no file paths at all";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
@@ -400,10 +407,35 @@ describe("triageFailure (directory-path routing)", () => {
 
   it("schema directory path → routes to schema-dev + all downstream", () => {
     const ciLog = "FAIL /packages/schemas/src/__tests__/auth.test.ts";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("frontend-dev"));
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("custom APM directories \u2192 routes using app-specific paths", () => {
+    const customDirs = { backend: "server", frontend: "client", infra: "terraform", e2e: "tests" };
+    // Use a message that only matches via directory path, not runtime keywords
+    const ciLog = "##[error]/server/src/utils.ts(10,5): TS2304: Cannot find name 'foo'.";
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, customDirs);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    assert.ok(!keys.includes("frontend-dev"), `Unexpected frontend-dev in: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("custom APM directories \u2192 frontend path from custom e2e dir", () => {
+    const customDirs = { backend: "api", frontend: "web", infra: "infra", e2e: "integration" };
+    const ciLog = "FAIL /integration/login.spec.ts";
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, customDirs);
+    assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
+    assert.ok(keys.includes("poll-ci"));
+  });
+
+  it("undefined directories \u2192 falls back to hardcoded defaults", () => {
+    const ciLog = "##[error]src/functions/fn-demo-login.ts error in /backend/src";
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, undefined);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
   });
 });
