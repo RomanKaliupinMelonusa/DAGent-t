@@ -536,6 +536,9 @@ async function main(): Promise<void> {
   /** Track attempt number per item key across retries */
   const attemptCounts: Record<string, number> = {};
 
+  /** One-time circuit breaker bypass for DEV items eligible for clean-slate revert */
+  const circuitBreakerBypassed = new Set<string>();
+
   /** Track git commit SHA before each dev step for reliable change detection */
   const preStepRefs: Record<string, string> = {};
 
@@ -548,29 +551,37 @@ async function main(): Promise<void> {
 
     // Circuit breaker: skip if identical error + no code changed since last attempt
     if (attemptCounts[next.key] > 2 && shouldSkipRetry(next.key)) {
-      console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
-      const skipSummary: ItemSummary = {
-        key: next.key,
-        label: next.label,
-        agent: next.agent ?? "unknown",
-        phase: next.phase ?? "unknown",
-        attempt: attemptCounts[next.key],
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        durationMs: 0,
-        outcome: "failed",
-        intents: ["Circuit breaker: identical error, no code changes — skipped"],
-        messages: [],
-        filesRead: [],
-        filesChanged: [],
-        shellCommands: [],
-        toolCounts: {},
-        errorMessage: "Circuit breaker: identical error repeated without code changes",
-      };
-      try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
-      pipelineSummaries.push(skipSummary);
-      writePipelineSummary(slug);
-      return { summary: skipSummary, halt: true, createPr: false };
+      // For DEV items, grant one bypass so the clean-slate revert warning can fire.
+      // The revert wipes ALL feature code (not just the delta between attempts),
+      // so it may resolve the root cause even when shouldSkipRetry sees no change.
+      if (DEV_ITEMS.has(next.key) && !circuitBreakerBypassed.has(next.key)) {
+        console.log(`\n  ⚡ Circuit breaker deferred for ${next.key} — granting clean-slate revert opportunity`);
+        circuitBreakerBypassed.add(next.key);
+      } else {
+        console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
+        const skipSummary: ItemSummary = {
+          key: next.key,
+          label: next.label,
+          agent: next.agent ?? "unknown",
+          phase: next.phase ?? "unknown",
+          attempt: attemptCounts[next.key],
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          durationMs: 0,
+          outcome: "failed",
+          intents: ["Circuit breaker: identical error, no code changes — skipped"],
+          messages: [],
+          filesRead: [],
+          filesChanged: [],
+          shellCommands: [],
+          toolCounts: {},
+          errorMessage: "Circuit breaker: identical error repeated without code changes",
+        };
+        try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
+        pipelineSummaries.push(skipSummary);
+        writePipelineSummary(slug);
+        return { summary: skipSummary, halt: true, createPr: false };
+      }
     }
 
     console.log(
@@ -980,12 +991,26 @@ async function main(): Promise<void> {
       appRoot,
     );
 
+    // Pre-compute effective attempt count for DEV items.
+    // Combines in-memory attemptCounts (resets on orchestrator restart) with
+    // persisted redevelopment cycle count from state (survives restarts).
+    // Used by both the retry context block and the clean-slate revert warning.
+    let effectiveDevAttempts = attemptCounts[next.key];
+    if (DEV_ITEMS.has(next.key)) {
+      try {
+        const pipeState = await readState(slug);
+        const persistedCycles = pipeState.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
+        effectiveDevAttempts = Math.max(attemptCounts[next.key], persistedCycles);
+      } catch { /* best effort — fall back to in-memory count */ }
+    }
+
     // Inject retry context from previous attempt
     if (attemptCounts[next.key] > 1) {
       const prevAttempt = [...pipelineSummaries]
         .reverse()
         .find((s) => s.key === next.key);
       if (prevAttempt) {
+        const atRevertThreshold = DEV_ITEMS.has(next.key) && effectiveDevAttempts >= 3;
         const retryLines = [
           `\n## Previous Attempt Context (attempt ${prevAttempt.attempt})`,
           `The previous session ${prevAttempt.outcome === "error" ? "timed out" : "failed"}: ${prevAttempt.errorMessage ?? "unknown"}`,
@@ -1001,7 +1026,10 @@ async function main(): Promise<void> {
                 .map((s) => `  - ${s.command}`)
                 .join("\n")}`
             : "",
-          `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
+          // When the revert warning will fire, skip incremental advice — the agent should wipe and restart
+          atRevertThreshold
+            ? ""
+            : `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
         ];
         taskPrompt += retryLines.filter(Boolean).join("\n");
         console.log(
@@ -1055,6 +1083,18 @@ async function main(): Promise<void> {
           `  🔗 Injected downstream failure context from ${downstreamFailures.length} post-deploy item(s)${involvesCicd ? " (with CI/CD scope guidance)" : ""}`,
         );
       }
+    }
+
+    // Clean-slate revert warning: if a dev agent has failed 3+ times on the same item,
+    // it is likely stuck in a hallucination loop. Inject explicit guidance to wipe and restart.
+    // Uses the unified effectiveDevAttempts (max of in-memory attempts and persisted cycles).
+    if (DEV_ITEMS.has(next.key) && effectiveDevAttempts >= 3) {
+      taskPrompt += `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
+        + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
+        + `Then, re-explore the codebase and build this feature using a completely different architectural approach.`;
+      console.log(
+        `  🚨 Injected clean-slate revert warning (attempts: ${attemptCounts[next.key]} in-memory, ${effectiveDevAttempts - attemptCounts[next.key] >= 0 ? effectiveDevAttempts - attemptCounts[next.key] : 0} from persisted cycles, effective: ${effectiveDevAttempts})`,
+      );
     }
 
     // Write change manifest for docs-expert (with per-item docNotes)
