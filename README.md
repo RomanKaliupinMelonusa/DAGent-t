@@ -108,86 +108,38 @@ See [infra/README.md](apps/sample-app/infra/README.md) for the full switching pr
 
 ## Architecture
 
+> **New to agentic pipelines?** Start with the [Mental Model](tools/autonomous-factory/docs/07-mental-model.md) — it maps the traditional software development flow (Architecture → Code → Tests → CI → Deploy → Verify) to this pipeline's stages, showing what's familiar and what's different.
+
 The system separates two concerns that most agentic tools conflate:
 
 - **Control plane (deterministic)** — A TypeScript `while` loop reads a DAG state machine, resolves dependencies, and spawns agent sessions. No LLM decides what happens next.
 - **Execution plane (LLM)** — Each specialist agent receives a bounded context (rules, MCP tools, skills) and reasons about its domain. Trusted to *think*, not to *orchestrate*.
 
-```mermaid
-flowchart TD
-    subgraph INPUT["Human Input"]
-        SPEC["Write _SPEC.md<br/>(feature requirements)"]
-        INIT["pipeline:init<br/>(create _STATE.json)"]
-    end
-
-    subgraph CONTEXT["Context Preparation"]
-        APM["APM Compiler<br/>apm.yml → context.json<br/>(bounded rules per agent)"]
-        ROAM_IDX["roam index<br/>.roam/index.db<br/>(semantic AST graph)"]
-    end
-
-    subgraph WATCHDOG["Watchdog Loop"]
-        LOAD["loadApmContext()"] --> BATCH["getNextAvailable()<br/>(DAG batch query)"]
-        BATCH --> SESSIONS["Spawn parallel<br/>SDK sessions"]
-    end
-
-    subgraph AGENTS["Agent Execution"]
-        SYS["System prompt<br/>+ MCP servers<br/>(roam-code, playwright)"]
-        SYS --> READ["Read spec +<br/>use roam tools"]
-        READ --> CODE["Write code +<br/>run tests"]
-        CODE --> COMMIT["pipeline:complete<br/>or pipeline:fail"]
-    end
-
-    subgraph DEPLOY["Deploy Phase"]
-        PUSH["push-code<br/>(git push)"] --> CI["GitHub Actions<br/>(deploy-backend<br/>deploy-frontend<br/>deploy-infra)"]
-        CI --> POLL["poll-ci<br/>(wait for green)"]
-    end
-
-    subgraph VERIFY["Post-Deploy Verification"]
-        INT["integration-test<br/>(live backend endpoints)"]
-        INT --> LIVE["live-ui<br/>(Playwright on live app)"]
-    end
-
-    subgraph RECOVERY["Recovery"]
-        TRIAGE["TriageDiagnostic<br/>fault domain routing"]
-        RESET["resetForDev()<br/>(up to 5 cycles)"]
-    end
-
-    subgraph FINALIZE["Finalize"]
-        CLEAN["code-cleanup"] --> DOCS["docs-archived"] --> PR["create-pr"]
-    end
-
-    subgraph OUTPUT["Output"]
-        REVIEW["Pull Request<br/>ready for human review"]
-    end
-
-    SPEC --> INIT
-    INIT --> LOAD
-    APM --> LOAD
-    ROAM_IDX --> SESSIONS
-    SESSIONS --> SYS
-    COMMIT --> BATCH
-    BATCH -->|deploy items| PUSH
-    POLL --> INT
-    INT & LIVE -->|pass| CLEAN
-    INT & LIVE -->|fail| TRIAGE
-    TRIAGE --> RESET
-    RESET -->|reroute| BATCH
-    PR --> REVIEW
-
-    style INPUT fill:#f3e5f5
-    style CONTEXT fill:#e8f5e9
-    style WATCHDOG fill:#e3f2fd
-    style AGENTS fill:#e3f2fd
-    style DEPLOY fill:#fff9c4
-    style VERIFY fill:#fff3e0
-    style RECOVERY fill:#ffcdd2
-    style FINALIZE fill:#f3e5f5
-    style OUTPUT fill:#e8f5e9
+```
+Human writes SPEC
+       ↓
+┌──────────────────────────────────────────────────────────┐
+│  Orchestrator (deterministic TypeScript loop)            │
+│                                                          │
+│  Pre-Deploy ─── schema → backend + frontend → tests     │
+│       ↓                                    (parallel)    │
+│  Deploy ─────── push-code → poll-ci                      │
+│       ↓                                                  │
+│  Post-Deploy ── integration-test → live-ui (Playwright)  │
+│       ↓              ↑                                   │
+│       ↓         fail → triage → resetForDev (max 5x)     │
+│       ↓                                                  │
+│  Finalize ───── code-cleanup → docs → create-pr          │
+└──────────────────────────────────────────────────────────┘
+       ↓
+Pull Request ready for human review
 ```
 
-When post-deploy verification fails, the pipeline doesn't stop — it triages the failure, resets the right agents, and loops back. Bounded by circuit breakers (5 redevelopment cycles, 10 retries per item, session timeouts).
+When post-deploy verification fails, the pipeline doesn't stop — it triages the failure by fault domain, resets the responsible agents, and loops back. Bounded by circuit breakers (5 redevelopment cycles, 10 retries per item, session timeouts).
 
-**CI/CD is not optional.** The Deploy and Post-Deploy phases push code to Azure (Functions, Static Web Apps, APIM) via 6 GitHub Actions workflows, then run live integration tests and Playwright E2E against the deployed infrastructure. Without configured [GitHub Secrets and OIDC credentials](.github/AGENTIC-WORKFLOW.md#cicd-integration), the pipeline halts at `push-code`.
+**CI/CD is not optional.** The Deploy and Post-Deploy phases push code to Azure via GitHub Actions, then run live integration tests and Playwright E2E against deployed infrastructure. Without configured [GitHub Secrets and OIDC credentials](.github/AGENTIC-WORKFLOW.md#cicd-integration), the pipeline halts at `push-code`.
+
+> For the full system architecture with component relationships, MCP servers, and state management, see [00-overview.md](tools/autonomous-factory/docs/00-overview.md). For how each stage maps to traditional software development, see [07-mental-model.md](tools/autonomous-factory/docs/07-mental-model.md).
 
 ---
 
@@ -273,17 +225,29 @@ See [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) for standing featur
 
 ## Documentation
 
-| Document | What It Covers |
-|----------|---------------|
-| [AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md) | Operational hub — project structure, config, commands, safety guardrails, how to run |
-| [CI/CD Integration](.github/AGENTIC-WORKFLOW.md#cicd-integration) | GitHub Secrets, Azure OIDC setup, secret↔apm.yml linking, bootstrap sequence |
-| [00-overview.md](tools/autonomous-factory/docs/00-overview.md) | Full system architecture, component map, tech stack |
-| [01-watchdog.md](tools/autonomous-factory/docs/01-watchdog.md) | Orchestrator loop, session lifecycle, failure recovery |
-| [02-roam-code.md](tools/autonomous-factory/docs/02-roam-code.md) | Roam-code: capabilities, integration, agent rules, adoption roadmap |
-| [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) | APM manifest, rule resolution, token budgets |
-| [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) | Pipeline DAG, workflow types, redevelopment reroute |
-| [05-agents.md](tools/autonomous-factory/docs/05-agents.md) | 12 specialist agents, MCP assignments, prompt anatomy |
-| [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) | Standing feature deep-dives with implementation plans |
+### Reading Guide
+
+Different roles need different depth. Start with the row that matches you, then read left-to-right:
+
+| You are a... | Start here | Then read | Deep dives |
+|---|---|---|---|
+| **VP / CTO** | This README | [07-mental-model](tools/autonomous-factory/docs/07-mental-model.md) | Done — these two cover the "why" and "how it maps to what you know" |
+| **Architect** | This README | [07-mental-model](tools/autonomous-factory/docs/07-mental-model.md) → [00-overview](tools/autonomous-factory/docs/00-overview.md) | [04-state-machine](tools/autonomous-factory/docs/04-state-machine.md), [05-agents](tools/autonomous-factory/docs/05-agents.md), [03-apm-context](tools/autonomous-factory/docs/03-apm-context.md) |
+| **Developer / Operator** | [AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md) | [01-watchdog](tools/autonomous-factory/docs/01-watchdog.md) → [04-state-machine](tools/autonomous-factory/docs/04-state-machine.md) | [05-agents](tools/autonomous-factory/docs/05-agents.md), [02-roam-code](tools/autonomous-factory/docs/02-roam-code.md), [03-apm-context](tools/autonomous-factory/docs/03-apm-context.md) |
+
+### Full Documentation Map
+
+| Document | Audience | What It Covers |
+|----------|----------|---------------|
+| [07-mental-model.md](tools/autonomous-factory/docs/07-mental-model.md) | All | Traditional SDLC → agentic pipeline mapping — the conceptual bridge |
+| [00-overview.md](tools/autonomous-factory/docs/00-overview.md) | Architect | Full system architecture, component map, tech stack |
+| [AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md) | Developer | Operational hub — config, commands, CI/CD setup, safety guardrails |
+| [01-watchdog.md](tools/autonomous-factory/docs/01-watchdog.md) | Developer | Orchestrator loop, session lifecycle, failure recovery internals |
+| [02-roam-code.md](tools/autonomous-factory/docs/02-roam-code.md) | Developer | Roam-code: 6 capabilities, integration, agent rules |
+| [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) | Developer | APM manifest, rule resolution, token budgets |
+| [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) | Architect | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
+| [05-agents.md](tools/autonomous-factory/docs/05-agents.md) | Architect | 12 specialist agents, MCP assignments, prompt anatomy |
+| [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) | All | Standing feature deep-dives with implementation plans |
 
 ---
 

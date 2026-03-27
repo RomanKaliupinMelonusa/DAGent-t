@@ -188,6 +188,8 @@ mindmap
 
 ## Pipeline Execution Flow (End-to-End)
 
+> This diagram shows the **technical execution sequence** (init → phases → reports). For the DAG dependency graph with parallel scheduling, see [04-state-machine.md](04-state-machine.md). For how these stages map to traditional software development, see [07-mental-model.md](07-mental-model.md).
+
 ```mermaid
 flowchart LR
     subgraph INIT["Init"]
@@ -291,14 +293,17 @@ flowchart LR
 
 ## Documentation Map
 
-| # | Document | What It Covers |
-|---|----------|---------------|
-| **00** | **This file** | System-level architecture, component relationships, tech stack |
-| **01** | [01-watchdog.md](01-watchdog.md) | Orchestrator main loop, session lifecycle, failure recovery, timeouts |
-| **02** | [02-roam-code.md](02-roam-code.md) | Roam-code: 6 killer capabilities, integration, agent rules, adoption roadmap |
-| **03** | [03-apm-context.md](03-apm-context.md) | Rule resolution pipeline, persona mapping, token budgets |
-| **04** | [04-state-machine.md](04-state-machine.md) | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
-| **05** | [05-agents.md](05-agents.md) | 12 specialist agents, MCP assignments, prompt anatomy, auto-skip |
-| **06** | [06-roadmap/](06-roadmap/) | Standing feature deep-dives with implementation plans |
+> **Reading order:** VP/CTO → read 07 then stop. Architect → read 07, 00, 04, 05. Developer → read AGENTIC-WORKFLOW, 01, 04, 05.
 
-**Operational hub:** [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) — project structure, configuration, commands, safety guardrails, and how to run.
+| # | Document | Audience | What It Covers |
+|---|----------|----------|---------------|
+| **07** | [07-mental-model.md](07-mental-model.md) | All | Traditional SDLC → agentic pipeline mapping — **start here** |
+| **00** | **This file** | Architect | System-level architecture, component relationships, tech stack |
+| **01** | [01-watchdog.md](01-watchdog.md) | Developer | Orchestrator main loop, session lifecycle, failure recovery, timeouts |
+| **02** | [02-roam-code.md](02-roam-code.md) | Developer | Roam-code: 6 killer capabilities, integration, agent rules, adoption roadmap |
+| **03** | [03-apm-context.md](03-apm-context.md) | Developer | Rule resolution pipeline, persona mapping, token budgets |
+| **04** | [04-state-machine.md](04-state-machine.md) | Architect | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
+| **05** | [05-agents.md](05-agents.md) | Architect | 12 specialist agents, MCP assignments, prompt anatomy, auto-skip |
+| **06** | [06-roadmap/](06-roadmap/) | All | Standing feature deep-dives with implementation plans |
+
+**Operational hub:** [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) — project structure, configuration, commands, safety guardrails, and how to run. *(Developer audience)*

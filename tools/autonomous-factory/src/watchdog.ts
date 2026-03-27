@@ -55,6 +55,18 @@ const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-ci"]);
  */
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
 
+/**
+ * Model pricing per million tokens (USD).
+ * Default: Anthropic Claude Opus 4 direct pricing.
+ * Note: actual cost may differ under GitHub Copilot API billing.
+ */
+const MODEL_PRICING = {
+  inputPerMillion: 15,
+  outputPerMillion: 75,
+  cacheReadPerMillion: 1.5,
+  cacheWritePerMillion: 3.75,
+} as const;
+
 // triageFailure and parseTriageDiagnostic are imported from ./triage.js above
 
 function getTimeout(itemKey: string): number {
@@ -152,6 +164,14 @@ interface ItemSummary {
   errorMessage?: string;
   /** Git HEAD after this attempt — used for identical-error dedup */
   headAfterAttempt?: string;
+  /** Accumulated input tokens from assistant.usage events */
+  inputTokens: number;
+  /** Accumulated output tokens from assistant.usage events */
+  outputTokens: number;
+  /** Accumulated cache-read tokens (prompt caching) */
+  cacheReadTokens: number;
+  /** Accumulated cache-creation tokens */
+  cacheWriteTokens: number;
 }
 
 interface ShellEntry {
@@ -575,11 +595,15 @@ async function main(): Promise<void> {
           filesChanged: [],
           shellCommands: [],
           toolCounts: {},
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           errorMessage: "Circuit breaker: identical error repeated without code changes",
         };
         try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
         pipelineSummaries.push(skipSummary);
-        writePipelineSummary(slug);
+        writePipelineSummary(slug, apmContext);
         return { summary: skipSummary, halt: true, createPr: false };
       }
     }
@@ -616,6 +640,10 @@ async function main(): Promise<void> {
       filesChanged: [],
       shellCommands: [],
       toolCounts: {},
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     };
 
     // --- Auto-skip no-op test/post-deploy items ---
@@ -637,8 +665,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no backend/infra changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -658,8 +686,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no frontend changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -686,8 +714,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no frontend/e2e/infra changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -738,8 +766,8 @@ async function main(): Promise<void> {
         itemSummary.durationMs = Date.now() - stepStart;
         itemSummary.intents.push("Deterministic push — no agent session");
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -755,8 +783,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       }
     }
@@ -786,8 +814,8 @@ async function main(): Promise<void> {
         itemSummary.durationMs = Date.now() - stepStart;
         itemSummary.intents.push("Deterministic CI poll — all workflows passed");
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       } catch (err: unknown) {
         // execSync attaches stdout/stderr buffers to the Error on non-zero exit.
@@ -817,8 +845,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
 
         const state = await getStatus(slug);
         const naItems = new Set(
@@ -985,6 +1013,21 @@ async function main(): Promise<void> {
       }
     });
 
+    // Accumulate token usage from each assistant turn
+    session.on("assistant.usage", (event) => {
+      const d = event.data;
+      const inp = d.inputTokens ?? 0;
+      const out = d.outputTokens ?? 0;
+      const cacheR = d.cacheReadTokens ?? 0;
+      const cacheC = d.cacheWriteTokens ?? 0;
+      if (inp === 0 && out === 0 && cacheR === 0 && cacheC === 0) return;
+      itemSummary.inputTokens += inp;
+      itemSummary.outputTokens += out;
+      itemSummary.cacheReadTokens += cacheR;
+      itemSummary.cacheWriteTokens += cacheC;
+      console.log(`  📊 Tokens: +${inp}in / +${out}out / +${cacheR}cache-read / +${cacheC}cache-write`);
+    });
+
     let taskPrompt = buildTaskPrompt(
       { key: next.key, label: next.label },
       slug,
@@ -1148,8 +1191,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: true, createPr: false };
       }
 
@@ -1162,8 +1205,8 @@ async function main(): Promise<void> {
           itemSummary.finishedAt = new Date().toISOString();
           itemSummary.durationMs = Date.now() - stepStart;
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           return { summary: itemSummary, halt: true, createPr: false };
         }
       } catch {
@@ -1200,8 +1243,8 @@ async function main(): Promise<void> {
     }
 
     pipelineSummaries.push(itemSummary);
-    writePipelineSummary(slug);
-    writeTerminalLog(slug);
+    writePipelineSummary(slug, apmContext);
+    writeTerminalLog(slug, apmContext);
 
     if (isPlaywrightSession && playwrightLog.length > 0) {
       writePlaywrightLog(slug, playwrightLog);
@@ -1331,8 +1374,8 @@ async function main(): Promise<void> {
       const summaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
       const archivedPath = path.join(appRoot, "archive", "features", slug, `${slug}_SUMMARY.md`);
       if (!fs.existsSync(archivedPath)) {
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
       } else {
         // Clean up any leftover in-progress copy
         try { fs.unlinkSync(summaryPath); } catch { /* already gone */ }
@@ -1503,8 +1546,72 @@ function outcomeIcon(outcome: string): string {
   return outcome === "completed" ? "✅" : outcome === "failed" ? "❌" : "💥";
 }
 
+/** Compute estimated USD cost for a single pipeline step based on token usage */
+function computeStepCost(s: ItemSummary): number {
+  return (
+    s.inputTokens * MODEL_PRICING.inputPerMillion +
+    s.outputTokens * MODEL_PRICING.outputPerMillion +
+    s.cacheReadTokens * MODEL_PRICING.cacheReadPerMillion +
+    s.cacheWriteTokens * MODEL_PRICING.cacheWritePerMillion
+  ) / 1_000_000;
+}
+
+/** Format a number as a USD string with 4 decimal places */
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(4)}`;
+}
+
+/** Build the Cost Analysis markdown lines shared by both summary files */
+function buildCostAnalysisLines(apmCtx: ApmCompiledOutput | undefined): string[] {
+  const lines: string[] = [];
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  for (const s of pipelineSummaries) {
+    totals.input += s.inputTokens;
+    totals.output += s.outputTokens;
+    totals.cacheRead += s.cacheReadTokens;
+    totals.cacheWrite += s.cacheWriteTokens;
+    totals.cost += computeStepCost(s);
+  }
+
+  lines.push(`## Cost Analysis`, ``);
+  lines.push(`> Estimated cost based on Anthropic Claude Opus 4 direct pricing.`);
+  lines.push(`> Actual cost may differ under GitHub Copilot API billing.`, ``);
+
+  // --- Feature totals ---
+  lines.push(`### Feature Totals`, ``);
+  lines.push(`| Metric | Value |`);
+  lines.push(`|---|---|`);
+  lines.push(`| Input tokens | ${totals.input.toLocaleString()} |`);
+  lines.push(`| Output tokens | ${totals.output.toLocaleString()} |`);
+  lines.push(`| Cache-read tokens | ${totals.cacheRead.toLocaleString()} |`);
+  lines.push(`| Cache-write tokens | ${totals.cacheWrite.toLocaleString()} |`);
+  lines.push(`| **Total estimated cost** | **${formatUsd(totals.cost)}** |`);
+  lines.push(``);
+
+  // --- Per-step breakdown ---
+  lines.push(`### Per-Step Breakdown`, ``);
+  lines.push(`| Step | Attempt | Agent | Input | Output | Cache Read | Cache Write | Step Cost | APM Instruction Budget |`);
+  lines.push(`|---|---:|---|---:|---:|---:|---:|---:|---:|`);
+  for (const s of pipelineSummaries) {
+    const stepCost = computeStepCost(s);
+    const apmBudget = apmCtx?.agents?.[s.key]?.tokenCount;
+    const budgetStr = apmBudget != null ? apmBudget.toLocaleString() : "—";
+    lines.push(
+      `| ${s.key} | ${s.attempt} | ${s.agent} | ${s.inputTokens.toLocaleString()} | ${s.outputTokens.toLocaleString()} | ${s.cacheReadTokens.toLocaleString()} | ${s.cacheWriteTokens.toLocaleString()} | ${formatUsd(stepCost)} | ${budgetStr} |`,
+    );
+  }
+  lines.push(
+    `| **Total** | | | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | **${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${formatUsd(totals.cost)}** | |`,
+  );
+  lines.push(``);
+  lines.push(`> **APM Instruction Budget** is the estimated token count of the compiled instruction payload only — actual usage includes the full multi-turn conversation context.`);
+  lines.push(``);
+
+  return lines;
+}
+
 /** Write a human-readable markdown summary of the pipeline run */
-function writePipelineSummary(featureSlug: string): void {
+function writePipelineSummary(featureSlug: string, apmCtx?: ApmCompiledOutput): void {
   const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
 
   // --- Header ---
@@ -1515,6 +1622,10 @@ function writePipelineSummary(featureSlug: string): void {
   for (const s of pipelineSummaries) {
     for (const f of s.filesChanged) allFiles.add(f);
   }
+
+  // Pre-compute cost totals for Overview
+  const totalTokens = pipelineSummaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
+  const totalCost = pipelineSummaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
   const lines: string[] = [
     `# Pipeline Summary — ${featureSlug}`,
@@ -1528,6 +1639,9 @@ function writePipelineSummary(featureSlug: string): void {
     `| Total steps | ${pipelineSummaries.length} (${completed} passed, ${failed} failed/errored) |`,
     `| Total duration | ${formatDuration(totalMs)} |`,
     `| Files changed | ${allFiles.size} |`,
+    `| Total tokens | ${totalTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
+    ...(allFiles.size > 0 ? [`| Cost per file changed | ${formatUsd(totalCost / allFiles.size)} |`] : []),
     ``,
   ];
 
@@ -1650,6 +1764,9 @@ function writePipelineSummary(featureSlug: string): void {
     lines.push(``);
   }
 
+  // --- Cost Analysis ---
+  lines.push(...buildCostAnalysisLines(apmCtx));
+
   try {
     fs.writeFileSync(summaryPath, lines.join("\n"), "utf-8");
     console.log(`\n📋 Pipeline summary written to ${path.relative(repoRoot, summaryPath)}`);
@@ -1663,12 +1780,16 @@ function writePipelineSummary(featureSlug: string): void {
  * Captures every tool call, shell command, intent, and agent summary per step
  * in chronological order — replicating what the user sees in the terminal.
  */
-function writeTerminalLog(featureSlug: string): void {
+function writeTerminalLog(featureSlug: string, apmCtx?: ApmCompiledOutput): void {
   const logPath = path.join(appRoot, "in-progress", `${featureSlug}_TERMINAL-LOG.md`);
 
   const totalMs = pipelineSummaries.reduce((sum, s) => sum + s.durationMs, 0);
   const completed = pipelineSummaries.filter((s) => s.outcome === "completed").length;
   const failed = pipelineSummaries.filter((s) => s.outcome !== "completed").length;
+
+  // Pre-compute cost totals for Overview
+  const totalTokens = pipelineSummaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
+  const totalCost = pipelineSummaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
   // Compute actual file changes via git diff if possible
   let gitDiffStat = "";
@@ -1703,6 +1824,8 @@ function writeTerminalLog(featureSlug: string): void {
     `| Total duration | ${formatDuration(totalMs)} |`,
     `| Feature branch | \`feature/${featureSlug}\` |`,
     `| Base branch | \`${baseBranch}\` |`,
+    `| Total tokens | ${totalTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
     ``,
     `---`,
     ``,
@@ -1841,6 +1964,9 @@ function writeTerminalLog(featureSlug: string): void {
     lines.push("```");
     lines.push(``);
   }
+
+  // --- Cost Analysis ---
+  lines.push(...buildCostAnalysisLines(apmCtx));
 
   try {
     fs.writeFileSync(logPath, lines.join("\n"), "utf-8");
