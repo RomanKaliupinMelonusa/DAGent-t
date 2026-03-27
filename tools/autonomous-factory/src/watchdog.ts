@@ -55,6 +55,18 @@ const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-ci"]);
  */
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
 
+/**
+ * Model pricing per million tokens (USD).
+ * Default: Anthropic Claude Opus 4 direct pricing.
+ * Note: actual cost may differ under GitHub Copilot API billing.
+ */
+const MODEL_PRICING = {
+  inputPerMillion: 15,
+  outputPerMillion: 75,
+  cacheReadPerMillion: 1.5,
+  cacheWritePerMillion: 3.75,
+} as const;
+
 // triageFailure and parseTriageDiagnostic are imported from ./triage.js above
 
 function getTimeout(itemKey: string): number {
@@ -152,6 +164,14 @@ interface ItemSummary {
   errorMessage?: string;
   /** Git HEAD after this attempt — used for identical-error dedup */
   headAfterAttempt?: string;
+  /** Accumulated input tokens from assistant.usage events */
+  inputTokens: number;
+  /** Accumulated output tokens from assistant.usage events */
+  outputTokens: number;
+  /** Accumulated cache-read tokens (prompt caching) */
+  cacheReadTokens: number;
+  /** Accumulated cache-creation tokens */
+  cacheWriteTokens: number;
 }
 
 interface ShellEntry {
@@ -536,6 +556,9 @@ async function main(): Promise<void> {
   /** Track attempt number per item key across retries */
   const attemptCounts: Record<string, number> = {};
 
+  /** One-time circuit breaker bypass for DEV items eligible for clean-slate revert */
+  const circuitBreakerBypassed = new Set<string>();
+
   /** Track git commit SHA before each dev step for reliable change detection */
   const preStepRefs: Record<string, string> = {};
 
@@ -548,29 +571,41 @@ async function main(): Promise<void> {
 
     // Circuit breaker: skip if identical error + no code changed since last attempt
     if (attemptCounts[next.key] > 2 && shouldSkipRetry(next.key)) {
-      console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
-      const skipSummary: ItemSummary = {
-        key: next.key,
-        label: next.label,
-        agent: next.agent ?? "unknown",
-        phase: next.phase ?? "unknown",
-        attempt: attemptCounts[next.key],
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        durationMs: 0,
-        outcome: "failed",
-        intents: ["Circuit breaker: identical error, no code changes — skipped"],
-        messages: [],
-        filesRead: [],
-        filesChanged: [],
-        shellCommands: [],
-        toolCounts: {},
-        errorMessage: "Circuit breaker: identical error repeated without code changes",
-      };
-      try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
-      pipelineSummaries.push(skipSummary);
-      writePipelineSummary(slug);
-      return { summary: skipSummary, halt: true, createPr: false };
+      // For DEV items, grant one bypass so the clean-slate revert warning can fire.
+      // The revert wipes ALL feature code (not just the delta between attempts),
+      // so it may resolve the root cause even when shouldSkipRetry sees no change.
+      if (DEV_ITEMS.has(next.key) && !circuitBreakerBypassed.has(next.key)) {
+        console.log(`\n  ⚡ Circuit breaker deferred for ${next.key} — granting clean-slate revert opportunity`);
+        circuitBreakerBypassed.add(next.key);
+      } else {
+        console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
+        const skipSummary: ItemSummary = {
+          key: next.key,
+          label: next.label,
+          agent: next.agent ?? "unknown",
+          phase: next.phase ?? "unknown",
+          attempt: attemptCounts[next.key],
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          durationMs: 0,
+          outcome: "failed",
+          intents: ["Circuit breaker: identical error, no code changes — skipped"],
+          messages: [],
+          filesRead: [],
+          filesChanged: [],
+          shellCommands: [],
+          toolCounts: {},
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          errorMessage: "Circuit breaker: identical error repeated without code changes",
+        };
+        try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
+        pipelineSummaries.push(skipSummary);
+        writePipelineSummary(slug, apmContext);
+        return { summary: skipSummary, halt: true, createPr: false };
+      }
     }
 
     console.log(
@@ -605,6 +640,10 @@ async function main(): Promise<void> {
       filesChanged: [],
       shellCommands: [],
       toolCounts: {},
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     };
 
     // --- Auto-skip no-op test/post-deploy items ---
@@ -626,8 +665,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no backend/infra changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -647,8 +686,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no frontend changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -675,8 +714,8 @@ async function main(): Promise<void> {
           itemSummary.durationMs = Date.now() - stepStart;
           itemSummary.intents.push("Auto-skipped: no frontend/e2e/infra changes detected (git diff)");
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           console.log(`  ✅ ${next.key} complete (auto-skipped)`);
           return { summary: itemSummary, halt: false, createPr: false };
         }
@@ -727,8 +766,8 @@ async function main(): Promise<void> {
         itemSummary.durationMs = Date.now() - stepStart;
         itemSummary.intents.push("Deterministic push — no agent session");
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -744,8 +783,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       }
     }
@@ -775,8 +814,8 @@ async function main(): Promise<void> {
         itemSummary.durationMs = Date.now() - stepStart;
         itemSummary.intents.push("Deterministic CI poll — all workflows passed");
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: false, createPr: false };
       } catch (err: unknown) {
         // execSync attaches stdout/stderr buffers to the Error on non-zero exit.
@@ -806,8 +845,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
 
         const state = await getStatus(slug);
         const naItems = new Set(
@@ -974,11 +1013,39 @@ async function main(): Promise<void> {
       }
     });
 
+    // Accumulate token usage from each assistant turn
+    session.on("assistant.usage", (event) => {
+      const d = event.data;
+      const inp = d.inputTokens ?? 0;
+      const out = d.outputTokens ?? 0;
+      const cacheR = d.cacheReadTokens ?? 0;
+      const cacheC = d.cacheWriteTokens ?? 0;
+      if (inp === 0 && out === 0 && cacheR === 0 && cacheC === 0) return;
+      itemSummary.inputTokens += inp;
+      itemSummary.outputTokens += out;
+      itemSummary.cacheReadTokens += cacheR;
+      itemSummary.cacheWriteTokens += cacheC;
+      console.log(`  📊 Tokens: +${inp}in / +${out}out / +${cacheR}cache-read / +${cacheC}cache-write`);
+    });
+
     let taskPrompt = buildTaskPrompt(
       { key: next.key, label: next.label },
       slug,
       appRoot,
     );
+
+    // Pre-compute effective attempt count for DEV items.
+    // Combines in-memory attemptCounts (resets on orchestrator restart) with
+    // persisted redevelopment cycle count from state (survives restarts).
+    // Used by both the retry context block and the clean-slate revert warning.
+    let effectiveDevAttempts = attemptCounts[next.key];
+    if (DEV_ITEMS.has(next.key)) {
+      try {
+        const pipeState = await readState(slug);
+        const persistedCycles = pipeState.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
+        effectiveDevAttempts = Math.max(attemptCounts[next.key], persistedCycles);
+      } catch { /* best effort — fall back to in-memory count */ }
+    }
 
     // Inject retry context from previous attempt
     if (attemptCounts[next.key] > 1) {
@@ -986,6 +1053,7 @@ async function main(): Promise<void> {
         .reverse()
         .find((s) => s.key === next.key);
       if (prevAttempt) {
+        const atRevertThreshold = DEV_ITEMS.has(next.key) && effectiveDevAttempts >= 3;
         const retryLines = [
           `\n## Previous Attempt Context (attempt ${prevAttempt.attempt})`,
           `The previous session ${prevAttempt.outcome === "error" ? "timed out" : "failed"}: ${prevAttempt.errorMessage ?? "unknown"}`,
@@ -1001,7 +1069,10 @@ async function main(): Promise<void> {
                 .map((s) => `  - ${s.command}`)
                 .join("\n")}`
             : "",
-          `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
+          // When the revert warning will fire, skip incremental advice — the agent should wipe and restart
+          atRevertThreshold
+            ? ""
+            : `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
         ];
         taskPrompt += retryLines.filter(Boolean).join("\n");
         console.log(
@@ -1057,6 +1128,18 @@ async function main(): Promise<void> {
       }
     }
 
+    // Clean-slate revert warning: if a dev agent has failed 3+ times on the same item,
+    // it is likely stuck in a hallucination loop. Inject explicit guidance to wipe and restart.
+    // Uses the unified effectiveDevAttempts (max of in-memory attempts and persisted cycles).
+    if (DEV_ITEMS.has(next.key) && effectiveDevAttempts >= 3) {
+      taskPrompt += `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
+        + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
+        + `Then, re-explore the codebase and build this feature using a completely different architectural approach.`;
+      console.log(
+        `  🚨 Injected clean-slate revert warning (attempts: ${attemptCounts[next.key]} in-memory, ${effectiveDevAttempts - attemptCounts[next.key] >= 0 ? effectiveDevAttempts - attemptCounts[next.key] : 0} from persisted cycles, effective: ${effectiveDevAttempts})`,
+      );
+    }
+
     // Write change manifest for docs-expert (with per-item docNotes)
     if (next.key === "docs-archived") {
       const manifestPath = path.join(appRoot, "in-progress", `${slug}_CHANGES.json`);
@@ -1108,8 +1191,8 @@ async function main(): Promise<void> {
         itemSummary.finishedAt = new Date().toISOString();
         itemSummary.durationMs = Date.now() - stepStart;
         pipelineSummaries.push(itemSummary);
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
         return { summary: itemSummary, halt: true, createPr: false };
       }
 
@@ -1122,8 +1205,8 @@ async function main(): Promise<void> {
           itemSummary.finishedAt = new Date().toISOString();
           itemSummary.durationMs = Date.now() - stepStart;
           pipelineSummaries.push(itemSummary);
-          writePipelineSummary(slug);
-          writeTerminalLog(slug);
+          writePipelineSummary(slug, apmContext);
+          writeTerminalLog(slug, apmContext);
           return { summary: itemSummary, halt: true, createPr: false };
         }
       } catch {
@@ -1160,8 +1243,8 @@ async function main(): Promise<void> {
     }
 
     pipelineSummaries.push(itemSummary);
-    writePipelineSummary(slug);
-    writeTerminalLog(slug);
+    writePipelineSummary(slug, apmContext);
+    writeTerminalLog(slug, apmContext);
 
     if (isPlaywrightSession && playwrightLog.length > 0) {
       writePlaywrightLog(slug, playwrightLog);
@@ -1291,8 +1374,8 @@ async function main(): Promise<void> {
       const summaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
       const archivedPath = path.join(appRoot, "archive", "features", slug, `${slug}_SUMMARY.md`);
       if (!fs.existsSync(archivedPath)) {
-        writePipelineSummary(slug);
-        writeTerminalLog(slug);
+        writePipelineSummary(slug, apmContext);
+        writeTerminalLog(slug, apmContext);
       } else {
         // Clean up any leftover in-progress copy
         try { fs.unlinkSync(summaryPath); } catch { /* already gone */ }
@@ -1463,8 +1546,72 @@ function outcomeIcon(outcome: string): string {
   return outcome === "completed" ? "✅" : outcome === "failed" ? "❌" : "💥";
 }
 
+/** Compute estimated USD cost for a single pipeline step based on token usage */
+function computeStepCost(s: ItemSummary): number {
+  return (
+    s.inputTokens * MODEL_PRICING.inputPerMillion +
+    s.outputTokens * MODEL_PRICING.outputPerMillion +
+    s.cacheReadTokens * MODEL_PRICING.cacheReadPerMillion +
+    s.cacheWriteTokens * MODEL_PRICING.cacheWritePerMillion
+  ) / 1_000_000;
+}
+
+/** Format a number as a USD string with 4 decimal places */
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(4)}`;
+}
+
+/** Build the Cost Analysis markdown lines shared by both summary files */
+function buildCostAnalysisLines(apmCtx: ApmCompiledOutput | undefined): string[] {
+  const lines: string[] = [];
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  for (const s of pipelineSummaries) {
+    totals.input += s.inputTokens;
+    totals.output += s.outputTokens;
+    totals.cacheRead += s.cacheReadTokens;
+    totals.cacheWrite += s.cacheWriteTokens;
+    totals.cost += computeStepCost(s);
+  }
+
+  lines.push(`## Cost Analysis`, ``);
+  lines.push(`> Estimated cost based on Anthropic Claude Opus 4 direct pricing.`);
+  lines.push(`> Actual cost may differ under GitHub Copilot API billing.`, ``);
+
+  // --- Feature totals ---
+  lines.push(`### Feature Totals`, ``);
+  lines.push(`| Metric | Value |`);
+  lines.push(`|---|---|`);
+  lines.push(`| Input tokens | ${totals.input.toLocaleString()} |`);
+  lines.push(`| Output tokens | ${totals.output.toLocaleString()} |`);
+  lines.push(`| Cache-read tokens | ${totals.cacheRead.toLocaleString()} |`);
+  lines.push(`| Cache-write tokens | ${totals.cacheWrite.toLocaleString()} |`);
+  lines.push(`| **Total estimated cost** | **${formatUsd(totals.cost)}** |`);
+  lines.push(``);
+
+  // --- Per-step breakdown ---
+  lines.push(`### Per-Step Breakdown`, ``);
+  lines.push(`| Step | Attempt | Agent | Input | Output | Cache Read | Cache Write | Step Cost | APM Instruction Budget |`);
+  lines.push(`|---|---:|---|---:|---:|---:|---:|---:|---:|`);
+  for (const s of pipelineSummaries) {
+    const stepCost = computeStepCost(s);
+    const apmBudget = apmCtx?.agents?.[s.key]?.tokenCount;
+    const budgetStr = apmBudget != null ? apmBudget.toLocaleString() : "—";
+    lines.push(
+      `| ${s.key} | ${s.attempt} | ${s.agent} | ${s.inputTokens.toLocaleString()} | ${s.outputTokens.toLocaleString()} | ${s.cacheReadTokens.toLocaleString()} | ${s.cacheWriteTokens.toLocaleString()} | ${formatUsd(stepCost)} | ${budgetStr} |`,
+    );
+  }
+  lines.push(
+    `| **Total** | | | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | **${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${formatUsd(totals.cost)}** | |`,
+  );
+  lines.push(``);
+  lines.push(`> **APM Instruction Budget** is the estimated token count of the compiled instruction payload only — actual usage includes the full multi-turn conversation context.`);
+  lines.push(``);
+
+  return lines;
+}
+
 /** Write a human-readable markdown summary of the pipeline run */
-function writePipelineSummary(featureSlug: string): void {
+function writePipelineSummary(featureSlug: string, apmCtx?: ApmCompiledOutput): void {
   const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
 
   // --- Header ---
@@ -1475,6 +1622,10 @@ function writePipelineSummary(featureSlug: string): void {
   for (const s of pipelineSummaries) {
     for (const f of s.filesChanged) allFiles.add(f);
   }
+
+  // Pre-compute cost totals for Overview
+  const totalTokens = pipelineSummaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
+  const totalCost = pipelineSummaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
   const lines: string[] = [
     `# Pipeline Summary — ${featureSlug}`,
@@ -1488,6 +1639,9 @@ function writePipelineSummary(featureSlug: string): void {
     `| Total steps | ${pipelineSummaries.length} (${completed} passed, ${failed} failed/errored) |`,
     `| Total duration | ${formatDuration(totalMs)} |`,
     `| Files changed | ${allFiles.size} |`,
+    `| Total tokens | ${totalTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
+    ...(allFiles.size > 0 ? [`| Cost per file changed | ${formatUsd(totalCost / allFiles.size)} |`] : []),
     ``,
   ];
 
@@ -1610,6 +1764,9 @@ function writePipelineSummary(featureSlug: string): void {
     lines.push(``);
   }
 
+  // --- Cost Analysis ---
+  lines.push(...buildCostAnalysisLines(apmCtx));
+
   try {
     fs.writeFileSync(summaryPath, lines.join("\n"), "utf-8");
     console.log(`\n📋 Pipeline summary written to ${path.relative(repoRoot, summaryPath)}`);
@@ -1623,12 +1780,16 @@ function writePipelineSummary(featureSlug: string): void {
  * Captures every tool call, shell command, intent, and agent summary per step
  * in chronological order — replicating what the user sees in the terminal.
  */
-function writeTerminalLog(featureSlug: string): void {
+function writeTerminalLog(featureSlug: string, apmCtx?: ApmCompiledOutput): void {
   const logPath = path.join(appRoot, "in-progress", `${featureSlug}_TERMINAL-LOG.md`);
 
   const totalMs = pipelineSummaries.reduce((sum, s) => sum + s.durationMs, 0);
   const completed = pipelineSummaries.filter((s) => s.outcome === "completed").length;
   const failed = pipelineSummaries.filter((s) => s.outcome !== "completed").length;
+
+  // Pre-compute cost totals for Overview
+  const totalTokens = pipelineSummaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
+  const totalCost = pipelineSummaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
   // Compute actual file changes via git diff if possible
   let gitDiffStat = "";
@@ -1663,6 +1824,8 @@ function writeTerminalLog(featureSlug: string): void {
     `| Total duration | ${formatDuration(totalMs)} |`,
     `| Feature branch | \`feature/${featureSlug}\` |`,
     `| Base branch | \`${baseBranch}\` |`,
+    `| Total tokens | ${totalTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
     ``,
     `---`,
     ``,
@@ -1801,6 +1964,9 @@ function writeTerminalLog(featureSlug: string): void {
     lines.push("```");
     lines.push(``);
   }
+
+  // --- Cost Analysis ---
+  lines.push(...buildCostAnalysisLines(apmCtx));
 
   try {
     fs.writeFileSync(logPath, lines.join("\n"), "utf-8");

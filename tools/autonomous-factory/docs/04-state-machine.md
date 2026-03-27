@@ -8,6 +8,8 @@
 
 ## Full DAG — 12 Pipeline Items
 
+> This is the **dependency-level** view — which items depend on which and what can run in parallel. For the system-level architecture showing how the orchestrator, MCP servers, and state management connect, see [00-overview.md](00-overview.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
+
 ```mermaid
 flowchart LR
     subgraph PRE["Pre-Deploy"]
@@ -161,6 +163,8 @@ stateDiagram-v2
 ---
 
 ## Redevelopment Reroute Flow
+
+> This is the **implementation-level** view showing function calls between modules. For the failure recovery state machine with all transition states, see [01-watchdog.md](01-watchdog.md#failure-recovery). For how this replaces traditional manual debugging, see [07-mental-model.md](07-mental-model.md#what-the-recovery-loop-replaces).
 
 ```mermaid
 sequenceDiagram

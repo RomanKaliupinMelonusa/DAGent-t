@@ -12,6 +12,7 @@
 #   create-feature  <slug>  — Stash → base branch → pull → create/resume feature branch
 #   push                    — Push current branch to origin (with retry)
 #   cleanup                 — Prune stale feature branches
+#   revert                  — Hard-reset feature branch to origin/base (clean slate)
 # =============================================================================
 
 set -euo pipefail
@@ -19,7 +20,7 @@ set -euo pipefail
 # Base branch for PR targets and branch-off point (default: main)
 BASE="${BASE_BRANCH:-main}"
 
-COMMAND="${1:?ERROR: command is required (create-feature|push|cleanup)}"
+COMMAND="${1:?ERROR: command is required (create-feature|push|cleanup|revert)}"
 shift
 
 # Navigate to repo root
@@ -81,9 +82,9 @@ case "$COMMAND" in
     fi
 
     if ! git push -u origin "$CURRENT"; then
-      echo "⚠️  Push failed, retrying..."
+      echo "⚠️  Push failed, retrying with --force-with-lease (branch may have been reverted)..."
       sleep 2
-      if ! git push -u origin "$CURRENT"; then
+      if ! git push --force-with-lease -u origin "$CURRENT"; then
         echo "ERROR: Cannot push branch '${CURRENT}'. Check network/auth." >&2
         exit 1
       fi
@@ -109,6 +110,46 @@ case "$COMMAND" in
     git stash drop 2>/dev/null || true
     ;;
 
+  revert)
+    # Hard-reset the current feature branch back to the base branch state.
+    # This is the "clean slate" escape hatch for agents stuck in a hallucination loop.
+    #
+    # SAFETY: Pipeline state files (_STATE.json, _TRANS.md) and the feature spec
+    # (_SPEC.md) live in in-progress/ and would be destroyed by git reset.
+    # We stash them to a temp dir and restore after the reset.
+    CURRENT=$(git branch --show-current)
+    if [ "$CURRENT" = "$BASE" ]; then
+      echo "ERROR: Cannot revert ${BASE} — must be on a feature branch." >&2
+      exit 1
+    fi
+
+    echo "⚠️  Reverting branch '${CURRENT}' to origin/${BASE}..."
+
+    # Preserve pipeline state & spec files before destructive reset
+    PRESERVE_DIR=$(mktemp -d)
+    IN_PROGRESS_DIR=$(find . -maxdepth 3 -type d -name "in-progress" | head -1)
+    if [ -n "$IN_PROGRESS_DIR" ]; then
+      for pattern in "*_STATE.json" "*_TRANS.md" "*_SPEC.md" "*_SUMMARY.md" "*_CHANGES.json"; do
+        find "$IN_PROGRESS_DIR" -maxdepth 1 -name "$pattern" -exec cp {} "$PRESERVE_DIR/" \; 2>/dev/null || true
+      done
+      echo "  📦 Preserved $(ls "$PRESERVE_DIR" | wc -l) pipeline file(s)"
+    fi
+
+    git fetch origin "$BASE" --quiet
+    git reset --hard "origin/${BASE}"
+    git clean -fd
+
+    # Restore preserved pipeline files
+    if [ -n "$IN_PROGRESS_DIR" ] && [ "$(ls -A "$PRESERVE_DIR" 2>/dev/null)" ]; then
+      mkdir -p "$IN_PROGRESS_DIR"
+      cp "$PRESERVE_DIR"/* "$IN_PROGRESS_DIR/" 2>/dev/null || true
+      echo "  📦 Restored pipeline state files to ${IN_PROGRESS_DIR}/"
+    fi
+    rm -rf "$PRESERVE_DIR"
+
+    echo "✔ Branch '${CURRENT}' reset to origin/${BASE} (clean slate)"
+    ;;
+
   *)
     echo "ERROR: Unknown command '${COMMAND}'" >&2
     echo "" >&2
@@ -118,6 +159,7 @@ case "$COMMAND" in
     echo "  create-feature  <slug>  — Create or resume feature branch" >&2
     echo "  push                    — Push current branch to origin (with retry)" >&2
     echo "  cleanup                 — Prune stale feature branches" >&2
+    echo "  revert                  — Hard-reset feature branch to origin/base" >&2
     exit 1
     ;;
 esac

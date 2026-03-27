@@ -150,6 +150,13 @@ stateDiagram-v2
     Redevelopment --> ReIndex: roam index (re-index)
     ReIndex --> Running: resetForDev()\n→ dev items re-enter loop
 
+    state RevertCheck <<choice>>
+    RetryPending --> RevertCheck: dev item retry?
+    RevertCheck --> CleanSlate: attempts ≥ 3\n(in-memory or persisted)
+    RevertCheck --> Running: attempts < 3
+
+    CleanSlate --> Running: inject revert warning\n+ circuit breaker bypass\n(agent-branch.sh revert)
+
     Done --> [*]
     ItemHalted --> [*]
     PipelineHalted --> [*]
@@ -254,6 +261,8 @@ classDiagram
 | `writeTerminalLog()` | Generate `_TERMINAL-LOG.md` | Post-loop |
 | `writePlaywrightLog()` | Generate `_PLAYWRIGHT-LOG.md` | Post-loop |
 | `archiveFeatureFiles()` | Move `in-progress/` → `archive/features/slug/` | After create-pr |
+| `effectiveDevAttempts` | `Math.max(attemptCounts[key], persistedCycleCount)` — unified attempt counter resilient to orchestrator restarts | `runItemSession()` |
+| `circuitBreakerBypassed` | One-time bypass set for DEV items — defers circuit breaker so the clean-slate revert warning can fire | `runItemSession()` |
 
 ---
 
