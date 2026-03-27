@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -20,17 +20,18 @@ function getSystemTheme(): Theme {
     : "light";
 }
 
+const emptySubscribe = () => () => {};
+
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = getStoredTheme();
+    return stored ?? getSystemTheme();
+  });
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    const initial = stored ?? getSystemTheme();
-    setTheme(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
-    setMounted(true);
-  }, []);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleTheme() {
     const next: Theme = theme === "light" ? "dark" : "light";

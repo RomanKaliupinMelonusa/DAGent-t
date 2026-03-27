@@ -1,9 +1,11 @@
 import nextConfig from "eslint-config-next";
 
 /** @type {import("eslint").Linter.Config[]} */
-export default [
+const config = [
   ...nextConfig,
   {
     ignores: ["out/", ".next/"],
   },
 ];
+
+export default config;

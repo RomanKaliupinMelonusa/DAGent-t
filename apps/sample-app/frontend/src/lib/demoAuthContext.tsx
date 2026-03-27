@@ -15,7 +15,6 @@ import {
   createContext,
   useContext,
   useState,
-  useEffect,
   useCallback,
   type ReactNode,
 } from "react";
@@ -68,14 +67,10 @@ interface DemoAuthProviderProps {
 }
 
 export function DemoAuthProvider({ children }: DemoAuthProviderProps) {
-  const [state, setState] = useState<DemoAuthState>({
-    isAuthenticated: false,
-    displayName: null,
-    token: null,
-  });
-
-  // Hydrate from sessionStorage on mount
-  useEffect(() => {
+  const [state, setState] = useState<DemoAuthState>(() => {
+    if (typeof window === "undefined") {
+      return { isAuthenticated: false, displayName: null, token: null };
+    }
     try {
       const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -84,18 +79,18 @@ export function DemoAuthProvider({ children }: DemoAuthProviderProps) {
           displayName: string;
         };
         if (parsed.token) {
-          setState({
+          return {
             isAuthenticated: true,
             displayName: parsed.displayName,
             token: parsed.token,
-          });
+          };
         }
       }
     } catch {
-      // Corrupted storage — ignore
       sessionStorage.removeItem(STORAGE_KEY);
     }
-  }, []);
+    return { isAuthenticated: false, displayName: null, token: null };
+  });
 
   const login = useCallback(
     async (username: string, password: string): Promise<void> => {
