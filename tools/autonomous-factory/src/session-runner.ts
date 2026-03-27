@@ -13,6 +13,7 @@
  *   - Post-deploy failure triage and redevelopment reroute
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
@@ -487,8 +488,11 @@ async function runPollCi(
   stepStart: number,
   roamAvailable: boolean,
 ): Promise<SessionResult> {
-  const { slug, repoRoot } = config;
+  const { slug, appRoot, repoRoot } = config;
   const { pipelineSummaries } = state;
+
+  const inProgressDir = path.join(appRoot, "in-progress");
+  const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
 
   console.log("  ⏳ poll-ci: Running deterministic CI poll (no agent session)");
   try {
@@ -497,14 +501,14 @@ async function runPollCi(
       cwd: repoRoot, stdio: "pipe",
       maxBuffer: 5 * 1024 * 1024,  // 5MB — prevent ENOBUFS from verbose gh CLI JSON
       timeout: 1_200_000,  // 20 min max for CI to complete
-      env: { ...process.env, POLL_MAX_RETRIES: "60" },
+      env: { ...process.env, POLL_MAX_RETRIES: "60", IN_PROGRESS_DIR: inProgressDir, SLUG: slug },
     });
 
     // Re-echo stdout for terminal visibility (pipe suppresses live output)
     const successLog = pollOutput.toString();
     if (successLog) console.log(successLog);
 
-    // All CI workflows passed
+    // All CI workflows passed (diagnostic file cleaned up by poll-ci.sh)
     await completeItem(slug, "poll-ci");
     console.log("  ✅ poll-ci complete (all workflows passed)");
 
@@ -516,8 +520,8 @@ async function runPollCi(
     flushReports(config, state);
     return { summary: itemSummary, halt: false, createPr: false };
   } catch (err: unknown) {
-    // execSync attaches stdout/stderr buffers to the Error on non-zero exit.
-    const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+    // execSync attaches stdout/stderr buffers and exit status to the Error.
+    const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
     const ciLogs = execErr.stdout?.toString() ?? "";
     const ciStderr = execErr.stderr?.toString() ?? "";
     const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
@@ -527,9 +531,46 @@ async function runPollCi(
     if (ciStderr) console.error(ciStderr);
 
     const message = execErr.message ?? String(err);
+
+    // ── Exit code 2 (timeout) / 3 (cancellation) — NOT code bugs ─────
+    // Intercept at the boundary before triage ever sees the output.
+    // failItem() is sufficient — getNextAvailable() picks up "failed"
+    // items, so the main loop will retry poll-ci on the next iteration.
+    // After 10 cumulative failures the pipeline halts (correct for
+    // persistent infrastructure slowness or repeated cancellations).
+    if (execErr.status === 2 || execErr.status === 3) {
+      const reason = execErr.status === 2 ? "timed out" : "was manually cancelled";
+      console.warn(`  ⏳ CI polling ${reason}. Will retry on next loop.`);
+      await failItem(slug, "poll-ci", `CI polling ${reason} — will retry`);
+      itemSummary.outcome = "failed";
+      itemSummary.errorMessage = `CI polling ${reason} — will retry`;
+      itemSummary.finishedAt = new Date().toISOString();
+      itemSummary.durationMs = Date.now() - stepStart;
+      pipelineSummaries.push(itemSummary);
+      flushReports(config, state);
+      return { summary: itemSummary, halt: false, createPr: false };
+    }
+
     console.error(`  ✖ CI poll failed or had failures: ${message}`);
 
-    const failureContext = capturedOutput || message;
+    // ── File-based diagnostic handoff ──────────────────────────────────
+    // Read the pure CI failure content from the diagnostic file written
+    // by poll-ci.sh (exit 1 path). This is completely free of polling
+    // status noise ("CI is still running..."). Fall back to stdout
+    // capture only if the file doesn't exist (script crash edge case —
+    // cancellations are intercepted above via exit code 3).
+    let failureContext: string;
+    try {
+      const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
+      failureContext = diagContent || capturedOutput || message;
+      if (diagContent) {
+        console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
+      }
+    } catch {
+      // Diagnostic file not written (cancellation, script crash) — fallback
+      failureContext = capturedOutput || message;
+    }
+
     await failItem(slug, "poll-ci", failureContext);
 
     itemSummary.outcome = "failed";
@@ -781,7 +822,8 @@ async function handleFailureReroute(
   const naItems = new Set(
     pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
   );
-  const resetKeys = triageFailure(itemKey, rawError, naItems);
+  const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
