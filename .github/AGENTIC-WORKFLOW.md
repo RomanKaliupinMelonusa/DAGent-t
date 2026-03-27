@@ -238,8 +238,9 @@ Usage: `bash tools/autonomous-factory/agent-commit.sh <scope> "<message>" [expli
 | Command | Effect |
 |---|---|
 | `create-feature <slug>` | Stash → checkout main → pull → create `feature/<slug>` |
-| `push` | Validates not on main, checks commits ahead, retry on failure |
+| `push` | Validates not on main, checks commits ahead, retry with `--force-with-lease` on failure (handles post-revert diverged history) |
 | `cleanup` | Deletes local `feature/` branches |
+| `revert` | **Clean-slate reset** — hard-resets the current feature branch to `origin/${BASE_BRANCH}`. Preserves pipeline state files (`_STATE.json`, `_TRANS.md`, `_SPEC.md`, `_SUMMARY.md`, `_CHANGES.json`) by stashing them to a temp dir before `git reset --hard` + `git clean -fd`, then restoring. Used when a dev agent is stuck in a hallucination loop |
 
 ### `tools/autonomous-factory/poll-ci.sh`
 
@@ -490,6 +491,7 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 | **No direct state edits** | All agents must use `pipeline:*` commands; `_TRANS.md` is auto-generated |
 | **No raw git commands** | All agents must use `agent-commit.sh` and `agent-branch.sh` |
 | **No push to main** | `agent-branch.sh push` validates branch is not `main` |
+| **Clean-slate revert** | When a dev agent fails ≥ 3 times on the same item (or ≥ 3 persisted redevelopment cycles), the orchestrator injects a warning advising the agent to run `agent-branch.sh revert` and rebuild from scratch. Circuit breaker grants one bypass so the revert opportunity can fire before halting |
 | **Fast-fail on fatal errors** | Auth/SDK failures abort immediately instead of burning all 10 retries |
 | **Pre-flight checks** | Junk files, APIM routes, in-progress artifacts, Azure CLI auth — all validated before first agent session |
 | **DefaultAzureCredential only** | Zero API keys in code; enforced in all agent system prompts |

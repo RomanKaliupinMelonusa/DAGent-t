@@ -105,4 +105,5 @@ The orchestrator is a deterministic `while` loop that:
 - **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `BASE_BRANCH` env var) is the final administrative step.
 - **Prompt rules:** Coding rules live in `apps/<your-app>/.apm/instructions/` (single source of truth), declared in `.apm/apm.yml`. The APM compiler resolves per-agent instruction sets and validates token budgets.
 - **Post-deploy failure rerouting:** When `live-ui` or `integration-test` fails, the orchestrator triages the error and resets the appropriate dev items for redevelopment. Max 5 redevelopment cycles.
+- **Clean-slate revert:** When a dev agent fails ≥ 3 times (in-memory attempts or persisted redevelopment cycles), the orchestrator injects a warning advising `agent-branch.sh revert` to wipe the feature branch and rebuild from scratch. The circuit breaker grants one bypass to allow this.
 - **Hard limits:** 10 retry attempts per failing item, 10 re-deploy cycles, 5 redevelopment cycles per feature.
