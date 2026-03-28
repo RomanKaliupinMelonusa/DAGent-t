@@ -18,7 +18,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
 import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
-import { getStatus, failItem, resetForDev, completeItem } from "./state.js";
+import { getStatus, failItem, resetForDev, completeItem, salvageForDraft } from "./state.js";
 import { getAgentConfig, buildTaskPrompt } from "./agents.js";
 import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
@@ -839,12 +839,23 @@ async function handleFailureReroute(
   const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
   const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
 
-  // Empty array = unfixable error ("blocked" fault domain) — halt immediately
+  // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
-    console.error(`\n  🛑 BLOCKED: Unfixable error detected in ${itemKey} — escalating to human.`);
-    console.error(`     The pipeline cannot fix this error. A Platform Engineer must intervene.`);
-    try { await failItem(slug, itemKey, `BLOCKED: Unfixable error — ${errorMsg}`); } catch { /* best-effort */ }
-    return { summary: itemSummary, halt: true, createPr: false };
+    console.error(`\n  🛑 BLOCKED: Unfixable error detected in ${itemKey} — triggering Graceful Degradation.`);
+    console.error(`     Pipeline will skip tests and open a Draft PR for human remediation.`);
+    try {
+      await failItem(slug, itemKey, `BLOCKED: Unfixable error — ${errorMsg}`);
+      await salvageForDraft(slug, itemKey);
+
+      // Write flag for PR creator agent
+      const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
+      fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
+    } catch (e) {
+      console.error("  ✖ Failed to salvage pipeline state", e);
+      return { summary: itemSummary, halt: true, createPr: false };
+    }
+    // halt: false — main loop continues to docs-archived → create-pr
+    return { summary: itemSummary, halt: false, createPr: false };
   }
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
