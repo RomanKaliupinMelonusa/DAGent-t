@@ -48,15 +48,6 @@ resource "azurerm_resource_group" "main" {
   tags     = local.tags
 }
 
-# Deliberate error for testing elevated apply failure path
-resource "azurerm_storage_account" "broken_test" {
-  name                     = "xx"
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = azurerm_resource_group.main.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-}
-
 # =============================================================================
 # 2. Storage Account (Function App runtime)
 # =============================================================================
