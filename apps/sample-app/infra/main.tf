@@ -40,11 +40,6 @@ resource "azurerm_resource_group" "main" {
   tags     = merge(local.tags, { elevated_test = "true" })
 }
 
-# Deliberate error for testing elevated apply failure path
-resource "azurerm_nonexistent_resource" "broken" {
-  name = "this-will-fail"
-}
-
 # =============================================================================
 # 2. Storage Account (Function App runtime)
 # =============================================================================
