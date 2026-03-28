@@ -242,3 +242,76 @@ describe("salvageForDraft — graceful degradation", () => {
     assert.equal(stateAfter.errorLog.length, logCountBefore, "Idempotent call should not add a new errorLog entry");
   });
 });
+
+// ---------------------------------------------------------------------------
+// salvageForDraft — defensive reset of stale failures
+// ---------------------------------------------------------------------------
+
+describe("salvageForDraft — defensive reset of stale failures", () => {
+  const STALE_SLUG = `__test-salvage-stale-${Date.now()}`;
+  const stateFile = join(APP_ROOT, "in-progress", `${STALE_SLUG}_STATE.json`);
+
+  function readTestState(): {
+    items: Array<{ key: string; status: string; error: string | null }>;
+    errorLog: Array<{ itemKey: string; message: string }>;
+  } {
+    return JSON.parse(readFileSync(stateFile, "utf-8"));
+  }
+
+  function callSalvage(slug: string, failedItemKey: string): { exitCode: number; stdout: string; stderr: string } {
+    const script = `import("./pipeline-state.mjs").then(m => { const s = m.salvageForDraft("${slug}", "${failedItemKey}"); console.log(JSON.stringify({ items: s.items.length })); })`;
+    try {
+      const stdout = execSync(`node --input-type=module -e '${script}'`, {
+        cwd: join(__dirname, "../.."),
+        env: { ...process.env, APP_ROOT },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      return { exitCode: 0, stdout, stderr: "" };
+    } catch (err: unknown) {
+      const e = err as { status: number; stdout: string; stderr: string };
+      return { exitCode: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  }
+
+  before(() => {
+    const result = runCli(`init ${STALE_SLUG} Full-Stack`);
+    assert.equal(result.exitCode, 0, `Failed to init stale test pipeline: ${result.stderr}`);
+
+    // Complete pre-deploy + push-code
+    for (const key of ["schema-dev", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-code"]) {
+      const r = runCli(`complete ${STALE_SLUG} ${key}`);
+      assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
+    }
+
+    // Simulate a prior create-pr failure (e.g., GitHub API rate limit)
+    const r = runCli(`fail ${STALE_SLUG} create-pr "GitHub API rate limit exceeded"`);
+    assert.equal(r.exitCode, 0, `Failed to fail create-pr: ${r.stderr}`);
+  });
+
+  after(() => {
+    for (const suffix of ["_STATE.json", "_TRANS.md"]) {
+      const p = join(APP_ROOT, "in-progress", `${STALE_SLUG}${suffix}`);
+      if (existsSync(p)) rmSync(p);
+    }
+  });
+
+  it("resets a previously-failed create-pr back to pending with null error", () => {
+    // Verify create-pr is currently failed
+    const before = readTestState();
+    const prBefore = before.items.find(i => i.key === "create-pr");
+    assert.equal(prBefore?.status, "failed", "Precondition: create-pr should be failed");
+    assert.ok(prBefore?.error, "Precondition: create-pr should have an error message");
+
+    const result = callSalvage(STALE_SLUG, "poll-ci");
+    assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
+
+    const after = readTestState();
+    const prAfter = after.items.find(i => i.key === "create-pr");
+    assert.equal(prAfter?.status, "pending", `Expected create-pr to be \"pending\" but got \"${prAfter?.status}\"`);
+    assert.equal(prAfter?.error, null, "Expected create-pr error to be null after salvage");
+
+    const docsAfter = after.items.find(i => i.key === "docs-archived");
+    assert.equal(docsAfter?.status, "pending", `Expected docs-archived to be \"pending\" but got \"${docsAfter?.status}\"`);
+  });
+});

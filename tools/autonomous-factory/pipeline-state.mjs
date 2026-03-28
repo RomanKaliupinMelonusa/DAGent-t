@@ -307,9 +307,13 @@ export function salvageForDraft(slug, failedItemKey) {
   }
 
   const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
+  const forcePendingKeys = new Set(["docs-archived", "create-pr"]);
   for (const item of state.items) {
     if (skipKeys.has(item.key) || item.key === failedItemKey) {
       item.status = "na";
+    } else if (forcePendingKeys.has(item.key)) {
+      item.status = "pending";
+      item.error = null;
     }
   }
 
