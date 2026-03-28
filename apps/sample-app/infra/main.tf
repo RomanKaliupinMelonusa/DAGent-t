@@ -10,6 +10,14 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  backend "azurerm" {
+    resource_group_name  = "rg-sample-app-dev"
+    storage_account_name = "stsampleapptfstate001"
+    container_name       = "tfstate"
+    key                  = "sample-app.dev.tfstate"
+    use_azuread_auth     = true
+  }
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -37,7 +45,7 @@ provider "azuread" {}
 resource "azurerm_resource_group" "main" {
   name     = "rg-sample-app-${var.environment}"
   location = var.location
-  tags     = merge(local.tags, { elevated_test = "true" })
+  tags     = local.tags
 }
 
 # =============================================================================
