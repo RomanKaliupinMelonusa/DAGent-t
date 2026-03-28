@@ -384,11 +384,14 @@ export function resumeAfterElevated(slug) {
   const salvageTargets = ["integration-test", "live-ui", "code-cleanup",
                           "infra-handoff", "backend-dev", "frontend-dev",
                           "backend-unit-test", "frontend-unit-test", "push-app", "poll-app-ci"];
+  // push-infra must also reset so a fresh push triggers new CI runs for poll-infra-ci to verify.
+  // Without this, poll-infra-ci would poll stale (failed) CI runs from before the elevated apply.
+  const forceResetKeys = new Set(["poll-infra-ci", "poll-app-ci", "push-infra"]);
   let resetCount = 0;
 
   for (const item of state.items) {
-    // Reset poll-infra-ci or poll-app-ci to pending so standard CI re-verifies
-    if ((item.key === "poll-infra-ci" || item.key === "poll-app-ci") && item.status !== "na") {
+    // Reset deploy items to pending so a fresh push + poll cycle re-verifies CI
+    if (forceResetKeys.has(item.key) && item.status !== "na") {
       item.status = "pending";
       item.error = null;
       resetCount++;
