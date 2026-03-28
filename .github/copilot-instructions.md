@@ -58,6 +58,8 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
 | CI/CD: Infra plan/apply | `.github/workflows/deploy-infra.yml` |
 | CI/CD: Regression tests | `.github/workflows/regression-tests.yml` |
+| ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
+| ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
 | Pipeline state script | `tools/autonomous-factory/pipeline-state.mjs` |
 | Agent commit wrapper | `tools/autonomous-factory/agent-commit.sh` |
 | Agent branch wrapper | `tools/autonomous-factory/agent-branch.sh` |

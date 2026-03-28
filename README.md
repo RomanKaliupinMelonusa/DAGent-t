@@ -133,7 +133,15 @@ Human writes SPEC
 └──────────────────────────────────────────────────────────┘
        ↓
 Pull Request ready for human review
+       ↓ (if infra needs elevated privileges)
+  /dagent apply-elevated  →  secops-elevated approval
+       ↓                            ↓
+  terraform apply (elevated)   /dagent hold (pause)
+       ↓                       /dagent resume (restart)
+  pipeline resumes
 ```
+
+When the pipeline encounters infrastructure that requires elevated privileges (role assignments, OIDC identities), it creates a Draft PR and pauses. A human reviews the diff and comments `/dagent apply-elevated` to run Terraform with Contributor + User Access Administrator roles — gated by GitHub Environment approval. If something goes wrong, `/dagent hold` pauses everything for manual review.
 
 When post-deploy verification fails, the pipeline doesn't stop — it triages the failure by fault domain, resets the responsible agents, and loops back. Bounded by circuit breakers (5 redevelopment cycles, 10 retries per item, session timeouts).
 
@@ -165,6 +173,9 @@ When post-deploy verification fails, the pipeline doesn't stop — it triages th
 7. **Execution Audit Trail** — Every run produces `_SUMMARY.md` (per-step metrics), `_TERMINAL-LOG.md` (timestamped trace), `_PLAYWRIGHT-LOG.md` (browser actions), and `_CHANGES.json` (structured change manifest). All archived to `archive/features/<slug>/`.
 
 8. **Platform Portability** — The engine (`tools/autonomous-factory/`) is app-agnostic. Point `--app` at any directory with an `.apm/apm.yml` manifest. Same engine, different projects, independent governance rules.
+
+9. **Human-in-the-Loop ChatOps** — When the pipeline hits infrastructure that exceeds standard CI permissions (role assignments, OIDC identities), it creates a Draft PR and pauses for human review. Three PR-comment commands provide control: `/dagent apply-elevated` (privileged Terraform apply, gated by `secops-elevated` environment approval), `/dagent hold` (cancel all running workflows), `/dagent resume` (restart the pipeline). Auto-recovery reroutes failures back to the infra agent; `/dagent hold` is the escape hatch when auto-recovery isn't working.
+   → *Operational reference: [AGENTIC-WORKFLOW.md — ChatOps Commands](.github/AGENTIC-WORKFLOW.md#chatops-commands)*
 
 → *Full system architecture: [00-overview.md](tools/autonomous-factory/docs/00-overview.md)*
 

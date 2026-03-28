@@ -1,12 +1,25 @@
 # infra/
 
-Terraform infrastructure for the sample app: Resource Group, Function App, APIM, Key Vault, Entra ID App Registration, and dual-mode auth policies.
+Terraform infrastructure for the sample app: Resource Group, Function App, APIM, Key Vault, Entra ID App Registration, dual-mode auth policies, CI/CD OIDC identities (standard + elevated), and remote state backend.
 
 ## Prerequisites
 
 - [Terraform >= 1.5](https://developer.hashicorp.com/terraform/install)
 - Azure CLI logged in (`az login`)
 - Entra ID permissions: `Application.ReadWrite.OwnedBy` (for app registration)
+
+## Remote State Backend
+
+State is stored in Azure Storage with AD auth — no storage keys.
+
+| Setting | Value |
+|---|---|
+| Storage Account | `stsampleapptfstate001` in `rg-sample-app-dev` |
+| Container | `tfstate` |
+| Key | `sample-app.dev.tfstate` |
+| Auth | `use_azuread_auth = true` |
+
+Both standard and elevated SPs have `Storage Blob Data Contributor` on the storage account.
 
 ## Quick Start (Local)
 
@@ -55,6 +68,8 @@ terraform taint random_uuid.demo_token && terraform apply -var-file=dev.tfvars
 | `azurerm_api_management.main` | API gateway with dual-mode auth policies |
 | `azurerm_key_vault_secret.demo_token` | Demo token (only in demo mode) |
 | `random_uuid.demo_token` | Auto-generated demo token UUID |
+| `azuread_application.elevated_cicd` | Elevated SP for privileged Terraform applies |
+| `azuread_application.cicd` | Standard CI/CD SP for deploys and regression tests |
 
 ## Defense-in-Depth Auth Chain
 
@@ -72,3 +87,16 @@ The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the
 1. Create an OpenAPI 3.0.3 spec in `api-specs/`
 2. Add a new `azurerm_api_management_api` resource in `apim.tf` (see `azurerm_api_management_api.sample` for the pattern)
 3. Add a dual-mode policy using the existing `local.sample_policy_entra` / `local.sample_policy_demo` templates, or create new policy locals for different auth requirements
+
+## CI/CD OIDC Identities
+
+`cicd.tf` provisions two Azure AD service principals with OIDC federation:
+
+| Identity | Roles | OIDC Subject | Used By |
+|---|---|---|---|
+| **Standard** (`azuread_application.cicd`) | Contributor (RG) | `ref:refs/heads/main`, `ref:refs/heads/feature/*`, `environment:development` | All deploy + regression workflows |
+| **Elevated** (`azuread_application.elevated_cicd`) | Contributor + User Access Administrator (RG) | `environment:secops-elevated` | `elevated-infra-deploy.yml` only |
+
+**Outputs:** `cicd_client_id`, `elevated_cicd_client_id`
+
+The elevated identity exists for operations the standard SP can't perform: creating role assignments, OIDC federated credentials, and other AAD-scoped resources. It is only accessible through the `secops-elevated` GitHub Environment, which requires manual reviewer approval.
