@@ -37,7 +37,7 @@ provider "azuread" {}
 resource "azurerm_resource_group" "main" {
   name     = "rg-sample-app-${var.environment}"
   location = var.location
-  tags     = local.tags
+  tags     = merge(local.tags, { elevated_test = "true" })
 }
 
 # =============================================================================
