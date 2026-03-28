@@ -57,3 +57,8 @@ output "swa_name" {
   description = "Static Web App resource name — use to retrieve deployment token via az CLI."
   value       = azurerm_static_web_app.main.name
 }
+
+output "elevated_cicd_client_id" {
+  description = "Elevated CI/CD OIDC client ID — set as AZURE_ELEVATED_CLIENT_ID GitHub secret."
+  value       = azuread_application.elevated_cicd.client_id
+}

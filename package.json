@@ -16,6 +16,7 @@
     "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
     "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",
     "pipeline:doc-note": "node tools/autonomous-factory/pipeline-state.mjs doc-note",
+    "pipeline:resume": "node tools/autonomous-factory/pipeline-state.mjs resume",
     "pipeline:set-url": "node tools/autonomous-factory/pipeline-state.mjs set-url",
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
