@@ -175,6 +175,7 @@ jobs:
           ❌ **Elevated infrastructure apply failed.**
 
           Triggered by @${{ github.event.comment.user.login }} via \`/dagent apply-elevated\`
+          Recovery initiated — the infra agent will diagnose the error and push a fix.
 
           <details><summary>Terraform output</summary>
 
@@ -185,6 +186,20 @@ jobs:
           </details>
           EOF
           )"
+
+      - name: Recover pipeline
+        if: steps.apply.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+          APP_ROOT: ${{ env.APP_PATH }}
+        run: |
+          ERROR_SUMMARY=$(grep -E "^Error:" ${{ env.APP_PATH }}/infra/apply-output.txt | head -5 | tr '\n' ' ')
+          npm run pipeline:recover-elevated ${{ steps.pr-meta.outputs.slug }} "$ERROR_SUMMARY" || echo "⚠️ pipeline:recover-elevated skipped (state file may not exist yet)"
+          gh workflow run agentic-feature.yml \
+            --repo ${{ github.repository }} \
+            -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
+            -f workflow-type=Infra \
+            -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
 
       - name: Fail if apply failed
         if: steps.apply.outcome == 'failure'

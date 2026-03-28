@@ -17,6 +17,7 @@
     "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",
     "pipeline:doc-note": "node tools/autonomous-factory/pipeline-state.mjs doc-note",
     "pipeline:resume": "node tools/autonomous-factory/pipeline-state.mjs resume",
+    "pipeline:recover-elevated": "node tools/autonomous-factory/pipeline-state.mjs recover-elevated",
     "pipeline:set-url": "node tools/autonomous-factory/pipeline-state.mjs set-url",
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
