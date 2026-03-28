@@ -1,0 +1,159 @@
+# =============================================================================
+# DAGent ChatOps — Pipeline Control Commands
+# =============================================================================
+# Lightweight ChatOps commands for controlling the agentic pipeline from PR
+# comments. No elevated permissions or environment approvals needed.
+#
+# Commands:
+#   /dagent hold     — Pause the pipeline: cancel all running workflows
+#   /dagent resume   — Restart the agentic pipeline from scratch
+#
+# These complement `/dagent apply-elevated` (in elevated-infra-deploy.yml)
+# which handles privileged Terraform operations.
+# =============================================================================
+
+name: DAGent ChatOps
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─── /dagent hold ──────────────────────────────────────────────────────────
+  hold:
+    name: Hold Pipeline
+    if: >-
+      github.event.issue.pull_request
+      && startsWith(github.event.comment.body, '/dagent hold')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add reaction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content=+1
+
+      - name: Get PR metadata
+        id: pr-meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_BRANCH=$(gh pr view ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --json headRefName -q '.headRefName')
+          echo "branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+
+          SLUG=$(echo "$PR_BRANCH" | sed 's|^feature/||')
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+      - name: Cancel running agentic workflows
+        id: cancel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CANCELLED=0
+
+          # Cancel running agentic-feature.yml workflows
+          RUNNING=$(gh api "repos/${{ github.repository }}/actions/workflows/agentic-feature.yml/runs" \
+            --jq '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued") | .id] | .[]' 2>/dev/null || true)
+
+          for RUN_ID in $RUNNING; do
+            echo "Cancelling agentic-feature run $RUN_ID"
+            gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/cancel" -X POST 2>/dev/null || true
+            CANCELLED=$((CANCELLED + 1))
+          done
+
+          # Cancel running elevated-infra-deploy.yml workflows (except this chatops run)
+          ELEVATED=$(gh api "repos/${{ github.repository }}/actions/workflows/elevated-infra-deploy.yml/runs" \
+            --jq '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued") | .id] | .[]' 2>/dev/null || true)
+
+          for RUN_ID in $ELEVATED; do
+            echo "Cancelling elevated-infra-deploy run $RUN_ID"
+            gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/cancel" -X POST 2>/dev/null || true
+            CANCELLED=$((CANCELLED + 1))
+          done
+
+          echo "cancelled=$CANCELLED" >> "$GITHUB_OUTPUT"
+          echo "Total cancelled: $CANCELLED"
+
+      - name: Post hold comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANCELLED: ${{ steps.cancel.outputs.cancelled }}
+        run: |
+          gh pr comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "$(cat <<'EOF'
+          ⏸️ **Pipeline held** by @${{ github.event.comment.user.login }}
+
+          All running agentic and elevated-deploy workflows have been cancelled.
+          The PR is now under manual human review.
+
+          **When you're ready to continue:**
+          - `/dagent resume` — restart the agentic pipeline
+          - `/dagent apply-elevated` — re-run elevated infrastructure apply
+          EOF
+          )"
+
+  # ─── /dagent resume ────────────────────────────────────────────────────────
+  resume:
+    name: Resume Pipeline
+    if: >-
+      github.event.issue.pull_request
+      && startsWith(github.event.comment.body, '/dagent resume')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add reaction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content=rocket
+
+      - name: Get PR metadata
+        id: pr-meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_BRANCH=$(gh pr view ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --json headRefName -q '.headRefName')
+          echo "branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+
+          SLUG=$(echo "$PR_BRANCH" | sed 's|^feature/||')
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger agentic pipeline
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          gh workflow run agentic-feature.yml \
+            --repo ${{ github.repository }} \
+            -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
+            -f workflow-type=Infra \
+            -f app-path=apps/sample-app \
+          || { echo "❌ Failed to trigger — is COPILOT_PAT set?"; exit 1; }
+
+      - name: Post resume comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "$(cat <<'EOF'
+          ▶️ **Pipeline resumed** by @${{ github.event.comment.user.login }}
+
+          The agentic orchestrator has been re-triggered.
+          It will start fresh and run through the full pipeline.
+          EOF
+          )"

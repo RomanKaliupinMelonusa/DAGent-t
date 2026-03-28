@@ -7,6 +7,8 @@
 # Usage:
 #   /dagent apply-elevated                              (full apply)
 #   /dagent apply-elevated -target=azurerm_resource.x   (targeted apply)
+#   /dagent hold                                        (pause pipeline — see dagent-chatops.yml)
+#   /dagent resume                                      (restart pipeline — see dagent-chatops.yml)
 #
 # Security model:
 #   1. OIDC federation scoped to `secops-elevated` GitHub Environment ONLY
@@ -176,6 +178,8 @@ jobs:
 
           Triggered by @${{ github.event.comment.user.login }} via \`/dagent apply-elevated\`
           Recovery initiated — the infra agent will diagnose the error and push a fix.
+
+          > **Want to pause instead?** Comment \`/dagent hold\` to cancel recovery and review manually.
 
           <details><summary>Terraform output</summary>
 
