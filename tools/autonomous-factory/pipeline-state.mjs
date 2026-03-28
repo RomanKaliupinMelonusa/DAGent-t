@@ -285,6 +285,49 @@ export function failItem(slug, itemKey, message) {
 }
 
 /**
+ * Salvage pipeline state for a Draft PR after an unfixable ("blocked") error.
+ * Marks the failed item + post-deploy tests + code-cleanup as "na", allowing
+ * the DAG to resolve directly to docs-archived → create-pr.
+ *
+ * @param {string} slug - Feature slug
+ * @param {string} failedItemKey - The item that triggered the block (e.g. "poll-ci")
+ * @returns {object} The updated pipeline state
+ * @throws {Error} if slug or failedItemKey missing, or state file not found
+ */
+export function salvageForDraft(slug, failedItemKey) {
+  if (!slug || !failedItemKey) {
+    throw new Error("salvageForDraft requires slug and failedItemKey");
+  }
+
+  const state = readStateOrThrow(slug);
+
+  // Idempotency guard — prevent duplicate salvage entries in parallel scenarios
+  if (state.errorLog.some(e => e.itemKey === "salvage-draft")) {
+    return state;
+  }
+
+  const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
+  const forcePendingKeys = new Set(["docs-archived", "create-pr"]);
+  for (const item of state.items) {
+    if (skipKeys.has(item.key) || item.key === failedItemKey) {
+      item.status = "na";
+    } else if (forcePendingKeys.has(item.key)) {
+      item.status = "pending";
+      item.error = null;
+    }
+  }
+
+  state.errorLog.push({
+    timestamp: new Date().toISOString(),
+    itemKey: "salvage-draft",
+    message: `Graceful degradation: skipped ${failedItemKey}, integration-test, live-ui, code-cleanup for Draft PR.`,
+  });
+
+  writeState(slug, state);
+  return state;
+}
+
+/**
  * Reset push-code + poll-ci for a re-push cycle.
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found

@@ -11,7 +11,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { rmSync, existsSync } from "node:fs";
+import { rmSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -144,5 +144,174 @@ describe("cmdFail CLI validation — non-post-deploy items", () => {
   it("accepts plain text for push-code", () => {
     const result = runCli(`fail ${TEST_SLUG} push-code "git push rejected"`);
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// salvageForDraft — Graceful Degradation state salvage
+// ---------------------------------------------------------------------------
+
+describe("salvageForDraft — graceful degradation", () => {
+  const SALVAGE_SLUG = `__test-salvage-${Date.now()}`;
+  const stateFile = join(APP_ROOT, "in-progress", `${SALVAGE_SLUG}_STATE.json`);
+
+  /** Helper: read the raw state JSON from disk. */
+  function readTestState(): {
+    items: Array<{ key: string; status: string }>;
+    errorLog: Array<{ itemKey: string; message: string }>;
+  } {
+    return JSON.parse(readFileSync(stateFile, "utf-8"));
+  }
+
+  /** Helper: call salvageForDraft programmatically via a child process. */
+  function callSalvage(slug: string, failedItemKey: string): { exitCode: number; stdout: string; stderr: string } {
+    const script = `import("./pipeline-state.mjs").then(m => { const s = m.salvageForDraft("${slug}", "${failedItemKey}"); console.log(JSON.stringify({ items: s.items.length })); })`;
+    try {
+      const stdout = execSync(`node --input-type=module -e '${script}'`, {
+        cwd: join(__dirname, "../.."),
+        env: { ...process.env, APP_ROOT },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      return { exitCode: 0, stdout, stderr: "" };
+    } catch (err: unknown) {
+      const e = err as { status: number; stdout: string; stderr: string };
+      return { exitCode: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  }
+
+  before(() => {
+    const result = runCli(`init ${SALVAGE_SLUG} Full-Stack`);
+    assert.equal(result.exitCode, 0, `Failed to init salvage test pipeline: ${result.stderr}`);
+
+    // Simulate a realistic pipeline state: pre-deploy items done, push-code done, poll-ci pending
+    for (const key of ["schema-dev", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-code"]) {
+      const r = runCli(`complete ${SALVAGE_SLUG} ${key}`);
+      assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
+    }
+  });
+
+  after(() => {
+    for (const suffix of ["_STATE.json", "_TRANS.md"]) {
+      const p = join(APP_ROOT, "in-progress", `${SALVAGE_SLUG}${suffix}`);
+      if (existsSync(p)) rmSync(p);
+    }
+  });
+
+  it("marks poll-ci, integration-test, live-ui, and code-cleanup as na", () => {
+    const result = callSalvage(SALVAGE_SLUG, "poll-ci");
+    assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
+    const state = readTestState();
+
+    const expectedNa = ["poll-ci", "integration-test", "live-ui", "code-cleanup"];
+    for (const key of expectedNa) {
+      const item = state.items.find(i => i.key === key);
+      assert.ok(item, `Item ${key} not found in state`);
+      assert.equal(item.status, "na", `Expected ${key} to be "na" but got "${item.status}"`);
+    }
+  });
+
+  it("leaves docs-archived and create-pr as pending", () => {
+    const state = readTestState();
+
+    const expectedPending = ["docs-archived", "create-pr"];
+    for (const key of expectedPending) {
+      const item = state.items.find(i => i.key === key);
+      assert.ok(item, `Item ${key} not found in state`);
+      assert.equal(item.status, "pending", `Expected ${key} to be "pending" but got "${item.status}"`);
+    }
+  });
+
+  it("logs exactly one salvage-draft entry in errorLog", () => {
+    const state = readTestState();
+    const salvageEntries = state.errorLog.filter(e => e.itemKey === "salvage-draft");
+    assert.equal(salvageEntries.length, 1, `Expected 1 salvage-draft entry, got ${salvageEntries.length}`);
+    assert.ok(
+      salvageEntries[0].message.includes("poll-ci"),
+      `salvage-draft message should mention poll-ci: ${salvageEntries[0].message}`,
+    );
+  });
+
+  it("is idempotent — second call is a no-op", () => {
+    const stateBefore = readTestState();
+    const logCountBefore = stateBefore.errorLog.length;
+
+    callSalvage(SALVAGE_SLUG, "poll-ci");
+    const stateAfter = readTestState();
+
+    assert.equal(stateAfter.errorLog.length, logCountBefore, "Idempotent call should not add a new errorLog entry");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// salvageForDraft — defensive reset of stale failures
+// ---------------------------------------------------------------------------
+
+describe("salvageForDraft — defensive reset of stale failures", () => {
+  const STALE_SLUG = `__test-salvage-stale-${Date.now()}`;
+  const stateFile = join(APP_ROOT, "in-progress", `${STALE_SLUG}_STATE.json`);
+
+  function readTestState(): {
+    items: Array<{ key: string; status: string; error: string | null }>;
+    errorLog: Array<{ itemKey: string; message: string }>;
+  } {
+    return JSON.parse(readFileSync(stateFile, "utf-8"));
+  }
+
+  function callSalvage(slug: string, failedItemKey: string): { exitCode: number; stdout: string; stderr: string } {
+    const script = `import("./pipeline-state.mjs").then(m => { const s = m.salvageForDraft("${slug}", "${failedItemKey}"); console.log(JSON.stringify({ items: s.items.length })); })`;
+    try {
+      const stdout = execSync(`node --input-type=module -e '${script}'`, {
+        cwd: join(__dirname, "../.."),
+        env: { ...process.env, APP_ROOT },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      return { exitCode: 0, stdout, stderr: "" };
+    } catch (err: unknown) {
+      const e = err as { status: number; stdout: string; stderr: string };
+      return { exitCode: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  }
+
+  before(() => {
+    const result = runCli(`init ${STALE_SLUG} Full-Stack`);
+    assert.equal(result.exitCode, 0, `Failed to init stale test pipeline: ${result.stderr}`);
+
+    // Complete pre-deploy + push-code
+    for (const key of ["schema-dev", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-code"]) {
+      const r = runCli(`complete ${STALE_SLUG} ${key}`);
+      assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
+    }
+
+    // Simulate a prior create-pr failure (e.g., GitHub API rate limit)
+    const r = runCli(`fail ${STALE_SLUG} create-pr "GitHub API rate limit exceeded"`);
+    assert.equal(r.exitCode, 0, `Failed to fail create-pr: ${r.stderr}`);
+  });
+
+  after(() => {
+    for (const suffix of ["_STATE.json", "_TRANS.md"]) {
+      const p = join(APP_ROOT, "in-progress", `${STALE_SLUG}${suffix}`);
+      if (existsSync(p)) rmSync(p);
+    }
+  });
+
+  it("resets a previously-failed create-pr back to pending with null error", () => {
+    // Verify create-pr is currently failed
+    const before = readTestState();
+    const prBefore = before.items.find(i => i.key === "create-pr");
+    assert.equal(prBefore?.status, "failed", "Precondition: create-pr should be failed");
+    assert.ok(prBefore?.error, "Precondition: create-pr should have an error message");
+
+    const result = callSalvage(STALE_SLUG, "poll-ci");
+    assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
+
+    const after = readTestState();
+    const prAfter = after.items.find(i => i.key === "create-pr");
+    assert.equal(prAfter?.status, "pending", `Expected create-pr to be \"pending\" but got \"${prAfter?.status}\"`);
+    assert.equal(prAfter?.error, null, "Expected create-pr error to be null after salvage");
+
+    const docsAfter = after.items.find(i => i.key === "docs-archived");
+    assert.equal(docsAfter?.status, "pending", `Expected docs-archived to be \"pending\" but got \"${docsAfter?.status}\"`);
   });
 });

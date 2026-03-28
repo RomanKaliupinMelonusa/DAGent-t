@@ -39,7 +39,7 @@ function NavBarShell({ authSlot }: { authSlot: React.ReactNode }) {
     <header className="border-b border-border bg-surface-card transition-colors duration-200">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-lg font-bold text-text-primary">
-          Sample App
+          Sample App.
         </Link>
 
         <div className="flex items-center gap-6">

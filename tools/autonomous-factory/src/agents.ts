@@ -157,12 +157,12 @@ ${apmContext.agents["backend-dev"].rules}
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before making changes to understand blast radius and affected tests.
 5. Implement the backend logic and/or infrastructure changes following the patterns above.
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
-7. Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` to verify tests pass.
+7. Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` to verify tests pass. This is a fast fail-safe — broken code must not proceed to the expensive security audit in Step 8.
 8. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
    - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
-9. **Local Quality Gate (MANDATORY):** Run \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. Both type-check and lint must pass with zero errors before committing. If either fails, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
+9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. All tests, type-checking, and linting MUST pass with zero errors before committing. If any fail, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
 10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
 11. If tests fail and you cannot fix after 2 attempts, record the failure.
 
@@ -387,9 +387,9 @@ ${apmContext.agents["frontend-dev"].rules}
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
 5. Implement the frontend UI following patterns above.
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
-7. Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` to verify tests pass.
+7. Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` to verify tests pass. This is a fast fail-safe — broken code must not proceed to the expensive build and security audit in Step 8.
 8. **Run full Next.js build** to catch type errors that \`tsc --noEmit\` may miss: \`cd ${ctx.appRoot}/frontend && npx next build 2>&1 | tail -30\`. Fix any TypeScript errors before proceeding.
-9. **Local Quality Gate (MANDATORY):** Run \`cd ${ctx.appRoot}/frontend && npm run lint\`. Lint must pass with zero errors before proceeding. (The Next.js build in step 8 already covers type-checking.) This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
+9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/frontend && npm run lint\`. All tests and linting MUST pass with zero errors before proceeding. (The Next.js build in step 8 already covers type-checking.) This mirrors CI exactly and catches errors in seconds.
 10. **Write or update Playwright E2E tests** in \`${ctx.appRoot}/e2e/\` for the feature's UI workflow. This is mandatory.
 11. Verify E2E tests compile: \`npx playwright test --config ${ctx.appRoot}/playwright.config.ts --list\`.
 12. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
@@ -1043,6 +1043,16 @@ Before generating the PR body, use the Roam MCP tools to produce a deterministic
 If Roam MCP tools are unavailable, fall back to \`git diff --stat ${ctx.baseBranch}...HEAD\` and
 note the limitation in the PR body.
 
+### Step 2.75. Check for Blocked Pipeline (Infrastructure Handoff)
+Check if the pipeline was gracefully degraded due to an infrastructure error:
+\`\`\`bash
+BLOCKED_MSG=""
+if [ -f "${ctx.appRoot}/in-progress/${ctx.featureSlug}.blocked-draft" ]; then
+  BLOCKED_MSG=$(cat "${ctx.appRoot}/in-progress/${ctx.featureSlug}.blocked-draft")
+  echo "⚠️ Pipeline was BLOCKED: $BLOCKED_MSG"
+fi
+\`\`\`
+
 ### Step 3. Generate the PR Body File & Create PR
 
 Create a file named \`PR_BODY.md\` with the following structured format:
@@ -1109,10 +1119,38 @@ If Roam was unavailable, write "Roam reviewer suggestions unavailable — assign
 
 Then determine a concise title using Conventional Commits (e.g., \`feat(bulk): add copy detail modal and backend patch endpoint\`). Do NOT use \`[Feature]\` brackets.
 
+🚨 **DRAFT REQUIREMENT:** If \`$BLOCKED_MSG\` is non-empty, you MUST prepend an infrastructure warning banner to PR_BODY.md. Do this programmatically AFTER writing PR_BODY.md:
 \`\`\`bash
-PR_NUMBER=$(gh pr create --title "<your-title>" --body-file PR_BODY.md --base ${ctx.baseBranch} | grep -oE '[0-9]+$')
+if [ -n "$BLOCKED_MSG" ]; then
+  echo "> ⚠️ **Pipeline Blocked by Infrastructure:** AI development completed successfully, but the CI/CD deployment was blocked by an infrastructure/environment error." > PR_BODY_TMP.md
+  echo "> **Error:**" >> PR_BODY_TMP.md
+  echo '> \`\`\`text' >> PR_BODY_TMP.md
+  echo "$BLOCKED_MSG" >> PR_BODY_TMP.md
+  echo '> \`\`\`' >> PR_BODY_TMP.md
+  echo "> **Human Action Required:** Please review the AI's proposed infrastructure fix in the diff. If approved, comment \\\`/dagent apply-elevated\\\` to provision the resources and resume the pipeline." >> PR_BODY_TMP.md
+  echo "" >> PR_BODY_TMP.md
+  cat PR_BODY.md >> PR_BODY_TMP.md
+  mv PR_BODY_TMP.md PR_BODY.md
+fi
+\`\`\`
+
+Then create the PR. Use the \`--draft\` flag if the pipeline was blocked:
+\`\`\`bash
+if [ -n "$BLOCKED_MSG" ]; then
+  PR_NUMBER=$(gh pr create --title "<your-title>" --body-file PR_BODY.md --base ${ctx.baseBranch} --draft | grep -oE '[0-9]+$')
+else
+  PR_NUMBER=$(gh pr create --title "<your-title>" --body-file PR_BODY.md --base ${ctx.baseBranch} | grep -oE '[0-9]+$')
+fi
 echo "Created PR #$PR_NUMBER"
 rm -f PR_BODY.md  # Remove temp payload — must not be committed
+\`\`\`
+
+### Step 3.5. Human-in-the-Loop Notification
+If the PR was created as a draft due to a block, you MUST immediately add a comment to notify the human operator:
+\`\`\`bash
+if [ -n "$BLOCKED_MSG" ]; then
+  gh pr comment $PR_NUMBER --body "🚨 **Human-in-the-Loop Required:** Infrastructure deployment failed due to permissions. Please review the Terraform diff and comment \\\`/dagent apply-elevated\\\` to authorize the deployment."
+fi
 \`\`\`
 
 ### Step 4. Update State & Record PR
