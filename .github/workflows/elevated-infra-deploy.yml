@@ -137,12 +137,12 @@ jobs:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           APP_ROOT: ${{ env.APP_PATH }}
         run: |
-          npm run pipeline:resume ${{ steps.pr-meta.outputs.slug }}
+          npm run pipeline:resume ${{ steps.pr-meta.outputs.slug }} || echo "⚠️ pipeline:resume skipped (state file may not exist yet)"
           gh workflow run agentic-feature.yml \
             --repo ${{ github.repository }} \
             -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
             -f workflow-type=Infra \
-            -f app-path=${{ env.APP_PATH }}
+            -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
 
       - name: Post failure comment
         if: steps.apply.outcome == 'failure'
