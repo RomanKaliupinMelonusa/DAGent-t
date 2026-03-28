@@ -300,6 +300,12 @@ export function salvageForDraft(slug, failedItemKey) {
   }
 
   const state = readStateOrThrow(slug);
+
+  // Idempotency guard — prevent duplicate salvage entries in parallel scenarios
+  if (state.errorLog.some(e => e.itemKey === "salvage-draft")) {
+    return state;
+  }
+
   const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
   for (const item of state.items) {
     if (skipKeys.has(item.key) || item.key === failedItemKey) {

@@ -157,7 +157,7 @@ ${apmContext.agents["backend-dev"].rules}
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before making changes to understand blast radius and affected tests.
 5. Implement the backend logic and/or infrastructure changes following the patterns above.
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
-7. Review your changes for correctness before proceeding to the quality gate in Step 9.
+7. Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` to verify tests pass. This is a fast fail-safe — broken code must not proceed to the expensive security audit in Step 8.
 8. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
    - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
@@ -387,9 +387,9 @@ ${apmContext.agents["frontend-dev"].rules}
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
 5. Implement the frontend UI following patterns above.
 6. After implementation, run \`roam_review_change ${ctx.appRoot}\` to verify impact.
-7. **Run full Next.js build** to catch type errors that \`tsc --noEmit\` may miss: \`cd ${ctx.appRoot}/frontend && npx next build 2>&1 | tail -30\`. Fix any TypeScript errors before proceeding.
-8. Review your changes for correctness before proceeding to the quality gate in Step 9.
-9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/frontend && npm run lint\`. All tests and linting MUST pass with zero errors before proceeding. (The Next.js build in step 7 already covers type-checking.) This mirrors CI exactly and catches errors in seconds.
+7. Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` to verify tests pass. This is a fast fail-safe — broken code must not proceed to the expensive build and security audit in Step 8.
+8. **Run full Next.js build** to catch type errors that \`tsc --noEmit\` may miss: \`cd ${ctx.appRoot}/frontend && npx next build 2>&1 | tail -30\`. Fix any TypeScript errors before proceeding.
+9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/frontend && npm run lint\`. All tests and linting MUST pass with zero errors before proceeding. (The Next.js build in step 8 already covers type-checking.) This mirrors CI exactly and catches errors in seconds.
 10. **Write or update Playwright E2E tests** in \`${ctx.appRoot}/e2e/\` for the feature's UI workflow. This is mandatory.
 11. Verify E2E tests compile: \`npx playwright test --config ${ctx.appRoot}/playwright.config.ts --list\`.
 12. **MANDATORY — Security & Performance Audit:** Call \`roam_check_rules ${ctx.appRoot}\` on all files you modified in this session.
