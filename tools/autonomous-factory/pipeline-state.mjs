@@ -387,6 +387,32 @@ export function resumeAfterElevated(slug) {
 }
 
 /**
+ * Recover pipeline after a failed elevated infrastructure apply.
+ * Fails poll-ci with the error, then resets backend-dev + push-code + poll-ci
+ * so the infra-expert agent can diagnose the error and fix the Terraform code.
+ *
+ * @param {string} slug - Feature slug
+ * @param {string} errorMessage - Terraform error output
+ * @returns {{ state: object, cycleCount: number, halted: boolean }}
+ * @throws {Error} if slug missing or state file not found
+ */
+export function recoverElevated(slug, errorMessage) {
+  if (!slug) {
+    throw new Error("recoverElevated requires slug");
+  }
+
+  // Step 1: Record the failure on poll-ci
+  const failResult = failItem(slug, "poll-ci", `Elevated apply failed: ${errorMessage}`);
+  if (failResult.halted) {
+    return failResult;
+  }
+
+  // Step 2: Reset dev items for redevelopment cycle
+  const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
+  return resetForDev(slug, ["backend-dev"], reason);
+}
+
+/**
  * Reset push-code + poll-ci for a re-push cycle.
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
@@ -748,6 +774,26 @@ function cmdResume(slug) {
   }
 }
 
+function cmdRecoverElevated(slug, errorMessage) {
+  if (!slug || !errorMessage) {
+    console.error("Usage: pipeline-state.mjs recover-elevated <slug> <error-message>");
+    process.exit(1);
+  }
+
+  try {
+    const { cycleCount, halted } = recoverElevated(slug, errorMessage);
+    if (halted) {
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has exhausted recovery cycles. Requires human intervention.`);
+      process.exit(2);
+    } else {
+      console.log(`🔄 Recovery initiated after elevated apply failure (redevelopment cycle ${cycleCount}/5). Agent will diagnose and fix.`);
+    }
+  } catch (err) {
+    console.error(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 function cmdStatus(slug) {
   if (!slug) {
     console.error("Usage: pipeline-state.mjs status <slug>");
@@ -847,6 +893,9 @@ switch (command) {
   case "resume":
     cmdResume(args[0]);
     break;
+  case "recover-elevated":
+    cmdRecoverElevated(args[0], args.slice(1).join(" "));
+    break;
   case "status":
     cmdStatus(args[0]);
     break;
@@ -873,6 +922,7 @@ switch (command) {
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
     console.error("  reset-ci     <slug>                      — Reset push-code + poll-ci for re-push");
     console.error("  resume       <slug>                      — Resume pipeline after elevated apply");
+    console.error("  recover-elevated <slug> <error-message>  — Recover pipeline after failed elevated apply");
     console.error("  status       <slug>                      — Print state JSON");
     console.error("  next         <slug>                      — Print next actionable item");
     console.error("  set-note     <slug> <note>               — Append implementation note");
