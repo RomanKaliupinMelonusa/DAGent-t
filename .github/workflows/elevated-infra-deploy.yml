@@ -4,11 +4,17 @@
 # Runs `terraform apply` with elevated privileges when a human comments
 # `/dagent apply-elevated` on a Pull Request.
 #
+# Usage:
+#   /dagent apply-elevated -target=azurerm_resource_group.main
+#   /dagent apply-elevated -target=res.a -target=res.b
+#   (at least one -target is REQUIRED — prevents full-config drift)
+#
 # Security model:
 #   1. OIDC federation scoped to `secops-elevated` GitHub Environment ONLY
 #   2. Environment requires manual reviewer approval before OIDC token is issued
 #   3. Elevated SP has Contributor + User Access Administrator (RG-scoped)
-#   4. Standard CI re-verifies full stack after elevated apply via pipeline:resume
+#   4. -target scoping ensures only declared resources are touched
+#   5. Standard CI re-verifies full stack after elevated apply via pipeline:resume
 #
 # Prerequisites:
 #   1. GitHub Environment "secops-elevated" with required reviewers
@@ -54,10 +60,11 @@ jobs:
             repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
             -f content=rocket
 
-      - name: Get PR metadata
+      - name: Parse command and get PR metadata
         id: pr-meta
         env:
           GH_TOKEN: ${{ github.token }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           PR_BRANCH=$(gh pr view ${{ github.event.issue.number }} \
             --repo ${{ github.repository }} \
@@ -66,6 +73,17 @@ jobs:
 
           SLUG=$(echo "$PR_BRANCH" | sed 's|^feature/||')
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+          # Parse -target flags from comment body (first line only)
+          FIRST_LINE=$(echo "$COMMENT_BODY" | head -1)
+          TARGETS=$(echo "$FIRST_LINE" | grep -oE '\-target=[^ ]+' || true)
+          if [ -z "$TARGETS" ]; then
+            echo "::error::No -target flags found. Usage: /dagent apply-elevated -target=resource.name"
+            exit 1
+          fi
+          TF_TARGET_ARGS=$(echo "$TARGETS" | tr '\n' ' ')
+          echo "tf_targets=$TF_TARGET_ARGS" >> "$GITHUB_OUTPUT"
+          echo "Parsed terraform targets: $TF_TARGET_ARGS"
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
@@ -114,7 +132,7 @@ jobs:
           TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
         run: |
           set -o pipefail
-          terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
+          terraform apply -auto-approve -no-color ${{ steps.pr-meta.outputs.tf_targets }} 2>&1 | tee apply-output.txt
         continue-on-error: true
 
       - name: Post success comment
