@@ -103,6 +103,7 @@ jobs:
       - name: Terraform Apply
         id: apply
         working-directory: ${{ env.APP_PATH }}/infra
+        shell: bash {0}
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_ELEVATED_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -113,8 +114,10 @@ jobs:
           TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
           TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
         run: |
+          set -o pipefail
           terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
-          if grep -q "^Error:" apply-output.txt; then
+          TF_EXIT=$?
+          if [ "$TF_EXIT" -ne 0 ]; then
             echo "tf_result=failure" >> "$GITHUB_OUTPUT"
           else
             echo "tf_result=success" >> "$GITHUB_OUTPUT"
