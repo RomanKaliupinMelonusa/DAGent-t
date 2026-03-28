@@ -113,6 +113,7 @@ jobs:
           TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
           TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
         run: |
+          set -o pipefail
           terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
         continue-on-error: true
 
