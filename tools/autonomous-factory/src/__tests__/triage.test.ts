@@ -66,8 +66,14 @@ describe("parseTriageDiagnostic", () => {
     assert.equal(parseTriageDiagnostic(msg), null);
   });
 
-  it("returns null for invalid fault_domain value", () => {
+  it("parses valid infra diagnostic", () => {
     const msg = makeJsonMsg("infra", "terraform failed");
+    const result = parseTriageDiagnostic(msg);
+    assert.equal(result?.fault_domain, "infra");
+  });
+
+  it("returns null for invalid fault_domain value", () => {
+    const msg = makeJsonMsg("database", "connection refused");
     assert.equal(parseTriageDiagnostic(msg), null);
   });
 
@@ -146,6 +152,19 @@ describe("triageFailure (structured JSON)", () => {
     const keys = triageFailure("live-ui", msg, naItems);
     assert.deepStrictEqual(keys, []);
   });
+
+  it("infra fault_domain → resets infra-architect + itemKey", () => {
+    const msg = makeJsonMsg("infra", "terraform state lock conflict");
+    const keys = triageFailure("poll-infra-ci", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["infra-architect", "poll-infra-ci"]);
+  });
+
+  it("infra fault_domain filters out N/A items", () => {
+    const msg = makeJsonMsg("infra", "terraform error");
+    const naItems = new Set(["infra-architect"]);
+    const keys = triageFailure("poll-infra-ci", msg, naItems);
+    assert.deepStrictEqual(keys, ["poll-infra-ci"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -174,9 +193,10 @@ describe("triageFailure (keyword fallback)", () => {
     assert.ok(keys.includes("live-ui"));
   });
 
-  it("no matching keywords → resets everything including schema-dev", () => {
+  it("no matching keywords → resets everything including schema-dev and infra-architect", () => {
     const keys = triageFailure("live-ui", "something totally unknown broke", NO_NA);
     assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("infra-architect"));
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("backend-unit-test"));
     assert.ok(keys.includes("frontend-dev"));
@@ -210,6 +230,7 @@ describe("triageFailure (keyword fallback)", () => {
   it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
     const keys = triageFailure("poll-ci", "FAIL packages/schemas/src/__tests__/auth.test.ts", NO_NA);
     assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("infra-architect"));
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("backend-unit-test"));
     assert.ok(keys.includes("frontend-dev"));
@@ -234,6 +255,20 @@ describe("triageFailure (keyword fallback)", () => {
     assert.ok(!keys.includes("backend-unit-test"));
     assert.ok(keys.includes("frontend-dev"));
     assert.ok(keys.includes("live-ui"));
+  });
+
+  it("infra keywords → resets infra-architect", () => {
+    const keys = triageFailure("poll-infra-ci", "terraform plan failed with azurerm provider error", NO_NA);
+    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
+    assert.ok(keys.includes("poll-infra-ci"));
+    assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
+  });
+
+  it("infra + backend co-occurring keywords → resets both", () => {
+    const keys = triageFailure("poll-app-ci", "terraform azurerm_function_app and API endpoint 500", NO_NA);
+    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    assert.ok(keys.includes("poll-app-ci"));
   });
 });
 
@@ -281,7 +316,7 @@ describe("triageFailure (malformed JSON → keyword fallback)", () => {
   });
 
   it("valid JSON with invalid fault_domain → falls back to keywords", () => {
-    const msg = makeJsonMsg("infra", "terraform failed, backend issue");
+    const msg = makeJsonMsg("database", "connection refused, backend issue");
     const keys = triageFailure("live-ui", msg, NO_NA);
     assert.ok(keys.includes("live-ui"));
     // Keyword matching on the full stringified message should pick up "backend"
@@ -402,6 +437,7 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
     const ciLog = "Some completely opaque error with no file paths at all";
     const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
     assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
+    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -604,6 +640,7 @@ describe("triageFailure with DOMAIN: header (Tier 2)", () => {
     const msg = "DOMAIN: schemas\n── Run 123 ──\nschema build error";
     const keys = triageFailure("poll-ci", msg, NO_NA);
     assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
+    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -637,6 +674,14 @@ describe("triageFailure with DOMAIN: header (Tier 2)", () => {
     const keys = triageFailure("poll-ci", msg, naItems);
     assert.ok(keys.includes("backend-dev"));
     assert.ok(!keys.includes("backend-unit-test"), `backend-unit-test should be filtered (N/A)`);
+  });
+
+  it("DOMAIN: infra routes to infra-architect", () => {
+    const msg = "DOMAIN: infra\n── Run 123 ──\nterraform plan failed";
+    const keys = triageFailure("poll-infra-ci", msg, NO_NA);
+    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
+    assert.ok(keys.includes("poll-infra-ci"));
+    assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
   });
 });
 
@@ -687,6 +732,22 @@ describe("isUnfixableError", () => {
 
   it("is case-insensitive", () => {
     assert.equal(isUnfixableError("AUTHORIZATION_REQUESTDENIED: no permission"), "authorization_requestdenied");
+  });
+
+  it("detects 'cannot apply incomplete plan' (Terraform)", () => {
+    assert.equal(isUnfixableError("Error: cannot apply incomplete plan"), "cannot apply incomplete plan");
+  });
+
+  it("detects 'error acquiring the state lock' (Terraform)", () => {
+    assert.equal(isUnfixableError("Error: error acquiring the state lock"), "error acquiring the state lock");
+  });
+
+  it("detects 'resource already exists' (Terraform)", () => {
+    assert.equal(isUnfixableError("A resource with the ID already exists - resource already exists"), "resource already exists");
+  });
+
+  it("detects 'state blob is already locked' (Terraform)", () => {
+    assert.equal(isUnfixableError("Error locking state: state blob is already locked"), "state blob is already locked");
   });
 });
 

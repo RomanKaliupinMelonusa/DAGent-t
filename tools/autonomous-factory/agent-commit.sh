@@ -78,12 +78,8 @@ else
   esac
 fi
 
-# Pull latest changes from origin to minimize merge conflicts
-# when parallel agents commit to the same branch
-CURRENT_BRANCH=$(git branch --show-current)
-if [ -n "$CURRENT_BRANCH" ]; then
-  git pull --rebase origin "$CURRENT_BRANCH" 2>/dev/null || true
-fi
+# NOTE: git pull --rebase removed. The orchestrator's centralized mutex
+# handles synchronization. Agents only stage + commit locally.
 
 # Stage only the specified paths (ignore non-existent paths gracefully)
 for p in "${PATHS[@]}"; do
@@ -91,6 +87,9 @@ for p in "${PATHS[@]}"; do
     git add "$p"
   fi
 done
+
+# Exclude pipeline state files — committed exclusively by the orchestrator (mutex)
+git reset HEAD -- '*_STATE.json' '*_TRANS.md' 2>/dev/null || true
 
 # Auto-include package-lock.json when package.json is in the staged changeset.
 # Prevents lockfile desync that causes CI `npm ci` failures.
@@ -116,11 +115,5 @@ else
   fi
 fi
 
-# Push with retry (single retry for transient network issues)
-if ! git push origin HEAD 2>/dev/null; then
-  echo "⚠️  Push failed, retrying in 2 seconds..."
-  sleep 2
-  git push origin HEAD
-fi
-
-echo "✔ Pushed to $(git branch --show-current)"
+# NOTE: git push removed. The orchestrator's centralized mutex handles all pushes.
+# Agents only stage + commit locally to the feature branch.

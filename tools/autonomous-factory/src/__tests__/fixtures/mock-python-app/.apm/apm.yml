@@ -12,11 +12,11 @@ agents:
     instructions: [always]
     mcp: []
     skills: []
-  push-code:
+  push-app:
     instructions: [always]
     mcp: []
     skills: []
-  poll-ci:
+  poll-app-ci:
     instructions: [always]
     mcp: []
     skills: []

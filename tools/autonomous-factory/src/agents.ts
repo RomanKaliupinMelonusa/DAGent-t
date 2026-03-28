@@ -65,8 +65,26 @@ const MODEL = "claude-opus-4.6";
 // Shared prompt fragments
 // ---------------------------------------------------------------------------
 
-function completionBlock(slug: string, itemKey: string, scope: string): string {
-  return `
+function completionBlock(slug: string, itemKey: string, scope: string, appRoot?: string): string {
+  const tfGate = itemKey === "infra-architect" && appRoot
+    ? `
+## MANDATORY: Terraform Validation Gate
+
+Before calling pipeline:complete, you MUST pass terraform validate:
+\`\`\`bash
+cd ${appRoot}/infra
+terraform init -backend=false -input=false 2>&1
+terraform validate 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform validation failed. Fix errors before completing."
+  exit 1
+fi
+\`\`\`
+Do NOT mark infra-architect complete until terraform validate passes.
+`
+    : "";
+
+  return `${tfGate}
 ## Completion
 
 When your work is done successfully:
@@ -152,6 +170,9 @@ ${apmContext.agents["backend-dev"].rules}
 ## Workflow
 
 1. Read the feature spec: \`${ctx.specPath}\`
+1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
+   - If the file exists, use it for ALL resource URLs, connection strings, and resource names.
+   - **NEVER** hardcode or invent resource URLs, names, or connection strings. All infra bindings come from \`infra-interfaces.md\`.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the codebase.
 3. For each symbol you need to modify, run \`roam_context <symbol> ${ctx.appRoot}\` to get exact files and line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before making changes to understand blast radius and affected tests.
@@ -382,6 +403,9 @@ ${apmContext.agents["frontend-dev"].rules}
 ## Workflow
 
 1. Read the feature spec: \`${ctx.specPath}\`
+1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
+   - Use the APIM gateway URL from \`infra-interfaces.md\` as your API base — never construct URLs from resource names.
+   - **NEVER** hardcode or invent resource URLs. All infra bindings come from \`infra-interfaces.md\`.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the frontend.
 3. Use \`roam_context <component> ${ctx.appRoot}\` for each component/file you need to modify — get exact line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
@@ -836,7 +860,7 @@ If there are no commits ahead of ${ctx.baseBranch}, **stop and report** via \`np
 ### Step 4. Mark Push Complete
 
 \`\`\`bash
-npm run pipeline:complete ${ctx.featureSlug} push-code
+npm run pipeline:complete ${ctx.featureSlug} ${ctx.itemKey}
 \`\`\`
 
 ### Step 5. Poll CI
@@ -850,7 +874,7 @@ bash tools/autonomous-factory/poll-ci.sh
 
 - **Exit 0 (Success):** All CI workflows passed.
   \`\`\`bash
-  npm run pipeline:complete ${ctx.featureSlug} poll-ci
+  npm run pipeline:complete ${ctx.featureSlug} ${ctx.itemKey}
   \`\`\`
 
 - **Exit 1 (Failure):** One or more CI workflows failed.
@@ -858,19 +882,19 @@ bash tools/autonomous-factory/poll-ci.sh
   2. For each failed run, read logs: \`gh run view <RUN_ID> --log-failed | tail -50\`
   3. Record failure:
      \`\`\`bash
-     npm run pipeline:fail ${ctx.featureSlug} poll-ci "<failure summary>"
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "<failure summary>"
      \`\`\`
 
 - **Exit 2 (Timeout):** CI is still running after the polling window.
-  1. Mark push-code as complete (if not already).
-  2. Report timeout via: \`npm run pipeline:fail ${ctx.featureSlug} poll-ci "CI timeout — deployments still running"\`
+  1. Mark push as complete (if not already).
+  2. Report timeout via: \`npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "CI timeout — deployments still running"\`
 
 ### Re-Invocation (After Dev Fix)
 
 If re-invoked after a dev agent fixed code:
 1. The dev agent already committed the fix to the feature branch.
 2. Push the branch: \`bash tools/autonomous-factory/agent-branch.sh push\`
-3. Mark push-code complete and poll CI again (Steps 3-4).
+3. Mark push complete and poll CI again (Steps 3-4).
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}
 
 ## Safety
@@ -1326,6 +1350,103 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
 }
 
 // ---------------------------------------------------------------------------
+// Infra-architect agent prompt builder
+// ---------------------------------------------------------------------------
+
+function infraArchitectPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# Infrastructure Architect
+
+You are a senior infrastructure engineer specializing in **Terraform** (azurerm + azapi + azuread).
+You implement infrastructure changes in the \`infra/\` directory based on the feature spec and schema contracts.
+
+# Context
+
+- Feature: ${ctx.featureSlug}
+- Spec: ${ctx.specPath}
+- Repo root: ${ctx.repoRoot}
+- App root: ${ctx.appRoot}
+
+${apmContext.agents["infra-architect"].rules}
+
+## Scope
+
+Your scope is strictly limited to:
+- \`${ctx.appRoot}/infra/\` — Terraform HCL files (.tf)
+- \`${ctx.appRoot}/infra/api-specs/\` — OpenAPI YAML specs for APIM operations
+- \`${ctx.appRoot}/infra/dev.tfvars\` — environment variables (non-secret only)
+
+You do NOT modify:
+- \`backend/\` — owned by backend-dev
+- \`frontend/\` — owned by frontend-dev
+- \`packages/\` — owned by schema-dev
+- \`.github/workflows/\` — CI/CD files require separate scope
+
+## Workflow
+
+1. Read the feature spec: \`${ctx.specPath}\`
+2. Read existing shared schemas from \`${ctx.appRoot}/packages/schemas/src/\` to understand data contracts.
+3. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing (if available).
+4. Implement infrastructure changes in \`${ctx.appRoot}/infra/\` following existing patterns in \`main.tf\`, \`apim.tf\`, \`swa.tf\`.
+5. If the feature requires new APIM operations, update or create OpenAPI specs in \`${ctx.appRoot}/infra/api-specs/\`.
+6. **MANDATORY — Terraform Validation:** Run \`cd ${ctx.appRoot}/infra && terraform init -backend=false -input=false && terraform validate\`. Fix all errors before proceeding.
+7. Commit: \`bash tools/autonomous-factory/agent-commit.sh infra "feat(infra): <description>"\`
+8. Leave a doc-note listing Terraform resources created and their output names:
+   \`\`\`bash
+   npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "<resources created and output names>"
+   \`\`\`
+
+${completionBlock(ctx.featureSlug, ctx.itemKey, "infra", ctx.appRoot)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Infra-handoff agent prompt builder
+// ---------------------------------------------------------------------------
+
+function infraHandoffPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# Infrastructure Handoff
+
+You bridge the infrastructure wave and the application wave by documenting deployed infrastructure
+outputs into a structured \`infra-interfaces.md\` that downstream agents (backend-dev, frontend-dev) consume.
+
+# Context
+
+- Feature: ${ctx.featureSlug}
+- Spec: ${ctx.specPath}
+- Repo root: ${ctx.repoRoot}
+- App root: ${ctx.appRoot}
+
+${apmContext.agents["infra-handoff"].rules}
+
+## Workflow
+
+1. Read the Terraform outputs:
+   \`\`\`bash
+   cd ${ctx.appRoot}/infra && terraform output -json 2>/dev/null || echo "{}"
+   \`\`\`
+   If \`terraform output\` is not available (no statefile), read \`${ctx.appRoot}/infra/outputs.tf\` and \`${ctx.appRoot}/infra/dev.tfvars\` to infer the values.
+
+2. Parse the outputs into a structured markdown file at \`${ctx.appRoot}/in-progress/infra-interfaces.md\`:
+   \`\`\`markdown
+   # Infrastructure Interfaces
+   ## Endpoints
+   - Function App URL: https://...
+   - APIM Gateway: https://...
+   - Static Web App URL: https://...
+   ## Resource Names
+   - Function App: <name>
+   - Resource Group: <name>
+   ## Auth Config
+   - CORS Origins: [...]
+   ## Terraform Outputs
+   - <output_name>: <value or description>
+   \`\`\`
+
+3. Commit: \`bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): infra-handoff interfaces"\`
+
+${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
+}
+
+// ---------------------------------------------------------------------------
 // Item → Agent routing
 // ---------------------------------------------------------------------------
 
@@ -1334,6 +1455,26 @@ const ITEM_ROUTING: Record<string, (ctx: AgentContext, apmContext: ApmCompiledOu
     systemMessage: schemaDevPrompt(ctx, apmContext),
     model: MODEL,
     mcpServers: resolveMcpPlaceholders(apmContext.agents["schema-dev"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "infra-architect": (ctx, apmContext) => ({
+    systemMessage: infraArchitectPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["infra-architect"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "infra-handoff": (ctx, apmContext) => ({
+    systemMessage: infraHandoffPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["infra-handoff"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "push-infra": (ctx, apmContext) => ({
+    systemMessage: deployManagerPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-infra"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "poll-infra-ci": (ctx, apmContext) => ({
+    systemMessage: deployManagerPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-infra-ci"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
   "backend-dev": (ctx, apmContext) => ({
     systemMessage: backendDevPrompt(ctx, apmContext),
@@ -1355,15 +1496,15 @@ const ITEM_ROUTING: Record<string, (ctx: AgentContext, apmContext: ApmCompiledOu
     model: MODEL,
     mcpServers: resolveMcpPlaceholders(apmContext.agents["frontend-unit-test"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
-  "push-code": (ctx, apmContext) => ({
+  "push-app": (ctx, apmContext) => ({
     systemMessage: deployManagerPrompt(ctx, apmContext),
     model: MODEL,
-    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-code"].mcp, ctx.repoRoot, ctx.appRoot),
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-app"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
-  "poll-ci": (ctx, apmContext) => ({
+  "poll-app-ci": (ctx, apmContext) => ({
     systemMessage: deployManagerPrompt(ctx, apmContext),
     model: MODEL,
-    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-ci"].mcp, ctx.repoRoot, ctx.appRoot),
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-app-ci"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
   "integration-test": (ctx, apmContext) => ({
     systemMessage: backendTestPrompt(ctx, apmContext),
@@ -1427,7 +1568,7 @@ export function buildTaskPrompt(
   slug: string,
   appRoot: string,
 ): string {
-  const roamAgents = ["backend-dev", "frontend-dev", "schema-dev", "backend-unit-test", "frontend-unit-test", "code-cleanup", "live-ui", "docs-archived", "create-pr"];
+  const roamAgents = ["backend-dev", "frontend-dev", "schema-dev", "infra-architect", "backend-unit-test", "frontend-unit-test", "code-cleanup", "live-ui", "docs-archived", "create-pr"];
   const hasRoam = roamAgents.includes(item.key);
   const roamPreamble = hasRoam ? `
 **IMPORTANT — Roam-First Monorepo Workflow:**

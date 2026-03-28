@@ -77,7 +77,7 @@ describe("cmdFail CLI validation — post-deploy items", () => {
   });
 
   it("rejects JSON with invalid fault_domain", () => {
-    const msg = JSON.stringify({ fault_domain: "infra", diagnostic_trace: "test" });
+    const msg = JSON.stringify({ fault_domain: "database", diagnostic_trace: "test" });
     const result = runCli(`fail ${TEST_SLUG} live-ui '${msg}'`);
     assert.notEqual(result.exitCode, 0);
     assert.ok(result.stderr.includes("schema validation"), `stderr: ${result.stderr}`);
@@ -124,6 +124,13 @@ describe("cmdFail CLI validation — post-deploy items", () => {
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
     assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
   });
+
+  it("accepts infra fault domain for poll-infra-ci", () => {
+    const msg = JSON.stringify({ fault_domain: "infra", diagnostic_trace: "terraform plan failed" });
+    const result = runCli(`fail ${TEST_SLUG} poll-infra-ci '${msg}'`);
+    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+    assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -141,8 +148,8 @@ describe("cmdFail CLI validation — non-post-deploy items", () => {
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
   });
 
-  it("accepts plain text for push-code", () => {
-    const result = runCli(`fail ${TEST_SLUG} push-code "git push rejected"`);
+  it("accepts plain text for push-app", () => {
+    const result = runCli(`fail ${TEST_SLUG} push-app "git push rejected"`);
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
   });
 });
@@ -184,8 +191,8 @@ describe("salvageForDraft — graceful degradation", () => {
     const result = runCli(`init ${SALVAGE_SLUG} Full-Stack`);
     assert.equal(result.exitCode, 0, `Failed to init salvage test pipeline: ${result.stderr}`);
 
-    // Simulate a realistic pipeline state: pre-deploy items done, push-code done, poll-ci pending
-    for (const key of ["schema-dev", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-code"]) {
+    // Simulate a realistic pipeline state: pre-deploy items done, push-app done, poll-app-ci pending
+    for (const key of ["schema-dev", "infra-architect", "push-infra", "poll-infra-ci", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
       const r = runCli(`complete ${SALVAGE_SLUG} ${key}`);
       assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
     }
@@ -198,12 +205,12 @@ describe("salvageForDraft — graceful degradation", () => {
     }
   });
 
-  it("marks poll-ci, integration-test, live-ui, and code-cleanup as na", () => {
-    const result = callSalvage(SALVAGE_SLUG, "poll-ci");
+  it("marks poll-app-ci, integration-test, live-ui, and code-cleanup as na", () => {
+    const result = callSalvage(SALVAGE_SLUG, "poll-app-ci");
     assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
     const state = readTestState();
 
-    const expectedNa = ["poll-ci", "integration-test", "live-ui", "code-cleanup"];
+    const expectedNa = ["poll-app-ci", "integration-test", "live-ui", "code-cleanup"];
     for (const key of expectedNa) {
       const item = state.items.find(i => i.key === key);
       assert.ok(item, `Item ${key} not found in state`);
@@ -227,8 +234,8 @@ describe("salvageForDraft — graceful degradation", () => {
     const salvageEntries = state.errorLog.filter(e => e.itemKey === "salvage-draft");
     assert.equal(salvageEntries.length, 1, `Expected 1 salvage-draft entry, got ${salvageEntries.length}`);
     assert.ok(
-      salvageEntries[0].message.includes("poll-ci"),
-      `salvage-draft message should mention poll-ci: ${salvageEntries[0].message}`,
+      salvageEntries[0].message.includes("poll-app-ci"),
+      `salvage-draft message should mention poll-app-ci: ${salvageEntries[0].message}`,
     );
   });
 
@@ -236,7 +243,7 @@ describe("salvageForDraft — graceful degradation", () => {
     const stateBefore = readTestState();
     const logCountBefore = stateBefore.errorLog.length;
 
-    callSalvage(SALVAGE_SLUG, "poll-ci");
+    callSalvage(SALVAGE_SLUG, "poll-app-ci");
     const stateAfter = readTestState();
 
     assert.equal(stateAfter.errorLog.length, logCountBefore, "Idempotent call should not add a new errorLog entry");
@@ -278,8 +285,8 @@ describe("salvageForDraft — defensive reset of stale failures", () => {
     const result = runCli(`init ${STALE_SLUG} Full-Stack`);
     assert.equal(result.exitCode, 0, `Failed to init stale test pipeline: ${result.stderr}`);
 
-    // Complete pre-deploy + push-code
-    for (const key of ["schema-dev", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-code"]) {
+    // Complete pre-deploy + push-app
+    for (const key of ["schema-dev", "infra-architect", "push-infra", "poll-infra-ci", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
       const r = runCli(`complete ${STALE_SLUG} ${key}`);
       assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
     }
@@ -303,7 +310,7 @@ describe("salvageForDraft — defensive reset of stale failures", () => {
     assert.equal(prBefore?.status, "failed", "Precondition: create-pr should be failed");
     assert.ok(prBefore?.error, "Precondition: create-pr should have an error message");
 
-    const result = callSalvage(STALE_SLUG, "poll-ci");
+    const result = callSalvage(STALE_SLUG, "poll-app-ci");
     assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
 
     const after = readTestState();

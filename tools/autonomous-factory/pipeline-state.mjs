@@ -38,18 +38,25 @@ const APP_ROOT = process.env.APP_ROOT
   : REPO_ROOT;
 const IN_PROGRESS = join(APP_ROOT, "in-progress");
 
-export const PHASES = ["pre-deploy", "deploy", "post-deploy", "finalize"];
+export const PHASES = ["infra", "pre-deploy", "deploy", "post-deploy", "finalize"];
 
 /** Canonical checklist items. Order matters — it defines execution sequence.
+ *  Two-Wave model: Wave 1 (infra) completes before Wave 2 (application) begins.
  *  Linear model: feature branch deploys directly via CI, PR to base branch is last step. */
 export const ALL_ITEMS = [
-  { key: "schema-dev",         label: "Development Complete — Schemas",              agent: "@schema-dev",         phase: "pre-deploy" },
+  // ── Wave 1: Infrastructure ──────────────────────────────────────────────
+  { key: "schema-dev",         label: "Development Complete — Schemas",              agent: "@schema-dev",         phase: "infra" },
+  { key: "infra-architect",    label: "Infrastructure Written — Terraform",          agent: "@infra-architect",    phase: "infra" },
+  { key: "push-infra",         label: "Infra Code Pushed to Origin",                 agent: "@deploy-manager",     phase: "infra" },
+  { key: "poll-infra-ci",      label: "Infra CI Workflows Passed",                   agent: "@deploy-manager",     phase: "infra" },
+  { key: "infra-handoff",      label: "Infra Outputs Captured — Interfaces Written", agent: "@infra-handoff",      phase: "infra" },
+  // ── Wave 2: Application ─────────────────────────────────────────────────
   { key: "backend-dev",        label: "Development Complete — Backend",              agent: "@backend-dev",        phase: "pre-deploy" },
   { key: "frontend-dev",       label: "Development Complete — Frontend",             agent: "@frontend-dev",       phase: "pre-deploy" },
   { key: "backend-unit-test",  label: "Unit Tests Passed — Backend",                 agent: "@backend-test",       phase: "pre-deploy" },
   { key: "frontend-unit-test", label: "Unit Tests Passed — Frontend",                agent: "@frontend-ui-test",   phase: "pre-deploy" },
-  { key: "push-code",          label: "Code Pushed to Origin",                       agent: "@deploy-manager",     phase: "deploy" },
-  { key: "poll-ci",            label: "CI Workflows Passed",                         agent: "@deploy-manager",     phase: "deploy" },
+  { key: "push-app",           label: "App Code Pushed to Origin",                   agent: "@deploy-manager",     phase: "deploy" },
+  { key: "poll-app-ci",        label: "App CI Workflows Passed",                     agent: "@deploy-manager",     phase: "deploy" },
   { key: "integration-test",   label: "Integration Tests Passed",                    agent: "@backend-test",       phase: "post-deploy" },
   { key: "live-ui",            label: "Live UI Validated",                            agent: "@frontend-ui-test",   phase: "post-deploy" },
   { key: "code-cleanup",       label: "Dead Code Eliminated",                         agent: "@code-cleanup",       phase: "finalize" },
@@ -65,9 +72,12 @@ export const NA_ITEMS_BY_TYPE = {
   Backend:     ["frontend-dev", "frontend-unit-test", "live-ui"],
   Frontend:    ["backend-dev", "backend-unit-test", "integration-test", "schema-dev"],
   "Full-Stack": [],
-  Infra:       ["frontend-dev", "frontend-unit-test", "backend-unit-test", "integration-test", "live-ui", "schema-dev", "code-cleanup"],
+  Infra:       ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
+                "integration-test", "live-ui", "schema-dev", "code-cleanup",
+                "push-app", "poll-app-ci"],
 };
-// NOTE: push-code, poll-ci, docs-archived, and create-pr are always active for all types.
+// NOTE: infra wave items, docs-archived, and create-pr are always active for all types.
+// The Infra workflow type skips Wave 2 app items entirely — only infra wave + docs + PR.
 
 /**
  * DAG dependency map: each item lists the item keys it depends on.
@@ -75,15 +85,21 @@ export const NA_ITEMS_BY_TYPE = {
  * This enables parallel execution of independent items (e.g., backend-dev ‖ frontend-dev).
  */
 export const ITEM_DEPENDENCIES = {
+  // ── Wave 1: Infrastructure ──────────────────────────────────────────────
   "schema-dev":         [],
-  "backend-dev":        ["schema-dev"],
-  "frontend-dev":       ["schema-dev"],
+  "infra-architect":    ["schema-dev"],
+  "push-infra":         ["infra-architect"],
+  "poll-infra-ci":      ["push-infra"],
+  "infra-handoff":      ["poll-infra-ci"],
+  // ── Wave 2: Application (gated behind infra-handoff) ────────────────────
+  "backend-dev":        ["schema-dev", "infra-handoff"],
+  "frontend-dev":       ["schema-dev", "infra-handoff"],
   "backend-unit-test":  ["backend-dev"],
   "frontend-unit-test": ["frontend-dev"],
-  "push-code":          ["backend-unit-test", "frontend-unit-test"],
-  "poll-ci":            ["push-code"],
-  "integration-test":   ["poll-ci"],
-  "live-ui":            ["poll-ci", "integration-test"],
+  "push-app":           ["backend-unit-test", "frontend-unit-test"],
+  "poll-app-ci":        ["push-app"],
+  "integration-test":   ["poll-app-ci"],
+  "live-ui":            ["poll-app-ci", "integration-test"],
   "code-cleanup":       ["integration-test", "live-ui"],
   "docs-archived":      ["code-cleanup"],
   "create-pr":          ["docs-archived"],
@@ -139,7 +155,8 @@ function renderTrans(slug, state) {
 
   // Group items by phase
   for (const phase of PHASES) {
-    const heading = phase === "pre-deploy" ? "Pre-Deploy"
+    const heading = phase === "infra" ? "Infrastructure (Wave 1)"
+      : phase === "pre-deploy" ? "Pre-Deploy (Wave 2)"
       : phase === "deploy" ? "Deploy"
       : phase === "post-deploy" ? "Post-Deploy"
       : "Finalize";
@@ -307,6 +324,13 @@ export function salvageForDraft(slug, failedItemKey) {
   }
 
   const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
+  // When infra CI fails, also skip all Wave 2 items
+  if (failedItemKey === "poll-infra-ci" || failedItemKey === "infra-handoff") {
+    for (const k of ["infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test",
+                      "frontend-unit-test", "push-app", "poll-app-ci"]) {
+      skipKeys.add(k);
+    }
+  }
   const forcePendingKeys = new Set(["docs-archived", "create-pr"]);
   for (const item of state.items) {
     if (skipKeys.has(item.key) || item.key === failedItemKey) {
@@ -354,12 +378,14 @@ export function resumeAfterElevated(slug) {
   }
 
   const naByType = new Set(NA_ITEMS_BY_TYPE[state.workflowType] || []);
-  const salvageTargets = ["integration-test", "live-ui", "code-cleanup"];
+  const salvageTargets = ["integration-test", "live-ui", "code-cleanup",
+                          "infra-handoff", "backend-dev", "frontend-dev",
+                          "backend-unit-test", "frontend-unit-test", "push-app", "poll-app-ci"];
   let resetCount = 0;
 
   for (const item of state.items) {
-    // Reset poll-ci to pending so standard CI re-verifies the full stack
-    if (item.key === "poll-ci" && item.status !== "na") {
+    // Reset poll-infra-ci or poll-app-ci to pending so standard CI re-verifies
+    if ((item.key === "poll-infra-ci" || item.key === "poll-app-ci") && item.status !== "na") {
       item.status = "pending";
       item.error = null;
       resetCount++;
@@ -401,19 +427,19 @@ export function recoverElevated(slug, errorMessage) {
     throw new Error("recoverElevated requires slug");
   }
 
-  // Step 1: Record the failure on poll-ci
-  const failResult = failItem(slug, "poll-ci", `Elevated apply failed: ${errorMessage}`);
+  // Step 1: Record the failure on poll-infra-ci
+  const failResult = failItem(slug, "poll-infra-ci", `Elevated apply failed: ${errorMessage}`);
   if (failResult.halted) {
     return failResult;
   }
 
-  // Step 2: Reset dev items for redevelopment cycle
+  // Step 2: Reset infra dev items for redevelopment cycle
   const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-  return resetForDev(slug, ["backend-dev"], reason);
+  return resetForDev(slug, ["infra-architect"], reason);
 }
 
 /**
- * Reset push-code + poll-ci for a re-push cycle.
+ * Reset push-app + poll-app-ci for a re-push cycle (application wave).
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
@@ -429,7 +455,7 @@ export function resetCi(slug) {
     return { state, cycleCount, halted: true };
   }
 
-  const resetKeys = new Set(["push-code", "poll-ci"]);
+  const resetKeys = new Set(["push-app", "poll-app-ci"]);
   let resetCount = 0;
   for (const item of state.items) {
     if (resetKeys.has(item.key) && item.status !== "na") {
@@ -443,6 +469,43 @@ export function resetCi(slug) {
     timestamp: new Date().toISOString(),
     itemKey: "reset-ci",
     message: `Re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
+  });
+
+  writeState(slug, state);
+  return { state, cycleCount: cycleCount + 1, halted: false };
+}
+
+/**
+ * Reset push-infra + poll-infra-ci for a re-push cycle (infrastructure wave).
+ * @returns {{ state: object, cycleCount: number, halted: boolean }}
+ * @throws {Error} if slug missing or state file not found
+ */
+export function resetInfraCi(slug) {
+  if (!slug) {
+    throw new Error("resetInfraCi requires slug");
+  }
+
+  const state = readStateOrThrow(slug);
+
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-infra-ci").length;
+  if (cycleCount >= 10) {
+    return { state, cycleCount, halted: true };
+  }
+
+  const resetKeys = new Set(["push-infra", "poll-infra-ci"]);
+  let resetCount = 0;
+  for (const item of state.items) {
+    if (resetKeys.has(item.key) && item.status !== "na") {
+      item.status = "pending";
+      item.error = null;
+      resetCount++;
+    }
+  }
+
+  state.errorLog.push({
+    timestamp: new Date().toISOString(),
+    itemKey: "reset-infra-ci",
+    message: `Infra re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -472,8 +535,15 @@ export function resetForDev(slug, itemKeys, reason) {
     return { state, cycleCount, halted: true };
   }
 
-  // Always include deploy items (push-code, poll-ci) so the fix gets redeployed
-  const keysToReset = new Set([...itemKeys, "push-code", "poll-ci"]);
+  // Always include the appropriate deploy items so the fix gets redeployed.
+  // If infra-architect is being reset, include infra wave deploy items.
+  // Otherwise include app wave deploy items.
+  const infraKeys = new Set(["infra-architect"]);
+  const hasInfraReset = itemKeys.some(k => infraKeys.has(k));
+  const deployItems = hasInfraReset
+    ? ["push-infra", "poll-infra-ci", "infra-handoff", "push-app", "poll-app-ci"]
+    : ["push-app", "poll-app-ci"];
+  const keysToReset = new Set([...itemKeys, ...deployItems]);
   let resetCount = 0;
   for (const item of state.items) {
     if (keysToReset.has(item.key) && item.status !== "na") {
@@ -745,7 +815,7 @@ function cmdResetCi(slug) {
       console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles. Requires human intervention.`);
       process.exit(2);  // Exit code 2 = halted
     } else {
-      const resetCount = 2; // push-code + poll-ci always reset
+      const resetCount = 2; // push-app + poll-app-ci always reset
       console.log(`🔄 Reset ${resetCount} deploy items for re-push cycle (${cycleCount}/10).`);
     }
   } catch (err) {
@@ -920,7 +990,7 @@ switch (command) {
     console.error("  init         <slug> <type>               — Initialize pipeline state");
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
-    console.error("  reset-ci     <slug>                      — Reset push-code + poll-ci for re-push");
+    console.error("  reset-ci     <slug>                      — Reset push-app + poll-app-ci for re-push");
     console.error("  resume       <slug>                      — Resume pipeline after elevated apply");
     console.error("  recover-elevated <slug> <error-message>  — Recover pipeline after failed elevated apply");
     console.error("  status       <slug>                      — Print state JSON");

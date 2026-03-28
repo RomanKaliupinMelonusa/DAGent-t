@@ -32,6 +32,11 @@ const UNFIXABLE_SIGNALS = [
   // Azure resource existence errors
   "subscription not found",
   "resource group not found",
+  // Terraform state/plan errors — require human intervention (/dagent apply-elevated)
+  "cannot apply incomplete plan",
+  "error acquiring the state lock",
+  "resource already exists",
+  "state blob is already locked",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -88,7 +93,7 @@ export function triageFailure(
       // Schema failures cascade to schema-dev + all downstream dev/test items.
       // applyFaultDomain("both") would miss schema-dev, so expand explicitly.
       console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain} (schema cascade)`);
-      const keys = ["schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", itemKey];
+      const keys = ["schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", itemKey];
       return keys.filter((k) => !naItems.has(k));
     }
     console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain}`);
@@ -141,12 +146,16 @@ export function parseDomainHeader(message: string): { domain: FaultDomain; hasSc
   const hasBackend = domains.includes("backend");
   const hasFrontend = domains.includes("frontend");
   const hasSchemas = domains.includes("schemas");
+  const hasInfra = domains.includes("infra");
 
   // Schemas cascade to all downstream
   if (hasSchemas) return { domain: "both", hasSchemas: true };
+  // Infrastructure failures route to infra domain
+  if (hasInfra && !hasBackend && !hasFrontend) return { domain: "infra" as FaultDomain, hasSchemas: false };
   if (hasBackend && hasFrontend) return { domain: "both", hasSchemas: false };
   if (hasBackend) return { domain: "backend", hasSchemas: false };
   if (hasFrontend) return { domain: "frontend", hasSchemas: false };
+  if (hasInfra) return { domain: "infra" as FaultDomain, hasSchemas: false };
 
   // Unrecognized domain tags → fall through to keyword matching
   return null;
@@ -217,9 +226,13 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       resetKeys.push("backend-dev", "backend-unit-test");
       break;
     case "cicd":
-      // CI/CD workflow file issue — route to push-code + poll-ci for the
+      // CI/CD workflow file issue — route to push-app + poll-app-ci for the
       // deploy-manager agent which has the correct commit scope for .github/
-      resetKeys.push("push-code", "poll-ci");
+      resetKeys.push("push-app", "poll-app-ci");
+      break;
+    case "infra":
+      // Infrastructure error — route to infra-architect (Wave 1 redevelopment)
+      resetKeys.push("infra-architect");
       break;
     case "blocked":
       // Unfixable error — no items to reset, pipeline must halt.
@@ -272,7 +285,7 @@ function triageByKeywords(
 
   const backendSignals = [
     "api", "endpoint", "500", "502", "503", "504", "function",
-    "timeout", "cors", "backend", "infra", "terraform",
+    "timeout", "cors", "backend",
     "cosmos", "storage", "queue", "apim", "gateway",
     "empty response", "response format", "data mapping", "404",
   ];
@@ -289,6 +302,12 @@ function triageByKeywords(
     "ci failed", "ci timeout",
     "deploy artifact", "package.json type", "type:module",
     "never committed", "working-tree fix",
+  ];
+  const infraSignals = [
+    "terraform", "tfstate", "state lock", "provider registry",
+    ".tf", "resource already exists", "azurerm_", "azapi_",
+    "terraform plan", "terraform apply", "terraform init",
+    "hcl", "provider configuration",
   ];
   const schemaSignals = [
     "packages/schemas", "@branded/schemas", "schema-dev",
@@ -307,15 +326,20 @@ function triageByKeywords(
   const hasFrontend = frontendSignals.some((s) => msg.includes(s))
     || directoryPathSignals.frontend.some((s) => msg.includes(s));
   const hasCicd = cicdSignals.some((s) => msg.includes(s));
+  const hasInfra = infraSignals.some((s) => msg.includes(s));
   const hasSchema = schemaSignals.some((s) => msg.includes(s));
 
+  // Infrastructure issues route to infra-architect (never to app dev agents)
+  if (hasInfra && !hasBackend && !hasFrontend && !hasSchema && !hasCicd) {
+    resetKeys.push("infra-architect");
+  }
   // CI/CD workflow issues take priority — dev agents can't fix .github/ files
-  if (hasCicd && !hasBackend && !hasFrontend && !hasSchema) {
-    resetKeys.push("push-code", "poll-ci");
+  else if (hasCicd && !hasBackend && !hasFrontend && !hasSchema) {
+    resetKeys.push("push-app", "poll-app-ci");
   } else {
     if (hasSchema) {
       // Schema failures cascade to both backend and frontend
-      resetKeys.push("schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
+      resetKeys.push("schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
     } else {
       if (hasBackend) {
         resetKeys.push("backend-dev", "backend-unit-test");
@@ -326,13 +350,17 @@ function triageByKeywords(
     }
     // If CI/CD signals co-occur with backend/frontend, also reset deploy items
     if (hasCicd) {
-      resetKeys.push("push-code", "poll-ci");
+      resetKeys.push("push-app", "poll-app-ci");
+    }
+    // If infra signals co-occur with app signals, also reset infra
+    if (hasInfra) {
+      resetKeys.push("infra-architect");
     }
   }
 
   // Can't determine root cause → reset everything applicable
   if (resetKeys.length === 0) {
-    resetKeys.push("schema-dev", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
+    resetKeys.push("schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
   }
 
   resetKeys.push(itemKey);

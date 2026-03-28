@@ -27,17 +27,21 @@ const APM_DIR = path.join(APP_ROOT, ".apm");
 // All agent keys from pipeline-state.mjs ALL_ITEMS
 const ALL_AGENT_KEYS = [
   "schema-dev",
+  "infra-architect",
+  "infra-handoff",
+  "push-infra",
+  "poll-infra-ci",
   "backend-dev",
   "frontend-dev",
   "backend-unit-test",
   "frontend-unit-test",
+  "push-app",
+  "poll-app-ci",
   "integration-test",
   "live-ui",
   "code-cleanup",
   "docs-archived",
   "create-pr",
-  "push-code",
-  "poll-ci",
 ];
 
 // ---------------------------------------------------------------------------
@@ -70,7 +74,7 @@ describe("APM Compiler Output", () => {
     assert.ok(result.success, `Schema validation failed: ${JSON.stringify(result.error?.issues)}`);
   });
 
-  it("compiled output has all 11 agent keys", () => {
+  it("compiled output has all 16 agent keys", () => {
     for (const key of ALL_AGENT_KEYS) {
       assert.ok(
         compiled.agents[key],
@@ -190,8 +194,11 @@ describe("APM Compiler", () => {
 
   it("agents without MCP have empty mcp record", () => {
     const output = compileApm(APP_ROOT);
-    assert.deepEqual(output.agents["push-code"].mcp, {});
-    assert.deepEqual(output.agents["poll-ci"].mcp, {});
+    assert.deepEqual(output.agents["push-app"].mcp, {});
+    assert.deepEqual(output.agents["poll-app-ci"].mcp, {});
+    assert.deepEqual(output.agents["push-infra"].mcp, {});
+    assert.deepEqual(output.agents["poll-infra-ci"].mcp, {});
+    assert.deepEqual(output.agents["infra-handoff"].mcp, {});
     assert.deepEqual(output.agents["integration-test"].mcp, {});
   });
 

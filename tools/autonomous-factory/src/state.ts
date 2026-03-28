@@ -25,8 +25,11 @@ interface PipelineStateMod {
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetCi: (slug: string) => ResetResult;
+  resetInfraCi: (slug: string) => ResetResult;
   resetForDev: (slug: string, itemKeys: string[], reason: string) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
+  resumeAfterElevated: (slug: string) => ResetResult;
+  recoverElevated: (slug: string, errorMessage: string) => ResetResult;
   getStatus: (slug: string) => PipelineState;
   getNext: (slug: string) => NextAction;
   getNextAvailable: (slug: string) => NextAction[];
@@ -67,6 +70,11 @@ export async function resetCi(slug: string): Promise<ResetResult> {
   return mod.resetCi(slug);
 }
 
+export async function resetInfraCi(slug: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.resetInfraCi(slug);
+}
+
 export async function resetForDev(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
   const mod = await getMod();
   return mod.resetForDev(slug, itemKeys, reason);
@@ -75,6 +83,16 @@ export async function resetForDev(slug: string, itemKeys: string[], reason: stri
 export async function salvageForDraft(slug: string, failedItemKey: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.salvageForDraft(slug, failedItemKey);
+}
+
+export async function resumeAfterElevated(slug: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.resumeAfterElevated(slug);
+}
+
+export async function recoverElevated(slug: string, errorMessage: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.recoverElevated(slug, errorMessage);
 }
 
 export async function getStatus(slug: string): Promise<PipelineState> {
