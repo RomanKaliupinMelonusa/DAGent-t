@@ -61,3 +61,53 @@ resource "azurerm_role_assignment" "cicd_kv_secrets_user" {
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azuread_service_principal.cicd.object_id
 }
+
+# =============================================================================
+# Elevated CI/CD OIDC Service Principal — ChatOps Elevated Apply
+# =============================================================================
+# A separate, higher-privilege identity used ONLY when a human triggers
+# `/dagent apply-elevated` via PR comment. Scoped to the `secops-elevated`
+# GitHub Environment which requires manual reviewer approval before the
+# OIDC token is issued.
+#
+# Roles: Contributor + User Access Administrator (RG-scoped)
+# Usage: Set AZURE_ELEVATED_CLIENT_ID = terraform output elevated_cicd_client_id
+# =============================================================================
+
+# --- Azure AD Application ---
+
+resource "azuread_application" "elevated_cicd" {
+  display_name = "sp-sample-app-elevated-cicd-${var.environment}"
+  owners       = [data.azurerm_client_config.current.object_id]
+  tags         = ["sample-app", var.environment, "elevated-cicd", "managed-by-terraform"]
+}
+
+resource "azuread_service_principal" "elevated_cicd" {
+  client_id = azuread_application.elevated_cicd.client_id
+  owners    = [data.azurerm_client_config.current.object_id]
+  tags      = ["sample-app", var.environment, "elevated-cicd", "managed-by-terraform"]
+}
+
+# --- Federated Identity Credential (secops-elevated environment ONLY) ---
+
+resource "azuread_application_federated_identity_credential" "github_env_secops_elevated" {
+  application_id = azuread_application.elevated_cicd.id
+  display_name   = "github-env-secops-elevated"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:${var.github_repo}:environment:secops-elevated"
+}
+
+# --- Role Assignments (Resource Group scoped) ---
+
+resource "azurerm_role_assignment" "elevated_cicd_contributor" {
+  scope                = azurerm_resource_group.main.id
+  role_definition_name = "Contributor"
+  principal_id         = azuread_service_principal.elevated_cicd.object_id
+}
+
+resource "azurerm_role_assignment" "elevated_cicd_uaa" {
+  scope                = azurerm_resource_group.main.id
+  role_definition_name = "User Access Administrator"
+  principal_id         = azuread_service_principal.elevated_cicd.object_id
+}

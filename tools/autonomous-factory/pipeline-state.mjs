@@ -328,6 +328,65 @@ export function salvageForDraft(slug, failedItemKey) {
 }
 
 /**
+ * Resume the pipeline after a successful elevated infrastructure apply.
+ * Undoes salvageForDraft by resetting salvaged items back to pending,
+ * and resets poll-ci to pending so standard CI re-verifies the full stack.
+ *
+ * Only resets items to "pending" if they were set to "na" by salvageForDraft
+ * (not if they are "na" from the workflow type's NA_ITEMS_BY_TYPE).
+ *
+ * Sets state.elevatedApply = true for audit trail.
+ *
+ * @param {string} slug - Feature slug
+ * @returns {{ state: object, cycleCount: number, halted: boolean }}
+ * @throws {Error} if slug missing or state file not found
+ */
+export function resumeAfterElevated(slug) {
+  if (!slug) {
+    throw new Error("resumeAfterElevated requires slug");
+  }
+
+  const state = readStateOrThrow(slug);
+
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "resume-elevated").length;
+  if (cycleCount >= 5) {
+    return { state, cycleCount, halted: true };
+  }
+
+  const naByType = new Set(NA_ITEMS_BY_TYPE[state.workflowType] || []);
+  const salvageTargets = ["integration-test", "live-ui", "code-cleanup"];
+  let resetCount = 0;
+
+  for (const item of state.items) {
+    // Reset poll-ci to pending so standard CI re-verifies the full stack
+    if (item.key === "poll-ci" && item.status !== "na") {
+      item.status = "pending";
+      item.error = null;
+      resetCount++;
+      continue;
+    }
+
+    // Reset salvaged items — only if "na" was set by salvageForDraft, not by workflow type
+    if (salvageTargets.includes(item.key) && item.status === "na" && !naByType.has(item.key)) {
+      item.status = "pending";
+      item.error = null;
+      resetCount++;
+    }
+  }
+
+  state.elevatedApply = true;
+
+  state.errorLog.push({
+    timestamp: new Date().toISOString(),
+    itemKey: "resume-elevated",
+    message: `Elevated apply resume cycle ${cycleCount + 1}/5. Reset ${resetCount} items to pending for standard CI re-verification.`,
+  });
+
+  writeState(slug, state);
+  return { state, cycleCount: cycleCount + 1, halted: false };
+}
+
+/**
  * Reset push-code + poll-ci for a re-push cycle.
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
@@ -669,6 +728,26 @@ function cmdResetCi(slug) {
   }
 }
 
+function cmdResume(slug) {
+  if (!slug) {
+    console.error("Usage: pipeline-state.mjs resume <slug>");
+    process.exit(1);
+  }
+
+  try {
+    const { cycleCount, halted } = resumeAfterElevated(slug);
+    if (halted) {
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} elevated resume cycles. Requires human intervention.`);
+      process.exit(2);
+    } else {
+      console.log(`🔄 Resumed pipeline after elevated apply (cycle ${cycleCount}/5). Standard CI will re-verify.`);
+    }
+  } catch (err) {
+    console.error(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 function cmdStatus(slug) {
   if (!slug) {
     console.error("Usage: pipeline-state.mjs status <slug>");
@@ -765,6 +844,9 @@ switch (command) {
   case "reset-ci":
     cmdResetCi(args[0]);
     break;
+  case "resume":
+    cmdResume(args[0]);
+    break;
   case "status":
     cmdStatus(args[0]);
     break;
@@ -790,6 +872,7 @@ switch (command) {
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
     console.error("  reset-ci     <slug>                      — Reset push-code + poll-ci for re-push");
+    console.error("  resume       <slug>                      — Resume pipeline after elevated apply");
     console.error("  status       <slug>                      — Print state JSON");
     console.error("  next         <slug>                      — Print next actionable item");
     console.error("  set-note     <slug> <note>               — Append implementation note");

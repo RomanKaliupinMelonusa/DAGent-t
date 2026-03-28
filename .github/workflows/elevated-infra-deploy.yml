@@ -1,0 +1,172 @@
+# =============================================================================
+# Elevated Infrastructure Deploy — ChatOps Human-in-the-Loop
+# =============================================================================
+# Runs `terraform apply` with elevated privileges when a human comments
+# `/dagent apply-elevated` on a Pull Request.
+#
+# Security model:
+#   1. OIDC federation scoped to `secops-elevated` GitHub Environment ONLY
+#   2. Environment requires manual reviewer approval before OIDC token is issued
+#   3. Elevated SP has Contributor + User Access Administrator (RG-scoped)
+#   4. Standard CI re-verifies full stack after elevated apply via pipeline:resume
+#
+# Prerequisites:
+#   1. GitHub Environment "secops-elevated" with required reviewers
+#   2. GitHub Secrets: AZURE_ELEVATED_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   3. GitHub Secret: COPILOT_PAT (for re-triggering the agentic pipeline)
+# =============================================================================
+
+name: Elevated Infrastructure Deploy
+
+concurrency:
+  group: elevated-infra-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  APP_PATH: apps/sample-app
+  ARM_USE_OIDC: true
+  ARM_USE_AZUREAD: true
+
+jobs:
+  elevated-apply:
+    name: Elevated Terraform Apply
+    if: >-
+      github.event.issue.pull_request
+      && startsWith(github.event.comment.body, '/dagent apply-elevated')
+    runs-on: ubuntu-latest
+    environment: secops-elevated
+
+    steps:
+      - name: Add reaction to comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content=rocket
+
+      - name: Get PR metadata
+        id: pr-meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_BRANCH=$(gh pr view ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --json headRefName -q '.headRefName')
+          echo "branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+
+          SLUG=$(echo "$PR_BRANCH" | sed 's|^feature/||')
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-meta.outputs.branch }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Login to Azure (Elevated OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_ELEVATED_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform Init
+        working-directory: ${{ env.APP_PATH }}/infra
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_ELEVATED_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform init
+
+      - name: Terraform Apply
+        id: apply
+        working-directory: ${{ env.APP_PATH }}/infra
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_ELEVATED_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_apim_publisher_email: ${{ secrets.APIM_PUBLISHER_EMAIL }}
+          TF_VAR_frontend_url: ${{ secrets.FRONTEND_URL }}
+          TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
+          TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
+        run: |
+          terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
+        continue-on-error: true
+
+      - name: Post success comment
+        if: steps.apply.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "$(cat <<'EOF'
+          ✅ **Elevated infrastructure applied successfully.**
+
+          Triggered by @${{ github.event.comment.user.login }} via `/dagent apply-elevated`
+          Standard CI will now re-verify the full deployment stack.
+          EOF
+          )"
+
+      - name: Resume pipeline
+        if: steps.apply.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+          APP_ROOT: ${{ env.APP_PATH }}
+        run: |
+          npm run pipeline:resume ${{ steps.pr-meta.outputs.slug }}
+          gh workflow run agentic-feature.yml \
+            --repo ${{ github.repository }} \
+            -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
+            -f workflow-type=Infra \
+            -f app-path=${{ env.APP_PATH }}
+
+      - name: Post failure comment
+        if: steps.apply.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OUTPUT=$(head -c 60000 ${{ env.APP_PATH }}/infra/apply-output.txt)
+          gh pr comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "$(cat <<EOF
+          ❌ **Elevated infrastructure apply failed.**
+
+          Triggered by @${{ github.event.comment.user.login }} via \`/dagent apply-elevated\`
+
+          <details><summary>Terraform output</summary>
+
+          \`\`\`
+          $OUTPUT
+          \`\`\`
+
+          </details>
+          EOF
+          )"
+
+      - name: Fail if apply failed
+        if: steps.apply.outcome == 'failure'
+        run: exit 1

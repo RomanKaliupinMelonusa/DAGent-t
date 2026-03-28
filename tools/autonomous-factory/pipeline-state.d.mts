@@ -19,6 +19,7 @@ interface PipelineState {
   started: string;
   deployedUrl: string | null;
   implementationNotes: string | null;
+  elevatedApply?: boolean;
   items: PipelineItem[];
   errorLog: Array<{
     timestamp: string;
@@ -72,6 +73,7 @@ export function failItem(slug: string, itemKey: string, message: string): FailRe
 export function resetCi(slug: string): ResetResult;
 export function resetForDev(slug: string, itemKeys: string[], reason: string): ResetResult;
 export function salvageForDraft(slug: string, failedItemKey: string): PipelineState;
+export function resumeAfterElevated(slug: string): ResetResult;
 export function getStatus(slug: string): PipelineState;
 export function getNext(slug: string): NextAction;
 export function getNextAvailable(slug: string): NextAction[];
