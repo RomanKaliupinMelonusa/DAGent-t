@@ -68,19 +68,65 @@ const MODEL = "claude-opus-4.6";
 function completionBlock(slug: string, itemKey: string, scope: string, appRoot?: string): string {
   const tfGate = itemKey === "infra-architect" && appRoot
     ? `
-## MANDATORY: Terraform Validation Gate
+## MANDATORY: Terraform Validation & Deploy Gate
 
-Before calling pipeline:complete, you MUST pass terraform validate:
+This is a test environment — you MUST validate AND apply infrastructure so that
+integration tests run against real deployed resources.
+
 \`\`\`bash
 cd ${appRoot}/infra
-terraform init -backend=false -input=false 2>&1
+
+# Step 1: Verify Azure CLI auth (required for remote backend + provider)
+az account show > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Not authenticated to Azure."
+  npm run pipeline:fail ${slug} ${itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure CLI not authenticated — cannot run terraform apply. Run az login first."}'
+  exit 0
+fi
+
+# Step 2: Initialize with remote backend
+terraform init -input=false 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform init failed. Fix backend configuration."
+  exit 1
+fi
+
+# Step 3: Validate syntax
 terraform validate 2>&1
 if [ $? -ne 0 ]; then
   echo "❌ Terraform validation failed. Fix errors before completing."
   exit 1
 fi
+
+# Step 4: Plan
+terraform plan -var-file=dev.tfvars -out=tfplan -no-color 2>&1 | tee plan-output.txt
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform plan failed. Diagnose and fix."
+  exit 1
+fi
+
+# Step 5: Apply (deploy to test environment)
+terraform apply -auto-approve tfplan -no-color 2>&1 | tee apply-output.txt
+APPLY_EXIT=$?
+if [ $APPLY_EXIT -ne 0 ]; then
+  # Permission errors cannot be fixed in code — require elevated apply
+  if grep -qiE 'authorization_requestdenied|insufficient privileges|does not have authorization' apply-output.txt; then
+    echo "⚠️ Permission error detected — elevated apply required."
+    ERROR_SUMMARY=$(grep -iE 'Error:|authorization_requestdenied|insufficient privileges|does not have authorization' apply-output.txt | head -5 | tr '\\n' ' ' | tr "'" " ")
+    npm run pipeline:fail ${slug} ${itemKey} "Terraform apply permission error: $ERROR_SUMMARY"
+    exit 0
+  fi
+  echo "❌ Terraform apply failed. Diagnose and fix the Terraform code."
+  exit 1
+fi
+
+echo "✅ Infrastructure deployed successfully."
 \`\`\`
-Do NOT mark infra-architect complete until terraform validate passes.
+
+Do NOT mark infra-architect complete until terraform apply succeeds.
+If apply fails with **permission errors** (authorization_requestdenied, insufficient privileges),
+call \`pipeline:fail\` with the error — the orchestrator routes to elevated apply automatically.
+If apply fails with **other errors**, diagnose and fix the Terraform code before retrying.
 `
     : "";
 
@@ -1388,12 +1434,16 @@ You do NOT modify:
 3. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing (if available).
 4. Implement infrastructure changes in \`${ctx.appRoot}/infra/\` following existing patterns in \`main.tf\`, \`apim.tf\`, \`swa.tf\`.
 5. If the feature requires new APIM operations, update or create OpenAPI specs in \`${ctx.appRoot}/infra/api-specs/\`.
-6. **MANDATORY — Terraform Validation:** Run \`cd ${ctx.appRoot}/infra && terraform init -backend=false -input=false && terraform validate\`. Fix all errors before proceeding.
+6. **Quick Syntax Check:** Run \`cd ${ctx.appRoot}/infra && terraform init -backend=false -input=false && terraform validate\`. Fix all errors before proceeding.
 7. Commit: \`bash tools/autonomous-factory/agent-commit.sh infra "feat(infra): <description>"\`
 8. Leave a doc-note listing Terraform resources created and their output names:
    \`\`\`bash
    npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "<resources created and output names>"
    \`\`\`
+9. **Deploy infrastructure** by running the Terraform Validation & Deploy Gate below. This is a test environment — infrastructure must be applied so that downstream integration tests run against real Azure resources.
+   - If apply succeeds → mark complete.
+   - If apply fails with **permission errors** → call \`pipeline:fail\` with the error text. The orchestrator will route to the elevated infrastructure deploy workflow.
+   - If apply fails with **other errors** → diagnose and fix the Terraform code, then retry from step 6.
 
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "infra", ctx.appRoot)}`;
 }

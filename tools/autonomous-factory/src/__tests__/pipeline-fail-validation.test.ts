@@ -322,3 +322,98 @@ describe("salvageForDraft — defensive reset of stale failures", () => {
     assert.equal(docsAfter?.status, "pending", `Expected docs-archived to be \"pending\" but got \"${docsAfter?.status}\"`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// salvageForDraft — infra-architect permission escalation
+// ---------------------------------------------------------------------------
+
+describe("salvageForDraft — infra-architect permission escalation", () => {
+  const INFRA_SLUG = `__test-salvage-infra-${Date.now()}`;
+  const stateFile = join(APP_ROOT, "in-progress", `${INFRA_SLUG}_STATE.json`);
+
+  function readTestState(): {
+    items: Array<{ key: string; status: string }>;
+    errorLog: Array<{ itemKey: string; message: string }>;
+  } {
+    return JSON.parse(readFileSync(stateFile, "utf-8"));
+  }
+
+  function callSalvage(slug: string, failedItemKey: string): { exitCode: number; stdout: string; stderr: string } {
+    const script = `import("./pipeline-state.mjs").then(m => { const s = m.salvageForDraft("${slug}", "${failedItemKey}"); console.log(JSON.stringify({ items: s.items.length })); })`;
+    try {
+      const stdout = execSync(`node --input-type=module -e '${script}'`, {
+        cwd: join(__dirname, "../.."),
+        env: { ...process.env, APP_ROOT },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      return { exitCode: 0, stdout, stderr: "" };
+    } catch (err: unknown) {
+      const e = err as { status: number; stdout: string; stderr: string };
+      return { exitCode: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  }
+
+  before(() => {
+    const result = runCli(`init ${INFRA_SLUG} Full-Stack`);
+    assert.equal(result.exitCode, 0, `Failed to init infra test pipeline: ${result.stderr}`);
+
+    // Simulate realistic state: schema-dev done, infra-architect done (code is correct,
+    // but terraform apply failed with permissions — session-runner marks it "done" before salvage)
+    for (const key of ["schema-dev", "infra-architect"]) {
+      const r = runCli(`complete ${INFRA_SLUG} ${key}`);
+      assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
+    }
+  });
+
+  after(() => {
+    for (const suffix of ["_STATE.json", "_TRANS.md"]) {
+      const p = join(APP_ROOT, "in-progress", `${INFRA_SLUG}${suffix}`);
+      if (existsSync(p)) rmSync(p);
+    }
+  });
+
+  it("preserves infra-architect as 'done' and skips remaining infra + Wave 2 items", () => {
+    const result = callSalvage(INFRA_SLUG, "infra-architect");
+    assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
+    const state = readTestState();
+
+    // infra-architect should remain "done" (protected by item.status !== "done" guard)
+    const ia = state.items.find(i => i.key === "infra-architect");
+    assert.equal(ia?.status, "done", "infra-architect should remain 'done' — code is correct");
+
+    // Remaining infra wave items should be "na" (skipped for elevated apply)
+    for (const key of ["push-infra", "poll-infra-ci", "infra-handoff"]) {
+      const item = state.items.find(i => i.key === key);
+      assert.equal(item?.status, "na", `Expected ${key} to be "na" but got "${item?.status}"`);
+    }
+
+    // Wave 2 items should be "na"
+    for (const key of ["backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app", "poll-app-ci"]) {
+      const item = state.items.find(i => i.key === key);
+      assert.equal(item?.status, "na", `Expected ${key} to be "na" but got "${item?.status}"`);
+    }
+
+    // Standard post-deploy skips
+    for (const key of ["integration-test", "live-ui", "code-cleanup"]) {
+      const item = state.items.find(i => i.key === key);
+      assert.equal(item?.status, "na", `Expected ${key} to be "na" but got "${item?.status}"`);
+    }
+
+    // docs-archived and create-pr should be pending (for draft PR creation)
+    for (const key of ["docs-archived", "create-pr"]) {
+      const item = state.items.find(i => i.key === key);
+      assert.equal(item?.status, "pending", `Expected ${key} to be "pending" but got "${item?.status}"`);
+    }
+  });
+
+  it("logs salvage-draft entry mentioning infra-architect", () => {
+    const state = readTestState();
+    const salvageEntries = state.errorLog.filter(e => e.itemKey === "salvage-draft");
+    assert.equal(salvageEntries.length, 1, `Expected 1 salvage-draft entry, got ${salvageEntries.length}`);
+    assert.ok(
+      salvageEntries[0].message.includes("infra-architect"),
+      `salvage-draft message should mention infra-architect: ${salvageEntries[0].message}`,
+    );
+  });
+});

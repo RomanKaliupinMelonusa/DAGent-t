@@ -24,7 +24,7 @@ import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS } from "./types.js";
-import { triageFailure, parseTriageDiagnostic } from "./triage.js";
+import { triageFailure, parseTriageDiagnostic, isPermissionEscalation } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./reporting.js";
 import {
@@ -833,9 +833,16 @@ async function runAgentSession(
       const diagnostic = parseTriageDiagnostic(rawError);
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
       return handleFailureReroute(slug, next.key, rawError, errorMsg, config, state, itemSummary, roamAvailable);
-    } else {
-      console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
     }
+    // Infra-architect permission escalation → route to elevated deploy
+    if (next.key === "infra-architect") {
+      const rawError = item.error ?? "";
+      const escalationSignal = isPermissionEscalation(rawError);
+      if (escalationSignal) {
+        return handlePermissionEscalation(slug, next.key, rawError, config, state, itemSummary);
+      }
+    }
+    console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
     console.log(`  ✅ ${next.key} complete`);
   }
@@ -917,6 +924,78 @@ async function handleFailureReroute(
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
+  return { summary: itemSummary, halt: false, createPr: false };
+}
+
+// ---------------------------------------------------------------------------
+// Permission escalation handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle infra-architect permission failures by routing to the elevated
+ * infrastructure deploy workflow. The TF code is correct — only the apply
+ * requires elevated privileges (Contributor + User Access Administrator).
+ *
+ * Flow:
+ *   1. Mark infra-architect as complete (code is correct)
+ *   2. Push infra code to remote (elevated deploy needs it)
+ *   3. salvageForDraft → pipeline continues to draft PR
+ *   4. Human triggers /dagent apply-elevated on the draft PR
+ *   5. On success: resumeAfterElevated undoes salvage, pipeline resumes
+ */
+async function handlePermissionEscalation(
+  slug: string,
+  itemKey: string,
+  errorMsg: string,
+  config: PipelineRunConfig,
+  state: PipelineRunState,
+  itemSummary: ItemSummary,
+): Promise<SessionResult> {
+  const { appRoot, repoRoot, baseBranch } = config;
+
+  console.error(`\n  🔐 PERMISSION ESCALATION: ${itemKey} requires elevated privileges.`);
+  console.error(`     Infra code is correct — routing to elevated infrastructure deploy.`);
+
+  // Step 1: Mark infra-architect as complete (code validated, only apply needs elevation)
+  try {
+    await completeItem(slug, itemKey);
+    console.log(`  ✅ ${itemKey} marked complete (code validated, apply needs elevation)`);
+  } catch (e) {
+    console.error(`  ✖ Failed to mark ${itemKey} complete:`, e);
+  }
+
+  // Step 2: Push infra code to remote (elevated deploy workflow needs it)
+  try {
+    const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
+    const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
+    try {
+      execSync(`bash "${commitScript}" all "feat(${slug}): push infra code for elevated apply"`, {
+        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+        env: { ...process.env, APP_ROOT: appRoot },
+      });
+    } catch { /* no changes to commit — OK */ }
+    execSync(`bash "${branchScript}" push`, {
+      cwd: repoRoot, stdio: "inherit", timeout: 60_000,
+      env: { ...process.env, BASE_BRANCH: baseBranch },
+    });
+    console.log(`  📦 Pushed infra code for elevated apply`);
+  } catch {
+    console.warn(`  ⚠ Push failed — elevated apply may still work from committed code`);
+  }
+
+  // Step 3: Salvage pipeline for draft PR — skip remaining infra items + Wave 2
+  try {
+    await salvageForDraft(slug, itemKey);
+    // Write flag for PR creator agent
+    const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
+    fs.writeFileSync(draftFlagPath, `PERMISSION_ESCALATION: ${errorMsg}`, "utf-8");
+    console.log(`  📋 Salvaged pipeline for draft PR — comment /dagent apply-elevated to proceed`);
+  } catch (e) {
+    console.error("  ✖ Failed to salvage pipeline state", e);
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
+
+  // halt: false — main loop continues to docs-archived → create-pr (draft)
   return { summary: itemSummary, halt: false, createPr: false };
 }
 

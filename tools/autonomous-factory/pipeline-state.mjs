@@ -327,16 +327,22 @@ export function salvageForDraft(slug, failedItemKey) {
   }
 
   const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
-  // When infra CI fails, also skip all Wave 2 items
-  if (failedItemKey === "poll-infra-ci" || failedItemKey === "infra-handoff") {
+  // When infra wave fails (CI or agent), also skip all Wave 2 items
+  if (failedItemKey === "poll-infra-ci" || failedItemKey === "infra-handoff" || failedItemKey === "infra-architect") {
     for (const k of ["infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test",
                       "frontend-unit-test", "push-app", "poll-app-ci"]) {
       skipKeys.add(k);
     }
   }
+  // When infra-architect triggers permission escalation, also skip push-infra and poll-infra-ci
+  // (they will be reset by resumeAfterElevated when the elevated apply succeeds)
+  if (failedItemKey === "infra-architect") {
+    skipKeys.add("push-infra");
+    skipKeys.add("poll-infra-ci");
+  }
   const forcePendingKeys = new Set(["docs-archived", "create-pr"]);
   for (const item of state.items) {
-    if (skipKeys.has(item.key) || item.key === failedItemKey) {
+    if ((skipKeys.has(item.key) || item.key === failedItemKey) && item.status !== "done") {
       item.status = "na";
     } else if (forcePendingKeys.has(item.key)) {
       item.status = "pending";
