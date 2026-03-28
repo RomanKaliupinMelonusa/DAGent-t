@@ -10,15 +10,18 @@
  * branch. The PR to the base branch (default: main, configurable via BASE_BRANCH) is created as the final pipeline step.
  *
  * Commands:
- *   init     <slug> <type>               — Create state + TRANS for a new feature
- *   complete <slug> <item-key>           — Mark an item as done
- *   fail     <slug> <item-key> <message> — Record a failure
- *   reset-ci <slug>                      — Reset push-code + poll-ci for re-push cycle
- *   status   <slug>                      — Print current state JSON to stdout
- *   next     <slug>                      — Print the next actionable item key
- *   set-note <slug> <note>               — Append implementation note
- *   doc-note <slug> <item-key> <note>    — Set doc note on a pipeline item
- *   set-url  <slug> <url>                — Set deployed URL
+ *   init              <slug> <type>               — Create state + TRANS for a new feature
+ *   complete          <slug> <item-key>           — Mark an item as done
+ *   fail              <slug> <item-key> <message> — Record a failure
+ *   reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push
+ *   reset-infra-ci    <slug>                      — Reset push-infra + poll-infra-ci for re-push
+ *   resume            <slug>                      — Resume pipeline after elevated apply
+ *   recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply
+ *   status            <slug>                      — Print current state JSON to stdout
+ *   next              <slug>                      — Print the next actionable item key
+ *   set-note          <slug> <note>               — Append implementation note
+ *   doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item
+ *   set-url           <slug> <url>                — Set deployed URL
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -824,6 +827,27 @@ function cmdResetCi(slug) {
   }
 }
 
+function cmdResetInfraCi(slug) {
+  if (!slug) {
+    console.error("Usage: pipeline-state.mjs reset-infra-ci <slug>");
+    process.exit(1);
+  }
+
+  try {
+    const { cycleCount, halted } = resetInfraCi(slug);
+    if (halted) {
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} infra re-push cycles. Requires human intervention.`);
+      process.exit(2);
+    } else {
+      const resetCount = 2; // push-infra + poll-infra-ci always reset
+      console.log(`🔄 Reset ${resetCount} infra deploy items for re-push cycle (${cycleCount}/10).`);
+    }
+  } catch (err) {
+    console.error(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 function cmdResume(slug) {
   if (!slug) {
     console.error("Usage: pipeline-state.mjs resume <slug>");
@@ -960,6 +984,9 @@ switch (command) {
   case "reset-ci":
     cmdResetCi(args[0]);
     break;
+  case "reset-infra-ci":
+    cmdResetInfraCi(args[0]);
+    break;
   case "resume":
     cmdResume(args[0]);
     break;
@@ -990,17 +1017,20 @@ switch (command) {
     console.error("  init         <slug> <type>               — Initialize pipeline state");
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
-    console.error("  reset-ci     <slug>                      — Reset push-app + poll-app-ci for re-push");
-    console.error("  resume       <slug>                      — Resume pipeline after elevated apply");
-    console.error("  recover-elevated <slug> <error-message>  — Recover pipeline after failed elevated apply");
-    console.error("  status       <slug>                      — Print state JSON");
-    console.error("  next         <slug>                      — Print next actionable item");
-    console.error("  set-note     <slug> <note>               — Append implementation note");
-    console.error("  doc-note     <slug> <item-key> <note>    — Set doc note on a pipeline item");
-    console.error("  set-url      <slug> <url>                — Set deployed URL");
+    console.error("  reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push");
+    console.error("  reset-infra-ci    <slug>                      — Reset push-infra + poll-infra-ci for re-push");
+    console.error("  resume            <slug>                      — Resume pipeline after elevated apply");
+    console.error("  recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply");
+    console.error("  status            <slug>                      — Print state JSON");
+    console.error("  next              <slug>                      — Print next actionable item");
+    console.error("  set-note          <slug> <note>               — Append implementation note");
+    console.error("  doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item");
+    console.error("  set-url           <slug> <url>                — Set deployed URL");
     console.error("");
-    console.error("Item keys: schema-dev, backend-dev, frontend-dev, backend-unit-test, frontend-unit-test,");
-    console.error("           push-code, poll-ci, integration-test, live-ui, docs-archived, create-pr");
+    console.error("Item keys: schema-dev, infra-architect, push-infra, poll-infra-ci, infra-handoff,");
+    console.error("           backend-dev, frontend-dev, backend-unit-test, frontend-unit-test,");
+    console.error("           push-app, poll-app-ci, integration-test, live-ui,");
+    console.error("           code-cleanup, docs-archived, create-pr");
     console.error("");
     console.error("Workflow types: Backend, Frontend, Full-Stack, Infra");
     process.exit(1);

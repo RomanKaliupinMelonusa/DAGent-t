@@ -12,6 +12,7 @@
     "pipeline:complete": "node tools/autonomous-factory/pipeline-state.mjs complete",
     "pipeline:fail": "node tools/autonomous-factory/pipeline-state.mjs fail",
     "pipeline:reset-ci": "node tools/autonomous-factory/pipeline-state.mjs reset-ci",
+    "pipeline:reset-infra-ci": "node tools/autonomous-factory/pipeline-state.mjs reset-infra-ci",
     "pipeline:status": "node tools/autonomous-factory/pipeline-state.mjs status",
     "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
     "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",

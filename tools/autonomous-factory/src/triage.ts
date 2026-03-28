@@ -151,11 +151,11 @@ export function parseDomainHeader(message: string): { domain: FaultDomain; hasSc
   // Schemas cascade to all downstream
   if (hasSchemas) return { domain: "both", hasSchemas: true };
   // Infrastructure failures route to infra domain
-  if (hasInfra && !hasBackend && !hasFrontend) return { domain: "infra" as FaultDomain, hasSchemas: false };
+  if (hasInfra && !hasBackend && !hasFrontend) return { domain: "infra", hasSchemas: false };
   if (hasBackend && hasFrontend) return { domain: "both", hasSchemas: false };
   if (hasBackend) return { domain: "backend", hasSchemas: false };
   if (hasFrontend) return { domain: "frontend", hasSchemas: false };
-  if (hasInfra) return { domain: "infra" as FaultDomain, hasSchemas: false };
+  if (hasInfra) return { domain: "infra", hasSchemas: false };
 
   // Unrecognized domain tags → fall through to keyword matching
   return null;
