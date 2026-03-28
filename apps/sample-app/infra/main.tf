@@ -10,6 +10,14 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  backend "azurerm" {
+    resource_group_name  = "rg-sample-app-dev"
+    storage_account_name = "stsampleapptfstate001"
+    container_name       = "tfstate"
+    key                  = "sample-app.dev.tfstate"
+    use_azuread_auth     = true
+  }
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
