@@ -113,10 +113,11 @@ jobs:
           TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
           TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
         run: |
-          if terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt; then
-            echo "tf_result=success" >> "$GITHUB_OUTPUT"
-          else
+          terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
+          if grep -q "^Error:" apply-output.txt; then
             echo "tf_result=failure" >> "$GITHUB_OUTPUT"
+          else
+            echo "tf_result=success" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Post success comment
