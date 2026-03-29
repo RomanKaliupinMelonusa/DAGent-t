@@ -1,0 +1,173 @@
+{
+  "feature": "user-profile-2",
+  "stepsCompleted": [
+    {
+      "key": "infra-handoff",
+      "agent": "@infra-handoff",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts"
+      ],
+      "docNote": "Added integration tests for GET /profile (200 auth, 401 unauth) and PATCH /profile (200 valid, 400 bad theme/short name, 401 unauth) to smoke.integration.test.ts. Tests obtain a demo token via /auth/login beforeAll, then exercise all profile endpoint auth and validation paths."
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/app/profile/page.tsx",
+        "apps/sample-app/frontend/src/components/NavBar.tsx",
+        "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx"
+      ],
+      "docNote": "Fixed APIM URL routing: demoAuthContext now uses NEXT_PUBLIC_DEMO_AUTH_URL for demo auth login (separate from NEXT_PUBLIC_API_BASE_URL used for API calls like /profile). Deploy workflow updated to pass NEXT_PUBLIC_DEMO_AUTH_URL env var. GitHub secrets must set NEXT_PUBLIC_API_BASE_URL=.../sample and NEXT_PUBLIC_DEMO_AUTH_URL=.../demo-auth per infra-interfaces.md."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/app/profile/page.tsx",
+        "apps/sample-app/frontend/src/components/NavBar.tsx",
+        "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx"
+      ],
+      "docNote": "Added integration tests for GET /profile (200 auth, 401 unauth) and PATCH /profile (200 valid, 400 bad theme/short name, 401 unauth) to smoke.integration.test.ts. Tests obtain a demo token via /auth/login beforeAll, then exercise all profile endpoint auth and validation paths."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [
+        ".github/workflows/deploy-frontend.yml",
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/app/profile/page.tsx",
+        "apps/sample-app/frontend/src/components/NavBar.tsx",
+        "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx",
+        "apps/sample-app/frontend/src/lib/demoAuthContext.tsx"
+      ],
+      "docNote": "Fixed APIM URL routing: demoAuthContext now uses NEXT_PUBLIC_DEMO_AUTH_URL for demo auth login (separate from NEXT_PUBLIC_API_BASE_URL used for API calls like /profile). Deploy workflow updated to pass NEXT_PUBLIC_DEMO_AUTH_URL env var. GitHub secrets must set NEXT_PUBLIC_API_BASE_URL=.../sample and NEXT_PUBLIC_DEMO_AUTH_URL=.../demo-auth per infra-interfaces.md."
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [
+        ".github/workflows/deploy-frontend.yml",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/lib/demoAuthContext.tsx"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [
+        ".github/workflows/deploy-frontend.yml",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/lib/demoAuthContext.tsx"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "No dead code found. Roam structural analysis (roam_dead_code, roam_uses, roam_batch_search) confirmed: (1) All new files (fn-profile.ts, profile/page.tsx, profile.ts schemas, tests, e2e spec) are actively referenced. (2) demoAuthContext.tsx change cleanly replaced BASE_URL+AUTH_API_PATH with DEMO_AUTH_URL — no orphaned constants. (3) safeEqual duplication in fn-profile.ts is intentional per spec. (4) Zero-consumer symbols (ThemeSchema, ProfileUpdate, ApiErrorCodeSchema) are in packages/schemas/ which is protected — shared schemas may have external consumers. All 86 tests pass across backend (27), frontend (19), and schemas (48)."
+    }
+  ],
+  "allFilesChanged": [
+    "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+    "apps/sample-app/backend/src/functions/fn-profile.ts",
+    "apps/sample-app/e2e/profile.spec.ts",
+    "apps/sample-app/frontend/src/app/profile/page.tsx",
+    "apps/sample-app/frontend/src/components/NavBar.tsx",
+    "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx",
+    "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+    ".github/workflows/deploy-frontend.yml",
+    "apps/sample-app/frontend/src/lib/demoAuthContext.tsx"
+  ],
+  "summaryIntents": [
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed"
+  ]
+}
