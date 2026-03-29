@@ -22,7 +22,7 @@ Draft PR #20 created — awaiting Terraform plan
 - [x] Development Complete — Backend (@backend-dev)
 - [x] Development Complete — Frontend (@frontend-dev)
 - [x] Unit Tests Passed — Backend (@backend-test)
-- [ ] Unit Tests Passed — Frontend (@frontend-ui-test)
+- [x] Unit Tests Passed — Frontend (@frontend-ui-test)
 ### Deploy
 - [ ] App Code Pushed to Origin (@deploy-manager)
 - [ ] App CI Workflows Passed (@deploy-manager)
