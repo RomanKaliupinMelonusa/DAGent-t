@@ -31,6 +31,7 @@ import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./re
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
+  buildInfraRollbackContext,
   buildRevertWarning,
   computeEffectiveDevAttempts,
   writeChangeManifest,
@@ -797,6 +798,15 @@ async function runAgentSession(
     console.log(
       `  🚨 Injected clean-slate revert warning (attempts: ${attemptCounts[next.key]} in-memory, ${effectiveDevAttempts - attemptCounts[next.key] >= 0 ? effectiveDevAttempts - attemptCounts[next.key] : 0} from persisted cycles, effective: ${effectiveDevAttempts})`,
     );
+  }
+
+  // Inject infra rollback context for infra-architect redevelopment
+  if (next.key === "infra-architect") {
+    const infraCtx = await buildInfraRollbackContext(slug);
+    if (infraCtx) {
+      taskPrompt += infraCtx;
+      console.log(`  🏗 Injected infra rollback context from redevelop-infra error log`);
+    }
   }
 
   // Write change manifest for docs-expert

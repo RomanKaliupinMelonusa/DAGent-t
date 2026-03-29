@@ -285,7 +285,7 @@ function triageByKeywords(
 
   const backendSignals = [
     "api", "endpoint", "500", "502", "503", "504", "function",
-    "timeout", "cors", "backend",
+    "timeout", "backend",
     "cosmos", "storage", "queue", "apim", "gateway",
     "empty response", "response format", "data mapping", "404",
   ];
@@ -308,6 +308,7 @@ function triageByKeywords(
     ".tf", "resource already exists", "azurerm_", "azapi_",
     "terraform plan", "terraform apply", "terraform init",
     "hcl", "provider configuration",
+    "cors", "access-control-allow-origin",
   ];
   const schemaSignals = [
     "packages/schemas", "@branded/schemas", "schema-dev",

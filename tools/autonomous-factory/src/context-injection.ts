@@ -112,6 +112,28 @@ export function buildRevertWarning(
 }
 
 /**
+ * Build infra rollback context when `@infra-architect` is re-invoked after
+ * a Wave 2 app agent called `pipeline:redevelop-infra`.
+ * Returns the rejection reason so the infra agent knows what to fix.
+ */
+export async function buildInfraRollbackContext(slug: string): Promise<string> {
+  try {
+    const state = await readState(slug);
+    const infraEntries = state.errorLog.filter((e) => e.itemKey === "redevelop-infra");
+    if (infraEntries.length === 0) return "";
+    const latest = infraEntries[infraEntries.length - 1];
+    return (
+      `\n\n## ⚠️ INFRASTRUCTURE REJECTED BY APPLICATION TEAM\n`
+      + `The previous application deployment wave failed because the following infrastructure was missing or misconfigured:\n\n`
+      + `> ${latest.message}\n\n`
+      + `You MUST update your Terraform code to fulfill this requirement before completing this task.`
+    );
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Compute the effective attempt count for DEV items.
  * Combines in-memory attemptCounts (resets on orchestrator restart) with
  * persisted redevelopment cycle count from state (survives restarts).
