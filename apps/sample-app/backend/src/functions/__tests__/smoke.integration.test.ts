@@ -126,3 +126,133 @@ describeIntegration("fn-demo-login (live)", () => {
     expect(body.error).toBe("INVALID_INPUT");
   });
 });
+
+// ---------------------------------------------------------------------------
+// fn-profile — GET + PATCH /profile
+// ---------------------------------------------------------------------------
+
+describeIntegration("fn-profile (live)", () => {
+  // Obtain a valid demo token before running profile tests.
+  let demoToken: string;
+
+  beforeAll(async () => {
+    const loginRes = await apiFetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "demo", password: "demopass" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginBody: Json = await loginRes.json();
+    demoToken = loginBody.token;
+    expect(typeof demoToken).toBe("string");
+    expect(demoToken.length).toBeGreaterThan(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /profile — authenticated
+  // -----------------------------------------------------------------------
+
+  it("GET returns 200 with UserProfile shape when authenticated", async () => {
+    const res = await apiFetch("/profile", {
+      method: "GET",
+      headers: { "X-Demo-Token": demoToken },
+    });
+    expect(res.status).toBe(200);
+
+    const body: Json = await res.json();
+    expect(body.id).toBeDefined();
+    expect(typeof body.id).toBe("string");
+    expect(body.displayName).toBeDefined();
+    expect(typeof body.displayName).toBe("string");
+    expect(body.email).toBeDefined();
+    expect(typeof body.email).toBe("string");
+    expect(["light", "dark", "system"]).toContain(body.theme);
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /profile — unauthenticated
+  // -----------------------------------------------------------------------
+
+  it("GET returns 401 when no token is provided", async () => {
+    const res = await apiFetch("/profile", {
+      method: "GET",
+    });
+    expect(res.status).toBe(401);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("UNAUTHORIZED");
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /profile — valid update
+  // -----------------------------------------------------------------------
+
+  it("PATCH returns 200 with updated profile on valid body", async () => {
+    const res = await apiFetch("/profile", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Demo-Token": demoToken,
+      },
+      body: JSON.stringify({ displayName: "Integration User", theme: "dark" }),
+    });
+    expect(res.status).toBe(200);
+
+    const body: Json = await res.json();
+    expect(body.displayName).toBe("Integration User");
+    expect(body.theme).toBe("dark");
+    // id and email should still be present
+    expect(body.id).toBeDefined();
+    expect(body.email).toBeDefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /profile — invalid body (400)
+  // -----------------------------------------------------------------------
+
+  it("PATCH returns 400 for invalid body (bad theme)", async () => {
+    const res = await apiFetch("/profile", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Demo-Token": demoToken,
+      },
+      body: JSON.stringify({ displayName: "Valid Name", theme: "blue" }),
+    });
+    expect(res.status).toBe(400);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("INVALID_INPUT");
+  });
+
+  it("PATCH returns 400 for invalid body (displayName too short)", async () => {
+    const res = await apiFetch("/profile", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Demo-Token": demoToken,
+      },
+      body: JSON.stringify({ displayName: "A" }),
+    });
+    expect(res.status).toBe(400);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("INVALID_INPUT");
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /profile — unauthenticated (401)
+  // -----------------------------------------------------------------------
+
+  it("PATCH returns 401 when no token is provided", async () => {
+    const res = await apiFetch("/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: "No Auth", theme: "light" }),
+    });
+    expect(res.status).toBe(401);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("UNAUTHORIZED");
+  });
+});
