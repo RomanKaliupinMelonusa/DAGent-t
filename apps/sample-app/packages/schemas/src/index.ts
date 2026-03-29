@@ -19,3 +19,11 @@ export type { DemoLoginRequest, DemoLoginResponse } from "./auth.js";
 // Error envelope
 export { ApiErrorCodeSchema, ApiErrorResponseSchema } from "./errors.js";
 export type { ApiErrorCode, ApiErrorResponse } from "./errors.js";
+
+// User profile & preferences
+export {
+  ThemeSchema,
+  UserProfileSchema,
+  ProfileUpdateSchema,
+} from "./profile.js";
+export type { Theme, UserProfile, ProfileUpdate } from "./profile.js";
