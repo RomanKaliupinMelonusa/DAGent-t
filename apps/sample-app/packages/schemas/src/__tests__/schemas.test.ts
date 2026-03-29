@@ -10,6 +10,9 @@ import {
   DemoLoginResponseSchema,
   ApiErrorCodeSchema,
   ApiErrorResponseSchema,
+  UserProfileSchema,
+  ProfileUpdateSchema,
+  ThemeSchema,
 } from "../index.js";
 
 // ---------------------------------------------------------------------------
@@ -215,6 +218,104 @@ describe("ApiErrorResponseSchema", () => {
 
   it("rejects empty object", () => {
     const result = ApiErrorResponseSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UserProfileSchema
+// ---------------------------------------------------------------------------
+
+describe("UserProfileSchema", () => {
+  const validProfile = {
+    id: "00000000-0000-0000-0000-000000000001",
+    displayName: "Demo User",
+    email: "demo@example.com",
+    theme: "system",
+  };
+
+  it("parses a valid user profile", () => {
+    const result = UserProfileSchema.parse(validProfile);
+    expect(result).toEqual(validProfile);
+  });
+
+  it("rejects non-uuid id", () => {
+    const result = UserProfileSchema.safeParse({ ...validProfile, id: "not-a-uuid" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects displayName shorter than 2 characters", () => {
+    const result = UserProfileSchema.safeParse({ ...validProfile, displayName: "A" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects displayName longer than 50 characters", () => {
+    const result = UserProfileSchema.safeParse({
+      ...validProfile,
+      displayName: "A".repeat(51),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid email", () => {
+    const result = UserProfileSchema.safeParse({ ...validProfile, email: "not-email" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid theme value", () => {
+    const result = UserProfileSchema.safeParse({ ...validProfile, theme: "blue" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty object", () => {
+    const result = UserProfileSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ProfileUpdateSchema
+// ---------------------------------------------------------------------------
+
+describe("ProfileUpdateSchema", () => {
+  it("parses a valid profile update", () => {
+    const input = { displayName: "New Name", theme: "dark" };
+    const result = ProfileUpdateSchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("rejects displayName shorter than 2 characters", () => {
+    const result = ProfileUpdateSchema.safeParse({ displayName: "A", theme: "dark" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid theme", () => {
+    const result = ProfileUpdateSchema.safeParse({ displayName: "Valid", theme: "blue" });
+    expect(result.success).toBe(false);
+  });
+
+  it.each(["light", "dark", "system"])("accepts valid theme value: %s", (theme) => {
+    const result = ProfileUpdateSchema.safeParse({ displayName: "Valid", theme });
+    expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ThemeSchema
+// ---------------------------------------------------------------------------
+
+describe("ThemeSchema", () => {
+  it.each(["light", "dark", "system"])("accepts valid theme: %s", (theme) => {
+    expect(ThemeSchema.parse(theme)).toBe(theme);
+  });
+
+  it("rejects invalid theme", () => {
+    const result = ThemeSchema.safeParse("blue");
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    const result = ThemeSchema.safeParse("");
     expect(result.success).toBe(false);
   });
 });
