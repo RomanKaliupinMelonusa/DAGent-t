@@ -135,23 +135,3 @@ export async function readState(slug: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.readState(slug);
 }
-
-export async function getAllItems(): Promise<Array<{ key: string; label: string; agent: string; phase: string }>> {
-  const mod = await getMod();
-  return mod.ALL_ITEMS;
-}
-
-export async function getPhases(): Promise<string[]> {
-  const mod = await getMod();
-  return mod.PHASES;
-}
-
-export async function getNaItemsByType(): Promise<Record<string, string[]>> {
-  const mod = await getMod();
-  return mod.NA_ITEMS_BY_TYPE;
-}
-
-export async function getItemDependencies(): Promise<Record<string, string[]>> {
-  const mod = await getMod();
-  return mod.ITEM_DEPENDENCIES;
-}

@@ -116,41 +116,6 @@ export function checkAzureAuth(repoRoot: string): void {
 }
 
 /**
- * Run `terraform validate` as a pre-flight gate.
- * Non-fatal: warns if terraform CLI is unavailable, throws if validation fails.
- */
-export function checkTerraformValid(appRoot: string): void {
-  const infraDir = path.join(appRoot, "infra");
-  if (!fs.existsSync(infraDir)) return;
-
-  // Check if terraform CLI is available
-  try {
-    execSync("terraform -version", { timeout: 5_000, stdio: "pipe" });
-  } catch {
-    console.warn(
-      "  ⚠ terraform CLI not available — skipping pre-flight validation.\n" +
-      "    Install terraform to enable the shift-left infra gate.\n",
-    );
-    return;
-  }
-
-  console.log("  🏗️ Running terraform validate on infra/ ...");
-  try {
-    execSync("terraform init -backend=false -input=false", {
-      cwd: infraDir, timeout: 60_000, stdio: "pipe",
-    });
-    const result = execSync("terraform validate", {
-      cwd: infraDir, encoding: "utf-8", timeout: 30_000, stdio: "pipe",
-    });
-    console.log(`  ✔ Terraform validation passed\n`);
-  } catch (err) {
-    const msg = err instanceof Error ? (err as { stderr?: string }).stderr ?? err.message : String(err);
-    console.error(`  ✖ Terraform validation failed:\n${msg}`);
-    throw new Error(`Pre-flight: terraform validate failed in ${infraDir}`);
-  }
-}
-
-/**
  * Check if roam-code is available, and if so, build the semantic graph index.
  * Returns whether roam is available (for use in later re-indexing calls).
  */

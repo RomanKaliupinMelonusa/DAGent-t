@@ -39,22 +39,6 @@ const UNFIXABLE_SIGNALS = [
   "state blob is already locked",
 ] as const;
 
-/**
- * Permission escalation signals — subset of UNFIXABLE_SIGNALS that can be
- * resolved by the elevated-infra-deploy.yml workflow (Contributor + User Access
- * Administrator SP). The standard OIDC SP lacks these permissions.
- *
- * @deprecated Since the "Proactive Early PR" overhaul, terraform apply no longer
- * runs in the agent pipeline — it is gated behind `/dagent approve-infra` ChatOps.
- * These signals are retained for the elevated-infra-deploy.yml error handling path
- * but are no longer consumed by the orchestrator (session-runner.ts).
- */
-const PERMISSION_ESCALATION_SIGNALS = [
-  "authorization_requestdenied",
-  "insufficient privileges",
-  "does not have authorization",
-] as const;
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -66,21 +50,6 @@ const PERMISSION_ESCALATION_SIGNALS = [
 export function isUnfixableError(errorMessage: string): string | null {
   const msg = errorMessage.toLowerCase();
   for (const signal of UNFIXABLE_SIGNALS) {
-    if (msg.includes(signal)) return signal;
-  }
-  return null;
-}
-
-/**
- * Check whether an error is a permission escalation that the elevated-infra-deploy
- * workflow can resolve. Returns the matching signal, or `null` if not a permission issue.
- *
- * @deprecated No longer called from the orchestrator after the "Proactive Early PR"
- * overhaul. Retained as a utility for external consumers and elevated-infra-deploy error paths.
- */
-export function isPermissionEscalation(errorMessage: string): string | null {
-  const msg = errorMessage.toLowerCase();
-  for (const signal of PERMISSION_ESCALATION_SIGNALS) {
     if (msg.includes(signal)) return signal;
   }
   return null;

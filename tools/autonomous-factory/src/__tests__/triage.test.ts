@@ -7,7 +7,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError, isPermissionEscalation } from "../triage.js";
+import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError } from "../triage.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -792,57 +792,3 @@ describe("triageFailure with unfixable errors (Tier 0)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// isPermissionEscalation — Permission escalation detection for elevated deploy
-// ---------------------------------------------------------------------------
-
-describe("isPermissionEscalation", () => {
-  it("detects authorization_requestdenied", () => {
-    assert.equal(
-      isPermissionEscalation("Authorization_RequestDenied: Caller does not have permission"),
-      "authorization_requestdenied",
-    );
-  });
-
-  it("detects insufficient privileges", () => {
-    assert.equal(
-      isPermissionEscalation("Error: Insufficient privileges to perform operation"),
-      "insufficient privileges",
-    );
-  });
-
-  it("detects 'does not have authorization'", () => {
-    assert.equal(
-      isPermissionEscalation("Principal does not have authorization to perform action"),
-      "does not have authorization",
-    );
-  });
-
-  it("is case-insensitive", () => {
-    assert.equal(
-      isPermissionEscalation("AUTHORIZATION_REQUESTDENIED: no permission"),
-      "authorization_requestdenied",
-    );
-  });
-
-  it("returns null for non-permission unfixable errors", () => {
-    assert.equal(isPermissionEscalation("AADSTS700016: Application not found"), null);
-    assert.equal(isPermissionEscalation("subscription not found"), null);
-    assert.equal(isPermissionEscalation("error acquiring the state lock"), null);
-    assert.equal(isPermissionEscalation("resource already exists"), null);
-  });
-
-  it("returns null for fixable errors", () => {
-    assert.equal(isPermissionEscalation("error TS2591: Cannot find name 'crypto'"), null);
-    assert.equal(isPermissionEscalation("terraform plan failed: missing required_providers"), null);
-  });
-
-  it("returns null for empty message", () => {
-    assert.equal(isPermissionEscalation(""), null);
-  });
-
-  it("detects permission error embedded in terraform apply output", () => {
-    const msg = "Terraform apply permission error: Error: creating Resource Group: authorization_requestdenied";
-    assert.equal(isPermissionEscalation(msg), "authorization_requestdenied");
-  });
-});
