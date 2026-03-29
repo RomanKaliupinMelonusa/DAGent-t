@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-profile.ts Azure Function at /profile (GET+PATCH) with in-function X-Demo-Token auth guard using constant-time comparison. GET returns hardcoded mock profile, PATCH validates body with ProfileUpdateSchema and returns merged profile. 7 unit tests covering auth 401s, GET 200, PATCH 200/400 cases."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added /profile page (profile/page.tsx) with GET/PATCH profile API integration via apiFetch, display name + theme editing form with loading/error/success states. Added Profile nav link to NavBarShell (affects both Demo and Entra variants). E2E tests cover happy path, 400 error interception, and nav link visibility."
     },
     {
       "key": "backend-unit-test",
