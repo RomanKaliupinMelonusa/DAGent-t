@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No dead code found. Roam structural analysis (roam_dead_code, roam_uses, roam_batch_search) confirmed: (1) All new files (fn-profile.ts, profile/page.tsx, profile.ts schemas, tests, e2e spec) are actively referenced. (2) demoAuthContext.tsx change cleanly replaced BASE_URL+AUTH_API_PATH with DEMO_AUTH_URL — no orphaned constants. (3) safeEqual duplication in fn-profile.ts is intentional per spec. (4) Zero-consumer symbols (ThemeSchema, ProfileUpdate, ApiErrorCodeSchema) are in packages/schemas/ which is protected — shared schemas may have external consumers. All 86 tests pass across backend (27), frontend (19), and schemas (48)."
     },
     {
       "key": "docs-archived",
