@@ -2,8 +2,8 @@
   "feature": "user-profile",
   "workflowType": "Full-Stack",
   "started": "2026-03-29",
-  "deployedUrl": null,
-  "implementationNotes": null,
+  "deployedUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/15",
+  "implementationNotes": "Draft PR #15 created — awaiting Terraform plan",
   "items": [
     {
       "key": "schema-dev",
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
