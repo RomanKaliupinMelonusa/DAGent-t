@@ -67,8 +67,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-profile.ts with GET/PATCH /api/profile endpoint using in-function X-Demo-Token auth via safeEqual(). GET returns hardcoded mock profile; PATCH validates body with ProfileUpdateSchema and returns merged profile. Integration tests added to smoke.integration.test.ts covering auth 200/401 and validation 400 paths."
     },
     {
       "key": "frontend-dev",
