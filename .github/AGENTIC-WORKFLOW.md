@@ -282,7 +282,7 @@ All deploy workflows trigger on both `main` and `feature/**` branches. A concurr
 | Workflow | Trigger | Role in Pipeline |
 |---|---|---|
 | `ci-integration.yml` | Push to `feature/**` | Standalone unit tests (Jest), type-checking (tsc), and builds for schemas, backend, and frontend. Concurrency: `ci-${{ github.ref }}`, `cancel-in-progress: false` (queues, never cancels). Polled by `poll-ci.sh`; failures feed into the `resetForDev` triage loop |
-| `elevated-infra-deploy.yml` | PR comment: `/dagent apply-elevated` | Elevated Terraform apply with OIDC via `secops-elevated` environment. Requires manual reviewer approval. On success: resumes pipeline. On failure: auto-recovers or `/dagent hold` to pause |
+| `elevated-infra-deploy.yml` | PR comment: `/dagent apply-elevated` | Elevated Terraform apply with OIDC via `secops-elevated` environment. Requires manual reviewer approval. On success: updates state + posts local resume instructions. On failure: sets recovery state + posts local resume instructions. Acts as a "dumb secure runner" — human resumes orchestrator locally |
 | `dagent-chatops.yml` | PR comment: `/dagent hold` or `/dagent resume` | Pipeline control — hold cancels all running workflows; resume re-triggers the agentic pipeline |
 | `deploy-backend.yml` | Push to `main` or `feature/**` on `backend/**`, `packages/schemas/**` | Build + deploy Azure Functions |
 | `deploy-frontend.yml` | Push to `main` or `feature/**` on `frontend/**`, `packages/schemas/**` | Build + deploy Azure Static Web Apps |
@@ -302,7 +302,7 @@ All secrets are configured in **Settings > Secrets and variables > Actions**.
 | `AZURE_CICD_CLIENT_ID` | All deploy + regression workflows | Terraform output `cicd_client_id` from `infra/cicd.tf`. This is the Azure AD application (service principal) client ID used for OIDC authentication. |
 | `AZURE_TENANT_ID` | All deploy + regression workflows | Azure Portal: **Entra ID > Overview > Tenant ID**. The directory where your service principal lives. |
 | `AZURE_SUBSCRIPTION_ID` | All deploy + regression workflows | Azure Portal: **Subscriptions > [your subscription] > Subscription ID**. Also passed as `TF_VAR_subscription_id` to Terraform. |
-| `COPILOT_PAT` | `agentic-feature.yml`, `elevated-infra-deploy.yml`, `dagent-chatops.yml` | GitHub: **Settings > Developer settings > Personal access tokens > Tokens (classic)**. Scopes required: `copilot`, `repo`, `read:org`. Used by SDK sessions and for re-triggering workflows via `gh workflow run`. |
+| `COPILOT_PAT` | `agentic-feature.yml`, `elevated-infra-deploy.yml`, `dagent-chatops.yml` | GitHub: **Settings > Developer settings > Personal access tokens > Tokens (classic)**. Scopes required: `copilot`, `repo`, `read:org`. Used by SDK sessions, `dagent-chatops.yml` workflow re-triggers, and `elevated-infra-deploy.yml` git push to feature branch. |
 | `AZURE_ELEVATED_CLIENT_ID` | `elevated-infra-deploy.yml` | Terraform output `elevated_cicd_client_id` from `infra/cicd.tf`. The elevated SP has Contributor + User Access Administrator (RG-scoped). Used only within the `secops-elevated` environment. |
 | `SWA_DEPLOYMENT_TOKEN` | `deploy-frontend.yml` | Azure Portal: **Static Web Apps > [your app] > Manage deployment token**. One token per SWA instance. |
 | `APIM_PUBLISHER_EMAIL` | `deploy-infra.yml` | Publisher contact email for APIM notifications (e.g., `admin@example.com`). Passed as `TF_VAR_apim_publisher_email`. |
@@ -460,7 +460,7 @@ PR-comment commands for human-in-the-loop pipeline control. Triggered by `issue_
 
 | Command | Workflow | What it does |
 |---|---|---|
-| `/dagent apply-elevated` | `elevated-infra-deploy.yml` | Runs `terraform apply` with elevated privileges (Contributor + UAA). Requires `secops-elevated` environment approval. On success: resumes pipeline. On failure: auto-recovers via agent re-diagnosis. |
+| `/dagent apply-elevated` | `elevated-infra-deploy.yml` | Runs `terraform apply` with elevated privileges (Contributor + UAA). Requires `secops-elevated` environment approval. On success: updates state, posts local resume instructions. On failure: sets recovery state, posts local resume instructions. Human resumes orchestrator locally. |
 | `/dagent apply-elevated -target=<resource>` | `elevated-infra-deploy.yml` | Same as above but with targeted apply (optional — omit for full apply). |
 | `/dagent hold` | `dagent-chatops.yml` | Cancels all running agentic + elevated workflows. Pipeline pauses for manual review. |
 | `/dagent resume` | `dagent-chatops.yml` | Re-triggers the agentic pipeline from scratch. |
@@ -482,11 +482,11 @@ PR-comment commands for human-in-the-loop pipeline control. Triggered by `issue_
        ↓
   terraform apply (elevated SP)
        │
-       ├── ✅ success → comment + pipeline:resume → re-trigger agentic pipeline
+       ├── ✅ success → pipeline:complete + pipeline:resume → commit & push state → human resumes locally
        │
-       └── ❌ failure → comment + pipeline:recover-elevated → agent re-diagnosis
-                                 ↓
-                            /dagent hold (escape hatch — pause auto-recovery)
+       └── ❌ failure → pipeline:recover-elevated → commit & push state → human resumes locally
+                                                                            ↓
+                                                                  @infra-architect wakes up to diagnose
 ```
 
 ---

@@ -15,12 +15,12 @@
 #   2. Environment requires manual reviewer approval before OIDC token is issued
 #   3. Elevated SP has Contributor + User Access Administrator (RG-scoped)
 #   4. Shared remote Terraform state (azurerm backend)
-#   5. Standard CI re-verifies full stack after elevated apply via pipeline:resume
+#   5. Human resumes pipeline locally after elevated apply completes
 #
 # Prerequisites:
 #   1. GitHub Environment "secops-elevated" with required reviewers
 #   2. GitHub Secrets: AZURE_ELEVATED_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-#   3. GitHub Secret: COPILOT_PAT (for re-triggering the agentic pipeline)
+#   3. GitHub Secret: COPILOT_PAT (for git push to feature branch)
 # =============================================================================
 
 name: Elevated Infrastructure Deploy
@@ -149,7 +149,13 @@ jobs:
           ✅ **Elevated infrastructure applied successfully.**
 
           Triggered by @${{ github.event.comment.user.login }} via `/dagent approve-infra`
-          Infrastructure approval gate completed. Standard CI will now re-verify the full deployment stack.
+          Infrastructure approval gate completed.
+
+          > 💻 **Action Required:** Please pull the latest state and resume the pipeline locally to begin the Application Wave:
+          > ```bash
+          > git pull origin feature/${{ steps.pr-meta.outputs.slug }}
+          > npm run agent:run -- --app apps/sample-app ${{ steps.pr-meta.outputs.slug }}
+          > ```
           EOF
           )"
 
@@ -170,14 +176,8 @@ jobs:
           git commit -m "chore(pipeline): complete await-infra-approval gate [skip ci]" || echo "No state changes to commit"
           git push origin ${{ steps.pr-meta.outputs.branch }}
 
-          # 3. Re-trigger the orchestrator using the dynamic workflow type
-          WORKFLOW_TYPE=$(jq -r .workflowType ${{ env.APP_PATH }}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json 2>/dev/null || echo "Full-Stack")
-
-          gh workflow run agentic-feature.yml \
-            --repo ${{ github.repository }} \
-            -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
-            -f workflow-type=$WORKFLOW_TYPE \
-            -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
+          # Note: We deliberately DO NOT trigger agentic-feature.yml here.
+          # The human will resume the orchestrator locally.
 
       - name: Post failure comment
         if: steps.apply.outcome == 'failure'
@@ -191,9 +191,13 @@ jobs:
           ❌ **Elevated infrastructure apply failed.**
 
           Triggered by @${{ github.event.comment.user.login }} via \`/dagent apply-elevated\`
-          Recovery initiated — the infra agent will diagnose the error and push a fix.
+          The pipeline state has been updated to trigger an infrastructure recovery cycle.
 
-          > **Want to pause instead?** Comment \`/dagent hold\` to cancel recovery and review manually.
+          > 💻 **Action Required:** Please pull the latest state and resume the pipeline locally. The \`@infra-architect\` agent will wake up to diagnose and fix the Terraform code:
+          > \`\`\`bash
+          > git pull origin feature/${{ steps.pr-meta.outputs.slug }}
+          > npm run agent:run -- --app apps/sample-app ${{ steps.pr-meta.outputs.slug }}
+          > \`\`\`
 
           <details><summary>Terraform output</summary>
 
@@ -213,7 +217,7 @@ jobs:
         run: |
           # 1. Update the state file locally with failure recovery
           ERROR_SUMMARY=$(grep -E "^Error:" ${{ env.APP_PATH }}/infra/apply-output.txt | head -5 | tr '\n' ' ')
-          npm run pipeline:recover-elevated ${{ steps.pr-meta.outputs.slug }} "$ERROR_SUMMARY" || echo "⚠️ pipeline:recover-elevated skipped (state file may not exist yet)"
+          npm run pipeline:recover-elevated ${{ steps.pr-meta.outputs.slug }} "$ERROR_SUMMARY" || echo "⚠️ pipeline:recover-elevated skipped"
 
           # 2. Commit and push the updated state back to the feature branch
           git config --global user.name "github-actions[bot]"
@@ -222,14 +226,8 @@ jobs:
           git commit -m "chore(pipeline): recover-elevated after apply failure [skip ci]" || echo "No state changes to commit"
           git push origin ${{ steps.pr-meta.outputs.branch }}
 
-          # 3. Re-trigger the orchestrator for redevelopment
-          WORKFLOW_TYPE=$(jq -r .workflowType ${{ env.APP_PATH }}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json 2>/dev/null || echo "Full-Stack")
-
-          gh workflow run agentic-feature.yml \
-            --repo ${{ github.repository }} \
-            -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
-            -f workflow-type=$WORKFLOW_TYPE \
-            -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
+          # Note: We deliberately DO NOT trigger agentic-feature.yml here.
+          # The human will resume the orchestrator locally.
 
       - name: Fail if apply failed
         if: steps.apply.outcome == 'failure'
