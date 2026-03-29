@@ -67,8 +67,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-profile.ts Azure Function at /api/profile (GET+PATCH) with in-function X-Demo-Token auth, Zod validation via ProfileUpdateSchema, and hardcoded mock profile. No schema drift — reuses existing @branded/schemas profile.ts and OpenAPI spec."
     },
     {
       "key": "frontend-dev",
