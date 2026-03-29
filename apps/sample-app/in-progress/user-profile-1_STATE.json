@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName, theme) requestBody. Responses: 200, 400, 401. No new Terraform resources — APIM api-sample updated in-place. Existing dual-mode auth policies (check-header/validate-jwt) and CORS config already support PATCH method."
     },
     {
       "key": "push-infra",
