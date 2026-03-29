@@ -16,6 +16,14 @@ export {
 } from "./auth.js";
 export type { DemoLoginRequest, DemoLoginResponse } from "./auth.js";
 
+// User profile
+export {
+  ThemeSchema,
+  UserProfileSchema,
+  ProfileUpdateSchema,
+} from "./profile.js";
+export type { Theme, UserProfile, ProfileUpdate } from "./profile.js";
+
 // Error envelope
 export { ApiErrorCodeSchema, ApiErrorResponseSchema } from "./errors.js";
 export type { ApiErrorCode, ApiErrorResponse } from "./errors.js";
