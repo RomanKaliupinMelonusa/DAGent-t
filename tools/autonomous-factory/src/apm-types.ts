@@ -55,6 +55,10 @@ export const ApmConfigSchema = z.object({
   testCommands: z.record(z.string(), z.nullable(z.string())).optional(),
   commitScopes: z.record(z.string(), z.array(z.string())).optional(),
   ciJobs: z.record(z.string(), z.string()).optional(),
+  ciWorkflows: z.object({
+    app: z.string().optional(),
+    infra: z.string().optional(),
+  }).optional(),
   preflight: z
     .object({
       apimRouteCheck: z

@@ -15,7 +15,7 @@
 name: Deploy Infrastructure
 
 concurrency:
-  group: azure-shared-env
+  group: deploy-infra-${{ github.ref }}
   cancel-in-progress: false
 
 on:

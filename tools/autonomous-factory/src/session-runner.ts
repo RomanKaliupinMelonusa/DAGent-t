@@ -534,6 +534,13 @@ async function runPollCi(
           POLL_MAX_RETRIES: "60",
           IN_PROGRESS_DIR: inProgressDir,
           SLUG: slug,
+          ...(config.apmContext.config?.ciWorkflows
+            ? {
+                CI_WORKFLOW_FILTER: (config.apmContext.config.ciWorkflows as Record<string, string>)[
+                  itemKey === "poll-infra-plan" ? "infra" : "app"
+                ] ?? "",
+              }
+            : {}),
           ...(config.apmContext.config?.ciJobs
             ? {
                 CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,

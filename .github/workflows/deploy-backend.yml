@@ -18,7 +18,7 @@
 name: Deploy Backend
 
 concurrency:
-  group: azure-shared-env
+  group: deploy-backend-${{ github.ref }}
   cancel-in-progress: false
 
 on:

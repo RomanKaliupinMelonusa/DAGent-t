@@ -96,8 +96,11 @@ config:
     frontendUnit: "cd {appRoot}/frontend && npx jest --verbose"     # TODO: Adapt to your test runner
     integration: "cd {appRoot}/backend && npm run test:integration"  # TODO: Adapt to your integration tests
   ciJobs:
-    backend: "Backend"     # Substring match against GitHub Actions job names
+    backend: "Backend"
     frontend: "Frontend"
     schemas: "Schemas"
-    infra: "Terraform"     # Infra failures route to infra-architect (owns infra/ directory)
+    infra: "Terraform"
+  ciWorkflows:
+    app: "CI Integration,Schema Drift Check"
+    infra: "Deploy Infrastructure,Schema Drift Check"
 

@@ -12,6 +12,9 @@
 #   POLL_MAX_RETRIES       — Max polling iterations (default: 10)
 #   IN_PROGRESS_DIR        — Directory to write CI_FAILURE.log diagnostic file
 #   SLUG                   — Feature slug for diagnostic file naming
+#   CI_WORKFLOW_FILTER     — Comma-separated workflow names to monitor (default: all).
+#                            Prevents unrelated workflows (e.g. deploy pipelines sharing
+#                            concurrency groups) from blocking the CI gate.
 #   CI_JOB_MATCH_BACKEND   — Substring to match backend CI job names (default: "Backend")
 #   CI_JOB_MATCH_FRONTEND  — Substring to match frontend CI job names (default: "Frontend")
 #   CI_JOB_MATCH_SCHEMAS   — Substring to match schema CI job names (default: "Schemas")
@@ -74,6 +77,26 @@ if [ -n "${IN_PROGRESS_DIR:-}" ] && [ -n "${SLUG:-}" ]; then
   DIAG_FILE="${IN_PROGRESS_DIR}/${SLUG}_CI-FAILURE.log"
 fi
 
+# ── Workflow name filter ──────────────────────────────────────────────────
+# When CI_WORKFLOW_FILTER is set, only monitor the listed workflow names.
+# This prevents deployment workflows (which share concurrency groups and
+# get auto-cancelled by GitHub on rapid pushes) from blocking the CI gate.
+WF_JQ_PRE=""
+if [ -n "${CI_WORKFLOW_FILTER:-}" ]; then
+  echo "Filtering to workflows: ${CI_WORKFLOW_FILTER}"
+  IFS=',' read -ra WF_NAMES <<< "$CI_WORKFLOW_FILTER"
+  CLAUSES=""
+  for wf in "${WF_NAMES[@]}"; do
+    wf=$(echo "$wf" | xargs)  # trim whitespace
+    if [ -z "$CLAUSES" ]; then
+      CLAUSES=".workflowName == \"$wf\""
+    else
+      CLAUSES="$CLAUSES or .workflowName == \"$wf\""
+    fi
+  done
+  WF_JQ_PRE="[.[] | select($CLAUSES)] | "
+fi
+
 # Wait 10 seconds to ensure GitHub recognizes the push
 sleep 10
 
@@ -82,14 +105,14 @@ MAX_RETRIES=${POLL_MAX_RETRIES:-10}
 ATTEMPT=0
 
 while true; do
-  RUNNING=$(gh_safe gh run list --branch "$BRANCH" --status in_progress --json databaseId -q '.[].databaseId') || {
+  RUNNING=$(gh_safe gh run list --branch "$BRANCH" --status in_progress --json databaseId,workflowName -q "${WF_JQ_PRE}.[].databaseId") || {
     RC=$?
     if [ "$RC" -eq 2 ]; then
       echo "⚠ Transient network error during poll — propagating exit 2" >&2
       exit 2
     fi
   }
-  PENDING=$(gh_safe gh run list --branch "$BRANCH" --status queued --json databaseId -q '.[].databaseId') || {
+  PENDING=$(gh_safe gh run list --branch "$BRANCH" --status queued --json databaseId,workflowName -q "${WF_JQ_PRE}.[].databaseId") || {
     RC=$?
     if [ "$RC" -eq 2 ]; then
       echo "⚠ Transient network error during poll — propagating exit 2" >&2
@@ -109,11 +132,12 @@ while true; do
     HAS_CANCELLED=0
     FAILED_RUN_IDS=()
 
-    # Build the jq filter — when COMMIT_SHA is set, only consider runs for that exact commit
+    # Build the jq filter — when COMMIT_SHA is set, only consider runs for that exact commit.
+    # WF_JQ_PRE (if set) pre-filters to only monitored workflow names.
     if [ -n "$COMMIT_SHA" ]; then
-      JQ_FILTER="[.[] | select(.headSha == \"$COMMIT_SHA\")] | [group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv"
+      JQ_FILTER="${WF_JQ_PRE}[.[] | select(.headSha == \"$COMMIT_SHA\")] | [group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv"
     else
-      JQ_FILTER='[group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv'
+      JQ_FILTER="${WF_JQ_PRE}[group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv"
     fi
 
     RUN_DATA=$(gh_safe gh run list --branch "$BRANCH" --limit 20 --json workflowName,conclusion,databaseId,headSha \

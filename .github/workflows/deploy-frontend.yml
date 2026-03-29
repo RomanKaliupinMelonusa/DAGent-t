@@ -13,7 +13,7 @@
 name: Deploy Frontend
 
 concurrency:
-  group: azure-shared-env
+  group: deploy-frontend-${{ github.ref }}
   cancel-in-progress: false
 
 on:
