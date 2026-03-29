@@ -109,8 +109,8 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
-      "error": null
+      "status": "failed",
+      "error": "CI polling was manually cancelled — will retry"
     },
     {
       "key": "integration-test",
@@ -158,6 +158,11 @@
       "timestamp": "2026-03-29T05:04:08.833Z",
       "itemKey": "resume-elevated",
       "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    },
+    {
+      "timestamp": "2026-03-29T05:14:01.124Z",
+      "itemKey": "poll-app-ci",
+      "message": "CI polling was manually cancelled — will retry"
     }
   ],
   "elevatedApply": true
