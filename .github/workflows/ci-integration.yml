@@ -4,17 +4,12 @@
 # Runs Jest unit tests, TypeScript type-checking, and production builds for
 # backend and frontend independently of deployment workflows.
 #
-# Triggered on pushes to feature/** branches. Designed to be polled by
-# poll-ci.sh so failures feed into the DAG's resetForDev triage loop.
+# Triggered on pull requests to main as a final sanity check.
+# Feature-branch verification is handled by local agentic unit test agents.
 #
-# CONCURRENCY: cancel-in-progress: false ensures rapid sequential pushes
-# from agents queue rather than cancel, so poll-ci.sh always reads a
-# definitive code-execution state.
-#
-# NOTE: GitHub queues at most ONE pending run per concurrency group.
-# When a 3rd run enters (1 running + 1 pending), the older pending
-# run is cancelled. paths-ignore prevents state-only pushes from
-# wasting slots and triggering this cascading cancellation.
+# CONCURRENCY: cancel-in-progress: false ensures parallel PR updates
+# queue rather than cancel, so the final merge check is always
+# based on a definitive code-execution state.
 # =============================================================================
 
 name: CI Integration
@@ -24,9 +19,9 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  push:
+  pull_request:
     branches:
-      - 'feature/**'
+      - main
     paths-ignore:
       - 'apps/*/in-progress/**'
 

@@ -359,9 +359,11 @@ function triageByKeywords(
     }
   }
 
-  // Can't determine root cause → reset everything applicable
+  // Can't determine root cause → only reset the failing item and let it retry,
+  // rather than destroying 45 minutes of completed agent work.
   if (resetKeys.length === 0) {
-    resetKeys.push("schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
+    console.warn(`  ⚠ Triage could not determine root cause. Retrying ${itemKey} only.`);
+    return [itemKey].filter((k) => !naItems.has(k));
   }
 
   resetKeys.push(itemKey);

@@ -413,7 +413,10 @@ Reference \`.github/instructions/backend.instructions.md\` for full backend rule
 4. If tests fail:
    - Attempt to fix **test-only issues** (stale mocks, missing fixtures, assertion updates). Max 10 attempts.
    - After a successful test-only fix, commit: \`bash tools/autonomous-factory/agent-commit.sh backend "fix(backend-test): <what was fixed>"\`
-   - If the failure is in **implementation code** (not test code), do NOT attempt to fix it. Record the failure.
+   - If the failure is in **implementation code** (not test code), do NOT attempt to fix it. Record the failure using the structured JSON contract so the orchestrator can route it back to the correct developer:
+     \`\`\`bash
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"<paste the failing test output here>"}'
+     \`\`\`
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}
 
 ## What NOT to Do
@@ -820,7 +823,10 @@ Reference \`.github/instructions/frontend.instructions.md\` for full frontend ru
 4. If tests fail:
    - Attempt to fix **test-only issues** (stale snapshots, selector updates). Max 10 attempts.
    - After a successful test-only fix, commit: \`bash tools/autonomous-factory/agent-commit.sh frontend "fix(frontend-test): <what was fixed>"\`
-   - If the failure is in **component code** (not test code), do NOT attempt to fix it. Record the failure.
+   - If the failure is in **component code** (not test code), do NOT attempt to fix it. Record the failure using the structured JSON contract so the orchestrator can route it back to the correct developer:
+     \`\`\`bash
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"frontend","diagnostic_trace":"<paste the failing test output here>"}'
+     \`\`\`
 
 ## What NOT to Do
 

@@ -24,7 +24,7 @@ import { getAgentConfig, buildTaskPrompt } from "./agents.js";
 import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
-import { DEV_ITEMS, POST_DEPLOY_ITEMS } from "./types.js";
+import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./reporting.js";
@@ -48,7 +48,6 @@ const TIMEOUT_DEFAULT  = 900_000;   // 15 min (fallback)
 const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now deterministic; fallback agent gets 15 min)
 const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
 
-const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
 const DEPLOY_ITEMS = new Set(["push-infra", "create-draft-pr", "poll-infra-plan", "push-app", "poll-app-ci"]);
 const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
@@ -906,9 +905,9 @@ async function runAgentSession(
   if (item?.status === "failed") {
     itemSummary.outcome = "failed";
     itemSummary.errorMessage = item.error ?? "Unknown failure";
-    // Post-deploy failure reroute
-    if (POST_DEPLOY_ITEMS.has(next.key)) {
-      const rawError = item.error ?? "Unknown post-deploy failure";
+    // Post-deploy & unit test failure reroute
+    if (POST_DEPLOY_ITEMS.has(next.key) || TEST_ITEMS.has(next.key)) {
+      const rawError = item.error ?? "Unknown failure";
       const diagnostic = parseTriageDiagnostic(rawError);
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
       return handleFailureReroute(slug, next.key, rawError, errorMsg, config, state, itemSummary, roamAvailable);

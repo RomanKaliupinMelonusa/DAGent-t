@@ -920,26 +920,29 @@ const POST_DEPLOY_ITEMS = new Set(
   ALL_ITEMS.filter((i) => i.phase === "post-deploy").map((i) => i.key),
 );
 
+/** Pre-deploy test items that also require structured JSON for triage rerouting. */
+const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
+
 function cmdFail(slug, itemKey, message) {
   if (!slug || !itemKey) {
     console.error("Usage: pipeline-state.mjs fail <slug> <item-key> <message>");
     process.exit(1);
   }
 
-  // ── Zod gate: post-deploy items must supply valid TriageDiagnostic JSON ──
-  if (POST_DEPLOY_ITEMS.has(itemKey)) {
+  // ── Zod gate: post-deploy & test items must supply valid TriageDiagnostic JSON ──
+  if (POST_DEPLOY_ITEMS.has(itemKey) || TEST_ITEMS.has(itemKey)) {
     let parsed;
     try {
       parsed = JSON.parse(message);
     } catch {
-      console.error(`ERROR: Post-deploy item "${itemKey}" requires a valid JSON failure message.`);
+      console.error(`ERROR: Item "${itemKey}" requires a valid JSON failure message for triage routing.`);
       console.error(`Expected: {"fault_domain": "backend"|"frontend"|"both"|"environment", "diagnostic_trace": "<details>"}`);
       console.error(`Received: ${message}`);
       process.exit(1);
     }
     const result = TriageDiagnosticSchema.safeParse(parsed);
     if (!result.success) {
-      console.error(`ERROR: Post-deploy item "${itemKey}" failure message failed schema validation.`);
+      console.error(`ERROR: Item "${itemKey}" failure message failed schema validation.`);
       console.error(`Expected: {"fault_domain": "backend"|"frontend"|"both"|"environment", "diagnostic_trace": "<details>"}`);
       console.error(`Validation errors: ${JSON.stringify(result.error.issues)}`);
       console.error(`Received: ${message}`);
