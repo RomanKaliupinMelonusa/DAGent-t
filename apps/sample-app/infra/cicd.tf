@@ -13,7 +13,7 @@
 variable "github_repo" {
   description = "GitHub repository in 'owner/repo' format for OIDC federation."
   type        = string
-  default     = "rkaliupin/DAGent"
+  default     = "RomanKaliupinMelonusa/DAGent-t"
 }
 
 # --- Azure AD Application ---
