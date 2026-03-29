@@ -10,7 +10,7 @@
       "label": "Development Complete — Schemas",
       "agent": "@schema-dev",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -18,7 +18,7 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Updated infra/api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName min2/max50, theme enum) and returns merged profile. Includes 200/401 on GET; 200/400/401 on PATCH. No new Terraform resources — APIM api-sample resource updated in-place. Existing dual-mode auth policies already cover PATCH method and X-Demo-Token/Authorization headers."
     },
@@ -27,7 +27,7 @@
       "label": "Infra Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -43,7 +43,7 @@
       "label": "Infra Plan CI Passed",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -51,7 +51,7 @@
       "label": "Infra Approval Received",
       "agent": null,
       "phase": "approval",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -59,7 +59,7 @@
       "label": "Infra Outputs Captured — Interfaces Written",
       "agent": "@infra-handoff",
       "phase": "approval",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -67,7 +67,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Added fn-profile.ts Azure Function at /api/profile with GET (hardcoded mock profile) and PATCH (Zod-validated merge). Auth via X-Demo-Token header with constant-time comparison. No schema drift — schemas/OpenAPI/barrel exports were pre-created by infra-dev."
     },
@@ -76,7 +76,7 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Added /profile page with authenticated form (displayName + theme select), NavBar Profile link in NavBarShell, 4 unit tests (loading/success/error/disabled states), and 3 E2E tests (happy path, 400 error intercept, nav link visibility)."
     },
@@ -85,7 +85,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -93,7 +93,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -158,6 +158,16 @@
       "timestamp": "2026-03-29T18:11:45.817Z",
       "itemKey": "resume-elevated",
       "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    },
+    {
+      "timestamp": "2026-03-29T18:24:26.426Z",
+      "itemKey": "poll-app-ci",
+      "message": "DOMAIN: unknown\n── Run  ──────────────────────────────────────────────\n(could not fetch logs for run )\n── End Run  ──────────────────────────────────────────"
+    },
+    {
+      "timestamp": "2026-03-29T18:24:26.471Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: DOMAIN: unknown\n── Run  ──────────────────────────────────────────────\n(could not fetch logs for run )\n── End Run  ──────────────────────────────────────────. Reset 13 items: schema-dev, infra-architect, backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, poll-app-ci, push-infra, create-draft-pr, poll-infra-plan, await-infra-approval, infra-handoff, push-app"
     }
   ],
   "elevatedApply": true
