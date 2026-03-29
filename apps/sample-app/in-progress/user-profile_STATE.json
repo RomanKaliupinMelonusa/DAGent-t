@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated infra/api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName, theme) requestBody, returns 200 (merged profile), 400 (validation error), 401. Inline schemas match Zod definitions in @branded/schemas/profile. No new Terraform resources — APIM api resource 'azurerm_api_management_api.sample' will update in-place to import the new OpenAPI spec. Terraform plan: 0 to add, 4 to change, 0 to destroy."
     },
     {
       "key": "push-infra",
