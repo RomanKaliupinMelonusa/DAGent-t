@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated infra/api-specs/api-sample.openapi.yaml to add /profile path with: GET getProfile (200: UserProfile with id/displayName/email/theme, 401) and PATCH updateProfile (requestBody: ProfileUpdate with displayName+theme, 200: UserProfile, 400, 401). APIM policies already support PATCH in CORS allowed-methods. No new Terraform resources created — only the existing azurerm_api_management_api.sample will be updated in-place with the new OpenAPI spec. terraform plan succeeded with 0 to add, 1 relevant change (APIM API update)."
     },
     {
       "key": "push-infra",
