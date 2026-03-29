@@ -14,6 +14,12 @@ import type { ApmCompiledOutput, ApmMcpConfig } from "./apm-types.js";
 // Types
 // ---------------------------------------------------------------------------
 
+/** Items whose `pipeline:fail` messages must be valid TriageDiagnostic JSON. */
+const JSON_GATED_ITEMS = new Set([
+  "backend-unit-test", "frontend-unit-test",
+  "live-ui", "integration-test", "poll-app-ci", "poll-infra-plan",
+]);
+
 export interface AgentContext {
   featureSlug: string;
   specPath: string;
@@ -113,6 +119,11 @@ Do NOT run terraform apply — apply is handled by the elevated infrastructure d
 `
     : "";
 
+  // Items subject to the Zod gate must always use structured JSON for pipeline:fail
+  const failExample = JSON_GATED_ITEMS.has(itemKey)
+    ? `npm run pipeline:fail ${slug} ${itemKey} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'`
+    : `npm run pipeline:fail ${slug} ${itemKey} "<detailed reason>"`;
+
   return `${tfGate}
 ## Completion
 
@@ -124,7 +135,7 @@ bash tools/autonomous-factory/agent-commit.sh ${scope} "chore(pipeline): mark ${
 
 If you cannot complete the task:
 \`\`\`bash
-npm run pipeline:fail ${slug} ${itemKey} "<detailed reason>"
+${failExample}
 \`\`\``;
 }
 
@@ -413,7 +424,10 @@ Reference \`.github/instructions/backend.instructions.md\` for full backend rule
 4. If tests fail:
    - Attempt to fix **test-only issues** (stale mocks, missing fixtures, assertion updates). Max 10 attempts.
    - After a successful test-only fix, commit: \`bash tools/autonomous-factory/agent-commit.sh backend "fix(backend-test): <what was fixed>"\`
-   - If the failure is in **implementation code** (not test code), do NOT attempt to fix it. Record the failure.
+   - If the failure is in **implementation code** (not test code), do NOT attempt to fix it. Record the failure using the structured JSON contract so the orchestrator can route it back to the correct developer:
+     \`\`\`bash
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"<paste the failing test output here>"}'
+     \`\`\`
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}
 
 ## What NOT to Do
@@ -815,12 +829,15 @@ Reference \`.github/instructions/frontend.instructions.md\` for full frontend ru
 1. Run unit tests: \`${resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`}\`
 2. Verify E2E tests compile: \`npx playwright test --config ${ctx.appRoot}/playwright.config.ts --list\`
    - If this fails because no E2E tests exist for the feature, record it as a failure:
-     \`npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "E2E tests missing or do not compile — @frontend-dev must write Playwright tests for this feature"\`
+     \`npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"frontend","diagnostic_trace":"E2E tests missing or do not compile — @frontend-dev must write Playwright tests for this feature"}'\`
 3. If all pass: Mark complete and commit.
 4. If tests fail:
    - Attempt to fix **test-only issues** (stale snapshots, selector updates). Max 10 attempts.
    - After a successful test-only fix, commit: \`bash tools/autonomous-factory/agent-commit.sh frontend "fix(frontend-test): <what was fixed>"\`
-   - If the failure is in **component code** (not test code), do NOT attempt to fix it. Record the failure.
+   - If the failure is in **component code** (not test code), do NOT attempt to fix it. Record the failure using the structured JSON contract so the orchestrator can route it back to the correct developer:
+     \`\`\`bash
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"frontend","diagnostic_trace":"<paste the failing test output here>"}'
+     \`\`\`
 
 ## What NOT to Do
 

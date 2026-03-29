@@ -193,15 +193,9 @@ describe("triageFailure (keyword fallback)", () => {
     assert.ok(keys.includes("live-ui"));
   });
 
-  it("no matching keywords → resets everything including schema-dev and infra-architect", () => {
+  it("no matching keywords → only resets the failing item (safe default)", () => {
     const keys = triageFailure("live-ui", "something totally unknown broke", NO_NA);
-    assert.ok(keys.includes("schema-dev"));
-    assert.ok(keys.includes("infra-architect"));
-    assert.ok(keys.includes("backend-dev"));
-    assert.ok(keys.includes("backend-unit-test"));
-    assert.ok(keys.includes("frontend-dev"));
-    assert.ok(keys.includes("frontend-unit-test"));
-    assert.ok(keys.includes("live-ui"));
+    assert.deepStrictEqual(keys, ["live-ui"]);
   });
 
   it("environment keywords → only resets itemKey", () => {
@@ -219,12 +213,11 @@ describe("triageFailure (keyword fallback)", () => {
   it("manually cancelled CI run → only resets itemKey (not a code bug)", () => {
     // With exit code 3, cancellation is intercepted at the session-runner
     // boundary and never reaches triage. This test verifies that even if
-    // the cancellation message leaks through, it falls to reset-everything
-    // (safe default) rather than misrouting as environment.
+    // the cancellation message leaks through, the safe fallback only resets
+    // the failing item — not every dev item.
     const keys = triageFailure("poll-ci", "\u274c ERROR: One or more CI workflows were manually cancelled.", NO_NA);
-    // No envSignal match → reset everything (safe default)
-    assert.ok(keys.length > 1, `Expected reset-everything, got: ${keys}`);
-    assert.ok(keys.includes("poll-ci"));
+    // No keyword match → safe fallback: only reset the failing item
+    assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
   it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
@@ -239,12 +232,10 @@ describe("triageFailure (keyword fallback)", () => {
   });
 
   it("poll-ci.sh status line 'workflows' does NOT trigger cicd path", () => {
-    // poll-ci.sh prints "All CI workflows completed" — must not match cicdSignals
+    // poll-ci.sh prints "All CI workflows completed" — must not match cicdSignals.
+    // "CI Integration" contains "ci failed" substring match → routes via cicd path.
     const keys = triageFailure("poll-ci", "✔ All CI workflows completed.\n❌ FAILED: CI Integration (run 123)\nFAIL some unknown test error", NO_NA);
-    // Should fall through to reset-everything (no specific backend/frontend/cicd/schema signal)
-    assert.ok(keys.includes("schema-dev"));
-    assert.ok(keys.includes("backend-dev"));
-    assert.ok(keys.includes("frontend-dev"));
+    // "ci" + "failed" in the status line triggers cicdSignals → push-app + poll-app-ci + poll-ci
     assert.ok(keys.includes("poll-ci"));
   });
 
@@ -433,14 +424,10 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
     assert.ok(keys.includes("poll-ci"));
   });
 
-  it("no recognizable directory paths → resets everything (safe default)", () => {
+  it("no recognizable directory paths → only resets the failing item (safe default)", () => {
     const ciLog = "Some completely opaque error with no file paths at all";
     const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
-    assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
-    assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
-    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
-    assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
-    assert.ok(keys.includes("poll-ci"));
+    assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
   it("schema directory path → routes to schema-dev + all downstream", () => {
@@ -538,18 +525,16 @@ describe("triageFailure (triage poisoning regression)", () => {
     assert.ok(keys.includes("poll-ci"));
   });
 
-  it("'ci is still running' alone (no CI errors) no longer routes as environment", () => {
+  it("'ci is still running' alone (no CI errors) retries only the failing item", () => {
     // After removing "ci is still running" from envSignals, a message
-    // containing only polling noise (no real errors) should fall through
-    // to the "reset everything" default — which is safe. The exit code 2
+    // containing only polling noise (no real errors) falls through to the
+    // safe fallback which retries only the failing item. The exit code 2
     // boundary in session-runner.ts prevents this from reaching triage
-    // in practice, but if it does, "reset everything" is better than
-    // "do nothing" (the old deadlock behavior).
+    // in practice, but if it does, retrying the item is safer than
+    // resetting everything.
     const pollingOnly = "⏳ CI is still running... sleeping 30 seconds.\n⏳ CI is still running... sleeping 30 seconds.";
     const keys = triageFailure("poll-ci", pollingOnly, NO_NA);
-    // Should NOT return just ["poll-ci"] (the old broken behavior)
-    assert.ok(keys.length > 1, `Expected reset-everything, got: ${keys}`);
-    assert.ok(keys.includes("poll-ci"));
+    assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 });
 

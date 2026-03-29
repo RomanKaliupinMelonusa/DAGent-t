@@ -134,18 +134,23 @@ describe("cmdFail CLI validation — post-deploy items", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Non-post-deploy items: accept any message (no validation)
+// Non-post-deploy, non-test items: accept any message (no validation)
 // ---------------------------------------------------------------------------
 
-describe("cmdFail CLI validation — non-post-deploy items", () => {
+describe("cmdFail CLI validation — non-post-deploy/test items", () => {
   it("accepts plain text for backend-dev", () => {
     const result = runCli(`fail ${TEST_SLUG} backend-dev "TypeScript compilation failed"`);
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
   });
 
-  it("accepts plain text for frontend-unit-test", () => {
-    const result = runCli(`fail ${TEST_SLUG} frontend-unit-test "Jest tests failed: 3 failures"`);
-    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+  it("requires structured JSON for frontend-unit-test (test items use Zod gate)", () => {
+    // Plain text should be rejected
+    const plain = runCli(`fail ${TEST_SLUG} frontend-unit-test "Jest tests failed: 3 failures"`);
+    assert.equal(plain.exitCode, 1, `Expected rejection of plain text, got exit 0`);
+    // Valid JSON should be accepted
+    const msg = JSON.stringify({ fault_domain: "frontend", diagnostic_trace: "Jest tests failed: 3 failures" });
+    const json = runCli(`fail ${TEST_SLUG} frontend-unit-test '${msg}'`);
+    assert.equal(json.exitCode, 0, `Unexpected failure: ${json.stderr}`);
   });
 
   it("accepts plain text for push-app", () => {

@@ -101,6 +101,6 @@ config:
     schemas: "Schemas"
     infra: "Terraform"
   ciWorkflows:
-    app: "CI Integration,Schema Drift Check"
+    app: "Deploy Backend,Deploy Frontend"
     infra: "Deploy Infrastructure,Schema Drift Check"
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-03-29T17:45:43.564Z",
+  "compiledAt": "2026-03-29T19:16:49.093Z",
   "tokenBudget": 6000,
   "agents": {
     "schema-dev": {
@@ -294,7 +294,7 @@
       "infra": "Terraform"
     },
     "ciWorkflows": {
-      "app": "CI Integration,Schema Drift Check",
+      "app": "Deploy Backend,Deploy Frontend",
       "infra": "Deploy Infrastructure,Schema Drift Check"
     }
   }
