@@ -14,7 +14,7 @@ Draft PR #20 created — awaiting Terraform plan
 - [x] Infrastructure Written — Terraform (@infra-architect)
 - [x] Infra Code Pushed to Origin (@deploy-manager)
 - [x] Draft PR Created (@pr-creator)
-- [ ] Infra Plan CI Passed (@deploy-manager)
+- [x] Infra Plan CI Passed (@deploy-manager)
 ### Approval Gate
 - [ ] Infra Approval Received (null)
 - [ ] Infra Outputs Captured — Interfaces Written (@infra-handoff)
