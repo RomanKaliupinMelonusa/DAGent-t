@@ -37,3 +37,101 @@ paths:
                     format: date-time
         "401":
           description: Unauthorized — missing or invalid auth token
+  /profile:
+    get:
+      operationId: getProfile
+      summary: Get the authenticated user's profile
+      description: Returns the current user's profile including display name, email, and theme preference.
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - displayName
+                  - email
+                  - theme
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  displayName:
+                    type: string
+                  email:
+                    type: string
+                    format: email
+                  theme:
+                    type: string
+                    enum:
+                      - light
+                      - dark
+                      - system
+        "401":
+          description: Unauthorized — missing or invalid auth token
+    patch:
+      operationId: updateProfile
+      summary: Update the authenticated user's profile
+      description: Updates mutable profile fields (display name and theme preference).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - displayName
+                - theme
+              properties:
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+                theme:
+                  type: string
+                  enum:
+                    - light
+                    - dark
+                    - system
+      responses:
+        "200":
+          description: Successful update — returns merged profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - displayName
+                  - email
+                  - theme
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  displayName:
+                    type: string
+                  email:
+                    type: string
+                    format: email
+                  theme:
+                    type: string
+                    enum:
+                      - light
+                      - dark
+                      - system
+        "400":
+          description: Invalid input — validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Unauthorized — missing or invalid auth token
