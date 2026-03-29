@@ -962,6 +962,28 @@ async function handleFailureReroute(
     return { summary: itemSummary, halt: false, createPr: false };
   }
 
+  // ── Guard: detect unreachable dev items behind an incomplete approval gate ──
+  // When poll-infra-plan (or other Wave 1 items) fail with a backend/frontend
+  // error, triage routes to Wave 2 dev items. But if infra-handoff is not yet
+  // done/na, those dev items can never run — resetting them plus the poll item
+  // creates an infinite retry loop against the same failing CI run.
+  const WAVE2_GATE = "infra-handoff";
+  const gateStatus = pipeState.items.find((i) => i.key === WAVE2_GATE)?.status;
+  const wave2Open = gateStatus === "done" || gateStatus === "na";
+  const WAVE2_DEV_KEYS = new Set(["backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test"]);
+
+  if (!wave2Open) {
+    const gatedKeys = resetKeys.filter((k) => WAVE2_DEV_KEYS.has(k));
+    if (gatedKeys.length > 0) {
+      console.warn(`\n  🚧 Triaged dev items [${gatedKeys.join(", ")}] are gated behind infra approval — cannot run in current wave.`);
+      console.warn(`     This is likely a pre-existing CI failure unrelated to the current feature.`);
+      console.warn(`     Fix the failing tests on the base branch or feature branch, then re-run the pipeline.`);
+      // Don't reset — let the pipeline naturally block on the next getNextAvailable() call.
+      // The item was already marked as failed by the caller.
+      return { summary: itemSummary, halt: false, createPr: false };
+    }
+  }
+
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
 

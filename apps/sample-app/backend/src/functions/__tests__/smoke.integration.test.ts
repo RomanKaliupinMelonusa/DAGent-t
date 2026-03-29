@@ -14,8 +14,11 @@ const BASE_URL = process.env.INTEGRATION_API_BASE_URL ?? "";
 const FUNC_KEY = process.env.INTEGRATION_FUNCTION_KEY ?? "";
 
 // ---------------------------------------------------------------------------
-// Helper
+// Helpers
 // ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any;
 
 async function apiFetch(
   path: string,
@@ -40,7 +43,7 @@ describeIntegration("fn-hello (live)", () => {
     const res = await apiFetch("/hello");
     expect(res.status).toBe(200);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.message).toBe("Hello, World!");
     expect(body.timestamp).toBeDefined();
     // Verify timestamp is valid ISO-8601
@@ -51,7 +54,7 @@ describeIntegration("fn-hello (live)", () => {
     const res = await apiFetch("/hello?name=IntegrationTest");
     expect(res.status).toBe(200);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.message).toBe("Hello, IntegrationTest!");
     expect(body.timestamp).toBeDefined();
   });
@@ -61,7 +64,7 @@ describeIntegration("fn-hello (live)", () => {
     const res = await apiFetch(`/hello?name=${longName}`);
     expect(res.status).toBe(400);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.error).toBe("INVALID_INPUT");
     expect(body.message).toContain("100 characters");
   });
@@ -80,7 +83,7 @@ describeIntegration("fn-demo-login (live)", () => {
     });
     expect(res.status).toBe(200);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.token).toBeDefined();
     expect(typeof body.token).toBe("string");
     expect(body.token.length).toBeGreaterThan(0);
@@ -95,7 +98,7 @@ describeIntegration("fn-demo-login (live)", () => {
     });
     expect(res.status).toBe(401);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.error).toBe("UNAUTHORIZED");
   });
 
@@ -107,7 +110,7 @@ describeIntegration("fn-demo-login (live)", () => {
     });
     expect(res.status).toBe(400);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.error).toBe("INVALID_INPUT");
   });
 
@@ -119,7 +122,7 @@ describeIntegration("fn-demo-login (live)", () => {
     });
     expect(res.status).toBe(400);
 
-    const body = await res.json();
+    const body: Json = await res.json();
     expect(body.error).toBe("INVALID_INPUT");
   });
 });

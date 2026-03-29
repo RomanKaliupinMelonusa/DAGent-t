@@ -1,6 +1,6 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
-  preset: "ts-jest/presets/default-esm",
+  preset: "ts-jest",
   testEnvironment: "node",
   roots: ["<rootDir>/src"],
   moduleNameMapper: {
@@ -11,13 +11,8 @@ module.exports = {
     "^.+\\.tsx?$": [
       "ts-jest",
       {
-        useESM: true,
-        tsconfig: "tsconfig.json",
-        diagnostics: {
-          ignoreDiagnostics: [151002],
-        },
+        tsconfig: "tsconfig.test.json",
       },
     ],
   },
-  extensionsToTreatAsEsm: [".ts"],
 };
