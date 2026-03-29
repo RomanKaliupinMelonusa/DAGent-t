@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No dead code found. user-profile-3 was purely additive (fn-profile.ts, profile/page.tsx, NavBar update, tests). All exports are consumed. ApiErrorCodeSchema in packages/schemas has zero consumers but is in protected shared schemas directory. safeEqual is duplicated in fn-demo-login.ts and fn-profile.ts (both copies live — code quality note for future refactor). All tests green: backend 27/27, frontend 23/23."
     },
     {
       "key": "docs-archived",
