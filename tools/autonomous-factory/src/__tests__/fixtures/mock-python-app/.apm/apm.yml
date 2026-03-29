@@ -24,7 +24,7 @@ agents:
     instructions: [always]
     mcp: []
     skills: []
-  create-pr:
+  publish-pr:
     instructions: [always]
     mcp: []
     skills: []

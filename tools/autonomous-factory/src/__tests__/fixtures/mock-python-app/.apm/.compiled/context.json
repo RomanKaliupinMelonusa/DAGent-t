@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-03-28T21:12:00.096Z",
+  "compiledAt": "2026-03-28T23:53:54.986Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -33,7 +33,7 @@
       "mcp": {},
       "skills": {}
     },
-    "create-pr": {
+    "publish-pr": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 43,
       "mcp": {},

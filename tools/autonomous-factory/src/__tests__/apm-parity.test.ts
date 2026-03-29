@@ -30,7 +30,9 @@ const ALL_AGENT_KEYS = [
   "infra-architect",
   "infra-handoff",
   "push-infra",
-  "poll-infra-ci",
+  "poll-infra-plan",
+  "create-draft-pr",
+  "await-infra-approval",
   "backend-dev",
   "frontend-dev",
   "backend-unit-test",
@@ -41,7 +43,7 @@ const ALL_AGENT_KEYS = [
   "live-ui",
   "code-cleanup",
   "docs-archived",
-  "create-pr",
+  "publish-pr",
 ];
 
 // ---------------------------------------------------------------------------
@@ -197,7 +199,7 @@ describe("APM Compiler", () => {
     assert.deepEqual(output.agents["push-app"].mcp, {});
     assert.deepEqual(output.agents["poll-app-ci"].mcp, {});
     assert.deepEqual(output.agents["push-infra"].mcp, {});
-    assert.deepEqual(output.agents["poll-infra-ci"].mcp, {});
+    assert.deepEqual(output.agents["poll-infra-plan"].mcp, {});
     assert.deepEqual(output.agents["infra-handoff"].mcp, {});
     assert.deepEqual(output.agents["integration-test"].mcp, {});
   });

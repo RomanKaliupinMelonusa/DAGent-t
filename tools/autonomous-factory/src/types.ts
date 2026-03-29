@@ -19,10 +19,10 @@ export { TriageDiagnosticSchema };
 export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev", "infra-architect"]);
 
 /** Infra wave items — Wave 1 of the two-wave DAG */
-export const INFRA_ITEMS = new Set(["infra-architect", "push-infra", "poll-infra-ci", "infra-handoff"]);
+export const INFRA_ITEMS = new Set(["infra-architect", "push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff"]);
 
 /** Post-deploy items whose failures get injected as downstream context or can trigger redevelopment reroute */
-export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-app-ci", "poll-infra-ci"]);
+export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-app-ci", "poll-infra-plan"]);
 
 export interface PipelineItem {
   key: string;

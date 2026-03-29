@@ -14,6 +14,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
@@ -24,7 +25,7 @@ import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS } from "./types.js";
-import { triageFailure, parseTriageDiagnostic, isPermissionEscalation } from "./triage.js";
+import { triageFailure, parseTriageDiagnostic } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./reporting.js";
 import {
@@ -47,7 +48,7 @@ const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now determinist
 const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
 
 const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
-const DEPLOY_ITEMS = new Set(["push-infra", "poll-infra-ci", "push-app", "poll-app-ci"]);
+const DEPLOY_ITEMS = new Set(["push-infra", "create-draft-pr", "poll-infra-plan", "push-app", "poll-app-ci"]);
 const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
@@ -329,7 +330,7 @@ export async function runItemSession(
   if (next.key === "push-infra" || next.key === "push-app") {
     return runPushCode(next.key, config, state, itemSummary, stepStart);
   }
-  if (next.key === "poll-infra-ci" || next.key === "poll-app-ci") {
+  if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
     return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
   }
 
@@ -545,6 +546,51 @@ async function runPollCi(
 
       const successLog = pollOutput.toString();
       if (successLog) console.log(successLog);
+
+      // ── poll-infra-plan: download plan artifact and post to Draft PR ──
+      if (itemKey === "poll-infra-plan") {
+        try {
+          const branch = `feature/${slug}`;
+          // Find the latest successful infra CI run on this branch
+          const runIdOutput = execSync(
+            `gh run list --branch "${branch}" --workflow deploy-infra.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
+            { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+          ).toString().trim();
+
+          if (runIdOutput) {
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
+            execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
+              cwd: repoRoot, stdio: "pipe", timeout: 60_000,
+            });
+            const planFile = path.join(tmpDir, "plan-output.txt");
+            if (fs.existsSync(planFile)) {
+              const planText = fs.readFileSync(planFile, "utf-8").trim();
+              const commentBody = [
+                "### Terraform Plan — `success`",
+                "",
+                "<details><summary>Click to expand plan output</summary>",
+                "",
+                "```",
+                planText,
+                "```",
+                "",
+                "</details>",
+                "",
+                "> Comment `/dagent approve-infra` to apply this plan.",
+              ].join("\n");
+              const commentFile = path.join(tmpDir, "plan-comment.md");
+              fs.writeFileSync(commentFile, commentBody, "utf-8");
+              execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
+                cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+              });
+              console.log(`  📋 Posted Terraform plan to Draft PR`);
+            }
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          }
+        } catch (planErr) {
+          console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+        }
+      }
 
       await completeItem(slug, itemKey);
       console.log(`  ✅ ${itemKey} complete (all workflows passed)`);
@@ -815,8 +861,8 @@ async function runAgentSession(
     writePlaywrightLog(appRoot, repoRoot, slug, playwrightLog);
   }
 
-  // After create-pr, signal the orchestrator to archive and exit
-  if (next.key === "create-pr") {
+  // After publish-pr, signal the orchestrator to archive and exit
+  if (next.key === "publish-pr") {
     return { summary: itemSummary, halt: false, createPr: true };
   }
 
@@ -835,13 +881,6 @@ async function runAgentSession(
       return handleFailureReroute(slug, next.key, rawError, errorMsg, config, state, itemSummary, roamAvailable);
     }
     // Infra-architect permission escalation → route to elevated deploy
-    if (next.key === "infra-architect") {
-      const rawError = item.error ?? "";
-      const escalationSignal = isPermissionEscalation(rawError);
-      if (escalationSignal) {
-        return handlePermissionEscalation(slug, next.key, rawError, config, state, itemSummary);
-      }
-    }
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
     console.log(`  ✅ ${next.key} complete`);
@@ -893,7 +932,7 @@ async function handleFailureReroute(
       console.error("  ✖ Failed to salvage pipeline state", e);
       return { summary: itemSummary, halt: true, createPr: false };
     }
-    // halt: false — main loop continues to docs-archived → create-pr
+    // halt: false — main loop continues to docs-archived → publish-pr
     return { summary: itemSummary, halt: false, createPr: false };
   }
 
@@ -924,78 +963,6 @@ async function handleFailureReroute(
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
-  return { summary: itemSummary, halt: false, createPr: false };
-}
-
-// ---------------------------------------------------------------------------
-// Permission escalation handler
-// ---------------------------------------------------------------------------
-
-/**
- * Handle infra-architect permission failures by routing to the elevated
- * infrastructure deploy workflow. The TF code is correct — only the apply
- * requires elevated privileges (Contributor + User Access Administrator).
- *
- * Flow:
- *   1. Mark infra-architect as complete (code is correct)
- *   2. Push infra code to remote (elevated deploy needs it)
- *   3. salvageForDraft → pipeline continues to draft PR
- *   4. Human triggers /dagent apply-elevated on the draft PR
- *   5. On success: resumeAfterElevated undoes salvage, pipeline resumes
- */
-async function handlePermissionEscalation(
-  slug: string,
-  itemKey: string,
-  errorMsg: string,
-  config: PipelineRunConfig,
-  state: PipelineRunState,
-  itemSummary: ItemSummary,
-): Promise<SessionResult> {
-  const { appRoot, repoRoot, baseBranch } = config;
-
-  console.error(`\n  🔐 PERMISSION ESCALATION: ${itemKey} requires elevated privileges.`);
-  console.error(`     Infra code is correct — routing to elevated infrastructure deploy.`);
-
-  // Step 1: Mark infra-architect as complete (code validated, only apply needs elevation)
-  try {
-    await completeItem(slug, itemKey);
-    console.log(`  ✅ ${itemKey} marked complete (code validated, apply needs elevation)`);
-  } catch (e) {
-    console.error(`  ✖ Failed to mark ${itemKey} complete:`, e);
-  }
-
-  // Step 2: Push infra code to remote (elevated deploy workflow needs it)
-  try {
-    const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
-    const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
-    try {
-      execSync(`bash "${commitScript}" all "feat(${slug}): push infra code for elevated apply"`, {
-        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
-        env: { ...process.env, APP_ROOT: appRoot },
-      });
-    } catch { /* no changes to commit — OK */ }
-    execSync(`bash "${branchScript}" push`, {
-      cwd: repoRoot, stdio: "inherit", timeout: 60_000,
-      env: { ...process.env, BASE_BRANCH: baseBranch },
-    });
-    console.log(`  📦 Pushed infra code for elevated apply`);
-  } catch {
-    console.warn(`  ⚠ Push failed — elevated apply may still work from committed code`);
-  }
-
-  // Step 3: Salvage pipeline for draft PR — skip remaining infra items + Wave 2
-  try {
-    await salvageForDraft(slug, itemKey);
-    // Write flag for PR creator agent
-    const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
-    fs.writeFileSync(draftFlagPath, `PERMISSION_ESCALATION: ${errorMsg}`, "utf-8");
-    console.log(`  📋 Salvaged pipeline for draft PR — comment /dagent apply-elevated to proceed`);
-  } catch (e) {
-    console.error("  ✖ Failed to salvage pipeline state", e);
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-
-  // halt: false — main loop continues to docs-archived → create-pr (draft)
   return { summary: itemSummary, halt: false, createPr: false };
 }
 

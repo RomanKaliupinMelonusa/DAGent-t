@@ -48,7 +48,8 @@ jobs:
     name: Elevated Terraform Apply
     if: >-
       github.event.issue.pull_request
-      && startsWith(github.event.comment.body, '/dagent apply-elevated')
+      && (startsWith(github.event.comment.body, '/dagent approve-infra')
+          || startsWith(github.event.comment.body, '/dagent apply-elevated'))
     runs-on: ubuntu-latest
     environment: secops-elevated
 
@@ -147,10 +148,17 @@ jobs:
             --body "$(cat <<'EOF'
           ✅ **Elevated infrastructure applied successfully.**
 
-          Triggered by @${{ github.event.comment.user.login }} via `/dagent apply-elevated`
-          Standard CI will now re-verify the full deployment stack.
+          Triggered by @${{ github.event.comment.user.login }} via `/dagent approve-infra`
+          Infrastructure approval gate completed. Standard CI will now re-verify the full deployment stack.
           EOF
           )"
+
+      - name: Complete infra approval gate
+        if: steps.apply.outcome == 'success'
+        env:
+          APP_ROOT: ${{ env.APP_PATH }}
+        run: |
+          npm run pipeline:complete ${{ steps.pr-meta.outputs.slug }} await-infra-approval || echo "\u26a0\ufe0f pipeline:complete await-infra-approval skipped (state file may not exist yet)"
 
       - name: Resume pipeline
         if: steps.apply.outcome == 'success'

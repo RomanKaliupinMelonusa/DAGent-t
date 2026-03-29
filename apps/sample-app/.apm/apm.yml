@@ -20,7 +20,15 @@ agents:
     instructions: [always]
     mcp: []
     skills: []
-  poll-infra-ci:
+  poll-infra-plan:
+    instructions: [always]
+    mcp: []
+    skills: []
+  create-draft-pr:
+    instructions: [always]
+    mcp: []
+    skills: []
+  await-infra-approval:
     instructions: [always]
     mcp: []
     skills: []
@@ -64,7 +72,7 @@ agents:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-  create-pr:
+  publish-pr:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []

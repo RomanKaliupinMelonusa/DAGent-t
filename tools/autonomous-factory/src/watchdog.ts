@@ -359,6 +359,17 @@ async function main(): Promise<void> {
         break;
       }
 
+      // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
+      const approvalGateItems = available.filter((i) => i.agent === null);
+      if (approvalGateItems.length > 0 && available.every((i) => i.agent === null)) {
+        console.log(`\n${"─".repeat(70)}`);
+        console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra on the Draft PR to continue.");
+        console.log(`     Pending gate items: ${approvalGateItems.map((i) => i.key).join(", ")}`);
+        console.log(`${"─".repeat(70)}\n`);
+        // Clean exit — ChatOps will pipeline:complete + re-trigger the orchestrator
+        break;
+      }
+
       if (available.length > 1) {
         console.log(
           `\n${"─".repeat(70)}\n  🔀 Parallel batch: ${available.map((i) => i.key).join(" ‖ ")}\n${"─".repeat(70)}`,
@@ -366,8 +377,9 @@ async function main(): Promise<void> {
       }
 
       // Run items in parallel (or sequentially if only one)
+      // Filter out agent-null items (e.g. await-infra-approval) — they are completed externally
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } => item.key !== null,
+        (item): item is NextAction & { key: string } => item.key !== null && item.agent !== null,
       );
 
       // Pre-batch sync: single pull before parallel execution
@@ -387,7 +399,7 @@ async function main(): Promise<void> {
       // === Centralized Mutex: Commit state files after parallel batch ===
       commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
 
-      // Check results for halt or create-pr signals
+      // Check results for halt or publish-pr signals
       let shouldHalt = false;
       let pipelineDone = false;
       for (const result of results) {
@@ -395,7 +407,7 @@ async function main(): Promise<void> {
           if (result.value.halt) shouldHalt = true;
           if (result.value.createPr) {
             archiveFeatureFiles(slug, appRoot, repoRoot);
-            console.log("  ✅ create-pr complete — pipeline finished");
+            console.log("  ✅ publish-pr complete — pipeline finished");
             pipelineDone = true;
           }
         } else {
@@ -416,7 +428,7 @@ async function main(): Promise<void> {
       client = null;
     }
 
-    // Final safety-net write (only if summary wasn't already archived by create-pr)
+    // Final safety-net write (only if summary wasn't already archived by publish-pr)
     if (runState.pipelineSummaries.length > 0) {
       const summaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
       const archivedPath = path.join(appRoot, "archive", "features", slug, `${slug}_SUMMARY.md`);

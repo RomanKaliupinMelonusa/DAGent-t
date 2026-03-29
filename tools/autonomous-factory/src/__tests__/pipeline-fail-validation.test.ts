@@ -125,9 +125,9 @@ describe("cmdFail CLI validation — post-deploy items", () => {
     assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
   });
 
-  it("accepts infra fault domain for poll-infra-ci", () => {
+  it("accepts infra fault domain for poll-infra-plan", () => {
     const msg = JSON.stringify({ fault_domain: "infra", diagnostic_trace: "terraform plan failed" });
-    const result = runCli(`fail ${TEST_SLUG} poll-infra-ci '${msg}'`);
+    const result = runCli(`fail ${TEST_SLUG} poll-infra-plan '${msg}'`);
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
     assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
   });
@@ -192,7 +192,7 @@ describe("salvageForDraft — graceful degradation", () => {
     assert.equal(result.exitCode, 0, `Failed to init salvage test pipeline: ${result.stderr}`);
 
     // Simulate a realistic pipeline state: pre-deploy items done, push-app done, poll-app-ci pending
-    for (const key of ["schema-dev", "infra-architect", "push-infra", "poll-infra-ci", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
+    for (const key of ["schema-dev", "infra-architect", "push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
       const r = runCli(`complete ${SALVAGE_SLUG} ${key}`);
       assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
     }
@@ -221,7 +221,7 @@ describe("salvageForDraft — graceful degradation", () => {
   it("leaves docs-archived and create-pr as pending", () => {
     const state = readTestState();
 
-    const expectedPending = ["docs-archived", "create-pr"];
+    const expectedPending = ["docs-archived", "publish-pr"];
     for (const key of expectedPending) {
       const item = state.items.find(i => i.key === key);
       assert.ok(item, `Item ${key} not found in state`);
@@ -286,13 +286,13 @@ describe("salvageForDraft — defensive reset of stale failures", () => {
     assert.equal(result.exitCode, 0, `Failed to init stale test pipeline: ${result.stderr}`);
 
     // Complete pre-deploy + push-app
-    for (const key of ["schema-dev", "infra-architect", "push-infra", "poll-infra-ci", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
+    for (const key of ["schema-dev", "infra-architect", "push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "backend-dev", "frontend-dev", "backend-unit-test", "frontend-unit-test", "push-app"]) {
       const r = runCli(`complete ${STALE_SLUG} ${key}`);
       assert.equal(r.exitCode, 0, `Failed to complete ${key}: ${r.stderr}`);
     }
 
-    // Simulate a prior create-pr failure (e.g., GitHub API rate limit)
-    const r = runCli(`fail ${STALE_SLUG} create-pr "GitHub API rate limit exceeded"`);
+    // Simulate a prior publish-pr failure (e.g., GitHub API rate limit)
+    const r = runCli(`fail ${STALE_SLUG} publish-pr "GitHub API rate limit exceeded"`);
     assert.equal(r.exitCode, 0, `Failed to fail create-pr: ${r.stderr}`);
   });
 
@@ -303,20 +303,20 @@ describe("salvageForDraft — defensive reset of stale failures", () => {
     }
   });
 
-  it("resets a previously-failed create-pr back to pending with null error", () => {
-    // Verify create-pr is currently failed
+  it("resets a previously-failed publish-pr back to pending with null error", () => {
+    // Verify publish-pr is currently failed
     const before = readTestState();
-    const prBefore = before.items.find(i => i.key === "create-pr");
-    assert.equal(prBefore?.status, "failed", "Precondition: create-pr should be failed");
-    assert.ok(prBefore?.error, "Precondition: create-pr should have an error message");
+    const prBefore = before.items.find(i => i.key === "publish-pr");
+    assert.equal(prBefore?.status, "failed", "Precondition: publish-pr should be failed");
+    assert.ok(prBefore?.error, "Precondition: publish-pr should have an error message");
 
     const result = callSalvage(STALE_SLUG, "poll-app-ci");
     assert.equal(result.exitCode, 0, `salvageForDraft failed: ${result.stderr}`);
 
     const after = readTestState();
-    const prAfter = after.items.find(i => i.key === "create-pr");
-    assert.equal(prAfter?.status, "pending", `Expected create-pr to be \"pending\" but got \"${prAfter?.status}\"`);
-    assert.equal(prAfter?.error, null, "Expected create-pr error to be null after salvage");
+    const prAfter = after.items.find(i => i.key === "publish-pr");
+    assert.equal(prAfter?.status, "pending", `Expected publish-pr to be "pending" but got "${prAfter?.status}"`);
+    assert.equal(prAfter?.error, null, "Expected publish-pr error to be null after salvage");
 
     const docsAfter = after.items.find(i => i.key === "docs-archived");
     assert.equal(docsAfter?.status, "pending", `Expected docs-archived to be \"pending\" but got \"${docsAfter?.status}\"`);
@@ -383,7 +383,7 @@ describe("salvageForDraft — infra-architect permission escalation", () => {
     assert.equal(ia?.status, "done", "infra-architect should remain 'done' — code is correct");
 
     // Remaining infra wave items should be "na" (skipped for elevated apply)
-    for (const key of ["push-infra", "poll-infra-ci", "infra-handoff"]) {
+    for (const key of ["push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff"]) {
       const item = state.items.find(i => i.key === key);
       assert.equal(item?.status, "na", `Expected ${key} to be "na" but got "${item?.status}"`);
     }
@@ -401,7 +401,7 @@ describe("salvageForDraft — infra-architect permission escalation", () => {
     }
 
     // docs-archived and create-pr should be pending (for draft PR creation)
-    for (const key of ["docs-archived", "create-pr"]) {
+    for (const key of ["docs-archived", "publish-pr"]) {
       const item = state.items.find(i => i.key === key);
       assert.equal(item?.status, "pending", `Expected ${key} to be "pending" but got "${item?.status}"`);
     }

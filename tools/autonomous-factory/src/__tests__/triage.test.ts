@@ -155,15 +155,15 @@ describe("triageFailure (structured JSON)", () => {
 
   it("infra fault_domain → resets infra-architect + itemKey", () => {
     const msg = makeJsonMsg("infra", "terraform state lock conflict");
-    const keys = triageFailure("poll-infra-ci", msg, NO_NA);
-    assert.deepStrictEqual(keys, ["infra-architect", "poll-infra-ci"]);
+    const keys = triageFailure("poll-infra-plan", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["infra-architect", "poll-infra-plan"]);
   });
 
   it("infra fault_domain filters out N/A items", () => {
     const msg = makeJsonMsg("infra", "terraform error");
     const naItems = new Set(["infra-architect"]);
-    const keys = triageFailure("poll-infra-ci", msg, naItems);
-    assert.deepStrictEqual(keys, ["poll-infra-ci"]);
+    const keys = triageFailure("poll-infra-plan", msg, naItems);
+    assert.deepStrictEqual(keys, ["poll-infra-plan"]);
   });
 });
 
@@ -258,9 +258,9 @@ describe("triageFailure (keyword fallback)", () => {
   });
 
   it("infra keywords → resets infra-architect", () => {
-    const keys = triageFailure("poll-infra-ci", "terraform plan failed with azurerm provider error", NO_NA);
+    const keys = triageFailure("poll-infra-plan", "terraform plan failed with azurerm provider error", NO_NA);
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
-    assert.ok(keys.includes("poll-infra-ci"));
+    assert.ok(keys.includes("poll-infra-plan"));
     assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
   });
 
@@ -678,9 +678,9 @@ describe("triageFailure with DOMAIN: header (Tier 2)", () => {
 
   it("DOMAIN: infra routes to infra-architect", () => {
     const msg = "DOMAIN: infra\n── Run 123 ──\nterraform plan failed";
-    const keys = triageFailure("poll-infra-ci", msg, NO_NA);
+    const keys = triageFailure("poll-infra-plan", msg, NO_NA);
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
-    assert.ok(keys.includes("poll-infra-ci"));
+    assert.ok(keys.includes("poll-infra-plan"));
     assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
   });
 });
