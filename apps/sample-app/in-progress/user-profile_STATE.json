@@ -43,8 +43,8 @@
       "label": "Infra Plan CI Passed",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "failed",
+      "error": "CI polling was manually cancelled — will retry"
     },
     {
       "key": "await-infra-approval",
@@ -161,6 +161,11 @@
       "timestamp": "2026-03-29T03:37:29.106Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 1/5: Elevated infra apply failed — agent will diagnose and fix TF code. Error: Error: Retrieving Application (Application: \"c5aee73f-dc3c-4f04-910c-8677dcccad90\") Error: making Read request on Azure KeyVault Secret func-host-key: keyvault.BaseClient#GetSecret: Failure responding. Reset 8 items: infra-architect, push-infra, create-draft-pr, poll-infra-plan, await-infra-approval, infra-handoff, push-app, poll-app-ci"
+    },
+    {
+      "timestamp": "2026-03-29T03:46:37.014Z",
+      "itemKey": "poll-infra-plan",
+      "message": "CI polling was manually cancelled — will retry"
     }
   ]
 }
