@@ -127,9 +127,14 @@ The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the
 
 | Identity | Roles | OIDC Subject | Used By |
 |---|---|---|---|
-| **Standard** (`azuread_application.cicd`) | Contributor (RG) | `ref:refs/heads/main`, `ref:refs/heads/feature/*`, `environment:development` | All deploy + regression workflows |
-| **Elevated** (`azuread_application.elevated_cicd`) | Contributor + User Access Administrator (RG) | `environment:secops-elevated` | `elevated-infra-deploy.yml` only |
+| **Standard** (`azuread_application.cicd`) | Contributor (RG), Key Vault Secrets User (KV) | `ref:refs/heads/main`, `ref:refs/heads/feature/*`, `environment:development` | All deploy + regression workflows |
+| **Elevated** (`azuread_application.elevated_cicd`) | Contributor + User Access Administrator (RG), Key Vault Secrets Officer (KV), Graph API `Application.ReadWrite.All` | `environment:secops-elevated` | `elevated-infra-deploy.yml` only |
 
 **Outputs:** `cicd_client_id`, `elevated_cicd_client_id`
 
-The elevated identity exists for operations the standard SP can't perform: creating role assignments, OIDC federated credentials, and other AAD-scoped resources. It is only accessible through the `secops-elevated` GitHub Environment, which requires manual reviewer approval.
+The elevated identity exists for operations the standard SP can't perform: creating role assignments, OIDC federated credentials, managing Azure AD app registrations, and reading/writing Key Vault secrets during Terraform applies. It is only accessible through the `secops-elevated` GitHub Environment, which requires manual reviewer approval.
+
+**Elevated SP additional configuration (beyond Terraform):**
+- **Microsoft Graph:** `Application.ReadWrite.All` (application role, admin-consented) — allows managing all Azure AD app registrations
+- **App ownership:** Added as owner of `azuread_application.main`, `.cicd`, and `.elevated_cicd` — required by the `azuread` Terraform provider to read/modify app registrations
+- **Key Vault:** `Key Vault Secrets Officer` on the vault — allows reading and writing secrets during `terraform apply`

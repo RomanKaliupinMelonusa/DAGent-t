@@ -303,7 +303,7 @@ All secrets are configured in **Settings > Secrets and variables > Actions**.
 | `AZURE_TENANT_ID` | All deploy + regression workflows | Azure Portal: **Entra ID > Overview > Tenant ID**. The directory where your service principal lives. |
 | `AZURE_SUBSCRIPTION_ID` | All deploy + regression workflows | Azure Portal: **Subscriptions > [your subscription] > Subscription ID**. Also passed as `TF_VAR_subscription_id` to Terraform. |
 | `COPILOT_PAT` | `agentic-feature.yml`, `elevated-infra-deploy.yml`, `dagent-chatops.yml` | GitHub: **Settings > Developer settings > Personal access tokens > Tokens (classic)**. Scopes required: `copilot`, `repo`, `read:org`. Used by SDK sessions, `dagent-chatops.yml` workflow re-triggers, and `elevated-infra-deploy.yml` git push to feature branch. |
-| `AZURE_ELEVATED_CLIENT_ID` | `elevated-infra-deploy.yml` | Terraform output `elevated_cicd_client_id` from `infra/cicd.tf`. The elevated SP has Contributor + User Access Administrator (RG-scoped). Used only within the `secops-elevated` environment. |
+| `AZURE_ELEVATED_CLIENT_ID` | `elevated-infra-deploy.yml` | Terraform output `elevated_cicd_client_id` from `infra/cicd.tf`. The elevated SP has Contributor + User Access Administrator (RG-scoped), Key Vault Secrets Officer (KV-scoped), and Graph API `Application.ReadWrite.All`. Used only within the `secops-elevated` environment. |
 | `SWA_DEPLOYMENT_TOKEN` | `deploy-frontend.yml` | Azure Portal: **Static Web Apps > [your app] > Manage deployment token**. One token per SWA instance. |
 | `APIM_PUBLISHER_EMAIL` | `deploy-infra.yml` | Publisher contact email for APIM notifications (e.g., `admin@example.com`). Passed as `TF_VAR_apim_publisher_email`. |
 | `FRONTEND_URL` | `deploy-infra.yml` | SWA URL with trailing slash (e.g., `https://your-swa.azurestaticapps.net/`). Passed as `TF_VAR_frontend_url`. Leave empty for initial deploy. |
@@ -361,7 +361,7 @@ The CI/CD pipeline authenticates to Azure using OIDC — GitHub Actions presents
 |----------------|--------|
 | `repo:<org>/<repo>:environment:secops-elevated` | Privileged Terraform applies requiring manual approval |
 
-The elevated SP has **Contributor + User Access Administrator** roles on the resource group — sufficient for creating role assignments and OIDC identities that the standard SP cannot.
+The elevated SP has **Contributor + User Access Administrator** roles on the resource group, **Key Vault Secrets Officer** on the Key Vault, and **Microsoft Graph `Application.ReadWrite.All`** (admin-consented) — sufficient for creating role assignments, managing OIDC identities, reading/writing KV secrets, and managing Azure AD app registrations during Terraform applies. It is also registered as an owner of all Terraform-managed app registrations.
 
 ### Linking CI/CD Secrets to APM Config
 
