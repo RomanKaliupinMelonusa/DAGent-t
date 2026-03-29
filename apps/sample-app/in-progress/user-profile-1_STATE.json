@@ -76,8 +76,9 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added /profile page with GET/PATCH form (display name + theme select), loading/error/success states. Added Profile link to NavBarShell. Unit tests cover loading, form render, save error, save success, and button disabled states. E2E tests cover happy path save and 400 error with route interception."
     },
     {
       "key": "backend-unit-test",
