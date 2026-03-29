@@ -18,9 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Infrastructure for user-profile feature:\n\n**OpenAPI Spec** (api-specs/api-sample.openapi.yaml):\n- GET /profile → operationId: getProfile — returns UserProfile (id uuid, displayName, email, theme enum [light,dark,system]), 401\n- PATCH /profile → operationId: updateProfile — requestBody: ProfileUpdate (displayName min2/max50, theme enum), responses: 200, 400, 401\n\n**APIM Resources** (already configured, updated via OpenAPI import):\n- azurerm_api_management_api.sample — imports OpenAPI spec with /profile path\n- APIM dual-mode auth policies already include PATCH in allowed methods and X-Demo-Token/Content-Type in allowed headers\n\n**Terraform Plan**: 0 to add, 4 to change (APIM API spec update + minor drift), 0 to destroy. Plan validated successfully.\n\n**No new Terraform resources required** — existing APIM API + backend + policies cover the /profile endpoint routing."
+      "docNote": "Infrastructure validated. Resources affected:\n- azurerm_api_management_api.sample — updated in-place to add /profile GET (getProfile) and PATCH (updateProfile) operations via OpenAPI spec (infra/api-specs/api-sample.openapi.yaml)\n- No new Terraform resources needed — existing APIM policies (dual-mode demo/entra) already cover PATCH method and X-Demo-Token/Content-Type headers in CORS\n- Profile endpoint schemas inline in OpenAPI: UserProfile (id uuid, displayName, email, theme enum[light,dark,system]), ProfileUpdate (displayName, theme)\n- terraform plan: 0 to add, 4 to change (profile spec + existing drift), 0 to destroy\nOutputs unchanged: apim_gateway_url is the frontend target for /sample/profile calls"
     },
     {
       "key": "push-infra",
