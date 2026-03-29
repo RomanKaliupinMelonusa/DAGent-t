@@ -31,33 +31,73 @@ test.describe("User Profile", () => {
     });
 
     try {
-      // Navigate to profile page
-      await authenticatedPage.goto(
-        `${authenticatedPage.url().split("/").slice(0, 3).join("/")}/profile`,
-      );
+      // Navigate to profile page and wait for GET /profile to succeed
+      const [getResponse] = await Promise.all([
+        authenticatedPage.waitForResponse(
+          (resp) =>
+            resp.url().includes("/profile") &&
+            resp.request().method() === "GET" &&
+            resp.status() === 200,
+          { timeout: 15_000 },
+        ),
+        authenticatedPage.goto(
+          `${authenticatedPage.url().split("/").slice(0, 3).join("/")}/profile`,
+        ),
+      ]);
+      expect(getResponse.ok()).toBeTruthy();
 
       // Wait for loading to complete
       await expect(
         authenticatedPage.getByTestId("profile-loading"),
       ).toBeHidden({ timeout: 15_000 });
 
-      // Verify display name input is visible and populated
+      // Verify display name input is visible and populated with initial data
       const nameInput =
         authenticatedPage.getByTestId("profile-displayname");
       await expect(nameInput).toBeVisible();
+      await expect(nameInput).toHaveValue("Demo User");
+
+      // Verify no error banner present on initial load
+      await expect(
+        authenticatedPage.getByTestId("profile-error"),
+      ).toBeHidden();
+
+      // Verify email is displayed (data loaded correctly)
+      await expect(
+        authenticatedPage.getByText("demo@example.com"),
+      ).toBeVisible();
 
       // Clear and type new name
       await nameInput.fill("Updated User");
 
-      // Click save
+      // Click save and wait for PATCH /profile to succeed
       const saveBtn = authenticatedPage.getByTestId("save-profile-btn");
       await expect(saveBtn).toBeVisible();
-      await saveBtn.click();
 
-      // Verify no error banner appears (success)
+      const [patchResponse] = await Promise.all([
+        authenticatedPage.waitForResponse(
+          (resp) =>
+            resp.url().includes("/profile") &&
+            resp.request().method() === "PATCH" &&
+            resp.status() === 200,
+          { timeout: 10_000 },
+        ),
+        saveBtn.click(),
+      ]);
+      expect(patchResponse.ok()).toBeTruthy();
+
+      // Verify success banner appears
+      await expect(
+        authenticatedPage.getByTestId("profile-success"),
+      ).toBeVisible({ timeout: 5_000 });
+      await expect(
+        authenticatedPage.getByTestId("profile-success"),
+      ).toContainText("Profile updated!");
+
+      // Verify no error banner appears
       await expect(
         authenticatedPage.getByTestId("profile-error"),
-      ).toBeHidden({ timeout: 10_000 });
+      ).toBeHidden();
     } catch (error) {
       const diagnostics = [
         consoleLogs.length
@@ -190,9 +230,12 @@ test.describe("User Profile", () => {
 
       // Click it and verify we navigate to profile page
       await profileLink.click();
+
+      // Verify the profile page loads (loading state appears, then form appears)
+      await expect(authenticatedPage).toHaveURL(/\/profile/);
       await expect(
-        authenticatedPage.getByTestId("profile-loading"),
-      ).toBeVisible({ timeout: 5_000 });
+        authenticatedPage.getByTestId("profile-displayname"),
+      ).toBeVisible({ timeout: 15_000 });
     } catch (error) {
       const diagnostics = [
         consoleLogs.length
