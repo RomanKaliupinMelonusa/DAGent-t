@@ -21,7 +21,7 @@ resource "azuread_application" "main" {
   display_name     = "sample-app-api-${var.environment}"
   sign_in_audience = "AzureADMyOrg"
   identifier_uris  = ["api://sample-app-${var.environment}"]
-  owners           = [data.azurerm_client_config.current.object_id]
+  owners           = [data.azurerm_client_config.current.object_id, azuread_service_principal.elevated_cicd.object_id]
 
   api {
     requested_access_token_version = 2

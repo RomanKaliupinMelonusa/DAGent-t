@@ -149,8 +149,8 @@ resource "azurerm_service_plan" "main" {
 }
 
 resource "azurerm_storage_container" "func_deployments" {
-  name                 = "app-package"
-  storage_account_id   = azurerm_storage_account.func_runtime.id
+  name               = "app-package"
+  storage_account_id = azurerm_storage_account.func_runtime.id
 }
 
 resource "azurerm_function_app_flex_consumption" "main" {
@@ -175,7 +175,7 @@ resource "azurerm_function_app_flex_consumption" "main" {
 
   app_settings = merge({
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
-  }, var.auth_mode == "demo" ? {
+    }, var.auth_mode == "demo" ? {
     AUTH_MODE  = "demo"
     DEMO_USER  = var.demo_credentials.username
     DEMO_PASS  = var.demo_credentials.password

@@ -20,7 +20,7 @@ variable "github_repo" {
 
 resource "azuread_application" "cicd" {
   display_name = "sample-app-cicd-${var.environment}"
-  owners       = [data.azurerm_client_config.current.object_id]
+  owners       = [data.azurerm_client_config.current.object_id, azuread_service_principal.elevated_cicd.object_id]
   tags         = ["sample-app", var.environment, "cicd", "managed-by-terraform"]
 }
 
@@ -80,6 +80,15 @@ resource "azuread_application" "elevated_cicd" {
   display_name = "sp-sample-app-elevated-cicd-${var.environment}"
   owners       = [data.azurerm_client_config.current.object_id]
   tags         = ["sample-app", var.environment, "elevated-cicd", "managed-by-terraform"]
+
+  required_resource_access {
+    resource_app_id = "00000003-0000-0000-c000-000000000000" # Microsoft Graph
+
+    resource_access {
+      id   = "1bfefb4e-e0b5-418b-a88f-73c46d2cc8e9" # Application.ReadWrite.All
+      type = "Role"
+    }
+  }
 }
 
 resource "azuread_service_principal" "elevated_cicd" {
@@ -109,5 +118,11 @@ resource "azurerm_role_assignment" "elevated_cicd_contributor" {
 resource "azurerm_role_assignment" "elevated_cicd_uaa" {
   scope                = azurerm_resource_group.main.id
   role_definition_name = "User Access Administrator"
+  principal_id         = azuread_service_principal.elevated_cicd.object_id
+}
+
+resource "azurerm_role_assignment" "elevated_cicd_kv_secrets_officer" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets Officer"
   principal_id         = azuread_service_principal.elevated_cicd.object_id
 }
