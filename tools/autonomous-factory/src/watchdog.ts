@@ -239,9 +239,10 @@ function commitAndPushState(
       cwd: repoRootDir, timeout: 10_000,
     });
 
-    // Commit with batch number for traceability
+    // Commit with batch number for traceability.
+    // [skip ci] prevents state-only pushes from triggering CI workflows.
     execSync(
-      `git commit -m "chore(pipeline): state update [batch ${batchNumber}]" --no-verify`,
+      `git commit -m "chore(pipeline): state update [batch ${batchNumber}] [skip ci]" --no-verify`,
       { cwd: repoRootDir, timeout: 10_000, stdio: "pipe" },
     );
 

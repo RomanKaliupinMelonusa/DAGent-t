@@ -10,6 +10,11 @@
 # CONCURRENCY: cancel-in-progress: false ensures rapid sequential pushes
 # from agents queue rather than cancel, so poll-ci.sh always reads a
 # definitive code-execution state.
+#
+# NOTE: GitHub queues at most ONE pending run per concurrency group.
+# When a 3rd run enters (1 running + 1 pending), the older pending
+# run is cancelled. paths-ignore prevents state-only pushes from
+# wasting slots and triggering this cascading cancellation.
 # =============================================================================
 
 name: CI Integration
@@ -22,6 +27,8 @@ on:
   push:
     branches:
       - 'feature/**'
+    paths-ignore:
+      - 'apps/*/in-progress/**'
 
 permissions:
   contents: read
