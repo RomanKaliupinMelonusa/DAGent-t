@@ -16,6 +16,9 @@ npm test         # run schema unit tests
 | `HelloResponseSchema` | `src/hello.ts` | `GET /hello` | `{ message: string, timestamp: ISO-8601 }` |
 | `DemoLoginRequestSchema` | `src/auth.ts` | `POST /auth/login` | `{ username: string, password: string }` |
 | `DemoLoginResponseSchema` | `src/auth.ts` | `POST /auth/login` | `{ token: string, displayName: string }` |
+| `UserProfileSchema` | `src/profile.ts` | `GET /profile` | `{ id: uuid, displayName: string(2–50), email: email, theme: Theme }` |
+| `ProfileUpdateSchema` | `src/profile.ts` | `PATCH /profile` | `{ displayName: string(2–50), theme: Theme }` |
+| `ThemeSchema` | `src/profile.ts` | `GET/PATCH /profile` | `"light" \| "dark" \| "system"` |
 | `ApiErrorCodeSchema` | `src/errors.ts` | All endpoints | `"INVALID_INPUT" \| "UNAUTHORIZED" \| "NOT_FOUND" \| "SERVER_ERROR"` |
 | `ApiErrorResponseSchema` | `src/errors.ts` | All endpoints | `{ error: ApiErrorCode, message: string }` |
 

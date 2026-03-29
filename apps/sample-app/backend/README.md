@@ -7,7 +7,7 @@ Azure Functions backend with shared Zod schema validation and dual-mode auth.
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests (20 passing)
+npm test                       # run unit tests (27 passing)
 npm start                      # start Functions host on :7071
 ```
 
@@ -27,6 +27,35 @@ Sample protected endpoint demonstrating the dual-mode auth pattern. Auth is enfo
 ```
 
 **Errors:** 400 (name exceeds 100 chars)
+
+### `GET /api/profile`
+
+Returns the authenticated user's profile. Auth via `X-Demo-Token` header (constant-time comparison).
+
+**Success (200):**
+```json
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "displayName": "Demo User",
+  "email": "demo@example.com",
+  "theme": "system"
+}
+```
+
+**Errors:** 401 (missing or invalid demo token)
+
+### `PATCH /api/profile`
+
+Updates the authenticated user's display name and theme preference.
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `displayName` | string | yes | 2–50 characters |
+| `theme` | string | yes | `"light"`, `"dark"`, or `"system"` |
+
+**Success (200):** Returns the full merged `UserProfile` object.
+
+**Errors:** 400 (invalid input — Zod validation errors), 401 (missing or invalid demo token)
 
 ### `POST /api/auth/login`
 
@@ -51,6 +80,8 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | Endpoint | Schema |
 |----------|--------|
 | `GET /hello` response | `HelloResponseSchema` |
+| `GET /profile` response | `UserProfileSchema` |
+| `PATCH /profile` request | `ProfileUpdateSchema` |
 | `POST /auth/login` request | `DemoLoginRequestSchema` |
 | `POST /auth/login` response | `DemoLoginResponseSchema` |
 | All error responses | `ApiErrorResponseSchema` |
@@ -78,6 +109,7 @@ Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
 | File | Tests | Coverage |
 |------|-------|----------|
 | `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
+| `fn-profile.test.ts` | fn-profile endpoint logic | Auth guard (401), GET profile (200), PATCH validation (400), PATCH merge (200) |
 | `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
 
 ## Adding Your Own Functions

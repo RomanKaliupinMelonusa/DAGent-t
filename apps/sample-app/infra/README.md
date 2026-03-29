@@ -113,7 +113,7 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 
 ## Sample Protected API
 
-The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the full dual-mode auth pattern end-to-end. APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key.
+The `GET /hello` and `GET/PATCH /profile` endpoints (`api-specs/api-sample.openapi.yaml`) demonstrate the full dual-mode auth pattern end-to-end. APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key. The `/profile` endpoint additionally validates request bodies with shared Zod schemas (`ProfileUpdateSchema`).
 
 ## Adding Your Own APIs
 
