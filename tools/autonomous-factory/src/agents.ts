@@ -224,6 +224,7 @@ ${apmContext.agents["backend-dev"].rules}
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
 9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. All tests, type-checking, and linting MUST pass with zero errors before committing. If any fail, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
+9b. **Integration Test Mandate (MANDATORY):** If you created or modified any HTTP-triggered Azure Function (any \`fn-*.ts\` file that registers an \`httpTrigger\`), you MUST add corresponding test blocks to the existing \`.integration.test.ts\` suite (e.g., \`${ctx.appRoot}/backend/src/functions/smoke.integration.test.ts\`). Cover at minimum: authenticated 200 happy path, 401 unauthenticated rejection, and one validation error path (400). Unit tests alone are insufficient — the post-deploy \`integration-test\` agent will fail the pipeline if coverage is missing.
 10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
 11. If tests fail and you cannot fix after 2 attempts, record the failure.
 
@@ -458,6 +459,7 @@ ${apmContext.agents["frontend-dev"].rules}
 1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
    - Use the APIM gateway URL from \`infra-interfaces.md\` as your API base — never construct URLs from resource names.
    - **NEVER** hardcode or invent resource URLs. All infra bindings come from \`infra-interfaces.md\`.
+1c. **Environment Variable & Secrets Compliance (MANDATORY):** Cross-reference the **Environment Variables** section of \`infra-interfaces.md\` against \`.github/workflows/deploy-frontend.yml\`. If \`infra-interfaces.md\` declares any new or renamed environment variables (e.g., \`NEXT_PUBLIC_API_BASE_URL\`, \`NEXT_PUBLIC_DEMO_AUTH_URL\`), you MUST update the workflow's \`env:\` block and verify the corresponding GitHub Actions secrets exist. Do NOT ignore the Environment Variables section of the handoff document — a mismatch here causes silent 404s in production that cost $50+ to diagnose via live-ui retries.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the frontend.
 3. Use \`roam_context <component> ${ctx.appRoot}\` for each component/file you need to modify — get exact line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
@@ -519,6 +521,16 @@ ${apmContext.agents["live-ui"].rules}
 - The live SWA URL: \`${swaUrl}\`
 - Demo credentials: username \`demo\`, password \`YOUR_DEMO_PASSWORD\` (from \`infra/dev.tfvars\`)
 - Auth mode is \`demo\` — the site shows a \`DemoLoginForm\` at \`/\`
+
+## Critical Boundary: You Are a TESTER, Not a Debugger
+
+If you encounter any failure during testing (HTTP 404, CORS error, Playwright assertion failure, empty API response, or any unexpected behavior):
+1. **DO NOT** attempt deep root-cause analysis. Do not read backend source code (\`backend/src/**\`), infrastructure files (\`infra/**\`), or GitHub workflow files to figure out why something broke.
+2. **DO NOT** attempt to fix the issue yourself. You do not have commit authority for application code.
+3. **IMMEDIATELY** execute \`pipeline:fail\` with the structured JSON contract detailing the exact URL, HTTP method, status code, response body, and visible UI symptoms.
+4. Leave the debugging and fixing to the development agents (\`@backend-dev\`, \`@frontend-dev\`) — they will receive your diagnostic trace via the orchestrator's context injection.
+
+This boundary exists because deep investigation by the test agent burns $30+ in tokens without producing a fix. Your job is to **detect and report**, not diagnose and repair.
 
 ## Step-by-Step
 
@@ -677,7 +689,7 @@ Read the feature spec (\`${ctx.specPath}\`) and check the git diff (\`git diff $
 2. Log in via demo mode (Username: \`demo\`, Password: \`YOUR_DEMO_PASSWORD\`).
 3. Navigate to the relevant pages based on your scope.
 4. Test interactive elements to ensure full-stack integration (Frontend -> APIM -> Backend -> Infra).
-5. Take screenshots of key states (saved to \`${ctx.appRoot}/in-progress/screenshots/${ctx.featureSlug}-<desc>.png\`).
+5. **Verify Playwright Screenshots Exist:** Playwright is configured to auto-capture screenshots for every test (\`screenshot: "on"\`) into \`${ctx.appRoot}/in-progress/screenshots/\`. After the Phase 4 test run, verify screenshots were captured: \`ls ${ctx.appRoot}/in-progress/screenshots/**/*.png 2>/dev/null | head -10\`. These are automatically linked in the PR by the \`@pr-creator\` agent as visual proof of functionality. You do NOT need to manually take screenshots via MCP browser tools — Playwright handles this at zero token cost.
 6. Watch for \`data-testid="error-banner"\` or empty data states. If found, FAIL the pipeline.
 
 #### Output Manual Results to PR:
@@ -691,6 +703,7 @@ cat << 'EOF' >> ${ctx.appRoot}/in-progress/${ctx.featureSlug}_PLAYWRIGHT-LOG.md
 - **Pages Visited:** [List the pages you navigated to]
 - **Actions Performed:** [Describe the forms submitted, buttons clicked, or data verified]
 - **Observations:** [Describe the visual results, confirming infra permissions are intact and no errors appeared]
+- **Screenshots Captured:** [List Playwright auto-captured screenshot paths from in-progress/screenshots/, e.g. profile.spec.ts-loads-profile/test-finished-1.png]
 - **Verdict:** PASS
 EOF
 \`\`\`
@@ -781,6 +794,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 
 **\`diagnostic_trace\` must include:**
 - Exact error details (status codes, response bodies, element selectors that failed)
+- **Visual triage from failure screenshots:** If a Playwright test failed, locate the failure screenshot in \`${ctx.appRoot}/in-progress/screenshots/\`. Describe exactly what is visible on the screen (e.g., "The profile form shows a 404 error message where the display name field should be", "The save button is overlapping the input field"). Include this visual description in your \`diagnostic_trace\` — it enables the \`@frontend-dev\` agent to fix CSS, layout, and rendering issues precisely.
 - App Insights telemetry output (if you queried it)
 - Network dump (URL, method, status, response body) for any API failures
 
