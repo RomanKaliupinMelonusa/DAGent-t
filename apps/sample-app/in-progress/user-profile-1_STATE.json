@@ -51,7 +51,7 @@
       "label": "Infra Approval Received",
       "agent": null,
       "phase": "approval",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -151,5 +151,12 @@
       "error": null
     }
   ],
-  "errorLog": []
+  "errorLog": [
+    {
+      "timestamp": "2026-03-29T05:04:08.833Z",
+      "itemKey": "resume-elevated",
+      "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    }
+  ],
+  "elevatedApply": true
 }
