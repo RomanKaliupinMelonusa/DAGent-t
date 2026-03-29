@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated api-sample.openapi.yaml with /profile path (GET getProfile + PATCH updateProfile). No new Terraform resources created — operations are added to existing azurerm_api_management_api.sample via OpenAPI import. APIM policies (dual-mode auth: check-header for demo, validate-jwt for entra) already support PATCH method. Terraform plan: 0 to add, 1 APIM API update in-place, 0 to destroy."
     },
     {
       "key": "push-infra",
