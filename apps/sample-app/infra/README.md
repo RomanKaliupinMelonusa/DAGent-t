@@ -1,6 +1,6 @@
 # infra/
 
-Terraform infrastructure for the sample app: Resource Group, Function App, APIM, Key Vault, Entra ID App Registration, dual-mode auth policies, CI/CD OIDC identities (standard + elevated), and remote state backend.
+Terraform infrastructure for the **sample app** — a reference deployment that demonstrates how the [agentic pipeline](../../../tools/autonomous-factory/) provisions and manages Azure resources end-to-end. This infra exists to give the pipeline something real to deploy, test, and iterate on.
 
 ## Prerequisites
 
@@ -59,17 +59,50 @@ terraform apply -var-file=dev.tfvars
 terraform taint random_uuid.demo_token && terraform apply -var-file=dev.tfvars
 ```
 
-## Key Resources
+## Deployed Resources
+
+All resources below are tracked in remote state. `terraform plan` with no config changes should show `No changes.`
+
+### Core
+
+| Resource | Name | Purpose |
+|----------|------|---------||
+| `azurerm_resource_group.main` | `rg-sample-app-dev` | Container for all sample app resources |
+| `azurerm_storage_account.func_runtime` | `stsampleapp001` | Function App runtime storage |
+| `azurerm_storage_container.func_deployments` | `app-package` | Deployment packages |
+| `azurerm_key_vault.main` | `kv-sampleapp-001` | Secrets (function keys, demo tokens) |
+| `azurerm_log_analytics_workspace.main` | `log-sample-app-001` | Log aggregation |
+| `azurerm_application_insights.main` | `appi-sample-app-001` | APM telemetry |
+| `azurerm_service_plan.main` | `asp-sample-app-001` | Flex Consumption hosting plan |
+
+### Compute & Networking
+
+| Resource | Name | Purpose |
+|----------|------|---------||
+| `azurerm_function_app_flex_consumption.main` | `func-sample-app-001` | Backend API (Node.js Azure Functions) |
+| `azurerm_static_web_app.main` | `swa-sample-app-001` | Frontend (Next.js) |
+| `azurerm_api_management.main` | `apim-sample-app-001` | API gateway with dual-mode auth policies |
+
+### APIM Configuration
 
 | Resource | Purpose |
-|----------|---------|
-| `azurerm_linux_function_app.main` | Backend API with conditional AUTH_MODE env vars |
+|----------|---------||
+| `azurerm_api_management_api.sample` | `/hello` sample API |
+| `azurerm_api_management_api.demo_auth[0]` | Demo login API (demo mode only) |
+| `azurerm_api_management_backend.func` | Function App backend proxy |
+| `azurerm_api_management_named_value.*` | Function host key + demo token refs |
+| `azurerm_api_management_logger.appinsights` | App Insights logger |
+| `azurerm_api_management_diagnostic.appinsights` | Request/response diagnostics |
+
+### Identity & Access
+
+| Resource | Purpose |
+|----------|---------||
 | `azuread_application.main` | Entra ID app registration (JWT audience + SPA redirect) |
-| `azurerm_api_management.main` | API gateway with dual-mode auth policies |
-| `azurerm_key_vault_secret.demo_token` | Demo token (only in demo mode) |
-| `random_uuid.demo_token` | Auto-generated demo token UUID |
-| `azuread_application.elevated_cicd` | Elevated SP for privileged Terraform applies |
 | `azuread_application.cicd` | Standard CI/CD SP for deploys and regression tests |
+| `azuread_application.elevated_cicd` | Elevated SP for privileged Terraform applies |
+| `azurerm_role_assignment.*_kv_secrets_*` | Key Vault RBAC (Secrets Officer / User) |
+| `azuread_application_federated_identity_credential.*` | OIDC federation for GitHub Actions |
 
 ## Defense-in-Depth Auth Chain
 
