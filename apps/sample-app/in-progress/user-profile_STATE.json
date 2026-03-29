@@ -18,7 +18,7 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Updated infra/api-specs/api-sample.openapi.yaml to add /profile path with: GET getProfile (200: UserProfile with id/displayName/email/theme, 401) and PATCH updateProfile (requestBody: ProfileUpdate with displayName+theme, 200: UserProfile, 400, 401). APIM policies already support PATCH in CORS allowed-methods. No new Terraform resources created — only the existing azurerm_api_management_api.sample will be updated in-place with the new OpenAPI spec. terraform plan succeeded with 0 to add, 1 relevant change (APIM API update)."
     },
@@ -27,7 +27,7 @@
       "label": "Infra Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -43,7 +43,7 @@
       "label": "Infra Plan CI Passed",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -151,5 +151,16 @@
       "error": null
     }
   ],
-  "errorLog": []
+  "errorLog": [
+    {
+      "timestamp": "2026-03-29T03:37:29.106Z",
+      "itemKey": "poll-infra-plan",
+      "message": "Elevated apply failed: Error: Retrieving Application (Application: \"c5aee73f-dc3c-4f04-910c-8677dcccad90\") Error: making Read request on Azure KeyVault Secret func-host-key: keyvault.BaseClient#GetSecret: Failure responding to request: StatusCode=403 -- Original Error: autorest/azure: Service returned an error. Status=403 Code=\"Forbidden\" Message=\"Caller is not authorized to perform action on resource.\\r\\nIf role assignments, deny assignments or role definitions were changed recently, please observe propagation time.\\r\\nCaller: appid=e6f71349-978f-4e4f-96a1-89c1774c3756;oid=6672ea07-168a-4e70-b862-0d13849dc6a4;iss=https://sts.windows.net/a1615da5-caf8-4a4f-950a-ca5f09876de3/\\r\\nAction: 'Microsoft.KeyVault/vaults/secrets/getSecret/action'\\r\\nResource: '/subscriptions/77bd5893-0a63-449a-b3cf-e1ad7dcadaee/resourcegroups/rg-sample-app-dev/providers/microsoft.keyvault/vaults/kv-sampleapp-001/secrets/func-host-key'\\r\\nAssignment: (not found)\\r\\nDenyAssignmentId: null\\r\\nDecisionReason: null \\r\\nVault: kv-sampleapp-001;location=eastus2\\r\\n\" InnerError={\"code\":\"ForbiddenByRbac\"} Error: Retrieving Application (Application: \"093f05fa-2eaa-44ed-b4c0-7a6fcd87ab56\") Error: making Read request on Azure KeyVault Secret demo-token: keyvault.BaseClient#GetSecret: Failure responding to request: StatusCode=403 -- Original Error: autorest/azure: Service returned an error. Status=403 Code=\"Forbidden\" Message=\"Caller is not authorized to perform action on resource.\\r\\nIf role assignments, deny assignments or role definitions were changed recently, please observe propagation time.\\r\\nCaller: appid=e6f71349-978f-4e4f-96a1-89c1774c3756;oid=6672ea07-168a-4e70-b862-0d13849dc6a4;iss=https://sts.windows.net/a1615da5-caf8-4a4f-950a-ca5f09876de3/\\r\\nAction: 'Microsoft.KeyVault/vaults/secrets/getSecret/action'\\r\\nResource: '/subscriptions/77bd5893-0a63-449a-b3cf-e1ad7dcadaee/resourcegroups/rg-sample-app-dev/providers/microsoft.keyvault/vaults/kv-sampleapp-001/secrets/demo-token'\\r\\nAssignment: (not found)\\r\\nDenyAssignmentId: null\\r\\nDecisionReason: null \\r\\nVault: kv-sampleapp-001;location=eastus2\\r\\n\" InnerError={\"code\":\"ForbiddenByRbac\"} "
+    },
+    {
+      "timestamp": "2026-03-29T03:37:29.106Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: Elevated infra apply failed — agent will diagnose and fix TF code. Error: Error: Retrieving Application (Application: \"c5aee73f-dc3c-4f04-910c-8677dcccad90\") Error: making Read request on Azure KeyVault Secret func-host-key: keyvault.BaseClient#GetSecret: Failure responding. Reset 8 items: infra-architect, push-infra, create-draft-pr, poll-infra-plan, await-infra-approval, infra-handoff, push-app, poll-app-ci"
+    }
+  ]
 }
