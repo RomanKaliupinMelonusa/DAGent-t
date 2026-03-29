@@ -96,7 +96,7 @@ resource "azurerm_key_vault_secret" "func_host_key" {
   value        = data.azurerm_function_app_host_keys.main.default_function_key
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
-  depends_on   = [azurerm_role_assignment.kv_secrets_officer]
+  depends_on   = [azurerm_role_assignment.elevated_cicd_kv_secrets_officer]
 }
 
 resource "azurerm_role_assignment" "apim_kv_secrets_user" {

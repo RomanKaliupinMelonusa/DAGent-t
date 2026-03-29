@@ -87,12 +87,6 @@ resource "azurerm_key_vault" "main" {
   tags = local.tags
 }
 
-resource "azurerm_role_assignment" "kv_secrets_officer" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
-}
-
 # --- Demo Auth Token ---
 # Auto-generated token used as X-Demo-Token header value.
 # Rotate via: terraform taint random_uuid.demo_token && terraform apply
@@ -106,7 +100,7 @@ resource "azurerm_key_vault_secret" "demo_token" {
   value        = random_uuid.demo_token[0].result
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
-  depends_on   = [azurerm_role_assignment.kv_secrets_officer]
+  depends_on   = [azurerm_role_assignment.elevated_cicd_kv_secrets_officer]
 }
 
 # =============================================================================
