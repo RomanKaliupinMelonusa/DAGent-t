@@ -76,9 +76,9 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Added /profile page (profile/page.tsx) with GET/PATCH profile API integration via apiFetch, display name + theme editing form with loading/error/success states. Added Profile nav link to NavBarShell (affects both Demo and Entra variants). E2E tests cover happy path, 400 error interception, and nav link visibility."
+      "docNote": "Fixed APIM URL routing: demoAuthContext now uses NEXT_PUBLIC_DEMO_AUTH_URL for demo auth login (separate from NEXT_PUBLIC_API_BASE_URL used for API calls like /profile). Deploy workflow updated to pass NEXT_PUBLIC_DEMO_AUTH_URL env var. GitHub secrets must set NEXT_PUBLIC_API_BASE_URL=.../sample and NEXT_PUBLIC_DEMO_AUTH_URL=.../demo-auth per infra-interfaces.md."
     },
     {
       "key": "backend-unit-test",
