@@ -1,0 +1,92 @@
+{
+  "feature": "user-profile-3",
+  "stepsCompleted": [
+    {
+      "key": "infra-handoff",
+      "agent": "@infra-handoff",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts"
+      ],
+      "docNote": "Added fn-profile.ts with GET/PATCH /api/profile endpoint using in-function X-Demo-Token auth via safeEqual(). GET returns hardcoded mock profile; PATCH validates body with ProfileUpdateSchema and returns merged profile. Integration tests added to smoke.integration.test.ts covering auth 200/401 and validation 400 paths."
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-profile.ts",
+        "apps/sample-app/e2e/profile.spec.ts",
+        "apps/sample-app/frontend/src/app/profile/page.tsx",
+        "apps/sample-app/frontend/src/components/NavBar.tsx",
+        "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx"
+      ],
+      "docNote": "Added /profile page with authenticated form for editing displayName and theme. NavBar Profile link added to shared NavBarShell. E2E tests cover happy path, 400/401 errors, network failure, navigation persistence, and banner clearing."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [
+        "apps/sample-app/e2e/profile.spec.ts"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "No dead code found. user-profile-3 was purely additive (fn-profile.ts, profile/page.tsx, NavBar update, tests). All exports are consumed. ApiErrorCodeSchema in packages/schemas has zero consumers but is in protected shared schemas directory. safeEqual is duplicated in fn-demo-login.ts and fn-profile.ts (both copies live — code quality note for future refactor). All tests green: backend 27/27, frontend 23/23."
+    }
+  ],
+  "allFilesChanged": [
+    "apps/sample-app/backend/src/functions/__tests__/fn-profile.test.ts",
+    "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+    "apps/sample-app/backend/src/functions/fn-profile.ts",
+    "apps/sample-app/e2e/profile.spec.ts",
+    "apps/sample-app/frontend/src/app/profile/page.tsx",
+    "apps/sample-app/frontend/src/components/NavBar.tsx",
+    "apps/sample-app/frontend/src/components/__tests__/ProfilePage.test.tsx"
+  ],
+  "summaryIntents": [
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed"
+  ]
+}
