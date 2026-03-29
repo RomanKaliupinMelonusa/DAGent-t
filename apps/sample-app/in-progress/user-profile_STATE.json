@@ -10,7 +10,7 @@
       "label": "Development Complete — Schemas",
       "agent": "@schema-dev",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

@@ -10,7 +10,7 @@ Draft PR #18 created — awaiting Terraform plan
 
 ## Checklist
 ### Infrastructure (Wave 1)
-- [ ] Development Complete — Schemas (@schema-dev)
+- [x] Development Complete — Schemas (@schema-dev)
 - [ ] Infrastructure Written — Terraform (@infra-architect)
 - [ ] Infra Code Pushed to Origin (@deploy-manager)
 - [ ] Draft PR Created (@pr-creator)
