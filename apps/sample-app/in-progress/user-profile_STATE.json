@@ -18,9 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Updated infra/api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName min2/max50, theme enum) and returns merged profile. Includes 200/401 on GET; 200/400/401 on PATCH. No new Terraform resources — APIM api-sample resource updated in-place. Existing dual-mode auth policies already cover PATCH method and X-Demo-Token/Authorization headers."
+      "docNote": "Terraform validated successfully. Infrastructure for user-profile feature: (1) OpenAPI spec api-sample.openapi.yaml updated with /profile path — GET (operationId: getProfile) returns UserProfile (id uuid, displayName, email, theme enum light|dark|system) with 200/401 responses; PATCH (operationId: updateProfile) accepts ProfileUpdate body (displayName min2/max50, theme enum) with 200/400/401 responses. (2) No new Terraform resources needed — APIM api-sample resource picks up new operations from the OpenAPI import. (3) Existing dual-mode auth policies (demo: check-header X-Demo-Token; entra: validate-jwt) already include PATCH in allowed-methods and X-Demo-Token + Content-Type in allowed-headers. (4) terraform plan: 0 to add, 0 to destroy. Redevelopment note: previous poll-app-ci failure was not infra-related (empty run ID / unknown domain)."
     },
     {
       "key": "push-infra",
