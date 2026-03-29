@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate body (displayName, theme) and returns merged UserProfile. Responses: 200/401 for GET, 200/400/401 for PATCH. No new Terraform resources — APIM picks up new operations from OpenAPI spec via existing azurerm_api_management_api.sample resource. Terraform plan: 0 to add, 10 to change, 0 to destroy."
     },
     {
       "key": "push-infra",
