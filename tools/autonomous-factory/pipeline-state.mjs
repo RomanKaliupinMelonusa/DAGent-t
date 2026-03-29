@@ -25,9 +25,10 @@
  *   set-url           <slug> <url>                — Set deployed URL
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import { TriageDiagnosticSchema } from "./triage-schema.mjs";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -210,6 +211,34 @@ function today() {
 // They are used by the SDK orchestrator (scripts/orchestrator/src/state.ts).
 // The cmd*() CLI wrappers below continue to use process.exit() for CLI usage.
 
+// ─── POSIX Atomic Lock ──────────────────────────────────────────────────────
+// Prevents TOCTOU race when parallel agents (e.g. backend-dev + frontend-dev)
+// both call pipeline:complete at the same time. mkdirSync is guaranteed atomic
+// by POSIX — only one process can create the directory; others get EEXIST.
+
+function withLock(slug, fn) {
+  const lockPath = statePath(slug) + ".lock";
+  let retries = 50; // Try for ~5 seconds
+  while (retries > 0) {
+    try {
+      mkdirSync(lockPath); // Atomic POSIX operation
+      try {
+        return fn();
+      } finally {
+        rmdirSync(lockPath);
+      }
+    } catch (err) {
+      if (err.code === "EEXIST") {
+        retries--;
+        execSync("sleep 0.1"); // Synchronous 100ms backoff
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error(`Timeout acquiring state lock for ${slug}`);
+}
+
 /**
  * Initialize pipeline state for a new feature.
  * @returns {{ state: object, statePath: string, transPath: string }}
@@ -253,32 +282,34 @@ export function completeItem(slug, itemKey) {
     throw new Error("completeItem requires slug and itemKey");
   }
 
-  const state = readStateOrThrow(slug);
-  const item = state.items.find((i) => i.key === itemKey);
-  if (!item) {
-    throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
-  }
-
-  if (item.status === "na") {
-    return state; // N/A items are silently skipped
-  }
-
-  // Phase-gating check: ensure all prior phases are complete
-  const itemPhaseIndex = PHASES.indexOf(item.phase);
-  for (let pi = 0; pi < itemPhaseIndex; pi++) {
-    const phase = PHASES[pi];
-    const incomplete = state.items.filter(
-      (i) => i.phase === phase && i.status !== "done" && i.status !== "na"
-    );
-    if (incomplete.length > 0) {
-      throw new Error(`Cannot complete "${itemKey}" — prior phase "${phase}" has incomplete items: ${incomplete.map((i) => i.key).join(", ")}`);
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    const item = state.items.find((i) => i.key === itemKey);
+    if (!item) {
+      throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
     }
-  }
 
-  item.status = "done";
-  item.error = null;
-  writeState(slug, state);
-  return state;
+    if (item.status === "na") {
+      return state; // N/A items are silently skipped
+    }
+
+    // Phase-gating check: ensure all prior phases are complete
+    const itemPhaseIndex = PHASES.indexOf(item.phase);
+    for (let pi = 0; pi < itemPhaseIndex; pi++) {
+      const phase = PHASES[pi];
+      const incomplete = state.items.filter(
+        (i) => i.phase === phase && i.status !== "done" && i.status !== "na"
+      );
+      if (incomplete.length > 0) {
+        throw new Error(`Cannot complete "${itemKey}" — prior phase "${phase}" has incomplete items: ${incomplete.map((i) => i.key).join(", ")}`);
+      }
+    }
+
+    item.status = "done";
+    item.error = null;
+    writeState(slug, state);
+    return state;
+  });
 }
 
 /**
@@ -291,25 +322,27 @@ export function failItem(slug, itemKey, message) {
     throw new Error("failItem requires slug and itemKey");
   }
 
-  const state = readStateOrThrow(slug);
-  const item = state.items.find((i) => i.key === itemKey);
-  if (!item) {
-    throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
-  }
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    const item = state.items.find((i) => i.key === itemKey);
+    if (!item) {
+      throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
+    }
 
-  item.status = "failed";
-  item.error = message || "Unknown failure";
+    item.status = "failed";
+    item.error = message || "Unknown failure";
 
-  state.errorLog.push({
-    timestamp: new Date().toISOString(),
-    itemKey,
-    message: message || "Unknown failure",
+    state.errorLog.push({
+      timestamp: new Date().toISOString(),
+      itemKey,
+      message: message || "Unknown failure",
+    });
+
+    const failCount = state.errorLog.filter((e) => e.itemKey === itemKey).length;
+    writeState(slug, state);
+
+    return { state, failCount, halted: failCount >= 10 };
   });
-
-  const failCount = state.errorLog.filter((e) => e.itemKey === itemKey).length;
-  writeState(slug, state);
-
-  return { state, failCount, halted: failCount >= 10 };
 }
 
 /**
@@ -327,6 +360,7 @@ export function salvageForDraft(slug, failedItemKey) {
     throw new Error("salvageForDraft requires slug and failedItemKey");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   // Idempotency guard — prevent duplicate salvage entries in parallel scenarios
@@ -368,6 +402,7 @@ export function salvageForDraft(slug, failedItemKey) {
 
   writeState(slug, state);
   return state;
+  }); // end withLock
 }
 
 /**
@@ -389,6 +424,7 @@ export function resumeAfterElevated(slug) {
     throw new Error("resumeAfterElevated requires slug");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "resume-elevated").length;
@@ -432,6 +468,7 @@ export function resumeAfterElevated(slug) {
 
   writeState(slug, state);
   return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -449,15 +486,53 @@ export function recoverElevated(slug, errorMessage) {
     throw new Error("recoverElevated requires slug");
   }
 
-  // Step 1: Record the failure on poll-infra-plan
-  const failResult = failItem(slug, "poll-infra-plan", `Elevated apply failed: ${errorMessage}`);
-  if (failResult.halted) {
-    return failResult;
-  }
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
 
-  // Step 2: Reset infra dev items for redevelopment cycle
-  const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-  return resetForDev(slug, ["infra-architect"], reason);
+    // Step 1: Record the failure on poll-infra-plan (inlined from failItem)
+    const item = state.items.find((i) => i.key === "poll-infra-plan");
+    if (item) {
+      item.status = "failed";
+      item.error = `Elevated apply failed: ${errorMessage}`;
+      state.errorLog.push({
+        timestamp: new Date().toISOString(),
+        itemKey: "poll-infra-plan",
+        message: `Elevated apply failed: ${errorMessage}`,
+      });
+    }
+    const failCount = state.errorLog.filter((e) => e.itemKey === "poll-infra-plan").length;
+    if (failCount >= 10) {
+      writeState(slug, state);
+      return { state, failCount, halted: true };
+    }
+
+    // Step 2: Reset infra dev items for redevelopment cycle (inlined from resetForDev)
+    const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
+    if (cycleCount >= 5) {
+      writeState(slug, state);
+      return { state, cycleCount, halted: true };
+    }
+
+    const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
+    const deployItems = ["push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "push-app", "poll-app-ci"];
+    const keysToReset = new Set(["infra-architect", ...deployItems]);
+    let resetCount = 0;
+    for (const it of state.items) {
+      if (keysToReset.has(it.key) && it.status !== "na") {
+        it.status = "pending";
+        it.error = null;
+        resetCount++;
+      }
+    }
+    state.errorLog.push({
+      timestamp: new Date().toISOString(),
+      itemKey: "reset-for-dev",
+      message: `Redevelopment cycle ${cycleCount + 1}/5: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
+    });
+
+    writeState(slug, state);
+    return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -470,6 +545,7 @@ export function resetCi(slug) {
     throw new Error("resetCi requires slug");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-ci").length;
@@ -495,6 +571,7 @@ export function resetCi(slug) {
 
   writeState(slug, state);
   return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -507,6 +584,7 @@ export function resetInfraPlan(slug) {
     throw new Error("resetInfraPlan requires slug");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-infra-plan").length;
@@ -532,6 +610,7 @@ export function resetInfraPlan(slug) {
 
   writeState(slug, state);
   return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -550,6 +629,7 @@ export function resetForDev(slug, itemKeys, reason) {
     throw new Error("resetForDev requires slug and at least one itemKey");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
@@ -583,6 +663,7 @@ export function resetForDev(slug, itemKeys, reason) {
 
   writeState(slug, state);
   return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -603,6 +684,7 @@ export function redevelopInfra(slug, reason) {
     throw new Error("redevelopInfra requires slug and reason");
   }
 
+  return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "redevelop-infra").length;
@@ -631,6 +713,7 @@ export function redevelopInfra(slug, reason) {
 
   writeState(slug, state);
   return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
 }
 
 /**
@@ -727,12 +810,14 @@ export function setNote(slug, note) {
     throw new Error("setNote requires slug and note");
   }
 
-  const state = readStateOrThrow(slug);
-  state.implementationNotes = state.implementationNotes
-    ? state.implementationNotes + "\n\n" + note
-    : note;
-  writeState(slug, state);
-  return state;
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    state.implementationNotes = state.implementationNotes
+      ? state.implementationNotes + "\n\n" + note
+      : note;
+    writeState(slug, state);
+    return state;
+  });
 }
 
 /**
@@ -750,15 +835,17 @@ export function setDocNote(slug, itemKey, note) {
     throw new Error("setDocNote requires slug, itemKey, and note");
   }
 
-  const state = readStateOrThrow(slug);
-  const item = state.items.find((i) => i.key === itemKey);
-  if (!item) {
-    throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
-  }
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    const item = state.items.find((i) => i.key === itemKey);
+    if (!item) {
+      throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
+    }
 
-  item.docNote = note;
-  writeState(slug, state);
-  return state;
+    item.docNote = note;
+    writeState(slug, state);
+    return state;
+  });
 }
 
 /**
@@ -771,10 +858,12 @@ export function setUrl(slug, url) {
     throw new Error("setUrl requires slug and url");
   }
 
-  const state = readStateOrThrow(slug);
-  state.deployedUrl = url;
-  writeState(slug, state);
-  return state;
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    state.deployedUrl = url;
+    writeState(slug, state);
+    return state;
+  });
 }
 
 // ─── Commands (CLI wrappers) ────────────────────────────────────────────────
