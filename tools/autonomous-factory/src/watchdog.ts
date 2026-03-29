@@ -19,7 +19,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { CopilotClient } from "@github/copilot-sdk";
 import { getNextAvailable } from "./state.js";
 import { loadApmContext } from "./apm-context-loader.js";
@@ -206,6 +206,69 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
 }
 
 // ---------------------------------------------------------------------------
+// Centralized state mutex — single-threaded commit after parallel batch
+// ---------------------------------------------------------------------------
+
+/**
+ * Commit and push pipeline state files after a parallel execution batch completes.
+ * This replaces per-agent state commits, eliminating Git contention between
+ * parallel agents fighting over _STATE.json rebases.
+ *
+ * Only the orchestrator commits state files. Agents commit code only (local).
+ */
+function commitAndPushState(
+  repoRootDir: string,
+  appRootDir: string,
+  branch: string,
+  batchNumber: number,
+): void {
+  const appRel = path.relative(repoRootDir, appRootDir);
+  const stateGlob = path.join(appRel, "in-progress");
+
+  try {
+    // Check for uncommitted state changes
+    const hasChanges = execSync(
+      `git status --porcelain -- "${stateGlob}"`,
+      { cwd: repoRootDir, encoding: "utf-8", timeout: 10_000 },
+    ).trim();
+
+    if (!hasChanges) return; // No state changes to commit
+
+    // Stage state files only
+    execSync(`git add "${stateGlob}"`, {
+      cwd: repoRootDir, timeout: 10_000,
+    });
+
+    // Commit with batch number for traceability
+    execSync(
+      `git commit -m "chore(pipeline): state update [batch ${batchNumber}]" --no-verify`,
+      { cwd: repoRootDir, timeout: 10_000, stdio: "pipe" },
+    );
+
+    // Push with exponential backoff retry (2s, 4s, 8s) using --force-with-lease
+    for (let i = 0; i < 3; i++) {
+      const result = spawnSync("git", ["push", "--force-with-lease", "origin", branch], {
+        cwd: repoRootDir, timeout: 30_000,
+      });
+      if (result.status === 0) {
+        console.log(`  🔒 State committed and pushed [batch ${batchNumber}]`);
+        return;
+      }
+      // Pull --rebase before retry to resolve fast-forward
+      spawnSync("git", ["pull", "--rebase", "origin", branch], {
+        cwd: repoRootDir, timeout: 30_000,
+      });
+      const backoff = 2000 * Math.pow(2, i);
+      execSync(`sleep ${backoff / 1000}`, { timeout: backoff + 5000 });
+    }
+    console.warn(`  ⚠ Failed to push state after 3 retries — state committed locally only`);
+  } catch (err) {
+    // Non-fatal — state is persisted locally, will be pushed with next code push
+    console.warn(`  ⚠ State commit failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 
@@ -278,8 +341,10 @@ async function main(): Promise<void> {
   };
 
   // --- Main DAG loop ---
+  let batchNumber = 0;
   try {
     while (true) {
+      batchNumber++;
       // DAG-based batch: get ALL items whose dependencies are satisfied
       const available = await getNextAvailable(slug);
 
@@ -294,6 +359,17 @@ async function main(): Promise<void> {
         break;
       }
 
+      // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
+      const approvalGateItems = available.filter((i) => i.agent === null);
+      if (approvalGateItems.length > 0 && available.every((i) => i.agent === null)) {
+        console.log(`\n${"─".repeat(70)}`);
+        console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra on the Draft PR to continue.");
+        console.log(`     Pending gate items: ${approvalGateItems.map((i) => i.key).join(", ")}`);
+        console.log(`${"─".repeat(70)}\n`);
+        // Clean exit — ChatOps will pipeline:complete + re-trigger the orchestrator
+        break;
+      }
+
       if (available.length > 1) {
         console.log(
           `\n${"─".repeat(70)}\n  🔀 Parallel batch: ${available.map((i) => i.key).join(" ‖ ")}\n${"─".repeat(70)}`,
@@ -301,14 +377,29 @@ async function main(): Promise<void> {
       }
 
       // Run items in parallel (or sequentially if only one)
+      // Filter out agent-null items (e.g. await-infra-approval) — they are completed externally
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } => item.key !== null,
+        (item): item is NextAction & { key: string } => item.key !== null && item.agent !== null,
       );
+
+      // Pre-batch sync: single pull before parallel execution
+      const currentBranch = execSync("git branch --show-current", {
+        cwd: repoRoot, encoding: "utf-8", timeout: 10_000,
+      }).trim();
+      try {
+        execSync(`git pull --rebase origin "${currentBranch}"`, {
+          cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+        });
+      } catch { /* non-fatal — may be ahead of remote */ }
+
       const results = await Promise.allSettled(
         runnableItems.map((item) => runItemSession(client!, item, runConfig, runState)),
       );
 
-      // Check results for halt or create-pr signals
+      // === Centralized Mutex: Commit state files after parallel batch ===
+      commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
+
+      // Check results for halt or publish-pr signals
       let shouldHalt = false;
       let pipelineDone = false;
       for (const result of results) {
@@ -316,7 +407,7 @@ async function main(): Promise<void> {
           if (result.value.halt) shouldHalt = true;
           if (result.value.createPr) {
             archiveFeatureFiles(slug, appRoot, repoRoot);
-            console.log("  ✅ create-pr complete — pipeline finished");
+            console.log("  ✅ publish-pr complete — pipeline finished");
             pipelineDone = true;
           }
         } else {
@@ -337,7 +428,7 @@ async function main(): Promise<void> {
       client = null;
     }
 
-    // Final safety-net write (only if summary wasn't already archived by create-pr)
+    // Final safety-net write (only if summary wasn't already archived by publish-pr)
     if (runState.pipelineSummaries.length > 0) {
       const summaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
       const archivedPath = path.join(appRoot, "archive", "features", slug, `${slug}_SUMMARY.md`);

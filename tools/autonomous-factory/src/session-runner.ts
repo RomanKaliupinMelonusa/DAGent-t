@@ -14,6 +14,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
@@ -30,6 +31,7 @@ import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./re
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
+  buildInfraRollbackContext,
   buildRevertWarning,
   computeEffectiveDevAttempts,
   writeChangeManifest,
@@ -47,7 +49,7 @@ const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now determinist
 const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
 
 const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
-const DEPLOY_ITEMS = new Set(["push-code", "poll-ci"]);
+const DEPLOY_ITEMS = new Set(["push-infra", "create-draft-pr", "poll-infra-plan", "push-app", "poll-app-ci"]);
 const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
@@ -326,11 +328,11 @@ export async function runItemSession(
   }
 
   // ── Deterministic bypasses (no agent session) ─────────────────────────
-  if (next.key === "push-code") {
-    return runPushCode(config, state, itemSummary, stepStart);
+  if (next.key === "push-infra" || next.key === "push-app") {
+    return runPushCode(next.key, config, state, itemSummary, stepStart);
   }
-  if (next.key === "poll-ci") {
-    return runPollCi(config, state, itemSummary, stepStart, roamAvailable);
+  if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
+    return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
   }
 
   // ── Agent session ─────────────────────────────────────────────────────
@@ -423,7 +425,11 @@ async function tryAutoSkip(
 // Deterministic bypasses
 // ---------------------------------------------------------------------------
 
+/** Last pushed commit SHA — captured by runPushCode, consumed by runPollCi */
+let lastPushedSha: string | null = null;
+
 async function runPushCode(
+  itemKey: string,
   config: PipelineRunConfig,
   state: PipelineRunState,
   itemSummary: ItemSummary,
@@ -432,7 +438,7 @@ async function runPushCode(
   const { slug, appRoot, repoRoot, baseBranch, apmContext } = config;
   const { pipelineSummaries } = state;
 
-  console.log("  📦 push-code: Running deterministic push (no agent session)");
+  console.log(`  📦 ${itemKey}: Running deterministic push (no agent session)`);
   try {
     const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
     const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
@@ -451,9 +457,16 @@ async function runPushCode(
       env: { ...process.env, BASE_BRANCH: baseBranch },
     });
 
+    // Capture the exact commit SHA that was pushed (for SHA-pinned CI polling)
+    try {
+      lastPushedSha = execSync("git rev-parse HEAD", {
+        cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
+      }).trim();
+    } catch { lastPushedSha = null; }
+
     // Mark complete
-    await completeItem(slug, "push-code");
-    console.log("  ✅ push-code complete (deterministic)");
+    await completeItem(slug, itemKey);
+    console.log(`  ✅ ${itemKey} complete (deterministic)`);
 
     itemSummary.outcome = "completed";
     itemSummary.finishedAt = new Date().toISOString();
@@ -465,11 +478,8 @@ async function runPushCode(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Deterministic push failed: ${message}`);
-    // Fail the item instead of falling back to an agent session.
-    // Agent sessions for push-code historically caused destructive git
-    // operations (reset --hard, cherry-pick) and 15-minute timeouts.
     try {
-      await failItem(slug, "push-code", `Deterministic push failed: ${message}`);
+      await failItem(slug, itemKey, `Deterministic push failed: ${message}`);
     } catch { /* best-effort */ }
     itemSummary.outcome = "failed";
     itemSummary.errorMessage = `Deterministic push failed: ${message}`;
@@ -481,7 +491,13 @@ async function runPushCode(
   }
 }
 
+/** Max retries for transient network errors (exit code 2) before giving up */
+const MAX_TRANSIENT_RETRIES = 5;
+/** Backoff between transient retries (ms) */
+const TRANSIENT_BACKOFF_MS = 30_000;
+
 async function runPollCi(
+  itemKey: string,
   config: PipelineRunConfig,
   state: PipelineRunState,
   itemSummary: ItemSummary,
@@ -494,111 +510,190 @@ async function runPollCi(
   const inProgressDir = path.join(appRoot, "in-progress");
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
 
-  console.log("  ⏳ poll-ci: Running deterministic CI poll (no agent session)");
-  try {
-    const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
-    const pollOutput = execSync(`bash "${pollScript}"`, {
-      cwd: repoRoot, stdio: "pipe",
-      maxBuffer: 5 * 1024 * 1024,  // 5MB — prevent ENOBUFS from verbose gh CLI JSON
-      timeout: 1_200_000,  // 20 min max for CI to complete
-      env: {
-        ...process.env,
-        POLL_MAX_RETRIES: "60",
-        IN_PROGRESS_DIR: inProgressDir,
-        SLUG: slug,
-        // Pass APM ciJobs config as flattened env vars (Bash-friendly)
-        ...(config.apmContext.config?.ciJobs
-          ? {
-              CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,
-              CI_JOB_MATCH_FRONTEND: (config.apmContext.config.ciJobs as Record<string, string>).frontend,
-              CI_JOB_MATCH_SCHEMAS: (config.apmContext.config.ciJobs as Record<string, string>).schemas,
-              CI_JOB_MATCH_INFRA: (config.apmContext.config.ciJobs as Record<string, string>).infra,
+  // Build poll command args — pass commit SHA if available for pinned filtering
+  const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
+  const pollCmd = lastPushedSha
+    ? `bash "${pollScript}" --commit "${lastPushedSha}"`
+    : `bash "${pollScript}"`;
+
+  console.log(`  ⏳ ${itemKey}: Running deterministic CI poll (no agent session)`);
+  if (lastPushedSha) {
+    console.log(`     SHA-pinned to ${lastPushedSha.slice(0, 8)}`);
+  }
+
+  // Transient retry loop — exit code 2 from poll-ci.sh means network error.
+  // Sleep and retry WITHOUT touching DAG state.
+  for (let transientAttempt = 0; transientAttempt <= MAX_TRANSIENT_RETRIES; transientAttempt++) {
+    try {
+      const pollOutput = execSync(pollCmd, {
+        cwd: repoRoot, stdio: "pipe",
+        maxBuffer: 5 * 1024 * 1024,
+        timeout: 1_200_000,
+        env: {
+          ...process.env,
+          POLL_MAX_RETRIES: "60",
+          IN_PROGRESS_DIR: inProgressDir,
+          SLUG: slug,
+          ...(config.apmContext.config?.ciJobs
+            ? {
+                CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,
+                CI_JOB_MATCH_FRONTEND: (config.apmContext.config.ciJobs as Record<string, string>).frontend,
+                CI_JOB_MATCH_SCHEMAS: (config.apmContext.config.ciJobs as Record<string, string>).schemas,
+                CI_JOB_MATCH_INFRA: (config.apmContext.config.ciJobs as Record<string, string>).infra,
+              }
+            : {}),
+        },
+      });
+
+      const successLog = pollOutput.toString();
+      if (successLog) console.log(successLog);
+
+      // ── poll-infra-plan: download plan artifact and post to Draft PR ──
+      if (itemKey === "poll-infra-plan") {
+        try {
+          const branch = `feature/${slug}`;
+          // Find the latest successful infra CI run on this branch
+          const runIdOutput = execSync(
+            `gh run list --branch "${branch}" --workflow deploy-infra.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
+            { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+          ).toString().trim();
+
+          if (runIdOutput) {
+            // Dedup: skip if we already posted a plan comment for this CI run
+            const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
+            let alreadyPosted = false;
+            try {
+              const existingComments = execSync(
+                `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
+                { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+              ).toString();
+              alreadyPosted = existingComments.includes(marker);
+            } catch { /* ignore — proceed to post */ }
+
+            if (alreadyPosted) {
+              console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
+            } else {
+              const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
+              execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
+                cwd: repoRoot, stdio: "pipe", timeout: 60_000,
+              });
+              const planFile = path.join(tmpDir, "plan-output.txt");
+              if (fs.existsSync(planFile)) {
+                const planText = fs.readFileSync(planFile, "utf-8").trim();
+                const commentBody = [
+                  marker,
+                  "### Terraform Plan — `success`",
+                  "",
+                  "<details><summary>Click to expand plan output</summary>",
+                  "",
+                  "```",
+                  planText,
+                  "```",
+                  "",
+                  "</details>",
+                  "",
+                  "> Comment `/dagent approve-infra` to apply this plan.",
+                ].join("\n");
+                const commentFile = path.join(tmpDir, "plan-comment.md");
+                fs.writeFileSync(commentFile, commentBody, "utf-8");
+                execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
+                  cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+                });
+                console.log(`  📋 Posted Terraform plan to Draft PR`);
+              }
+              fs.rmSync(tmpDir, { recursive: true, force: true });
             }
-          : {}),
-      },
-    });
+          }
+        } catch (planErr) {
+          console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+        }
+      }
 
-    // Re-echo stdout for terminal visibility (pipe suppresses live output)
-    const successLog = pollOutput.toString();
-    if (successLog) console.log(successLog);
+      await completeItem(slug, itemKey);
+      console.log(`  ✅ ${itemKey} complete (all workflows passed)`);
 
-    // All CI workflows passed (diagnostic file cleaned up by poll-ci.sh)
-    await completeItem(slug, "poll-ci");
-    console.log("  ✅ poll-ci complete (all workflows passed)");
+      itemSummary.outcome = "completed";
+      itemSummary.finishedAt = new Date().toISOString();
+      itemSummary.durationMs = Date.now() - stepStart;
+      itemSummary.intents.push("Deterministic CI poll — all workflows passed");
+      pipelineSummaries.push(itemSummary);
+      flushReports(config, state);
+      return { summary: itemSummary, halt: false, createPr: false };
+    } catch (err: unknown) {
+      const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
+      const ciLogs = execErr.stdout?.toString() ?? "";
+      const ciStderr = execErr.stderr?.toString() ?? "";
+      const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      const message = execErr.message ?? String(err);
 
-    itemSummary.outcome = "completed";
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    itemSummary.intents.push("Deterministic CI poll — all workflows passed");
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-    return { summary: itemSummary, halt: false, createPr: false };
-  } catch (err: unknown) {
-    // execSync attaches stdout/stderr buffers and exit status to the Error.
-    const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
-    const ciLogs = execErr.stdout?.toString() ?? "";
-    const ciStderr = execErr.stderr?.toString() ?? "";
-    const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      // ── Exit code 2: Transient network error — sleep and retry ────
+      // Do NOT alter DAG state. Do NOT call failItem(). Just wait.
+      if (execErr.status === 2) {
+        if (transientAttempt < MAX_TRANSIENT_RETRIES) {
+          console.warn(`  ⚠ Transient CI poll error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES}), retrying in ${TRANSIENT_BACKOFF_MS / 1000}s...`);
+          await new Promise((resolve) => setTimeout(resolve, TRANSIENT_BACKOFF_MS));
+          continue; // Retry — no state mutation
+        }
+        // Exhausted transient retries — treat as timeout
+        console.warn(`  ⏳ Exhausted ${MAX_TRANSIENT_RETRIES} transient retries. Treating as timeout.`);
+        await failItem(slug, itemKey, `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`);
+        itemSummary.outcome = "failed";
+        itemSummary.errorMessage = `CI polling transient errors exhausted — will retry`;
+        itemSummary.finishedAt = new Date().toISOString();
+        itemSummary.durationMs = Date.now() - stepStart;
+        pipelineSummaries.push(itemSummary);
+        flushReports(config, state);
+        return { summary: itemSummary, halt: false, createPr: false };
+      }
 
-    // Re-echo for terminal visibility
-    if (ciLogs) console.log(ciLogs);
-    if (ciStderr) console.error(ciStderr);
+      // Re-echo for terminal visibility
+      if (ciLogs) console.log(ciLogs);
+      if (ciStderr) console.error(ciStderr);
 
-    const message = execErr.message ?? String(err);
+      // ── Exit code 3 (cancellation) — NOT a code bug ────────────────
+      if (execErr.status === 3) {
+        console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
+        await failItem(slug, itemKey, `CI polling was manually cancelled — will retry`);
+        itemSummary.outcome = "failed";
+        itemSummary.errorMessage = `CI polling was manually cancelled — will retry`;
+        itemSummary.finishedAt = new Date().toISOString();
+        itemSummary.durationMs = Date.now() - stepStart;
+        pipelineSummaries.push(itemSummary);
+        flushReports(config, state);
+        return { summary: itemSummary, halt: false, createPr: false };
+      }
 
-    // ── Exit code 2 (timeout) / 3 (cancellation) — NOT code bugs ─────
-    // Intercept at the boundary before triage ever sees the output.
-    // failItem() is sufficient — getNextAvailable() picks up "failed"
-    // items, so the main loop will retry poll-ci on the next iteration.
-    // After 10 cumulative failures the pipeline halts (correct for
-    // persistent infrastructure slowness or repeated cancellations).
-    if (execErr.status === 2 || execErr.status === 3) {
-      const reason = execErr.status === 2 ? "timed out" : "was manually cancelled";
-      console.warn(`  ⏳ CI polling ${reason}. Will retry on next loop.`);
-      await failItem(slug, "poll-ci", `CI polling ${reason} — will retry`);
+      console.error(`  ✖ CI poll failed or had failures: ${message}`);
+
+      // ── File-based diagnostic handoff ──────────────────────────────
+      let failureContext: string;
+      try {
+        const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
+        failureContext = diagContent || capturedOutput || message;
+        if (diagContent) {
+          console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
+        }
+      } catch {
+        failureContext = capturedOutput || message;
+      }
+
+      await failItem(slug, itemKey, failureContext);
+
       itemSummary.outcome = "failed";
-      itemSummary.errorMessage = `CI polling ${reason} — will retry`;
+      itemSummary.errorMessage = failureContext;
       itemSummary.finishedAt = new Date().toISOString();
       itemSummary.durationMs = Date.now() - stepStart;
       pipelineSummaries.push(itemSummary);
       flushReports(config, state);
-      return { summary: itemSummary, halt: false, createPr: false };
+
+      const diagnostic = parseTriageDiagnostic(failureContext);
+      const errorMsg = diagnostic ? diagnostic.diagnostic_trace : failureContext;
+      return handleFailureReroute(slug, itemKey, failureContext, errorMsg, config, state, itemSummary, roamAvailable);
     }
-
-    console.error(`  ✖ CI poll failed or had failures: ${message}`);
-
-    // ── File-based diagnostic handoff ──────────────────────────────────
-    // Read the pure CI failure content from the diagnostic file written
-    // by poll-ci.sh (exit 1 path). This is completely free of polling
-    // status noise ("CI is still running..."). Fall back to stdout
-    // capture only if the file doesn't exist (script crash edge case —
-    // cancellations are intercepted above via exit code 3).
-    let failureContext: string;
-    try {
-      const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
-      failureContext = diagContent || capturedOutput || message;
-      if (diagContent) {
-        console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
-      }
-    } catch {
-      // Diagnostic file not written (cancellation, script crash) — fallback
-      failureContext = capturedOutput || message;
-    }
-
-    await failItem(slug, "poll-ci", failureContext);
-
-    itemSummary.outcome = "failed";
-    itemSummary.errorMessage = failureContext;
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-
-    // Route through post-deploy triage
-    const diagnostic = parseTriageDiagnostic(failureContext);
-    const errorMsg = diagnostic ? diagnostic.diagnostic_trace : failureContext;
-    return handleFailureReroute(slug, "poll-ci", failureContext, errorMsg, config, state, itemSummary, roamAvailable);
   }
+
+  // Should not reach here, but safety net
+  return { summary: itemSummary, halt: false, createPr: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -705,6 +800,15 @@ async function runAgentSession(
     );
   }
 
+  // Inject infra rollback context for infra-architect redevelopment
+  if (next.key === "infra-architect") {
+    const infraCtx = await buildInfraRollbackContext(slug);
+    if (infraCtx) {
+      taskPrompt += infraCtx;
+      console.log(`  🏗 Injected infra rollback context from redevelop-infra error log`);
+    }
+  }
+
   // Write change manifest for docs-expert
   if (next.key === "docs-archived") {
     await writeChangeManifest(slug, appRoot, repoRoot, pipelineSummaries);
@@ -783,8 +887,8 @@ async function runAgentSession(
     writePlaywrightLog(appRoot, repoRoot, slug, playwrightLog);
   }
 
-  // After create-pr, signal the orchestrator to archive and exit
-  if (next.key === "create-pr") {
+  // After publish-pr, signal the orchestrator to archive and exit
+  if (next.key === "publish-pr") {
     return { summary: itemSummary, halt: false, createPr: true };
   }
 
@@ -801,9 +905,9 @@ async function runAgentSession(
       const diagnostic = parseTriageDiagnostic(rawError);
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
       return handleFailureReroute(slug, next.key, rawError, errorMsg, config, state, itemSummary, roamAvailable);
-    } else {
-      console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
     }
+    // Infra-architect permission escalation → route to elevated deploy
+    console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
     console.log(`  ✅ ${next.key} complete`);
   }
@@ -854,7 +958,7 @@ async function handleFailureReroute(
       console.error("  ✖ Failed to salvage pipeline state", e);
       return { summary: itemSummary, halt: true, createPr: false };
     }
-    // halt: false — main loop continues to docs-archived → create-pr
+    // halt: false — main loop continues to docs-archived → publish-pr
     return { summary: itemSummary, halt: false, createPr: false };
   }
 

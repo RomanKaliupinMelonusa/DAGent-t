@@ -1,17 +1,15 @@
 # =============================================================================
-# Infrastructure Deployment — Terraform Plan & Apply (OIDC)
+# Infrastructure Plan — Terraform Plan Only (OIDC)
 # =============================================================================
-# Two-job workflow with manual approval gate for apply.
-#
-# Job 1 (plan): Runs on all triggers — generates plan, posts summary to PR.
-# Job 2 (apply): Runs only on main push, requires "production" environment
-#                approval in GitHub repo settings.
+# Single-job workflow: runs `terraform plan` and uploads the plan output as
+# artifacts. The orchestrator posts the plan to the Draft PR after polling.
+# Apply is handled exclusively by elevated-infra-deploy.yml via ChatOps
+# (`/dagent approve-infra` or `/dagent apply-elevated`).
 #
 # Uses OIDC federated credentials — zero stored secrets for Azure auth.
 #
 # Prerequisites:
-#   1. GitHub Environment "production" with required reviewers configured
-#   2. GitHub Secrets: AZURE_CICD_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   1. GitHub Secrets: AZURE_CICD_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 # =============================================================================
 
 name: Deploy Infrastructure
@@ -52,7 +50,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Terraform Plan — runs on every trigger
+  # Terraform Plan — runs on every trigger
   # ---------------------------------------------------------------------------
   plan:
     name: Terraform Plan
@@ -99,13 +97,20 @@ jobs:
           terraform plan -out=tfplan -no-color 2>&1 | tee plan-output.txt
         continue-on-error: true
 
-      - name: Upload plan artifact
-        if: github.event_name == 'push' && steps.plan.outcome == 'success'
+      - name: Upload plan binary artifact
+        if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: ${{ env.APP_PATH }}/infra/tfplan
-          retention-days: 1
+          retention-days: 7
+
+      - name: Upload plan output artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-output
+          path: ${{ env.APP_PATH }}/infra/plan-output.txt
+          retention-days: 7
 
       - name: Post plan to PR
         if: github.event_name == 'pull_request'
@@ -143,109 +148,3 @@ jobs:
       - name: Fail if plan failed
         if: steps.plan.outcome == 'failure'
         run: exit 1
-
-  # ---------------------------------------------------------------------------
-  # Job 2a: Terraform Apply — main branch
-  # ---------------------------------------------------------------------------
-  apply:
-    name: Terraform Apply (main)
-    needs: plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: development
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Login to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.8"
-
-      - name: Terraform Init
-        working-directory: ${{ env.APP_PATH }}/infra
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        run: terraform init
-
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: ${{ env.APP_PATH }}/infra/
-
-      - name: Terraform Apply
-        working-directory: ${{ env.APP_PATH }}/infra
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          TF_VAR_apim_publisher_email: ${{ secrets.APIM_PUBLISHER_EMAIL }}
-          TF_VAR_frontend_url: ${{ secrets.FRONTEND_URL }}
-          TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
-          TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
-        run: terraform apply -auto-approve tfplan
-
-  # ---------------------------------------------------------------------------
-  # Job 2b: Terraform Apply — feature branches (no approval gate)
-  # ---------------------------------------------------------------------------
-  apply-feature:
-    name: Terraform Apply (feature)
-    needs: plan
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && startsWith(github.ref, 'refs/heads/feature/')
-    runs-on: ubuntu-latest
-    environment: development
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Login to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.8"
-
-      - name: Terraform Init
-        working-directory: ${{ env.APP_PATH }}/infra
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        run: terraform init
-
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: ${{ env.APP_PATH }}/infra/
-
-      - name: Terraform Apply
-        working-directory: ${{ env.APP_PATH }}/infra
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CICD_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          TF_VAR_apim_publisher_email: ${{ secrets.APIM_PUBLISHER_EMAIL }}
-          TF_VAR_frontend_url: ${{ secrets.FRONTEND_URL }}
-          TF_VAR_auth_mode: ${{ secrets.AUTH_MODE }}
-          TF_VAR_demo_credentials: ${{ secrets.DEMO_CREDENTIALS }}
-        run: terraform apply -auto-approve tfplan

@@ -86,7 +86,13 @@ jobs:
           BASE_BRANCH: ${{ inputs.base-branch }}
 
       - name: Initialize pipeline
-        run: npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-type }}"
+        run: |
+          STATE_FILE="${{ inputs.app-path }}/in-progress/${{ inputs.feature-slug }}_STATE.json"
+          if [ -f "$STATE_FILE" ]; then
+            echo "✔ Pipeline state already exists — preserving existing state"
+          else
+            npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-type }}"
+          fi
         env:
           APP_ROOT: ${{ inputs.app-path }}
 

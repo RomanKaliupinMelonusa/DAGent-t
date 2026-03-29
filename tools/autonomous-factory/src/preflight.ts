@@ -83,7 +83,7 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
       cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
     }).trim();
     if (inProgressFiles) {
-      const allowedPatterns = /(_SPEC\.md|_STATE\.json|_TRANS\.md|_SUMMARY\.md|_TERMINAL-LOG\.md|_CHANGES\.json|_PLAYWRIGHT-LOG\.md|^README\.md$|^screenshots$)/;
+      const allowedPatterns = /(_SPEC\.md|_STATE\.json|_TRANS\.md|_SUMMARY\.md|_TERMINAL-LOG\.md|_CHANGES\.json|_PLAYWRIGHT-LOG\.md|_CI-FAILURE\.log|\.blocked-draft$|^README\.md$|^screenshots$|^infra-interfaces\.md$)/;
       const junkInProgress = inProgressFiles.split("\n").filter(
         (f) => f && !allowedPatterns.test(f),
       );

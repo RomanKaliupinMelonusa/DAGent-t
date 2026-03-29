@@ -27,7 +27,7 @@
     "push-code": { "include": ["always"] },
     "poll-ci": { "include": ["always"] },
     "integration-test": { "include": ["always"] },
-    "create-pr": { "include": ["always"] }
+    "publish-pr": { "include": ["always"] }
   },
   "tokenBudget": 4500
 }

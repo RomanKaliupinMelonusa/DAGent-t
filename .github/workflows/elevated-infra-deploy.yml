@@ -35,7 +35,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
   pull-requests: write
 
 env:
@@ -48,7 +48,8 @@ jobs:
     name: Elevated Terraform Apply
     if: >-
       github.event.issue.pull_request
-      && startsWith(github.event.comment.body, '/dagent apply-elevated')
+      && (startsWith(github.event.comment.body, '/dagent approve-infra')
+          || startsWith(github.event.comment.body, '/dagent apply-elevated'))
     runs-on: ubuntu-latest
     environment: secops-elevated
 
@@ -147,8 +148,8 @@ jobs:
             --body "$(cat <<'EOF'
           ✅ **Elevated infrastructure applied successfully.**
 
-          Triggered by @${{ github.event.comment.user.login }} via `/dagent apply-elevated`
-          Standard CI will now re-verify the full deployment stack.
+          Triggered by @${{ github.event.comment.user.login }} via `/dagent approve-infra`
+          Infrastructure approval gate completed. Standard CI will now re-verify the full deployment stack.
           EOF
           )"
 
@@ -158,11 +159,24 @@ jobs:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           APP_ROOT: ${{ env.APP_PATH }}
         run: |
-          npm run pipeline:resume ${{ steps.pr-meta.outputs.slug }} || echo "⚠️ pipeline:resume skipped (state file may not exist yet)"
+          # 1. Update the state file locally
+          npm run pipeline:complete ${{ steps.pr-meta.outputs.slug }} await-infra-approval || echo "⚠️ pipeline:complete skipped"
+          npm run pipeline:resume ${{ steps.pr-meta.outputs.slug }} || echo "⚠️ pipeline:resume skipped"
+
+          # 2. Commit and push the updated state back to the feature branch
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.APP_PATH }}/in-progress/
+          git commit -m "chore(pipeline): complete await-infra-approval gate [skip ci]" || echo "No state changes to commit"
+          git push origin ${{ steps.pr-meta.outputs.branch }}
+
+          # 3. Re-trigger the orchestrator using the dynamic workflow type
+          WORKFLOW_TYPE=$(jq -r .workflowType ${{ env.APP_PATH }}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json 2>/dev/null || echo "Full-Stack")
+
           gh workflow run agentic-feature.yml \
             --repo ${{ github.repository }} \
             -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
-            -f workflow-type=Infra \
+            -f workflow-type=$WORKFLOW_TYPE \
             -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
 
       - name: Post failure comment
@@ -197,12 +211,24 @@ jobs:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           APP_ROOT: ${{ env.APP_PATH }}
         run: |
+          # 1. Update the state file locally with failure recovery
           ERROR_SUMMARY=$(grep -E "^Error:" ${{ env.APP_PATH }}/infra/apply-output.txt | head -5 | tr '\n' ' ')
           npm run pipeline:recover-elevated ${{ steps.pr-meta.outputs.slug }} "$ERROR_SUMMARY" || echo "⚠️ pipeline:recover-elevated skipped (state file may not exist yet)"
+
+          # 2. Commit and push the updated state back to the feature branch
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.APP_PATH }}/in-progress/
+          git commit -m "chore(pipeline): recover-elevated after apply failure [skip ci]" || echo "No state changes to commit"
+          git push origin ${{ steps.pr-meta.outputs.branch }}
+
+          # 3. Re-trigger the orchestrator for redevelopment
+          WORKFLOW_TYPE=$(jq -r .workflowType ${{ env.APP_PATH }}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json 2>/dev/null || echo "Full-Stack")
+
           gh workflow run agentic-feature.yml \
             --repo ${{ github.repository }} \
             -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
-            -f workflow-type=Infra \
+            -f workflow-type=$WORKFLOW_TYPE \
             -f app-path=${{ env.APP_PATH }} || echo "⚠️ agentic-feature.yml trigger skipped (COPILOT_PAT may not be set)"
 
       - name: Fail if apply failed

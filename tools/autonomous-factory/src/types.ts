@@ -16,10 +16,10 @@ export { TriageDiagnosticSchema };
 // ---------------------------------------------------------------------------
 
 /** Item keys that represent dev agents */
-export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev"]);
+export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev", "infra-architect"]);
 
 /** Post-deploy items whose failures get injected as downstream context or can trigger redevelopment reroute */
-export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-ci"]);
+export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-app-ci", "poll-infra-plan"]);
 
 export interface PipelineItem {
   key: string;

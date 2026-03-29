@@ -31,8 +31,42 @@
 
 set -euo pipefail
 
+# ── Argument parsing ──────────────────────────────────────────────────────
+COMMIT_SHA=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --commit)
+      COMMIT_SHA="${2:?ERROR: --commit requires a SHA argument}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 BRANCH=$(git branch --show-current)
-echo "Polling GitHub Actions for branch: $BRANCH..."
+if [ -n "$COMMIT_SHA" ]; then
+  echo "Polling GitHub Actions for branch: $BRANCH (pinned to commit ${COMMIT_SHA:0:8}...)"
+else
+  echo "Polling GitHub Actions for branch: $BRANCH..."
+fi
+
+# ── Transient error wrapper ───────────────────────────────────────────────
+# Wraps gh CLI calls — returns exit code 2 for transient network errors
+# so the orchestrator can sleep-and-retry without touching DAG state.
+gh_safe() {
+  local output
+  if ! output=$("$@" 2>&1); then
+    if echo "$output" | grep -qiE "unexpected EOF|connection reset|rate limit|socket hang up|HTTP 502|HTTP 503|Could not resolve host"; then
+      echo "TRANSIENT: $output" >&2
+      return 2
+    fi
+    echo "$output" >&2
+    return 1
+  fi
+  echo "$output"
+}
 
 # Resolve diagnostic file path (if env vars provided by orchestrator)
 DIAG_FILE=""
@@ -48,8 +82,20 @@ MAX_RETRIES=${POLL_MAX_RETRIES:-10}
 ATTEMPT=0
 
 while true; do
-  RUNNING=$(gh run list --branch "$BRANCH" --status in_progress --json databaseId -q '.[].databaseId')
-  PENDING=$(gh run list --branch "$BRANCH" --status queued --json databaseId -q '.[].databaseId')
+  RUNNING=$(gh_safe gh run list --branch "$BRANCH" --status in_progress --json databaseId -q '.[].databaseId') || {
+    RC=$?
+    if [ "$RC" -eq 2 ]; then
+      echo "⚠ Transient network error during poll — propagating exit 2" >&2
+      exit 2
+    fi
+  }
+  PENDING=$(gh_safe gh run list --branch "$BRANCH" --status queued --json databaseId -q '.[].databaseId') || {
+    RC=$?
+    if [ "$RC" -eq 2 ]; then
+      echo "⚠ Transient network error during poll — propagating exit 2" >&2
+      exit 2
+    fi
+  }
 
   if [ -z "$RUNNING" ] && [ -z "$PENDING" ]; then
     echo "✔ All CI workflows completed."
@@ -62,7 +108,25 @@ while true; do
     HAS_FAILURE=0
     HAS_CANCELLED=0
     FAILED_RUN_IDS=()
+
+    # Build the jq filter — when COMMIT_SHA is set, only consider runs for that exact commit
+    if [ -n "$COMMIT_SHA" ]; then
+      JQ_FILTER="[.[] | select(.headSha == \"$COMMIT_SHA\")] | [group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv"
+    else
+      JQ_FILTER='[group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv'
+    fi
+
+    RUN_DATA=$(gh_safe gh run list --branch "$BRANCH" --limit 20 --json workflowName,conclusion,databaseId,headSha \
+      -q "$JQ_FILTER") || {
+      RC=$?
+      if [ "$RC" -eq 2 ]; then
+        echo "⚠ Transient network error during completion check — propagating exit 2" >&2
+        exit 2
+      fi
+    }
+
     while IFS=$'\t' read -r wfName conclusion runId; do
+      [ -z "$wfName" ] && continue
       if [ "$conclusion" = "cancelled" ]; then
         echo "⊘ CANCELLED: $wfName (run $runId)"
         HAS_CANCELLED=1
@@ -73,8 +137,7 @@ while true; do
       else
         echo "✔ PASSED: $wfName (run $runId)"
       fi
-    done < <(gh run list --branch "$BRANCH" --limit 20 --json workflowName,conclusion,databaseId \
-      -q '[group_by(.workflowName)[] | sort_by(.databaseId) | last | [.workflowName, .conclusion, .databaseId]] | .[] | @tsv')
+    done <<< "$RUN_DATA"
 
     if [ "$HAS_FAILURE" -eq 1 ]; then
       echo "❌ ERROR: One or more CI workflows failed! Check GitHub Actions."
@@ -95,7 +158,7 @@ while true; do
 
       FAILED_DOMAINS=()
       for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
-        FAILED_JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' 2>/dev/null || true)
+        FAILED_JOBS=$(gh_safe gh run view "$RUN_ID" --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' 2>/dev/null || true)
         while IFS= read -r jobName; do
           [ -z "$jobName" ] && continue
           if echo "$jobName" | grep -qi "$JOB_MATCH_SCHEMAS"; then
@@ -114,10 +177,10 @@ while true; do
               FAILED_DOMAINS+=("frontend")
             fi
           fi
-          # Infra/Terraform failures route to backend domain (backend-dev owns infra/)
+          # Infra/Terraform failures route to infra domain (infra-architect owns infra/)
           if echo "$jobName" | grep -qi "$JOB_MATCH_INFRA"; then
-            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "backend"; then
-              FAILED_DOMAINS+=("backend")
+            if ! printf '%s\n' "${FAILED_DOMAINS[@]}" 2>/dev/null | grep -qx "infra"; then
+              FAILED_DOMAINS+=("infra")
             fi
           fi
         done <<< "$FAILED_JOBS"
@@ -140,7 +203,7 @@ while true; do
       fi
 
       for RUN_ID in "${FAILED_RUN_IDS[@]}"; do
-        LOGS=$(gh run view "$RUN_ID" --log-failed | tail -n 250 || echo "(could not fetch logs for run $RUN_ID)")
+        LOGS=$(gh_safe gh run view "$RUN_ID" --log-failed | tail -n 250 || echo "(could not fetch logs for run $RUN_ID)")
         echo ""
         echo "── Run $RUN_ID ──────────────────────────────────────────────"
         echo "$LOGS"

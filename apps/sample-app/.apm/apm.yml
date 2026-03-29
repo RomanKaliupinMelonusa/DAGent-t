@@ -8,6 +8,30 @@ agents:
     instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-schema-validation]
+  infra-architect:
+    instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md]
+    mcp: [roam-code]
+    skills: []
+  infra-handoff:
+    instructions: [always]
+    mcp: []
+    skills: []
+  push-infra:
+    instructions: [always]
+    mcp: []
+    skills: []
+  poll-infra-plan:
+    instructions: [always]
+    mcp: []
+    skills: []
+  create-draft-pr:
+    instructions: [always]
+    mcp: []
+    skills: []
+  await-infra-approval:
+    instructions: [always]
+    mcp: []
+    skills: []
   backend-dev:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
@@ -24,6 +48,14 @@ agents:
     instructions: [always, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
+  push-app:
+    instructions: [always]
+    mcp: []
+    skills: []
+  poll-app-ci:
+    instructions: [always]
+    mcp: []
+    skills: []
   integration-test:
     instructions: [always, backend/integration-testing.md, tooling/cloud-telemetry.md]
     mcp: []
@@ -40,17 +72,9 @@ agents:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-  create-pr:
+  publish-pr:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
-    skills: []
-  push-code:
-    instructions: [always]
-    mcp: []
-    skills: []
-  poll-ci:
-    instructions: [always]
-    mcp: []
     skills: []
 
 config:
@@ -75,5 +99,5 @@ config:
     backend: "Backend"     # Substring match against GitHub Actions job names
     frontend: "Frontend"
     schemas: "Schemas"
-    infra: "Terraform"     # Infra failures route to backend-dev (owns infra/ directory)
+    infra: "Terraform"     # Infra failures route to infra-architect (owns infra/ directory)
 

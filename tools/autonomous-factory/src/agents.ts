@@ -65,8 +65,55 @@ const MODEL = "claude-opus-4.6";
 // Shared prompt fragments
 // ---------------------------------------------------------------------------
 
-function completionBlock(slug: string, itemKey: string, scope: string): string {
-  return `
+function completionBlock(slug: string, itemKey: string, scope: string, appRoot?: string): string {
+  const tfGate = itemKey === "infra-architect" && appRoot
+    ? `
+## MANDATORY: Terraform Validation Gate
+
+You MUST validate the infrastructure code locally before marking complete.
+CI will run the full plan. A human will approve the apply via \`/dagent approve-infra\`.
+
+\`\`\`bash
+cd ${appRoot}/infra
+
+# Step 1: Verify Azure CLI auth (required for remote backend + provider)
+az account show > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Not authenticated to Azure."
+  npm run pipeline:fail ${slug} ${itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure CLI not authenticated — cannot run terraform validate. Run az login first."}'
+  exit 0
+fi
+
+# Step 2: Initialize with remote backend
+terraform init -input=false 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform init failed. Fix backend configuration."
+  exit 1
+fi
+
+# Step 3: Validate syntax
+terraform validate 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform validation failed. Fix errors before completing."
+  exit 1
+fi
+
+# Step 4: Plan (validates resource graph — CI will re-run this)
+terraform plan -var-file=dev.tfvars -out=tfplan -no-color 2>&1 | tee plan-output.txt
+if [ $? -ne 0 ]; then
+  echo "❌ Terraform plan failed. Diagnose and fix."
+  exit 1
+fi
+
+echo "✅ Terraform validation passed. CI will run the plan and post it to the Draft PR."
+\`\`\`
+
+Do NOT mark infra-architect complete until terraform plan succeeds locally.
+Do NOT run terraform apply — apply is handled by the elevated infrastructure deploy workflow after human approval.
+`
+    : "";
+
+  return `${tfGate}
 ## Completion
 
 When your work is done successfully:
@@ -152,6 +199,9 @@ ${apmContext.agents["backend-dev"].rules}
 ## Workflow
 
 1. Read the feature spec: \`${ctx.specPath}\`
+1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
+   - If the file exists, use it for ALL resource URLs, connection strings, and resource names.
+   - **NEVER** hardcode or invent resource URLs, names, or connection strings. All infra bindings come from \`infra-interfaces.md\`.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the codebase.
 3. For each symbol you need to modify, run \`roam_context <symbol> ${ctx.appRoot}\` to get exact files and line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before making changes to understand blast radius and affected tests.
@@ -165,6 +215,15 @@ ${apmContext.agents["backend-dev"].rules}
 9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. All tests, type-checking, and linting MUST pass with zero errors before committing. If any fail, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
 10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
 11. If tests fail and you cannot fix after 2 attempts, record the failure.
+
+## Infrastructure Rollback (Wave 1 Reset)
+
+If you discover that deployed infrastructure is MISSING resources you need (e.g., missing queue, missing Cosmos container, missing APIM operation), do NOT fail. Instead, trigger a Wave 1 rollback and IMMEDIATELY terminate:
+\`\`\`bash
+npm run pipeline:redevelop-infra ${ctx.featureSlug} "Missing <resource> — backend needs <X> for <Y>"
+exit 1
+\`\`\`
+You MUST run \`exit 1\` immediately after the redevelop-infra command. Do NOT call \`pipeline:complete\` or \`pipeline:fail\`. Do NOT continue working. The non-zero exit ensures the orchestrator does not mark you as "done" and properly reschedules Wave 1 from the beginning.
 
 ## Documentation Handoff
 
@@ -382,6 +441,9 @@ ${apmContext.agents["frontend-dev"].rules}
 ## Workflow
 
 1. Read the feature spec: \`${ctx.specPath}\`
+1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
+   - Use the APIM gateway URL from \`infra-interfaces.md\` as your API base — never construct URLs from resource names.
+   - **NEVER** hardcode or invent resource URLs. All infra bindings come from \`infra-interfaces.md\`.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the frontend.
 3. Use \`roam_context <component> ${ctx.appRoot}\` for each component/file you need to modify — get exact line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
@@ -399,6 +461,15 @@ ${apmContext.agents["frontend-dev"].rules}
 13. Verify lockfile is in sync: \`cd ${ctx.repoRoot} && npm ci --ignore-scripts 2>&1 | tail -5\`. If it fails, run \`npm install --ignore-scripts\`.
 14. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"${ctx.commitScopes?.frontend ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
 15. If tests fail and you cannot fix after 2 attempts, record the failure.
+
+## Infrastructure Rollback (Wave 1 Reset)
+
+If you discover that deployed infrastructure is MISSING resources you need (e.g., missing APIM operation, missing CORS config), do NOT fail. Instead, trigger a Wave 1 rollback and IMMEDIATELY terminate:
+\`\`\`bash
+npm run pipeline:redevelop-infra ${ctx.featureSlug} "Missing <resource> — frontend needs <X> for <Y>"
+exit 1
+\`\`\`
+You MUST run \`exit 1\` immediately after the redevelop-infra command. Do NOT call \`pipeline:complete\` or \`pipeline:fail\`. Do NOT continue working. The non-zero exit ensures the orchestrator does not mark you as "done" and properly reschedules Wave 1 from the beginning.
 
 ## Documentation Handoff
 
@@ -836,7 +907,7 @@ If there are no commits ahead of ${ctx.baseBranch}, **stop and report** via \`np
 ### Step 4. Mark Push Complete
 
 \`\`\`bash
-npm run pipeline:complete ${ctx.featureSlug} push-code
+npm run pipeline:complete ${ctx.featureSlug} ${ctx.itemKey}
 \`\`\`
 
 ### Step 5. Poll CI
@@ -850,7 +921,7 @@ bash tools/autonomous-factory/poll-ci.sh
 
 - **Exit 0 (Success):** All CI workflows passed.
   \`\`\`bash
-  npm run pipeline:complete ${ctx.featureSlug} poll-ci
+  npm run pipeline:complete ${ctx.featureSlug} ${ctx.itemKey}
   \`\`\`
 
 - **Exit 1 (Failure):** One or more CI workflows failed.
@@ -858,19 +929,19 @@ bash tools/autonomous-factory/poll-ci.sh
   2. For each failed run, read logs: \`gh run view <RUN_ID> --log-failed | tail -50\`
   3. Record failure:
      \`\`\`bash
-     npm run pipeline:fail ${ctx.featureSlug} poll-ci "<failure summary>"
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "<failure summary>"
      \`\`\`
 
 - **Exit 2 (Timeout):** CI is still running after the polling window.
-  1. Mark push-code as complete (if not already).
-  2. Report timeout via: \`npm run pipeline:fail ${ctx.featureSlug} poll-ci "CI timeout — deployments still running"\`
+  1. Mark push as complete (if not already).
+  2. Report timeout via: \`npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "CI timeout — deployments still running"\`
 
 ### Re-Invocation (After Dev Fix)
 
 If re-invoked after a dev agent fixed code:
 1. The dev agent already committed the fix to the feature branch.
 2. Push the branch: \`bash tools/autonomous-factory/agent-branch.sh push\`
-3. Mark push-code complete and poll CI again (Steps 3-4).
+3. Mark push complete and poll CI again (Steps 3-4).
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}
 
 ## Safety
@@ -982,10 +1053,100 @@ Once validation passes, mark complete and commit.
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "docs")}`;
 }
 
-function prCreatorPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
-  return `# PR Creator
+// ---------------------------------------------------------------------------
+// Create-draft-pr agent prompt builder
+// ---------------------------------------------------------------------------
 
-You are the final step in the pipeline. Your job is to create a beautifully formatted, executive-ready Pull Request from the current feature branch into \`${ctx.baseBranch}\`. **Do NOT merge the PR — leave it open for human review.** Feature file archiving is handled automatically by the orchestrator.
+function createDraftPrPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# Draft PR Creator
+
+You create a Draft Pull Request early in the pipeline so that the Terraform plan can be posted as a PR comment for human review before infrastructure is applied.
+
+# Context
+
+- Feature: ${ctx.featureSlug}
+- Spec: ${ctx.specPath}
+- Repo root: ${ctx.repoRoot}
+- App root: ${ctx.appRoot}
+- Base branch: ${ctx.baseBranch}
+
+${apmContext.agents["create-draft-pr"]?.rules ?? ""}
+
+## Hard Rules
+
+- **No file editing:** Do not modify any codebase code.
+- **No testing:** Do not run tests or deployment scripts.
+- **Use \`--body-file\`:** Never use the inline \`--body\` argument. Always write the description to a markdown file first.
+- **Use \`gh pr create\` via shell command** — do NOT use any MCP server for PR creation.
+- **Always create as --draft:** This PR starts as a draft and will be promoted to ready-for-review later by the publish-pr agent.
+
+## Workflow
+
+### Step 1. Check for Existing PR
+
+\`\`\`bash
+EXISTING_PR=$(gh pr list --head "feature/${ctx.featureSlug}" --json number -q '.[0].number' 2>/dev/null || echo "")
+\`\`\`
+
+If a PR already exists, skip to Step 4 with the existing PR number.
+
+### Step 2. Generate Draft PR Body
+
+Create a file named \`DRAFT_PR_BODY.md\`:
+\`\`\`markdown
+## 🚧 Draft — Infrastructure Plan Pending Review
+
+**Feature:** \`${ctx.featureSlug}\`
+
+This is a Draft PR created by the agentic pipeline. The Terraform plan is being generated by CI and will be posted as a comment on this PR shortly.
+
+### Next Steps
+1. Review the Terraform plan comment (posted automatically)
+2. Comment \`/dagent approve-infra\` to approve and apply the infrastructure
+3. The pipeline will continue automatically after approval
+
+### Spec
+See [\`${ctx.specPath}\`](${ctx.specPath}) for the full feature specification.
+\`\`\`
+
+### Step 3. Create the Draft PR
+
+Read the spec to generate a concise title:
+\`\`\`bash
+cat ${ctx.specPath} | head -5
+\`\`\`
+
+Then create the PR:
+\`\`\`bash
+PR_NUMBER=$(gh pr create --title "feat(${ctx.featureSlug}): <short description from spec>" --body-file DRAFT_PR_BODY.md --base ${ctx.baseBranch} --draft | grep -oE '[0-9]+$')
+echo "Created Draft PR #$PR_NUMBER"
+rm -f DRAFT_PR_BODY.md
+\`\`\`
+
+### Step 4. Update State
+
+\`\`\`bash
+npm run pipeline:complete ${ctx.featureSlug} create-draft-pr
+npm run pipeline:set-url ${ctx.featureSlug} "https://github.com/<owner>/<repo>/pull/\${PR_NUMBER}"
+npm run pipeline:set-note ${ctx.featureSlug} "Draft PR #\${PR_NUMBER} created — awaiting Terraform plan"
+bash tools/autonomous-factory/agent-commit.sh pr "chore(${ctx.featureSlug}): create draft PR"
+\`\`\`
+
+## Safety
+
+- Never force-push to \`${ctx.baseBranch}\`.
+- Never merge the PR.
+- Never edit \`_TRANS.md\` or \`_STATE.json\` manually.`;
+}
+
+// ---------------------------------------------------------------------------
+// Publish-pr agent prompt builder (formerly create-pr)
+// ---------------------------------------------------------------------------
+
+function publishPrPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# PR Publisher
+
+You are the final step in the pipeline. A Draft PR already exists from the \`create-draft-pr\` step. Your job is to: (1) append Wave 2 results to the existing PR body, and (2) promote the Draft PR to ready-for-review. **Do NOT merge the PR — leave it open for human review.** Feature file archiving is handled automatically by the orchestrator.
 
 # Context
 
@@ -994,7 +1155,7 @@ You are the final step in the pipeline. Your job is to create a beautifully form
 - Repo root: ${ctx.repoRoot}
 - App root: ${ctx.appRoot}
 
-${apmContext.agents["create-pr"].rules}
+${apmContext.agents["publish-pr"]?.rules ?? apmContext.agents["create-pr"]?.rules ?? ""}
 
 ## Hard Rules
 
@@ -1002,19 +1163,30 @@ ${apmContext.agents["create-pr"].rules}
 - **No testing:** Do not run tests or deployment scripts.
 - **Use \`--body-file\`:** Never use the inline \`--body\` argument for the PR. Always write the description to a markdown file first to preserve structural formatting.
 - **No \`--delete-branch\`:** Branch cleanup is handled by \`bash tools/autonomous-factory/agent-branch.sh cleanup\` after the pipeline completes.
-- **Use \`gh pr create\` via shell command** — do NOT use any MCP server for PR creation.
+- **Use \`gh\` CLI via shell command** — do NOT use any MCP server for PR operations.
+- **NEVER overwrite the PR body.** The Draft PR already contains Wave 1 context (infrastructure plan, human discussion, approval history). You MUST append to it.
 
 ## Workflow
 
-### Step 1. Check for Existing PR
+### Step 1. Get Existing PR Number
 
 \`\`\`bash
-EXISTING_PR=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
+PR_NUMBER=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
+if [ -z "$PR_NUMBER" ]; then
+  echo "❌ No existing PR found. This should not happen — create-draft-pr should have created one."
+  npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "No existing Draft PR found"
+  exit 0
+fi
+echo "Found existing PR #$PR_NUMBER"
 \`\`\`
 
-If a PR already exists, skip to Step 4 using the existing PR number.
+### Step 2. Fetch Existing PR Body
 
-### Step 2. Gather Context
+\`\`\`bash
+gh pr view $PR_NUMBER --json body -q '.body' > EXISTING_BODY.md
+\`\`\`
+
+### Step 3. Gather Wave 2 Context
 
 Read the feature spec, transition log, and pipeline summary to understand exactly what was built:
 \`\`\`bash
@@ -1025,9 +1197,9 @@ cat ${ctx.appRoot}/in-progress/${ctx.featureSlug}_PLAYWRIGHT-LOG.md 2>/dev/null 
 ls ${ctx.appRoot}/in-progress/screenshots/${ctx.featureSlug}-*.png 2>/dev/null || echo "No screenshots found"
 \`\`\`
 
-### Step 2.5. Run Roam Risk Analysis (MCP Tools — MANDATORY)
+### Step 3.5. Run Roam Risk Analysis (MCP Tools — MANDATORY)
 
-Before generating the PR body, use the Roam MCP tools to produce a deterministic risk assessment.
+Before generating the PR body appendix, use the Roam MCP tools to produce a deterministic risk assessment.
 **Do NOT run \`roam\` via shell.** Use the MCP tools exclusively.
 
 1. **Re-index the semantic graph:** Call \`roam_index\` to refresh the AST database. This is mandatory
@@ -1036,51 +1208,44 @@ Before generating the PR body, use the Roam MCP tools to produce a deterministic
 2. **Semantic diff:** Call \`roam_pr_diff ${ctx.appRoot}\` to generate an AST-level (not line-level) summary of
    the semantic changes in this PR. This is more accurate than \`git diff --stat\`.
 3. **Risk assessment:** Call \`roam_pr_risk ${ctx.appRoot}\` to calculate the blast radius, risk score, and
-   affected components. Include this output **verbatim** in the PR body.
+   affected components. Include this output **verbatim** in the PR body appendix.
 4. **Suggested reviewers:** Call \`roam_suggest_reviewers ${ctx.appRoot}\` to identify code owners for the
-   modified areas. Include this in the PR body.
+   modified areas. Include this in the PR body appendix.
 
 If Roam MCP tools are unavailable, fall back to \`git diff --stat ${ctx.baseBranch}...HEAD\` and
 note the limitation in the PR body.
 
-### Step 2.75. Check for Blocked Pipeline (Infrastructure Handoff)
-Check if the pipeline was gracefully degraded due to an infrastructure error:
-\`\`\`bash
-BLOCKED_MSG=""
-if [ -f "${ctx.appRoot}/in-progress/${ctx.featureSlug}.blocked-draft" ]; then
-  BLOCKED_MSG=$(cat "${ctx.appRoot}/in-progress/${ctx.featureSlug}.blocked-draft")
-  echo "⚠️ Pipeline was BLOCKED: $BLOCKED_MSG"
-fi
-\`\`\`
+### Step 4. Generate Wave 2 Appendix & Update PR Body
 
-### Step 3. Generate the PR Body File & Create PR
-
-Create a file named \`PR_BODY.md\` with the following structured format:
+Create a file named \`WAVE2_APPENDIX.md\` with the following structured format:
 
 \`\`\`markdown
-## Summary
+
+---
+
+## Wave 2 — Application Development Results
+
+### Summary
 <2-3 sentences explaining the core value and purpose of this feature>
 
-## Key Decisions & Thought Process
+### Key Decisions & Thought Process
 <Summarize the agent's key decisions from the pipeline summary — e.g. why a
 particular approach was chosen, trade-offs made, notable patterns used.
 If the pipeline summary is unavailable, derive this from the transition log.>
 
-## Changes
-### 🏗️ Infrastructure & Architecture
-- <list terraform/infra changes or write "None">
+### Changes
 
-### ⚙️ Backend & Schemas
+#### ⚙️ Backend & Schemas
 - <list new endpoints, modified functions, shared schema updates>
 
-### 🖥️ Frontend & UI
+#### 🖥️ Frontend & UI
 - <list new components, pages, state changes>
 
-### 🧪 Testing Validation
+#### 🧪 Testing Validation
 - <Summarize tests added and verify integration/E2E pipelines passed>
 - <Include Playwright E2E test results — pass/fail count, which tests ran>
 
-### 📸 UI Screenshots
+#### 📸 UI Screenshots
 <If screenshots exist in \`${ctx.appRoot}/in-progress/screenshots/\`, list them as clickable links.
 
 🚨 CRITICAL PATH REWRITE RULE (TIME PARADOX) 🚨
@@ -1104,69 +1269,47 @@ Format EXACTLY like this:
 Replace <ORG>/<REPO> with the actual repo full name from the gh command above.
 Add a row for each screenshot found. If no screenshots exist, write "No UI screenshots captured.">
 
-## Spec Reference
+### Spec Reference
 \`${ctx.specPath}\`
 
-## Risk Assessment
+### Risk Assessment
 <Paste the \`roam_pr_risk\` output here verbatim. Includes blast radius, affected components,
 and risk score (LOW / MEDIUM / HIGH). If Roam was unavailable, paste \`git diff --stat\` output
 and note: "Roam risk analysis unavailable — manual review recommended.">
 
-## Suggested Reviewers
+### Suggested Reviewers
 <Paste the \`roam_suggest_reviewers\` output here. Lists code owners for the modified areas.
 If Roam was unavailable, write "Roam reviewer suggestions unavailable — assign based on CODEOWNERS.">
 \`\`\`
 
-Then determine a concise title using Conventional Commits (e.g., \`feat(bulk): add copy detail modal and backend patch endpoint\`). Do NOT use \`[Feature]\` brackets.
-
-🚨 **DRAFT REQUIREMENT:** If \`$BLOCKED_MSG\` is non-empty, you MUST prepend an infrastructure warning banner to PR_BODY.md. Do this programmatically AFTER writing PR_BODY.md:
+Then combine the existing body with the appendix — NEVER overwrite:
 \`\`\`bash
-if [ -n "$BLOCKED_MSG" ]; then
-  echo "> ⚠️ **Pipeline Blocked by Infrastructure:** AI development completed successfully, but the CI/CD deployment was blocked by an infrastructure/environment error." > PR_BODY_TMP.md
-  echo "> **Error:**" >> PR_BODY_TMP.md
-  echo '> \`\`\`text' >> PR_BODY_TMP.md
-  echo "$BLOCKED_MSG" >> PR_BODY_TMP.md
-  echo '> \`\`\`' >> PR_BODY_TMP.md
-  echo "> **Human Action Required:** Please review the AI's proposed infrastructure fix in the diff. If approved, comment \\\`/dagent apply-elevated\\\` to provision the resources and resume the pipeline." >> PR_BODY_TMP.md
-  echo "" >> PR_BODY_TMP.md
-  cat PR_BODY.md >> PR_BODY_TMP.md
-  mv PR_BODY_TMP.md PR_BODY.md
-fi
+cat EXISTING_BODY.md > COMBINED_BODY.md
+cat WAVE2_APPENDIX.md >> COMBINED_BODY.md
+gh pr edit $PR_NUMBER --body-file COMBINED_BODY.md
+rm -f EXISTING_BODY.md WAVE2_APPENDIX.md COMBINED_BODY.md
 \`\`\`
 
-Then create the PR. Use the \`--draft\` flag if the pipeline was blocked:
+### Step 5. Promote Draft PR to Ready for Review
+
 \`\`\`bash
-if [ -n "$BLOCKED_MSG" ]; then
-  PR_NUMBER=$(gh pr create --title "<your-title>" --body-file PR_BODY.md --base ${ctx.baseBranch} --draft | grep -oE '[0-9]+$')
-else
-  PR_NUMBER=$(gh pr create --title "<your-title>" --body-file PR_BODY.md --base ${ctx.baseBranch} | grep -oE '[0-9]+$')
-fi
-echo "Created PR #$PR_NUMBER"
-rm -f PR_BODY.md  # Remove temp payload — must not be committed
+gh pr ready $PR_NUMBER
+echo "✅ PR #$PR_NUMBER promoted to ready-for-review"
 \`\`\`
 
-### Step 3.5. Human-in-the-Loop Notification
-If the PR was created as a draft due to a block, you MUST immediately add a comment to notify the human operator:
+### Step 6. Update State & Record PR
+
 \`\`\`bash
-if [ -n "$BLOCKED_MSG" ]; then
-  gh pr comment $PR_NUMBER --body "🚨 **Human-in-the-Loop Required:** Infrastructure deployment failed due to permissions. Please review the Terraform diff and comment \\\`/dagent apply-elevated\\\` to authorize the deployment."
-fi
+npm run pipeline:complete ${ctx.featureSlug} publish-pr
+npm run pipeline:set-note ${ctx.featureSlug} "PR #\${PR_NUMBER} published and ready for review"
 \`\`\`
 
-### Step 4. Update State & Record PR
+### Step 7. Final Commit
+
+Commit state changes. No archiving — the orchestrator handles file archiving automatically after this step.
 
 \`\`\`bash
-npm run pipeline:complete ${ctx.featureSlug} create-pr
-npm run pipeline:set-url ${ctx.featureSlug} "https://github.com/<owner>/<repo>/pull/\${PR_NUMBER}"
-npm run pipeline:set-note ${ctx.featureSlug} "PR #\${PR_NUMBER} created for merge to ${ctx.baseBranch}"
-\`\`\`
-
-### Step 5. Final Commit
-
-Commit the PR body file and any state changes. No archiving — the orchestrator handles file archiving automatically after this step.
-
-\`\`\`bash
-bash tools/autonomous-factory/agent-commit.sh pr "chore(${ctx.featureSlug}): create PR"
+bash tools/autonomous-factory/agent-commit.sh pr "chore(${ctx.featureSlug}): publish PR"
 \`\`\`
 
 **Verify no uncommitted files remain:**
@@ -1185,6 +1328,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pr")}
 - **Never merge the PR** — leave it open for human review and approval.
 - Never edit \`_TRANS.md\` or \`_STATE.json\` manually — use \`pipeline:complete\` / \`pipeline:fail\`.
 - **Do NOT archive feature files** — the orchestrator moves files to \`archive/features/<slug>/\` automatically after this step.
+- **NEVER overwrite the PR body** — always fetch existing body first and append to it.
 
 ## Git Operations
 
@@ -1326,6 +1470,113 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
 }
 
 // ---------------------------------------------------------------------------
+// Infra-architect agent prompt builder
+// ---------------------------------------------------------------------------
+
+function infraArchitectPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# Infrastructure Architect
+
+You are a senior infrastructure engineer specializing in **Terraform** (azurerm + azapi + azuread).
+You implement infrastructure changes in the \`infra/\` directory based on the feature spec and schema contracts.
+
+# Context
+
+- Feature: ${ctx.featureSlug}
+- Spec: ${ctx.specPath}
+- Repo root: ${ctx.repoRoot}
+- App root: ${ctx.appRoot}
+
+${apmContext.agents["infra-architect"].rules}
+
+## Scope
+
+Your scope is strictly limited to:
+- \`${ctx.appRoot}/infra/\` — Terraform HCL files (.tf)
+- \`${ctx.appRoot}/infra/api-specs/\` — OpenAPI YAML specs for APIM operations
+- \`${ctx.appRoot}/infra/dev.tfvars\` — environment variables (non-secret only)
+
+You do NOT modify:
+- \`backend/\` — owned by backend-dev
+- \`frontend/\` — owned by frontend-dev
+- \`packages/\` — owned by schema-dev
+- \`.github/workflows/\` — CI/CD files require separate scope
+
+## Workflow
+
+1. Read the feature spec: \`${ctx.specPath}\`
+2. Read existing shared schemas from \`${ctx.appRoot}/packages/schemas/src/\` to understand data contracts.
+3. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing (if available).
+4. Implement infrastructure changes in \`${ctx.appRoot}/infra/\` following existing patterns in \`main.tf\`, \`apim.tf\`, \`swa.tf\`.
+5. If the feature requires new APIM operations, update or create OpenAPI specs in \`${ctx.appRoot}/infra/api-specs/\`.
+6. **Quick Syntax Check:** Run \`cd ${ctx.appRoot}/infra && terraform init -backend=false -input=false && terraform validate\`. Fix all errors before proceeding.
+7. Commit: \`bash tools/autonomous-factory/agent-commit.sh infra "feat(infra): <description>"\`
+8. Leave a doc-note listing Terraform resources created and their output names:
+   \`\`\`bash
+   npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "<resources created and output names>"
+   \`\`\`
+9. **Validate infrastructure** by running the Terraform Validation Gate below. Your job is to write and validate Terraform code. CI will run the plan, post it to the Draft PR, and a human will approve the apply.
+   - If plan succeeds → mark complete.
+   - If plan fails → diagnose and fix the Terraform code, then retry from step 6.
+
+${completionBlock(ctx.featureSlug, ctx.itemKey, "infra", ctx.appRoot)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Infra-handoff agent prompt builder
+// ---------------------------------------------------------------------------
+
+function infraHandoffPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
+  return `# Infrastructure Handoff
+
+You bridge the infrastructure wave and the application wave by documenting deployed infrastructure
+outputs into a structured \`infra-interfaces.md\` that downstream agents (backend-dev, frontend-dev) consume.
+
+# Context
+
+- Feature: ${ctx.featureSlug}
+- Spec: ${ctx.specPath}
+- Repo root: ${ctx.repoRoot}
+- App root: ${ctx.appRoot}
+
+${apmContext.agents["infra-handoff"].rules}
+
+## DevSecOps: Sensitive Value Masking (MANDATORY)
+When parsing \`terraform output -json\`, you MUST mask any sensitive values before writing to \`in-progress/infra-interfaces.md\`:
+- Passwords, connection strings, primary/secondary keys, SAS tokens → replace with \`<HIDDEN>\`
+- Only expose: resource names, base URLs, safe configuration flags, resource group names
+- If \`terraform output -json\` shows \`"sensitive": true\` on any key, ALWAYS mask its value
+- Never write raw secrets to any file in the repository
+
+## Workflow
+
+1. Read the Terraform outputs:
+   \`\`\`bash
+   cd ${ctx.appRoot}/infra && terraform output -json 2>/dev/null || echo "{}"
+   \`\`\`
+   If \`terraform output\` is not available (no statefile), read \`${ctx.appRoot}/infra/outputs.tf\` and \`${ctx.appRoot}/infra/dev.tfvars\` to infer the values.
+
+2. Parse the outputs into a structured markdown file at \`${ctx.appRoot}/in-progress/infra-interfaces.md\`:
+   \`\`\`markdown
+   # Infrastructure Interfaces
+   ## Endpoints
+   - Function App URL: https://...
+   - APIM Gateway: https://...
+   - Static Web App URL: https://...
+   ## Resource Names
+   - Function App: <name>
+   - Resource Group: <name>
+   ## Auth Config
+   - CORS Origins: [...]
+   ## Terraform Outputs
+   - <output_name>: <value or description>
+   \`\`\`
+
+3. Commit: \`bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): infra-handoff interfaces"\`
+
+${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
+}
+
+// ---------------------------------------------------------------------------
 // Item → Agent routing
 // ---------------------------------------------------------------------------
 
@@ -1334,6 +1585,31 @@ const ITEM_ROUTING: Record<string, (ctx: AgentContext, apmContext: ApmCompiledOu
     systemMessage: schemaDevPrompt(ctx, apmContext),
     model: MODEL,
     mcpServers: resolveMcpPlaceholders(apmContext.agents["schema-dev"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "infra-architect": (ctx, apmContext) => ({
+    systemMessage: infraArchitectPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["infra-architect"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "infra-handoff": (ctx, apmContext) => ({
+    systemMessage: infraHandoffPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["infra-handoff"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "push-infra": (ctx, apmContext) => ({
+    systemMessage: deployManagerPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-infra"].mcp, ctx.repoRoot, ctx.appRoot),
+  }),
+  "poll-infra-plan": (ctx, apmContext) => ({
+    systemMessage: deployManagerPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-infra-plan"]?.mcp ?? apmContext.agents["poll-infra-ci"]?.mcp ?? [], ctx.repoRoot, ctx.appRoot),
+  }),
+  "create-draft-pr": (ctx, apmContext) => ({
+    systemMessage: createDraftPrPrompt(ctx, apmContext),
+    model: MODEL,
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["create-draft-pr"]?.mcp ?? [], ctx.repoRoot, ctx.appRoot),
   }),
   "backend-dev": (ctx, apmContext) => ({
     systemMessage: backendDevPrompt(ctx, apmContext),
@@ -1355,15 +1631,15 @@ const ITEM_ROUTING: Record<string, (ctx: AgentContext, apmContext: ApmCompiledOu
     model: MODEL,
     mcpServers: resolveMcpPlaceholders(apmContext.agents["frontend-unit-test"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
-  "push-code": (ctx, apmContext) => ({
+  "push-app": (ctx, apmContext) => ({
     systemMessage: deployManagerPrompt(ctx, apmContext),
     model: MODEL,
-    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-code"].mcp, ctx.repoRoot, ctx.appRoot),
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["push-app"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
-  "poll-ci": (ctx, apmContext) => ({
+  "poll-app-ci": (ctx, apmContext) => ({
     systemMessage: deployManagerPrompt(ctx, apmContext),
     model: MODEL,
-    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-ci"].mcp, ctx.repoRoot, ctx.appRoot),
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["poll-app-ci"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
   "integration-test": (ctx, apmContext) => ({
     systemMessage: backendTestPrompt(ctx, apmContext),
@@ -1380,10 +1656,10 @@ const ITEM_ROUTING: Record<string, (ctx: AgentContext, apmContext: ApmCompiledOu
     model: MODEL,
     mcpServers: resolveMcpPlaceholders(apmContext.agents["docs-archived"].mcp, ctx.repoRoot, ctx.appRoot),
   }),
-  "create-pr": (ctx, apmContext) => ({
-    systemMessage: prCreatorPrompt(ctx, apmContext),
+  "publish-pr": (ctx, apmContext) => ({
+    systemMessage: publishPrPrompt(ctx, apmContext),
     model: MODEL,
-    mcpServers: resolveMcpPlaceholders(apmContext.agents["create-pr"].mcp, ctx.repoRoot, ctx.appRoot),
+    mcpServers: resolveMcpPlaceholders(apmContext.agents["publish-pr"]?.mcp ?? apmContext.agents["create-pr"]?.mcp ?? [], ctx.repoRoot, ctx.appRoot),
   }),
   "code-cleanup": (ctx, apmContext) => ({
     systemMessage: codeCleanupPrompt(ctx, apmContext),
@@ -1427,7 +1703,7 @@ export function buildTaskPrompt(
   slug: string,
   appRoot: string,
 ): string {
-  const roamAgents = ["backend-dev", "frontend-dev", "schema-dev", "backend-unit-test", "frontend-unit-test", "code-cleanup", "live-ui", "docs-archived", "create-pr"];
+  const roamAgents = ["backend-dev", "frontend-dev", "schema-dev", "infra-architect", "backend-unit-test", "frontend-unit-test", "code-cleanup", "live-ui", "docs-archived", "publish-pr"];
   const hasRoam = roamAgents.includes(item.key);
   const roamPreamble = hasRoam ? `
 **IMPORTANT — Roam-First Monorepo Workflow:**

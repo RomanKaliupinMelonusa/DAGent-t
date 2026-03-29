@@ -25,8 +25,12 @@ interface PipelineStateMod {
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetCi: (slug: string) => ResetResult;
+  resetInfraPlan: (slug: string) => ResetResult;
+  redevelopInfra: (slug: string, reason: string) => ResetResult;
   resetForDev: (slug: string, itemKeys: string[], reason: string) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
+  resumeAfterElevated: (slug: string) => ResetResult;
+  recoverElevated: (slug: string, errorMessage: string) => ResetResult;
   getStatus: (slug: string) => PipelineState;
   getNext: (slug: string) => NextAction;
   getNextAvailable: (slug: string) => NextAction[];
@@ -67,6 +71,16 @@ export async function resetCi(slug: string): Promise<ResetResult> {
   return mod.resetCi(slug);
 }
 
+export async function resetInfraPlan(slug: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.resetInfraPlan(slug);
+}
+
+export async function redevelopInfra(slug: string, reason: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.redevelopInfra(slug, reason);
+}
+
 export async function resetForDev(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
   const mod = await getMod();
   return mod.resetForDev(slug, itemKeys, reason);
@@ -75,6 +89,16 @@ export async function resetForDev(slug: string, itemKeys: string[], reason: stri
 export async function salvageForDraft(slug: string, failedItemKey: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.salvageForDraft(slug, failedItemKey);
+}
+
+export async function resumeAfterElevated(slug: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.resumeAfterElevated(slug);
+}
+
+export async function recoverElevated(slug: string, errorMessage: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.recoverElevated(slug, errorMessage);
 }
 
 export async function getStatus(slug: string): Promise<PipelineState> {
@@ -110,24 +134,4 @@ export async function setUrl(slug: string, url: string): Promise<PipelineState> 
 export async function readState(slug: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.readState(slug);
-}
-
-export async function getAllItems(): Promise<Array<{ key: string; label: string; agent: string; phase: string }>> {
-  const mod = await getMod();
-  return mod.ALL_ITEMS;
-}
-
-export async function getPhases(): Promise<string[]> {
-  const mod = await getMod();
-  return mod.PHASES;
-}
-
-export async function getNaItemsByType(): Promise<Record<string, string[]>> {
-  const mod = await getMod();
-  return mod.NA_ITEMS_BY_TYPE;
-}
-
-export async function getItemDependencies(): Promise<Record<string, string[]>> {
-  const mod = await getMod();
-  return mod.ITEM_DEPENDENCIES;
 }

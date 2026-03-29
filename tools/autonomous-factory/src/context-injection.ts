@@ -45,7 +45,7 @@ export function buildRetryContext(
 
 /**
  * Build downstream failure context when a dev item is re-invoked
- * after a post-deploy failure (live-ui, integration-test, poll-ci).
+ * after a post-deploy failure (live-ui, integration-test).
  * Returns empty string if no downstream failures exist.
  */
 export function buildDownstreamFailureContext(
@@ -109,6 +109,28 @@ export function buildRevertWarning(
   return `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
     + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
     + `Then, re-explore the codebase and build this feature using a completely different architectural approach.`;
+}
+
+/**
+ * Build infra rollback context when `@infra-architect` is re-invoked after
+ * a Wave 2 app agent called `pipeline:redevelop-infra`.
+ * Returns the rejection reason so the infra agent knows what to fix.
+ */
+export async function buildInfraRollbackContext(slug: string): Promise<string> {
+  try {
+    const state = await readState(slug);
+    const infraEntries = state.errorLog.filter((e) => e.itemKey === "redevelop-infra");
+    if (infraEntries.length === 0) return "";
+    const latest = infraEntries[infraEntries.length - 1];
+    return (
+      `\n\n## ⚠️ INFRASTRUCTURE REJECTED BY APPLICATION TEAM\n`
+      + `The previous application deployment wave failed because the following infrastructure was missing or misconfigured:\n\n`
+      + `> ${latest.message}\n\n`
+      + `You MUST update your Terraform code to fulfill this requirement before completing this task.`
+    );
+  } catch {
+    return "";
+  }
 }
 
 /**
