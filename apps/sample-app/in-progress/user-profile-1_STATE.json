@@ -67,7 +67,7 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Added fn-profile.ts Azure Function at /api/profile (GET+PATCH) with in-function X-Demo-Token auth, Zod validation via ProfileUpdateSchema, and hardcoded mock profile. No schema drift — reuses existing @branded/schemas profile.ts and OpenAPI spec."
     },
@@ -85,7 +85,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -109,8 +109,8 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "failed",
-      "error": "CI polling was manually cancelled — will retry"
+      "status": "pending",
+      "error": null
     },
     {
       "key": "integration-test",
@@ -178,6 +178,16 @@
       "timestamp": "2026-03-29T05:31:32.673Z",
       "itemKey": "poll-app-ci",
       "message": "CI polling was manually cancelled — will retry"
+    },
+    {
+      "timestamp": "2026-03-29T05:33:47.480Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"backend\",\"diagnostic_trace\":\"Missing integration test coverage for endpoint: /api/profile (GET + PATCH). smoke.integration.test.ts only has describeIntegration blocks for fn-hello and fn-demo-login. @backend-dev must add integration tests for fn-profile covering: GET 200 returns valid UserProfile, GET 401 without demo token, PATCH 200 with valid body returns merged profile, PATCH 400 with invalid body, PATCH 401 without demo token.\"}"
+    },
+    {
+      "timestamp": "2026-03-29T05:33:54.972Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: Missing integration test coverage for endpoint: /api/profile (GET + PATCH). smoke.integration.test.ts only has describeIntegration blocks for fn-hello and fn-demo-login. @backend-dev must add integration tests for fn-profile covering: GET 200 returns valid UserProfile, GET 401 without demo token, PATCH 200 with valid body returns merged profile, PATCH 400 with invalid body, PATCH 401 without demo token.. Reset 5 items: backend-dev, backend-unit-test, integration-test, push-app, poll-app-ci"
     }
   ],
   "elevatedApply": true
