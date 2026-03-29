@@ -7,7 +7,7 @@ Azure Functions backend with shared Zod schema validation and dual-mode auth.
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests (20 passing)
+npm test                       # run unit tests (27 passing)
 npm start                      # start Functions host on :7071
 ```
 
@@ -27,6 +27,20 @@ Sample protected endpoint demonstrating the dual-mode auth pattern. Auth is enfo
 ```
 
 **Errors:** 400 (name exceeds 100 chars)
+
+### `GET /api/profile` · `PATCH /api/profile`
+
+Authenticated user profile endpoint with in-function `X-Demo-Token` validation.
+
+- **GET:** Returns hardcoded mock profile (`UserProfile` shape).
+- **PATCH:** Accepts `{ displayName, theme }` validated with `ProfileUpdateSchema`. Returns merged profile.
+
+**Success (200):**
+```json
+{ "id": "00000000-...", "displayName": "Demo User", "email": "demo@example.com", "theme": "system" }
+```
+
+**Errors:** 400 (invalid input / Zod validation failure), 401 (missing or invalid demo token)
 
 ### `POST /api/auth/login`
 
@@ -53,6 +67,9 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | `GET /hello` response | `HelloResponseSchema` |
 | `POST /auth/login` request | `DemoLoginRequestSchema` |
 | `POST /auth/login` response | `DemoLoginResponseSchema` |
+| `GET /profile` response | `UserProfileSchema` |
+| `PATCH /profile` request | `ProfileUpdateSchema` |
+| `PATCH /profile` response | `UserProfileSchema` |
 | All error responses | `ApiErrorResponseSchema` |
 
 ## AUTH_MODE Feature Flag
@@ -78,7 +95,11 @@ Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
 | File | Tests | Coverage |
 |------|-------|----------|
 | `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
-| `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
+| `fn-demo-login.test.ts` | fn-demo-login auth logic | Credential validation, mode switching |
+| `fn-profile.test.ts` | fn-profile CRUD logic | 401 auth, GET 200, PATCH 200/400 |
+| `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints (hello + profile) |
+
+**Total: 27 backend tests passing.**
 
 ## Adding Your Own Functions
 
