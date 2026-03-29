@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Updated infra/api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName min2/max50, theme enum) and returns updated UserProfile. 400/401 error responses included. APIM resource azurerm_api_management_api.sample will update in-place to register new operations. No new Terraform resources needed — existing dual-mode auth policy (check-header/validate-jwt) covers /profile automatically since it's API-level. Terraform plan: 1 to add, 5 to change, 0 to destroy (the profile-relevant change is the APIM API update)."
     },
     {
       "key": "push-infra",
