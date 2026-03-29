@@ -20,7 +20,7 @@ Draft PR #22 created — awaiting Terraform plan
 - [x] Infra Outputs Captured — Interfaces Written (@infra-handoff)
 ### Pre-Deploy (Wave 2)
 - [x] Development Complete — Backend (@backend-dev)
-- [ ] Development Complete — Frontend (@frontend-dev)
+- [x] Development Complete — Frontend (@frontend-dev)
 - [ ] Unit Tests Passed — Backend (@backend-test)
 - [ ] Unit Tests Passed — Frontend (@frontend-ui-test)
 ### Deploy

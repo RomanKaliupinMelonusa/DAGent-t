@@ -76,8 +76,9 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added /profile page with authenticated form for editing displayName and theme. NavBar Profile link added to shared NavBarShell. E2E tests cover happy path, 400/401 errors, network failure, navigation persistence, and banner clearing."
     },
     {
       "key": "backend-unit-test",
