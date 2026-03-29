@@ -18,7 +18,7 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null,
       "docNote": "Updated infra/api-specs/api-sample.openapi.yaml: added /profile path with GET (operationId: getProfile) and PATCH (operationId: updateProfile) operations. GET returns UserProfile (id uuid, displayName, email, theme enum). PATCH accepts ProfileUpdate (displayName min2/max50, theme enum) and returns updated UserProfile. 400/401 error responses included. APIM resource azurerm_api_management_api.sample will update in-place to register new operations. No new Terraform resources needed — existing dual-mode auth policy (check-header/validate-jwt) covers /profile automatically since it's API-level. Terraform plan: 1 to add, 5 to change, 0 to destroy (the profile-relevant change is the APIM API update)."
     },
@@ -27,7 +27,7 @@
       "label": "Infra Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -43,7 +43,7 @@
       "label": "Infra Plan CI Passed",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -151,5 +151,16 @@
       "error": null
     }
   ],
-  "errorLog": []
+  "errorLog": [
+    {
+      "timestamp": "2026-03-29T04:28:41.123Z",
+      "itemKey": "poll-infra-plan",
+      "message": "Elevated apply failed: Error: unexpected status 409 (409 Conflict) with error: RoleAssignmentExists: The role assignment already exists. The ID of the existing role assignment is e9f87b65f26d4546a7447bf3f4df77a9. Error: unexpected status 409 (409 Conflict) with error: RoleAssignmentExists: The role assignment already exists. The ID of the existing role assignment is e9f87b65f26d4546a7447bf3f4df77a9. "
+    },
+    {
+      "timestamp": "2026-03-29T04:28:41.124Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: Elevated infra apply failed — agent will diagnose and fix TF code. Error: Error: unexpected status 409 (409 Conflict) with error: RoleAssignmentExists: The role assignment already exists. The ID of the existing role assignment is e9f87b65f26d4546a7447bf3f4df77a9. Error: une. Reset 8 items: infra-architect, push-infra, create-draft-pr, poll-infra-plan, await-infra-approval, infra-handoff, push-app, poll-app-ci"
+    }
+  ]
 }
