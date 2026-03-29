@@ -402,7 +402,7 @@ export function resumeAfterElevated(slug) {
                           "backend-unit-test", "frontend-unit-test", "push-app", "poll-app-ci"];
   // push-infra must also reset so a fresh push triggers new CI runs for poll-infra-plan to verify.
   // Without this, poll-infra-plan would poll stale (failed) CI runs from before the elevated apply.
-  const forceResetKeys = new Set(["poll-infra-plan", "poll-app-ci", "push-infra", "create-draft-pr"]);
+  const forceResetKeys = new Set(["push-app", "poll-app-ci"]);
   let resetCount = 0;
 
   for (const item of state.items) {
