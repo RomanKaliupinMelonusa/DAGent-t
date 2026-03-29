@@ -14,7 +14,7 @@
  *   complete          <slug> <item-key>           — Mark an item as done
  *   fail              <slug> <item-key> <message> — Record a failure
  *   reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push
- *   reset-infra-ci    <slug>                      — Reset push-infra + poll-infra-plan for re-push
+ *   reset-infra-plan  <slug>                      — Reset push-infra + poll-infra-plan for re-push
  *   redevelop-infra   <slug> <reason>             — Reset Wave 1 infra items for redevelopment
  *   resume            <slug>                      — Resume pipeline after elevated apply
  *   recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply
@@ -502,14 +502,14 @@ export function resetCi(slug) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function resetInfraCi(slug) {
+export function resetInfraPlan(slug) {
   if (!slug) {
-    throw new Error("resetInfraCi requires slug");
+    throw new Error("resetInfraPlan requires slug");
   }
 
   const state = readStateOrThrow(slug);
 
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-infra-ci").length;
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-infra-plan").length;
   if (cycleCount >= 10) {
     return { state, cycleCount, halted: true };
   }
@@ -526,7 +526,7 @@ export function resetInfraCi(slug) {
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
-    itemKey: "reset-infra-ci",
+    itemKey: "reset-infra-plan",
     message: `Infra re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
   });
 
@@ -893,14 +893,14 @@ function cmdResetCi(slug) {
   }
 }
 
-function cmdResetInfraCi(slug) {
+function cmdResetInfraPlan(slug) {
   if (!slug) {
-    console.error("Usage: pipeline-state.mjs reset-infra-ci <slug>");
+    console.error("Usage: pipeline-state.mjs reset-infra-plan <slug>");
     process.exit(1);
   }
 
   try {
-    const { cycleCount, halted } = resetInfraCi(slug);
+    const { cycleCount, halted } = resetInfraPlan(slug);
     if (halted) {
       console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} infra re-push cycles. Requires human intervention.`);
       process.exit(2);
@@ -1070,8 +1070,12 @@ switch (command) {
   case "reset-ci":
     cmdResetCi(args[0]);
     break;
+  case "reset-infra-plan":
+    cmdResetInfraPlan(args[0]);
+    break;
   case "reset-infra-ci":
-    cmdResetInfraCi(args[0]);
+    console.warn("⚠ Deprecated: use 'reset-infra-plan' instead of 'reset-infra-ci'");
+    cmdResetInfraPlan(args[0]);
     break;
   case "redevelop-infra":
     cmdRedevelopInfra(args[0], args.slice(1).join(" "));
@@ -1107,7 +1111,7 @@ switch (command) {
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
     console.error("  reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push");
-    console.error("  reset-infra-ci    <slug>                      — Reset push-infra + poll-infra-plan for re-push");
+    console.error("  reset-infra-plan  <slug>                      — Reset push-infra + poll-infra-plan for re-push");
     console.error("  redevelop-infra   <slug> <reason>             — Reset Wave 1 infra items for redevelopment");
     console.error("  resume            <slug>                      — Resume pipeline after elevated apply");
     console.error("  recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply");

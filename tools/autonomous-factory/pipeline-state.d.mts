@@ -71,7 +71,7 @@ export function completeItem(slug: string, itemKey: string): PipelineState;
  */
 export function failItem(slug: string, itemKey: string, message: string): FailResult;
 export function resetCi(slug: string): ResetResult;
-export function resetInfraCi(slug: string): ResetResult;
+export function resetInfraPlan(slug: string): ResetResult;
 export function redevelopInfra(slug: string, reason: string): ResetResult;
 export function resetForDev(slug: string, itemKeys: string[], reason: string): ResetResult;
 export function salvageForDraft(slug: string, failedItemKey: string): PipelineState;

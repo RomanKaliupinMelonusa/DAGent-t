@@ -558,34 +558,50 @@ async function runPollCi(
           ).toString().trim();
 
           if (runIdOutput) {
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
-            execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
-              cwd: repoRoot, stdio: "pipe", timeout: 60_000,
-            });
-            const planFile = path.join(tmpDir, "plan-output.txt");
-            if (fs.existsSync(planFile)) {
-              const planText = fs.readFileSync(planFile, "utf-8").trim();
-              const commentBody = [
-                "### Terraform Plan — `success`",
-                "",
-                "<details><summary>Click to expand plan output</summary>",
-                "",
-                "```",
-                planText,
-                "```",
-                "",
-                "</details>",
-                "",
-                "> Comment `/dagent approve-infra` to apply this plan.",
-              ].join("\n");
-              const commentFile = path.join(tmpDir, "plan-comment.md");
-              fs.writeFileSync(commentFile, commentBody, "utf-8");
-              execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
-                cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+            // Dedup: skip if we already posted a plan comment for this CI run
+            const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
+            let alreadyPosted = false;
+            try {
+              const existingComments = execSync(
+                `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
+                { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+              ).toString();
+              alreadyPosted = existingComments.includes(marker);
+            } catch { /* ignore — proceed to post */ }
+
+            if (alreadyPosted) {
+              console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
+            } else {
+              const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
+              execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
+                cwd: repoRoot, stdio: "pipe", timeout: 60_000,
               });
-              console.log(`  📋 Posted Terraform plan to Draft PR`);
+              const planFile = path.join(tmpDir, "plan-output.txt");
+              if (fs.existsSync(planFile)) {
+                const planText = fs.readFileSync(planFile, "utf-8").trim();
+                const commentBody = [
+                  marker,
+                  "### Terraform Plan — `success`",
+                  "",
+                  "<details><summary>Click to expand plan output</summary>",
+                  "",
+                  "```",
+                  planText,
+                  "```",
+                  "",
+                  "</details>",
+                  "",
+                  "> Comment `/dagent approve-infra` to apply this plan.",
+                ].join("\n");
+                const commentFile = path.join(tmpDir, "plan-comment.md");
+                fs.writeFileSync(commentFile, commentBody, "utf-8");
+                execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
+                  cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+                });
+                console.log(`  📋 Posted Terraform plan to Draft PR`);
+              }
+              fs.rmSync(tmpDir, { recursive: true, force: true });
             }
-            fs.rmSync(tmpDir, { recursive: true, force: true });
           }
         } catch (planErr) {
           console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);

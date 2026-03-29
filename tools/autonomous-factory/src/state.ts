@@ -25,7 +25,7 @@ interface PipelineStateMod {
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetCi: (slug: string) => ResetResult;
-  resetInfraCi: (slug: string) => ResetResult;
+  resetInfraPlan: (slug: string) => ResetResult;
   redevelopInfra: (slug: string, reason: string) => ResetResult;
   resetForDev: (slug: string, itemKeys: string[], reason: string) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
@@ -71,9 +71,9 @@ export async function resetCi(slug: string): Promise<ResetResult> {
   return mod.resetCi(slug);
 }
 
-export async function resetInfraCi(slug: string): Promise<ResetResult> {
+export async function resetInfraPlan(slug: string): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.resetInfraCi(slug);
+  return mod.resetInfraPlan(slug);
 }
 
 export async function redevelopInfra(slug: string, reason: string): Promise<ResetResult> {

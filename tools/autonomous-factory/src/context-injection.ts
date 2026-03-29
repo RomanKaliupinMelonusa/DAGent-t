@@ -45,7 +45,7 @@ export function buildRetryContext(
 
 /**
  * Build downstream failure context when a dev item is re-invoked
- * after a post-deploy failure (live-ui, integration-test, poll-ci).
+ * after a post-deploy failure (live-ui, integration-test).
  * Returns empty string if no downstream failures exist.
  */
 export function buildDownstreamFailureContext(
