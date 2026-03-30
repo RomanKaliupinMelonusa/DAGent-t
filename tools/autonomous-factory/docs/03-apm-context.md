@@ -67,7 +67,7 @@ The APM manifest is the **single source of truth** for context delivery. It live
 | `name` | App identifier |
 | `version` | Semantic version for the context contract |
 | `tokenBudget` | Max estimated tokens per agent's assembled instructions |
-| `agents` | Maps each agent key to its instruction includes, MCP servers, and skills |
+| `agents` | Maps each agent key to its instruction includes, MCP servers, skills, and tool limits |
 | `generatedInstructions` | IDE `.instructions.md` files to generate via `apm compile` |
 
 ```yaml
@@ -81,11 +81,27 @@ agents:
     instructions: [always, backend, infra, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-backend-unit, test-schema-validation]
+    # toolLimits omitted → uses defaults (soft: 30, hard: 40)
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
-  # ... 16 more agents
+  live-ui:
+    instructions: [always, frontend/e2e-testing-mandate.md, ...]
+    mcp: [roam-code, playwright]
+    skills: []
+    toolLimits: { soft: 50, hard: 65 }  # browser MCP requires more DOM polling
+  docs-archived:
+    instructions: [always, tooling/roam-tool-rules.md]
+    mcp: [roam-code]
+    skills: []
+    toolLimits: { soft: 15, hard: 20 }  # tight limit for read-heavy agent
+  push-infra:
+    instructions: [always]
+    mcp: []
+    skills: []
+    toolLimits: { soft: 10, hard: 15 }  # deterministic script agent
+  # ... 13 more agents
 ```
 
 ---
@@ -410,6 +426,7 @@ classDiagram
         +tokenCount: number
         +mcp: Record~string, ApmMcpConfig~
         +skills: Record~string, string~
+        +toolLimits?: ~soft: number, hard: number~
     }
 
     class ApmMcpConfig {
@@ -448,6 +465,7 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **MCP `availability` field** | `optional` = graceful degradation (roam), `required` = fail fast (playwright) |
 | **Skill declarations separate from instructions** | Skills are capabilities (commands + descriptions), not governance rules |
 | **App-agnostic manifest** | Any app provides `.apm/apm.yml` — orchestrator doesn't know language or framework |
+| **Per-agent tool limits** | `toolLimits: { soft, hard }` — optional per-agent circuit breaker overrides, defaults to 30/40 if omitted |
 
 ---
 

@@ -596,6 +596,8 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 | **5 redevelopment cycles per feature** | `resetForDev` halts after 5 post-deploy→dev reroute cycles |
 | **E2E test gate** | `frontend-unit-test` verifies Playwright tests compile; `live-ui` verifies they exist and runs them |
 | **Session timeouts** | Orchestrator enforces 10/15/20/30 min timeouts per specialist session |
+| **Cognitive circuit breaker** | Per-agent tool call limits declared in `apm.yml` (`toolLimits: { soft, hard }`). Soft limit injects a frustration prompt into the tool result via `tool.execution_complete` so the LLM can self-correct. Hard limit force-disconnects the session. Defaults: soft=30, hard=40. Overrides: `live-ui` 50/65, scripted agents 10/15, read-heavy agents 15/20 |
+| **Cross-session summary merge** | `_SUMMARY.md` telemetry parsed once at boot (`parsePreviousSummary`) and unconditionally added to current session totals — monotonic accumulation across restarts |
 | **Phase gating** | `pipeline:complete` programmatically rejects if prior phases are incomplete |
 | **No cross-agent delegation** | Specialist system prompts prohibit invoking other agents; orchestrator controls sequencing |
 | **No direct state edits** | All agents must use `pipeline:*` commands; `_TRANS.md` is auto-generated |

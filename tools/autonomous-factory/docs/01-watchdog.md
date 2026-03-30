@@ -220,6 +220,16 @@ flowchart LR
 
 All reports saved to `in-progress/<slug>_*.md` before archiving to `archive/features/<slug>/`.
 
+### Cross-Session Summary Merging
+
+When the orchestrator resumes a feature (e.g., after an approval gate or crash), it must include telemetry from the prior session. The merge strategy is **boot-time parse, unconditional add**:
+
+1. **Boot**: `watchdog.ts` calls `parsePreviousSummary()` once against the existing `_SUMMARY.md`, extracting step count, duration, tokens, cost, and files changed into a `baseTelemetry` object stored on `PipelineRunState`.
+2. **Every flush**: `writePipelineSummary()` and `writeTerminalLog()` receive `baseTelemetry` as a parameter and unconditionally add it to the current session’s totals: `mergedSteps = currentSteps + baseTelemetry.steps`.
+3. **Round-trip safe**: The next boot parses the merged totals, so telemetry snowballs correctly across any number of sessions.
+
+This replaces an earlier `shouldMerge` guard that compared step counts between the file and memory — that approach failed when Wave 2 reached the same step count as Wave 1, dropping prior history.
+
 ---
 
 ## Key Data Structures
@@ -278,9 +288,11 @@ classDiagram
 | `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | `runAgentSession()` |
 | `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runAgentSession()` |
 | `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-archived | `runAgentSession()` |
-| `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` | `flushReports()` |
-| `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` | `flushReports()` |
+| `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
+| `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
 | `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
+| `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
+| `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) | `runAgentSession()` |
 | `triageFailure()` | triage.ts | Keyword/structured routing of post-deploy failures to dev items | `handleFailureReroute()` |
 
 ---
