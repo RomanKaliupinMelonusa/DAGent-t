@@ -130,7 +130,8 @@ stateDiagram-v2
     PostDeployCheck --> TriageFailure: tests fail
 
     state PollCICheck <<choice>>
-    Running --> PollCICheck: poll-ci item?
+    Running --> PollCICheck: poll-app-ci /
+poll-infra-plan item?
     PollCICheck --> PollCISuccess: all workflows pass
     PollCICheck --> PollCITriage: CI failure or cancelled
 
@@ -149,7 +150,7 @@ stateDiagram-v2
     CycleCheck --> Redevelopment: cycle < 5
     CycleCheck --> PipelineHalted: cycle = 5
 
-    EnvPause --> RetryPending: retry poll-ci only
+    EnvPause --> RetryPending: retry poll item only
 
     Redevelopment --> ReIndex: roam index (re-index)
     ReIndex --> Running: resetForDev()\n→ dev items re-enter loop
@@ -172,11 +173,15 @@ stateDiagram-v2
 
 | Item Type | Timeout | Rationale |
 |-----------|---------|-----------|
-| **Dev items** (schema-dev, backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
+| **Infra dev items** (schema-dev, infra-architect) | 20 min | Complex implementation, Terraform planning |
+| **App dev items** (backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
 | **Test items** (backend-unit-test, frontend-unit-test) | 10 min | Scoped to test writing, fewer files |
-| **Deploy items** (push-code, poll-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-ci` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
+| **Infra deploy items** (push-infra, poll-infra-plan, create-draft-pr) | 15 min | Deterministic shell bypasses (no LLM). `poll-infra-plan` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
+| **Approval gate** (await-infra-approval) | ∞ | Human gate — pipeline pauses until `/dagent approve-infra` |
+| **Infra handoff** (infra-handoff) | 15 min | Capture Terraform outputs, write infra-interfaces.md |
+| **App deploy items** (push-app, poll-app-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-app-ci` captures CI failure logs and routes to triage |
 | **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries |
-| **Finalize items** (code-cleanup, docs-expert, create-pr) | 15 min | Scoped cleanup and documentation tasks |
+| **Finalize items** (code-cleanup, docs-archived, publish-pr) | 15 min | Scoped cleanup and documentation tasks |
 
 ---
 
@@ -256,7 +261,7 @@ classDiagram
 | Function | Module | Purpose | Called By |
 |----------|--------|---------|----------|
 | `main()` | watchdog.ts | Entry point — init, pre-flight, Phase 0, main loop | CLI |
-| `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After create-pr |
+| `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After publish-pr |
 | `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
 | `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
 | `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
@@ -272,7 +277,7 @@ classDiagram
 | `buildDownstreamFailureContext()` | context-injection.ts | Inject post-deploy errors into dev agent prompts | `runAgentSession()` |
 | `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | `runAgentSession()` |
 | `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runAgentSession()` |
-| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-expert | `runAgentSession()` |
+| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-archived | `runAgentSession()` |
 | `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` | `flushReports()` |
 | `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` | `flushReports()` |
 | `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
