@@ -248,6 +248,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       tokenCount,
       mcp: agentMcp,
       skills: agentSkills,
+      toolLimits: agentDecl.toolLimits,
     };
   }
 

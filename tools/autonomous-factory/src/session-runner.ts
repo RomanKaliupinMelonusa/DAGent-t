@@ -53,12 +53,61 @@ const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
 /**
+ * Shell command patterns that write files.
+ * Used to detect file mutations done via bash/write_bash tool calls
+ * (e.g. `sed -i`, `tee`, `echo >`) instead of SDK write_file/edit_file.
+ * Each regex captures the target file path in group 1.
+ * Exported for unit testing.
+ */
+export const SHELL_WRITE_PATTERNS: readonly RegExp[] = [
+  /\bsed\s+-i(?:\s+'[^']*'|\s+"[^"]*"|\s+[^\s]+)*\s+([^\s;|&>]+)/,    // sed -i 's/x/y/' <file>
+  /\btee\s+(?:-a\s+)?([^\s;|&>]+)/,                                       // tee <file> or tee -a <file>
+  /\bcat\s*>\s*([^\s;|&]+)/,                                               // cat > <file>
+  /\becho\s+.*?>{1,2}\s*([^\s;|&>]+)/,                                     // echo ... > <file> or echo ... >> <file>
+  /\bprintf\s+.*?>{1,2}\s*([^\s;|&>]+)/,                                   // printf ... > <file> or printf ... >> <file>
+  /\bcp\s+(?:-[a-zA-Z]+\s+)?[^\s]+\s+([^\s;|&]+)/,                        // cp <src> <dest>
+  /\bmv\s+(?:-[a-zA-Z]+\s+)?[^\s]+\s+([^\s;|&]+)/,                        // mv <src> <dest>
+];
+
+/**
+ * Extract file paths written by a shell command.
+ * Matches against SHELL_WRITE_PATTERNS and returns workspace-relative paths.
+ * Exported for unit testing.
+ */
+export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[] {
+  const files: string[] = [];
+  for (const re of SHELL_WRITE_PATTERNS) {
+    const m = cmd.match(re);
+    if (m?.[1]) {
+      const raw = m[1].replace(/["']/g, "");
+      // Resolve relative to repo root and normalize
+      const abs = path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
+      const rel = path.relative(repoRoot, abs);
+      // Exclude paths outside the repo or pipeline state files
+      if (!rel.startsWith("..") && !rel.includes("_STATE.json") && !rel.includes("_TRANS.md")) {
+        files.push(rel);
+      }
+    }
+  }
+  return files;
+}
+
+/**
  * Delay (ms) after CI deployment completes before running post-deploy tests.
  * Azure Functions and SWA can take 30-60s to propagate after a deployment
  * workflow reports success. Without this delay, integration tests hit stale
  * deployment artifacts and produce false 404s.
  */
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
+
+/**
+ * Cognitive Circuit Breaker — default tool call limits per session.
+ * Used when an agent does not declare per-agent toolLimits in apm.yml.
+ * Soft limit: logs a structured warning to console (visible in _TERMINAL-LOG.md).
+ * Hard limit: force-disconnects the session to prevent runaway compute waste.
+ */
+export const TOOL_COUNT_SOFT_LIMIT_DEFAULT = 30;
+export const TOOL_COUNT_HARD_LIMIT_DEFAULT = 40;
 
 function getTimeout(itemKey: string): number {
   if (DEV_ITEMS.has(itemKey)) return TIMEOUT_DEV;
@@ -202,6 +251,12 @@ export interface PipelineRunState {
   circuitBreakerBypassed: Set<string>;
   /** Track git commit SHA before each dev step for reliable change detection */
   preStepRefs: Record<string, string>;
+  /**
+   * Telemetry from a prior session's _SUMMARY.md, parsed once at boot time.
+   * Guarantees monotonic metric accumulation across sessions — every flush
+   * simply adds baseTelemetry to the current session's totals.
+   */
+  baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
 }
 
 /** Immutable config for the pipeline run */
@@ -753,7 +808,8 @@ async function runAgentSession(
   });
 
   // Wire session event listeners
-  wireToolLogging(session, itemSummary, repoRoot);
+  const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
+  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits);
   const playwrightLog = wirePlaywrightLogging(session, next.key);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -871,19 +927,10 @@ async function runAgentSession(
   // Record HEAD for circuit breaker (identical-error dedup)
   try { itemSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
 
-  // Augment filesChanged with git diff — agents modify files via shell
-  // commands (sed, tee, echo >), not just write_file/edit_file SDK tools.
-  if (preStepRefs[next.key] && itemSummary.headAfterAttempt) {
-    try {
-      const gitChanges = getGitChangedFiles(repoRoot, preStepRefs[next.key]);
-      for (const f of gitChanges) {
-        // Exclude pipeline state files — they're not "real" code changes
-        if (!f.includes("in-progress/") && !itemSummary.filesChanged.includes(f)) {
-          itemSummary.filesChanged.push(f);
-        }
-      }
-    } catch { /* non-fatal */ }
-  }
+  // NOTE: git diff augmentation removed — it caused cross-agent attribution
+  // pollution when backend-dev and frontend-dev run in parallel. File tracking
+  // now relies solely on SDK tool.execution_start events (write_file, edit_file,
+  // create_file) plus shell write pattern detection in wireToolLogging().
 
   pipelineSummaries.push(itemSummary);
   flushReports(config, state);
@@ -1028,8 +1075,20 @@ async function handleFailureReroute(
 // and we only use the `.on()` method for event subscription.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: string): void {
+function wireToolLogging(
+  session: any,
+  itemSummary: ItemSummary,
+  repoRoot: string,
+  toolLimits?: { soft?: number; hard?: number },
+): void {
+  const softLimit = toolLimits?.soft ?? TOOL_COUNT_SOFT_LIMIT_DEFAULT;
+  const hardLimit = toolLimits?.hard ?? TOOL_COUNT_HARD_LIMIT_DEFAULT;
+  let softWarningFired = false;
+  let hardLimitFired = false;
   session.on("tool.execution_start", (event: any) => {
+    // After hard limit, ignore all further tool events
+    if (hardLimitFired) return;
+
     const name = event.data.toolName;
     const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
     const args = event.data.arguments as Record<string, unknown> | undefined;
@@ -1038,6 +1097,20 @@ function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: strin
 
     const category = TOOL_CATEGORIES[name] ?? name;
     itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
+
+    // Cognitive Circuit Breaker — hard kill (soft interception is on tool.execution_complete)
+    const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
+    if (totalCalls >= hardLimit) {
+      hardLimitFired = true;
+      console.error(
+        `\n  ✖ HARD LIMIT: Agent exceeded ${hardLimit} tool calls. ` +
+        `Force-disconnecting session to prevent runaway compute waste.\n`,
+      );
+      itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${hardLimit} tool calls`;
+      itemSummary.outcome = "error";
+      session.disconnect().catch(() => { /* best-effort */ });
+      return;
+    }
 
     const filePath = args?.filePath ? path.relative(repoRoot, String(args.filePath)) : null;
     if (filePath) {
@@ -1057,7 +1130,47 @@ function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: strin
           timestamp: new Date().toISOString(),
           isPipelineOp,
         });
+
+        // Detect shell-based file writes (replaces the removed git diff augmentation)
+        const shellFiles = extractShellWrittenFiles(cmd, repoRoot);
+        for (const sf of shellFiles) {
+          if (!itemSummary.filesChanged.includes(sf)) {
+            itemSummary.filesChanged.push(sf);
+          }
+        }
       }
+    }
+  });
+
+  // Soft interception: inject the Frustration Prompt into the tool result
+  // so the LLM actually reads it on its next turn. console.warn is invisible
+  // to the agent — this mutates the content the SDK sends back to the model.
+  session.on("tool.execution_complete", (event: any) => {
+    if (hardLimitFired) return;
+
+    const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
+
+    if (!softWarningFired && totalCalls >= softLimit) {
+      softWarningFired = true;
+
+      const frustrationPrompt =
+        `\n\n⚠️ SYSTEM NOTICE: You have executed ${totalCalls} tool calls in this session ` +
+        `(soft limit: ${softLimit}). You appear to be stuck in a debugging loop. ` +
+        `If you are fighting a persistent testing framework limitation, document it ` +
+        `with pipeline:doc-note and test.skip() the test. If this is a real ` +
+        `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
+        `cycle. DO NOT continue debugging — decide now.`;
+
+      // Mutate the result content that will be sent back to the LLM
+      if (event.data.result && typeof event.data.result.content === "string") {
+        event.data.result.content += frustrationPrompt;
+      } else {
+        event.data.result = { content: frustrationPrompt };
+      }
+
+      console.warn(
+        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
+      );
     }
   });
 }
@@ -1148,6 +1261,6 @@ function wireUsageTracking(session: any, itemSummary: ItemSummary): void {
 /** Flush both report files (summary + terminal log) after each item completes */
 function flushReports(config: PipelineRunConfig, state: PipelineRunState): void {
   const { appRoot, repoRoot, baseBranch, slug, apmContext } = config;
-  writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext);
-  writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext);
+  writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
+  writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
 }

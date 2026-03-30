@@ -16,22 +16,27 @@ agents:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 10, hard: 15 }
   push-infra:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 10, hard: 15 }
   poll-infra-plan:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 15, hard: 20 }
   create-draft-pr:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 15, hard: 20 }
   await-infra-approval:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 10, hard: 15 }
   backend-dev:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
@@ -45,25 +50,28 @@ agents:
     mcp: [roam-code]
     skills: [test-backend-unit]
   frontend-unit-test:
-    instructions: [always, tooling/roam-test-intelligence.md]
+    instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
   push-app:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 10, hard: 15 }
   poll-app-ci:
     instructions: [always]
     mcp: []
     skills: []
+    toolLimits: { soft: 15, hard: 20 }
   integration-test:
     instructions: [always, backend/integration-testing.md, tooling/cloud-telemetry.md]
     mcp: []
     skills: [test-integration]
   live-ui:
-    instructions: [always, frontend/e2e-testing-mandate.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
+    instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
     skills: []
+    toolLimits: { soft: 50, hard: 65 }
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
@@ -72,10 +80,12 @@ agents:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
+    toolLimits: { soft: 15, hard: 20 }
   publish-pr:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
+    toolLimits: { soft: 15, hard: 20 }
 
 config:
   urls:

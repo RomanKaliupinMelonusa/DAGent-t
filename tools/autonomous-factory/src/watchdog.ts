@@ -27,7 +27,7 @@ import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
 import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkAzureAuth, buildRoamIndex } from "./preflight.js";
-import { writePipelineSummary, writeTerminalLog } from "./reporting.js";
+import { writePipelineSummary, writeTerminalLog, parsePreviousSummary } from "./reporting.js";
 import { runItemSession } from "./session-runner.js";
 import type { PipelineRunConfig, PipelineRunState } from "./session-runner.js";
 
@@ -334,11 +334,22 @@ async function main(): Promise<void> {
     roamAvailable,
   };
 
+  // --- Boot-time telemetry: parse prior session's _SUMMARY.md exactly once ---
+  const priorSummaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
+  const baseTelemetry = parsePreviousSummary(priorSummaryPath);
+  if (baseTelemetry) {
+    console.log(
+      `  📊 Prior session detected: ${baseTelemetry.steps} steps, ` +
+      `${baseTelemetry.tokens.toLocaleString()} tokens, $${baseTelemetry.costUsd.toFixed(4)} cost — will merge into totals.`,
+    );
+  }
+
   const runState: PipelineRunState = {
     pipelineSummaries: [],
     attemptCounts: {},
     circuitBreakerBypassed: new Set<string>(),
     preStepRefs: {},
+    baseTelemetry,
   };
 
   // --- Main DAG loop ---
@@ -434,8 +445,8 @@ async function main(): Promise<void> {
       const summaryPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY.md`);
       const archivedPath = path.join(appRoot, "archive", "features", slug, `${slug}_SUMMARY.md`);
       if (!fs.existsSync(archivedPath)) {
-        writePipelineSummary(appRoot, repoRoot, slug, runState.pipelineSummaries, apmContext);
-        writeTerminalLog(appRoot, repoRoot, baseBranch, slug, runState.pipelineSummaries, apmContext);
+        writePipelineSummary(appRoot, repoRoot, slug, runState.pipelineSummaries, apmContext, runState.baseTelemetry);
+        writeTerminalLog(appRoot, repoRoot, baseBranch, slug, runState.pipelineSummaries, apmContext, runState.baseTelemetry);
       } else {
         // Clean up any leftover in-progress copy
         try { fs.unlinkSync(summaryPath); } catch { /* already gone */ }
