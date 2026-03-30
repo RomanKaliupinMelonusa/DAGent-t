@@ -21,6 +21,16 @@ export const ApmMcpConfigSchema = z.object({
   availability: z.enum(["required", "optional"]),
 });
 
+/**
+ * Per-agent cognitive circuit breaker limits.
+ * `soft` triggers a structured warning; `hard` force-disconnects the session.
+ * Omit to use orchestrator defaults (soft=30, hard=40).
+ */
+export const ApmToolLimitsSchema = z.object({
+  soft: z.number().int().positive().optional(),
+  hard: z.number().int().positive().optional(),
+}).optional();
+
 export const ApmCompiledAgentSchema = z.object({
   /** Fully assembled rules markdown (compiled from .apm/instructions/). */
   rules: z.string(),
@@ -30,6 +40,8 @@ export const ApmCompiledAgentSchema = z.object({
   mcp: z.record(z.string(), ApmMcpConfigSchema),
   /** Skill descriptions available to this agent, keyed by skill name. */
   skills: z.record(z.string(), z.string()),
+  /** Per-agent tool call limits (cognitive circuit breaker). */
+  toolLimits: ApmToolLimitsSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -87,6 +99,7 @@ export const ApmAgentDeclSchema = z.object({
   instructions: z.array(z.string()),
   mcp: z.array(z.string()),
   skills: z.array(z.string()).default([]),
+  toolLimits: ApmToolLimitsSchema,
 });
 
 export const ApmGeneratedInstructionSchema = z.object({
@@ -138,6 +151,7 @@ export const ApmSkillFrontmatterSchema = z.object({
 
 export type ApmConfig = z.infer<typeof ApmConfigSchema>;
 export type ApmMcpConfig = z.infer<typeof ApmMcpConfigSchema>;
+export type ApmToolLimits = z.infer<typeof ApmToolLimitsSchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;

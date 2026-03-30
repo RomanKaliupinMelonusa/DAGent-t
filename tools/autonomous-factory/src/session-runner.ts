@@ -101,12 +101,13 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
 
 /**
- * Cognitive Circuit Breaker — tool call limits per session.
+ * Cognitive Circuit Breaker — default tool call limits per session.
+ * Used when an agent does not declare per-agent toolLimits in apm.yml.
  * Soft limit: logs a structured warning to console (visible in _TERMINAL-LOG.md).
  * Hard limit: force-disconnects the session to prevent runaway compute waste.
  */
-export const TOOL_COUNT_SOFT_LIMIT = 30;
-export const TOOL_COUNT_HARD_LIMIT = 40;
+export const TOOL_COUNT_SOFT_LIMIT_DEFAULT = 30;
+export const TOOL_COUNT_HARD_LIMIT_DEFAULT = 40;
 
 function getTimeout(itemKey: string): number {
   if (DEV_ITEMS.has(itemKey)) return TIMEOUT_DEV;
@@ -807,7 +808,8 @@ async function runAgentSession(
   });
 
   // Wire session event listeners
-  wireToolLogging(session, itemSummary, repoRoot);
+  const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
+  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits);
   const playwrightLog = wirePlaywrightLogging(session, next.key);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -1073,7 +1075,14 @@ async function handleFailureReroute(
 // and we only use the `.on()` method for event subscription.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: string): void {
+function wireToolLogging(
+  session: any,
+  itemSummary: ItemSummary,
+  repoRoot: string,
+  toolLimits?: { soft?: number; hard?: number },
+): void {
+  const softLimit = toolLimits?.soft ?? TOOL_COUNT_SOFT_LIMIT_DEFAULT;
+  const hardLimit = toolLimits?.hard ?? TOOL_COUNT_HARD_LIMIT_DEFAULT;
   let softWarningFired = false;
   let hardLimitFired = false;
   session.on("tool.execution_start", (event: any) => {
@@ -1091,22 +1100,22 @@ function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: strin
 
     // Cognitive Circuit Breaker — monitor cumulative tool calls
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-    if (!softWarningFired && totalCalls >= TOOL_COUNT_SOFT_LIMIT) {
+    if (!softWarningFired && totalCalls >= softLimit) {
       softWarningFired = true;
       console.warn(
-        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER: Agent has made ${totalCalls} tool calls.\n` +
+        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER: Agent has made ${totalCalls} tool calls (soft limit: ${softLimit}).\n` +
         `  If you are stuck on a framework limitation, document it with pipeline:doc-note\n` +
         `  and test.skip() the test. If this is a real bug, use \`npm run pipeline:fail\`\n` +
         `  to trigger a redevelopment cycle. Do not continue debugging — decide now.\n`,
       );
     }
-    if (totalCalls >= TOOL_COUNT_HARD_LIMIT) {
+    if (totalCalls >= hardLimit) {
       hardLimitFired = true;
       console.error(
-        `\n  ✖ HARD LIMIT: Agent exceeded ${TOOL_COUNT_HARD_LIMIT} tool calls. ` +
+        `\n  ✖ HARD LIMIT: Agent exceeded ${hardLimit} tool calls. ` +
         `Force-disconnecting session to prevent runaway compute waste.\n`,
       );
-      itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${TOOL_COUNT_HARD_LIMIT} tool calls`;
+      itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${hardLimit} tool calls`;
       itemSummary.outcome = "error";
       session.disconnect().catch(() => { /* best-effort */ });
       return;
