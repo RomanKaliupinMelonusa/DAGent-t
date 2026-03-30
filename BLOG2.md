@@ -1,18 +1,22 @@
 # My AI Pipeline Burned 50 Minutes on Correct Code. The Infrastructure Just Didn't Exist Yet.
 
+**TL;DR:** My deterministic AI pipeline burned 50 minutes retrying correct code because infrastructure hadn't been provisioned yet. I restructured from a 12-item single-wave DAG to an 18-item two-wave architecture with a human-approved infrastructure gate — cutting total runtime by 55% and eliminating an entire class of failure. [The repo is open.](https://github.com/rkaliupin/DAGent)
+
+---
+
 Three of four failure cycles in my agentic pipeline were the same bug class: the backend agent wrote correct Azure Functions code, CI deployed it, integration tests hit `404`, the triage engine routed the failure back to `backend-dev`, and the agent re-read its own code, found nothing wrong, added defensive checks, pushed again. Another `404`. Same error, different attempt, zero progress.
 
 The circuit breaker caught it after 50 minutes and 3 wasted cycles. The root cause wasn't a code bug. The APIM route hadn't been provisioned. The Function App setting didn't exist. The infrastructure wasn't there.
 
 The pipeline was working as designed. **The design was wrong.**
 
-This post covers how I restructured the pipeline from a 12-item, 4-phase single-wave DAG to an 18-item, 6-phase two-wave architecture with a human-approved infrastructure gate — and why that gate eliminated an entire category of failure. [Repo is open.](https://github.com/rkaliupin/DAGent) [First blog post](BLOG.md) for context.
+This post covers how I restructured the pipeline from a 12-item, 4-phase single-wave DAG to an 18-item, 6-phase two-wave architecture with a human-approved infrastructure gate — and why that gate eliminated an entire category of failure. [Repo is open.](https://github.com/rkaliupin/DAGent) [First blog post]({{FIRST_POST_URL}}) for context.
 
 ---
 
 ## The Failure Pattern, Precisely
 
-Here's the v1 timeline from [the first post](BLOG.md):
+Here's the v1 timeline from [the first post]({{FIRST_POST_URL}}):
 
 ```
 00:37 — schema-dev           ✅  (4m)
@@ -188,7 +192,7 @@ Six new items. `push-code` → `push-infra` + `push-app`. `poll-ci` → `poll-in
 
 Most agent systems trust CI to catch errors. The `infra-architect` agent validates locally before anything leaves the session:
 
-```python
+```text
 # Extracted from the actual agent prompt (agents.ts):
 
 ## Workflow
@@ -382,7 +386,7 @@ Based on running this pipeline across multiple features, here's where I've lande
 
 ## Updated Stripe Comparison
 
-The [first post](BLOG.md) mapped my v1 design against [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). With the two-wave architecture, one dimension changes significantly:
+The [first post]({{FIRST_POST_URL}}) mapped my v1 design against [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). With the two-wave architecture, one dimension changes significantly:
 
 | Decision | Two-Wave Pipeline (v2) | Stripe Minions |
 |---|---|---|
@@ -434,6 +438,15 @@ This applies beyond AI pipelines. Any system where autonomous agents interact wi
 
 ---
 
-[Repo](https://github.com/rkaliupin/DAGent) · [First post](BLOG.md) · [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/)
+## What's Next
+
+The [full pipeline is open source](https://github.com/rkaliupin/DAGent) — orchestrator, APM compiler, triage engine, ChatOps workflows, and the two-wave DAG. If you're adapting this to your own stack, the files to start with are `.apm/instructions/` (your project's rules) and the workflow type configs in `pipeline-state.mjs`.
+
+I'm most interested in feedback on:
+- **The approval gate pattern** — is `/dagent approve-infra` via ChatOps the right UX, or should this be a GitHub Environment protection rule?
+- **Graceful degradation** — shipping a Draft PR with partial work vs. halting entirely. Which would your team trust?
+- **Terraform state contention** — environment-per-branch isolation vs. a queue. What's worked for you?
 
 ---
+
+*If you're building deterministic agent pipelines or figuring out where human gates belong in AI-assisted workflows, I'd genuinely like to hear what you've learned. [The repo](https://github.com/rkaliupin/DAGent) is open and actively developed. The [first post]({{FIRST_POST_URL}}) covers the v1 architecture and the Stripe convergence. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*
