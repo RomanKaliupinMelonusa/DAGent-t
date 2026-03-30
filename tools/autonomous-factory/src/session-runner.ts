@@ -1069,7 +1069,11 @@ async function handleFailureReroute(
 
 function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: string): void {
   let softWarningFired = false;
+  let hardLimitFired = false;
   session.on("tool.execution_start", (event: any) => {
+    // After hard limit, ignore all further tool events
+    if (hardLimitFired) return;
+
     const name = event.data.toolName;
     const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
     const args = event.data.arguments as Record<string, unknown> | undefined;
@@ -1091,6 +1095,7 @@ function wireToolLogging(session: any, itemSummary: ItemSummary, repoRoot: strin
       );
     }
     if (totalCalls >= TOOL_COUNT_HARD_LIMIT) {
+      hardLimitFired = true;
       console.error(
         `\n  ✖ HARD LIMIT: Agent exceeded ${TOOL_COUNT_HARD_LIMIT} tool calls. ` +
         `Force-disconnecting session to prevent runaway compute waste.\n`,

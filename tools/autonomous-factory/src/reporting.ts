@@ -255,9 +255,12 @@ export function writePipelineSummary(
 
   // --- Cross-session merge: read previous totals if resuming ---
   const prev = parsePreviousSummary(summaryPath);
-  // Only merge if previous session had more steps than current batch
-  // (i.e., current summaries don't already include the previous steps)
-  const shouldMerge = prev !== null && prev.steps > 0 && summaries.length < prev.steps + summaries.length;
+  // Only merge if the previous file recorded MORE steps than we currently have
+  // in memory. This means it was written by a prior session that ran steps we
+  // don't have in our in-memory pipelineSummaries array.
+  // Within a single session, pipelineSummaries grows cumulatively, so
+  // summaries.length will always be >= what we just wrote — no merge needed.
+  const shouldMerge = prev !== null && prev.steps > summaries.length;
 
   // --- Header ---
   const totalMs = summaries.reduce((sum, s) => sum + s.durationMs, 0);
@@ -453,6 +456,18 @@ export function writeTerminalLog(
   const totalTokens = summaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
   const totalCost = summaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
+  // Cross-session merge (mirror the logic in writePipelineSummary)
+  const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
+  const prev = parsePreviousSummary(summaryPath);
+  const shouldMerge = prev !== null && prev.steps > summaries.length;
+  const mergedSteps = shouldMerge ? summaries.length + prev!.steps : summaries.length;
+  const mergedCompleted = shouldMerge ? completed + prev!.completed : completed;
+  const mergedFailed = shouldMerge ? failed + prev!.failed : failed;
+  const mergedMs = shouldMerge ? totalMs + prev!.durationMs : totalMs;
+  const mergedTokens = shouldMerge ? totalTokens + prev!.tokens : totalTokens;
+  const mergedCost = shouldMerge ? totalCost + prev!.costUsd : totalCost;
+  const mergeNote = shouldMerge ? ` (includes ${prev!.steps} steps from prior session)` : "";
+
   // Compute actual file changes via git diff if possible
   let gitDiffStat = "";
   try {
@@ -482,12 +497,12 @@ export function writeTerminalLog(
     ``,
     `| Metric | Value |`,
     `|---|---|`,
-    `| Total steps | ${summaries.length} (${completed} passed, ${failed} failed/errored) |`,
-    `| Total duration | ${formatDuration(totalMs)} |`,
+    `| Total steps | ${mergedSteps} (${mergedCompleted} passed, ${mergedFailed} failed/errored)${mergeNote} |`,
+    `| Total duration | ${formatDuration(mergedMs)} |`,
     `| Feature branch | \`feature/${featureSlug}\` |`,
     `| Base branch | \`${baseBranch}\` |`,
-    `| Total tokens | ${totalTokens.toLocaleString()} |`,
-    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
+    `| Total tokens | ${mergedTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(mergedCost)}** |`,
     ``,
     `---`,
     ``,

@@ -133,6 +133,41 @@ describe("parsePreviousSummary", () => {
 });
 
 // ---------------------------------------------------------------------------
+// shouldMerge guard logic (mirrors reporting.ts conditional)
+// ---------------------------------------------------------------------------
+
+describe("shouldMerge guard", () => {
+  // Replicate the merge condition: prev.steps > summaries.length
+  function shouldMerge(prev: { steps: number } | null, currentLength: number): boolean {
+    return prev !== null && prev.steps > currentLength;
+  }
+
+  it("does NOT merge within same session (prev.steps === current.length)", () => {
+    // After writing 5 steps, re-reading the same file gives prev.steps=5
+    // and pipelineSummaries still has 5 entries => no merge
+    assert.equal(shouldMerge({ steps: 5 }, 5), false);
+  });
+
+  it("does NOT merge when current session has MORE steps than prev", () => {
+    // Prev file had 3 steps, but we now have 5 in memory => no merge
+    assert.equal(shouldMerge({ steps: 3 }, 5), false);
+  });
+
+  it("DOES merge when prev file has MORE steps than current batch", () => {
+    // Prev session wrote 8 steps, we resumed with 3 new ones => merge
+    assert.equal(shouldMerge({ steps: 8 }, 3), true);
+  });
+
+  it("does NOT merge when prev is null", () => {
+    assert.equal(shouldMerge(null, 5), false);
+  });
+
+  it("does NOT merge when prev.steps is 0", () => {
+    assert.equal(shouldMerge({ steps: 0 }, 0), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Sanity checks for formatting helpers (used by merge)
 // ---------------------------------------------------------------------------
 
