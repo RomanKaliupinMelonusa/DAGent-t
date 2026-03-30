@@ -45,31 +45,7 @@ Sometimes infra landed first. Sometimes it didn't. When it didn't: `404`.
 
 The immediate instinct is: make the triage engine smarter. Teach it to recognize "infrastructure not provisioned" as a distinct fault domain. Route to `infra-architect` instead of `backend-dev`.
 
-I actually tried this. The problem is deeper.
-
-The triage engine works by parsing structured diagnostics from failing agents:
-
-```typescript
-// triage.ts — 4-tier evaluation, in order:
-export function triageFailure(itemKey, errorMessage, naItems, directories) {
-  // Tier 0: Unfixable error detection → immediate halt
-  const unfixableReason = isUnfixableError(errorMessage);
-  if (unfixableReason) return [];  // empty = halt pipeline
-
-  // Tier 1: Agent-emitted JSON diagnostic
-  const diagnostic = parseTriageDiagnostic(errorMessage);
-  if (diagnostic) return applyFaultDomain(diagnostic.fault_domain, itemKey, naItems);
-
-  // Tier 2: CI metadata DOMAIN: header
-  const headerResult = parseDomainHeader(errorMessage);
-  if (headerResult) return applyFaultDomain(headerResult.domain, itemKey, naItems);
-
-  // Tier 3: Legacy keyword fallback
-  return triageByKeywords(itemKey, errorMessage, naItems, directories);
-}
-```
-
-The triage engine can correctly classify `fault_domain: "infra"` and route to the right agent. That works. The problem is *temporal*: in a single-wave pipeline, re-running the infra agent means re-running the deploy, re-running CI, and re-running the integration test. Each cycle burns 10–20 minutes. And if the infrastructure change requires a `terraform apply` that the agent can't perform (because it needs elevated permissions), the loop is infinite.
+I actually tried this. The problem is deeper — it's *temporal*, not taxonomic. The triage engine can correctly classify `fault_domain: "infra"` and route to the right agent. But in a single-wave pipeline, re-running the infra agent means re-running the deploy, re-running CI, and re-running the integration test. Each cycle burns 10–20 minutes. And if the fix requires a `terraform apply` that needs elevated permissions, the loop is infinite.
 
 Triage tells you *what* broke. It can't fix the fact that the ordering was wrong from the start.
 
@@ -171,52 +147,17 @@ export const ITEM_DEPENDENCIES = {
 
 `backend-dev` and `frontend-dev` both depend on `infra-handoff`. That's the structural guarantee. No amount of prompt engineering or triage logic can bypass it — the DAG scheduler won't make the item available until `infra-handoff` is `done`.
 
-### What Changed from v1 — Diff View
-
-```diff
-- schema-dev → backend-dev ‖ frontend-dev → tests → push-code → poll-ci
--   → integration-test → live-ui → cleanup → docs-expert → create-pr
-
-+ Wave 1: schema-dev → infra-architect → push-infra → create-draft-pr
-+   → poll-infra-plan → [HUMAN GATE] → infra-handoff
-+
-+ Wave 2: backend-dev ‖ frontend-dev → unit tests → push-app → poll-app-ci
-+   → integration-test → live-ui → code-cleanup → docs-archived → publish-pr
-```
-
-Six new items. `push-code` → `push-infra` + `push-app`. `poll-ci` → `poll-infra-plan` + `poll-app-ci`. Not naming gymnastics — each triggers different CI workflows with different permissions and different failure modes.
+Six new items vs. v1. `push-code` split into `push-infra` + `push-app`. `poll-ci` split into `poll-infra-plan` + `poll-app-ci`. Not naming gymnastics — each triggers different CI workflows with different permissions and different failure modes.
 
 ---
 
 ## The `infra-architect` Agent: Validate Before You Commit
 
-Most agent systems trust CI to catch errors. The `infra-architect` agent validates locally before anything leaves the session:
+Most agent systems trust CI to catch errors. The `infra-architect` agent runs `terraform validate` + `terraform plan` locally before anything leaves the session. The hard constraint: don't mark complete until `terraform plan` succeeds.
 
-```text
-# Extracted from the actual agent prompt (agents.ts):
+Why validate locally instead of trusting CI? Terraform plan is slow in CI (~2 min), plan failures cascade (a missing variable blocks everything), and the plan itself is an artifact — it gets posted to the Draft PR for human review. Catching errors in 10-second local cycles beats 10-minute push → CI → poll cycles.
 
-## Workflow
-1. Read the feature spec
-2. Read existing .tf files — understand current state
-3. Implement infrastructure changes in infra/
-4. terraform init -backend=false -input=false && terraform validate  # ← must pass
-5. terraform plan -var-file=dev.tfvars -out=tfplan                  # ← must produce valid plan
-6. agent-commit.sh infra "feat(infra): <description>"
-7. pipeline:doc-note — architectural summary for downstream agents
-
-# Hard constraint:
-# Do NOT mark infra-architect complete until terraform plan succeeds locally.
-```
-
-Steps 4 and 5 are the distinction. `backend-dev` writes TypeScript and trusts the CI build to catch compilation errors — a reasonable tradeoff because TypeScript builds are fast and failures are cheap. `infra-architect` runs `terraform validate` + `terraform plan` in-session because:
-
-1. **Terraform plan is slow in CI** (~2 min for init + plan). Catching syntax errors locally saves a full push → CI → poll cycle.
-2. **Plan failures can cascade.** A missing variable blocks the entire plan, not just one resource. Better to iterate locally in 10s cycles.
-3. **The plan itself is an artifact.** It gets pushed, picked up by `deploy-infra.yml`, posted to the Draft PR as a comment, and reviewed by a human.
-
-*"Why not also run `terraform apply` in the agent session?"*
-
-Because apply is irreversible and environment-scoped. A wrong `apply` can delete resources, corrupt state, or create security holes. The agent writes and validates; the pipeline pushes; CI generates the plan; a human approves; an elevated workflow applies. Four separate steps, each with read access to the previous step's output.
+The agent never runs `terraform apply`. Apply is irreversible and environment-scoped — a wrong apply can delete resources, corrupt state, or create security holes. The agent writes and validates; CI generates the plan; a human approves; an elevated workflow applies.
 
 ---
 
@@ -250,27 +191,7 @@ The approval gate costs ~0 seconds of compute and ~0 tokens. The human review ty
 
 ## The Infra-Handoff Contract
 
-After approval and apply, `infra-handoff` bridges the two waves by capturing deployed state into a structured contract:
-
-```typescript
-// From infraHandoffPrompt() in agents.ts — the actual agent instructions:
-
-// 1. Read Terraform outputs:
-//    cd ${appRoot}/infra && terraform output -json
-//
-// 2. Write infra-interfaces.md with:
-//    - Endpoints (Function App URL, APIM Gateway, SWA URL)
-//    - Resource names
-//    - Auth config (CORS origins, etc.)
-//    - Terraform output values
-//
-// DevSecOps: Sensitive Value Masking (MANDATORY)
-// - Passwords, connection strings, keys → <HIDDEN>
-// - "sensitive": true in terraform output → ALWAYS mask
-// - Never write raw secrets to any repository file
-```
-
-The output:
+After approval and apply, `infra-handoff` bridges the two waves. It reads `terraform output -json` from the applied infrastructure and writes a structured contract (with sensitive values masked):
 
 ```markdown
 # Infrastructure Interfaces — my-feature
@@ -312,19 +233,7 @@ const UNFIXABLE_SIGNALS = [
 ] as const;
 ```
 
-When one of these appears in an error message, `triageFailure()` returns an empty array — the signal for "blocked, don't retry":
-
-```typescript
-// session-runner.ts
-if (devItemsToReset.length === 0) {
-  // Empty = unfixable. Trigger Graceful Degradation.
-  await salvageForDraft(slug, itemKey);
-  // salvageForDraft: marks remaining items n/a, skips to docs → publish-pr
-  return { halt: false };  // let the DAG finish what it can
-}
-```
-
-`salvageForDraft()` doesn't kill the pipeline. It preserves all valid work, marks untestable items as `n/a`, skips to documentation and PR creation, and opens a Draft PR with the error documented. The human gets a PR with *most* of the feature implemented and a clear description of what failed and why.
+When one of these appears, `triageFailure()` returns an empty array — "blocked, don't retry." The pipeline doesn't halt. It preserves all valid work, marks untestable items as `n/a`, skips to documentation and PR creation, and opens a Draft PR with the error documented.
 
 *"Why not just halt and throw an error?"*
 
@@ -386,18 +295,7 @@ Based on running this pipeline across multiple features, here's where I've lande
 
 ## Updated Stripe Comparison
 
-The [first post]({{FIRST_POST_URL}}) mapped my v1 design against [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). With the two-wave architecture, one dimension changes significantly:
-
-| Decision | Two-Wave Pipeline (v2) | Stripe Minions |
-|---|---|---|
-| **Orchestration** | Deterministic DAG, 6 phases, human approval gate | Blueprints — state machines with interwoven deterministic + agentic nodes |
-| **Infra handling** | Dedicated Wave 1 with plan → approval → apply → handoff | Likely handled outside the agent pipeline (internal platform team) |
-| **Agent count** | 18 items, 12 specialist agent types | Task-specific agents with curated tool subsets |
-| **Trust boundaries** | Infra ≠ app. Human gate. Graceful degradation on unfixable | Quarantined devboxes, no production access, 2-iteration CI bound |
-| **Context** | APM compiler, 6K token budget/agent, `infra-interfaces.md` | Scoped rules + ~500 MCP tools via Toolshed |
-| **Recovery** | 4-tier triage + compound fault domains + unfixable detection | CI failures route back to agent nodes |
-
-The new column — infrastructure handling — is the gap that v1 shared with most agentic systems I've seen. Stripe likely doesn't have this problem because their infra is managed by a dedicated platform team, not by the same agents that write application code. For everyone else building on cloud primitives, the infrastructure trust boundary needs to be explicit.
+The [first post]({{FIRST_POST_URL}}) mapped my v1 against [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). The biggest delta in v2: infrastructure handling. Stripe likely doesn't have this problem — their infra is managed by a dedicated platform team, not by the same agents that write application code. For everyone else building on cloud primitives, the infrastructure trust boundary needs to be explicit in the execution graph.
 
 ---
 
@@ -409,20 +307,7 @@ This architecture isn't free. Honest accounting:
 
 **Human dependency.** The approval gate blocks on a human. If no one reviews the Terraform plan for 2 hours, the pipeline sits idle for 2 hours. In practice: we use Slack notifications on Draft PR creation. Average review time is 3 minutes. But this is a process dependency, not a technical one, and it doesn't self-heal.
 
-**State complexity.** 18 items × 6 phases × 4 workflow types = a combinatorial state space. The `NA_ITEMS_BY_TYPE` map is the footgun:
-
-```javascript
-export const NA_ITEMS_BY_TYPE = {
-  Backend:      ["frontend-dev", "frontend-unit-test", "live-ui"],
-  Frontend:     ["backend-dev", "backend-unit-test", "integration-test", "schema-dev"],
-  "Full-Stack": [],
-  Infra:        ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
-                 "integration-test", "live-ui", "schema-dev", "code-cleanup",
-                 "push-app", "poll-app-ci"],
-};
-```
-
-Getting one entry wrong means an item either runs when it shouldn't (wasted tokens) or gets skipped when it shouldn't (missing validation). This is covered by tests (`apm-parity.test.ts` validates that every item key in the N/A map exists in `ALL_ITEMS`), but the surface area is real.
+**State complexity.** 18 items × 6 phases × 4 workflow types = a combinatorial state space. Each workflow type has an N/A map that marks irrelevant items — get one entry wrong and an item either runs when it shouldn't (wasted tokens) or gets skipped when it shouldn't (missing validation). Tests cover this (`apm-parity.test.ts`), but the surface area is real.
 
 **Concurrent Terraform state.** Two feature branches can't run `terraform plan` against the same state backend simultaneously without state locking conflicts. The pipeline currently handles this by detecting `"error acquiring the state lock"` as an unfixable signal (graceful degradation), but the correct solution is either a queueing mechanism or environment-per-branch isolation. Neither is implemented.
 
