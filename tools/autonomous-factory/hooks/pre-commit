@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# 1. Allow the commit if the agent wrapper is running it
+if [ "$AGENT_COMMIT" = "1" ]; then
+  exit 0
+fi
+
+# 2. Allow the commit if the human explicitly overrides it via CLI env var
+if [ "$ALLOW_RAW_COMMIT" = "1" ]; then
+  exit 0
+fi
+
+# 3. Allow commits from known human GUI clients
+# GITHUB_DESKTOP: Set by the GitHub Desktop app
+# VSCODE_GIT_IPC_HANDLE: Set by the VS Code integrated Source Control UI
+if [ -n "$GITHUB_DESKTOP" ] || [ -n "$VSCODE_GIT_IPC_HANDLE" ]; then
+  exit 0
+fi
+
+# 4. Allow commits if the user has explicitly whitelisted their global Git profile
+if [ "$(git config --global --get dagent.human)" = "true" ]; then
+  exit 0
+fi
+
+# 5. Otherwise, block the commit and print instructions
+echo "🛑 DAGent Security Gate: Raw git commits are blocked to prevent agent bypasses."
+echo "Agents MUST use: tools/autonomous-factory/agent-commit.sh"
+echo ""
+echo "👨‍💻 Human Override: If you are a human committing manually, use one of the following:"
+echo "  1. Add the --no-verify flag: git commit -m \"...\" --no-verify"
+echo "  2. Use the env var: ALLOW_RAW_COMMIT=1 git commit -m \"...\""
+echo "  3. Whitelist your machine globally: git config --global dagent.human true"
+exit 1

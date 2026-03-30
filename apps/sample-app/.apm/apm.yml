@@ -45,7 +45,7 @@ agents:
     mcp: [roam-code]
     skills: [test-backend-unit]
   frontend-unit-test:
-    instructions: [always, tooling/roam-test-intelligence.md]
+    instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
   push-app:
@@ -61,7 +61,7 @@ agents:
     mcp: []
     skills: [test-integration]
   live-ui:
-    instructions: [always, frontend/e2e-testing-mandate.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
+    instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
     skills: []
   code-cleanup:

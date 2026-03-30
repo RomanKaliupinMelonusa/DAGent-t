@@ -177,6 +177,72 @@ export function writePlaywrightLog(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cross-session summary merging
+// ---------------------------------------------------------------------------
+
+/** Totals parsed from a previous session's _SUMMARY.md Overview table */
+export interface PreviousSummaryTotals {
+  steps: number;
+  completed: number;
+  failed: number;
+  durationMs: number;
+  filesChanged: number;
+  tokens: number;
+  costUsd: number;
+}
+
+/**
+ * Parse the Overview table from an existing _SUMMARY.md.
+ * Returns extracted totals or null if the file doesn't exist or can't be parsed.
+ * Exported for unit testing.
+ */
+export function parsePreviousSummary(summaryPath: string): PreviousSummaryTotals | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(summaryPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  // Parse "| Total steps | 12 (10 passed, 2 failed/errored) |"
+  const stepsMatch = content.match(/\|\s*Total steps\s*\|\s*(\d+)\s*\((\d+)\s*passed,\s*(\d+)\s*failed/);
+  // Parse "| Total duration | 5m 30s |" — we stored this via formatDuration
+  const durationMatch = content.match(/\|\s*Total duration\s*\|\s*([^|]+)\|/);
+  // Parse "| Files changed | 42 |"
+  const filesMatch = content.match(/\|\s*Files changed\s*\|\s*(\d+)\s*\|/);
+  // Parse "| Total tokens | 1,234,567 |" (comma-formatted)
+  const tokensMatch = content.match(/\|\s*Total tokens\s*\|\s*([\d,]+)\s*\|/);
+  // Parse "| **Estimated cost** | **$12.3456** |"
+  const costMatch = content.match(/\|\s*\*\*Estimated cost\*\*\s*\|\s*\*\*\$(\d+\.\d+)\*\*\s*\|/);
+
+  if (!stepsMatch) return null;
+
+  // Parse duration string back to ms
+  let durationMs = 0;
+  if (durationMatch) {
+    const durStr = durationMatch[1].trim();
+    const minMatch = durStr.match(/(\d+)m/);
+    const secMatch = durStr.match(/(\d+)s/);
+    const msMatch = durStr.match(/(\d+)ms/);
+    if (msMatch) durationMs = parseInt(msMatch[1], 10);
+    else {
+      if (minMatch) durationMs += parseInt(minMatch[1], 10) * 60_000;
+      if (secMatch) durationMs += parseInt(secMatch[1], 10) * 1_000;
+    }
+  }
+
+  return {
+    steps: parseInt(stepsMatch[1], 10),
+    completed: parseInt(stepsMatch[2], 10),
+    failed: parseInt(stepsMatch[3], 10),
+    durationMs,
+    filesChanged: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+    tokens: tokensMatch ? parseInt(tokensMatch[1].replace(/,/g, ""), 10) : 0,
+    costUsd: costMatch ? parseFloat(costMatch[1]) : 0,
+  };
+}
+
 /** Write a human-readable markdown summary of the pipeline run */
 export function writePipelineSummary(
   appRoot: string,
@@ -186,6 +252,12 @@ export function writePipelineSummary(
   apmCtx?: ApmCompiledOutput,
 ): void {
   const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
+
+  // --- Cross-session merge: read previous totals if resuming ---
+  const prev = parsePreviousSummary(summaryPath);
+  // Only merge if previous session had more steps than current batch
+  // (i.e., current summaries don't already include the previous steps)
+  const shouldMerge = prev !== null && prev.steps > 0 && summaries.length < prev.steps + summaries.length;
 
   // --- Header ---
   const totalMs = summaries.reduce((sum, s) => sum + s.durationMs, 0);
@@ -200,6 +272,16 @@ export function writePipelineSummary(
   const totalTokens = summaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
   const totalCost = summaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
+  // Merged totals (add previous session if applicable)
+  const mergedSteps = shouldMerge ? summaries.length + prev!.steps : summaries.length;
+  const mergedCompleted = shouldMerge ? completed + prev!.completed : completed;
+  const mergedFailed = shouldMerge ? failed + prev!.failed : failed;
+  const mergedMs = shouldMerge ? totalMs + prev!.durationMs : totalMs;
+  const mergedFiles = shouldMerge ? allFiles.size + prev!.filesChanged : allFiles.size;
+  const mergedTokens = shouldMerge ? totalTokens + prev!.tokens : totalTokens;
+  const mergedCost = shouldMerge ? totalCost + prev!.costUsd : totalCost;
+  const mergeNote = shouldMerge ? ` (includes ${prev!.steps} steps from prior session)` : "";
+
   const lines: string[] = [
     `# Pipeline Summary — ${featureSlug}`,
     ``,
@@ -209,12 +291,12 @@ export function writePipelineSummary(
     ``,
     `| Metric | Value |`,
     `|---|---|`,
-    `| Total steps | ${summaries.length} (${completed} passed, ${failed} failed/errored) |`,
-    `| Total duration | ${formatDuration(totalMs)} |`,
-    `| Files changed | ${allFiles.size} |`,
-    `| Total tokens | ${totalTokens.toLocaleString()} |`,
-    `| **Estimated cost** | **${formatUsd(totalCost)}** |`,
-    ...(allFiles.size > 0 ? [`| Cost per file changed | ${formatUsd(totalCost / allFiles.size)} |`] : []),
+    `| Total steps | ${mergedSteps} (${mergedCompleted} passed, ${mergedFailed} failed/errored)${mergeNote} |`,
+    `| Total duration | ${formatDuration(mergedMs)} |`,
+    `| Files changed | ${mergedFiles} |`,
+    `| Total tokens | ${mergedTokens.toLocaleString()} |`,
+    `| **Estimated cost** | **${formatUsd(mergedCost)}** |`,
+    ...(mergedFiles > 0 ? [`| Cost per file changed | ${formatUsd(mergedCost / mergedFiles)} |`] : []),
     ``,
   ];
 

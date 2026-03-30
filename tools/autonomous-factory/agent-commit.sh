@@ -107,10 +107,10 @@ else
   PREV_MSG="$(git log -1 --format=%s 2>/dev/null || true)"
   # Amend if the previous commit is a pipeline state marker for the same scope
   if [[ "$PREV_MSG" == chore\(pipeline\):* && "$SCOPE" == "pipeline" ]]; then
-    git commit --amend --no-edit
+    AGENT_COMMIT=1 git commit --amend --no-edit
     echo "✔ Amended previous pipeline commit"
   else
-    git commit -m "$MESSAGE"
+    AGENT_COMMIT=1 git commit -m "$MESSAGE"
     echo "✔ Committed: $MESSAGE"
   fi
 fi
