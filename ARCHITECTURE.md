@@ -214,14 +214,241 @@ For `infra-architect`, the completion block also includes a mandatory Terraform 
 
 #### Layers 6–10: Task Prompt with Context Injection (CRITICAL for self-healing)
 
-Built by `buildTaskPrompt()` (`agents.ts` L1732–1757) and augmented by `tools/autonomous-factory/src/context-injection.ts`:
+Context injection is the mechanism that makes the pipeline **self-healing** rather than retry-and-hope. It works by appending structured context fragments to the `taskPrompt` string **before** it is sent to the SDK session — so the LLM agent receives the injected context as part of its user message on the very first turn.
 
-| Injection | When | What | Importance |
-|---|---|---|---|
-| **Retry context** | `attempt > 1` | Previous error, files changed, last intent | HIGH — prevents starting from scratch |
-| **Downstream failure** | Dev item re-entered after post-deploy fail | Exact test failures, HTTP status codes | CRITICAL — the signal that drives fixes |
-| **Revert warning** | `effectiveAttempts >= 3` | Clean-slate wipe instruction | EMERGENCY — breaks hallucination loops |
-| **Infra rollback** | `infra-architect` after `redevelop-infra` | What resource was missing | HIGH — targeted fix guidance |
+All injection logic lives in `tools/autonomous-factory/src/context-injection.ts` — pure string builders with zero SDK coupling. The orchestration point is in `runAgentSession()` at `session-runner.ts` L820–880, where injections are evaluated in sequence and appended to `taskPrompt`.
+
+##### When does injection happen?
+
+Injection happens in `runAgentSession()` **after** `buildTaskPrompt()` creates the base message and **before** `session.sendAndWait()` sends it to the LLM. The decision tree:
+
+```mermaid
+graph TD
+    A["buildTaskPrompt()<br/>Base task message"] --> B{attempt > 1?}
+    B -->|No| F["Send to SDK session"]
+    B -->|Yes| C["buildRetryContext()<br/>+ prev error, files changed, last intent"]
+    C --> D{DEV_ITEMS has key?}
+    D -->|Yes| D2{downstream failures?}
+    D -->|No| E2{effectiveAttempts >= 3?}
+    D2 -->|Yes| D3["buildDownstreamFailureContext()<br/>+ post-deploy error details"]
+    D2 -->|No| E2
+    D3 --> E2
+    E2 -->|Yes| E3["buildRevertWarning()<br/>+ clean-slate wipe command"]
+    E2 -->|No| E4{key == infra-architect?}
+    E3 --> E4
+    E4 -->|Yes| E5["buildInfraRollbackContext()<br/>+ missing resource description"]
+    E4 -->|No| F
+    E5 --> F
+    F --> G["session.sendAndWait(taskPrompt, timeout)"]
+
+    style A fill:#d0e8ff,stroke:#336
+    style C fill:#ff6b6b,stroke:#c0392b,color:#fff
+    style D3 fill:#ff6b6b,stroke:#c0392b,color:#fff
+    style E3 fill:#ff0000,stroke:#8b0000,color:#fff
+    style E5 fill:#ffa500,stroke:#cc8400
+```
+
+On first attempt (`attemptCounts[key] === 1`), **no context is injected** — the agent gets only the base task prompt. Injection only activates when an item is being retried.
+
+##### The 4 Injection Types in Detail
+
+**1. Retry Context** — `buildRetryContext()` (`context-injection.ts` L19–44)
+
+Triggered when `attemptCounts[itemKey] > 1` (any item being retried). The orchestrator searches `pipelineSummaries` in reverse to find the most recent failed attempt for this item, then appends:
+
+```markdown
+## Previous Attempt Context (attempt 2)
+The previous session failed: Cannot read property 'id' of undefined
+Files already modified: backend/src/functions/fn-generate.ts, backend/src/functions/__tests__/fn-generate.test.ts
+Last reported intent: "Implementing the /generate endpoint"
+Pipeline operations that already succeeded:
+  - bash tools/autonomous-factory/agent-commit.sh backend "feat(backend): add generate endpoint"
+
+Start by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.
+```
+
+This prevents the agent from wasting tokens re-reading files it already modified. The data comes from `ItemSummary` — `filesChanged`, `intents`, `shellCommands` captured by `wireToolLogging()` during the previous session.
+
+One critical detail: if `atRevertThreshold` is true (effective attempts ≥ 3 for dev items), the incremental advice ("Start by checking what was already done...") is **omitted** — because the revert warning (below) tells the agent to wipe everything, making incremental advice counterproductive.
+
+**2. Downstream Failure Context** — `buildDownstreamFailureContext()` (`context-injection.ts` L51–97)
+
+Triggered **only for `DEV_ITEMS`** (`backend-dev`, `frontend-dev`, `schema-dev`, `infra-architect`) when `pipelineSummaries` contains failed entries from `POST_DEPLOY_ITEMS` (`live-ui`, `integration-test`, `poll-app-ci`, `poll-infra-plan`). This is the core of the redevelopment cycle — it tells the dev agent **exactly what broke in production**:
+
+```markdown
+## Redevelopment Context (CRITICAL)
+The following post-deploy verification steps failed. Fix the root cause in your code:
+
+### integration-test (attempt 1)
+Outcome: failed
+Error: {"fault_domain":"backend","diagnostic_trace":"API endpoint GET /api/jobs returns 500 — response body: {\"error\":\"Cannot read property 'id' of undefined\"}"}
+Pipeline ops:
+  - npm run pipeline:fail my-feature integration-test '{"fault_domain":"backend",...}'
+
+Focus on the errors above — they describe exactly what broke in production.
+```
+
+If the error involves CI/CD workflow files (`.github/workflows/`), an additional **Commit Scope Warning** is appended telling the agent to use the `cicd` commit scope instead of `backend` or `frontend` — because workflow files are outside the default commit scopes and would be silently dropped.
+
+**3. Revert Warning** — `buildRevertWarning()` (`context-injection.ts` L103–112)
+
+Triggered when `effectiveDevAttempts >= 3` for `DEV_ITEMS` only. `effectiveDevAttempts` is the **maximum** of in-memory attempt count and persisted redevelopment cycle count from the state's `errorLog` (computed by `computeEffectiveDevAttempts()` at `context-injection.ts` L141–154). This survives orchestrator restarts:
+
+```markdown
+## 🚨 CRITICAL SYSTEM WARNING
+You have failed to fix this feature 3 times. You are likely trapped in a hallucination loop.
+RECOMMENDED ACTION: Run `bash tools/autonomous-factory/agent-branch.sh revert` to physically
+wipe the codebase clean back to the main branch. Then, re-explore the codebase and build
+this feature using a completely different architectural approach.
+```
+
+This is the nuclear option — it tells the agent to `git reset --hard` to the base branch and start over. It works alongside the circuit breaker: `shouldSkipRetry()` detects identical errors without code changes and normally halts the pipeline, but for DEV items it grants **one bypass** (`circuitBreakerBypassed` set in `session-runner.ts` L302–306) so the revert warning gets a chance to fire.
+
+**4. Infra Rollback Context** — `buildInfraRollbackContext()` (`context-injection.ts` L119–134)
+
+Triggered **only for `infra-architect`** when the state's `errorLog` contains entries with `itemKey === "redevelop-infra"`. This happens when a Wave 2 app agent (e.g., `backend-dev`) discovers that deployed infrastructure is missing a resource it needs and calls `npm run pipeline:redevelop-infra`:
+
+```markdown
+## ⚠️ INFRASTRUCTURE REJECTED BY APPLICATION TEAM
+The previous application deployment wave failed because the following infrastructure
+was missing or misconfigured:
+
+> Missing Cosmos container — backend needs 'jobs' container for bulk processing
+
+You MUST update your Terraform code to fulfill this requirement before completing this task.
+```
+
+##### The End-to-End Redevelopment Cycle
+
+The most common path through context injection is the **redevelopment cycle** — when a post-deploy test fails and the fix needs to loop back to a dev agent:
+
+```mermaid
+sequenceDiagram
+    participant IT as integration-test Agent
+    participant State as Pipeline State
+    participant Triage as triage.ts
+    participant DAG as DAG Scheduler
+    participant BD as backend-dev Agent (new session)
+
+    Note over IT: Agent runs tests against live endpoint
+    IT->>State: pipeline:fail '{"fault_domain":"backend","diagnostic_trace":"GET /api/jobs returns 500"}'
+    Note over State: failItem() records error in errorLog
+
+    State-->>Triage: handleFailureReroute reads rawError
+    Triage->>Triage: parseTriageDiagnostic -> fault_domain=backend
+    Triage->>Triage: applyFaultDomain -> [backend-dev, backend-unit-test, integration-test]
+    Triage->>State: resetForDev(slug, resetKeys + [push-app, poll-app-ci])
+    Note over State: 5 items set back to pending
+
+    State-->>DAG: getNextAvailable resolves backend-dev
+
+    DAG->>BD: New session created
+    Note over BD: taskPrompt includes:<br/>1. Base task<br/>2. Retry context (if attempt > 1)<br/>3. Downstream failure: "GET /api/jobs returns 500"<br/>4. Revert warning (if attempt >= 3)
+    BD->>BD: Reads diagnostic_trace, fixes handler
+    BD->>State: pipeline:complete backend-dev
+```
+
+Step by step:
+
+1. **`integration-test` agent** runs tests against the live endpoint and discovers a 500 error
+2. Agent calls `pipeline:fail` with a structured `TriageDiagnostic` JSON (`fault_domain: "backend"`)
+3. **`handleFailureReroute()`** in `session-runner.ts` reads the error and calls `triageFailure()`
+4. **`triageFailure()`** in `triage.ts` parses the JSON, extracts `fault_domain`, and calls `applyFaultDomain("backend")` → returns `["backend-dev", "backend-unit-test", "integration-test"]`
+5. **`resetForDev()`** in `pipeline-state.mjs` sets those items + `push-app` + `poll-app-ci` back to `"pending"`, records a `"reset-for-dev"` entry in `errorLog`, and checks the 5-cycle limit
+6. The **watchdog loop** calls `getNextAvailable()` again — `backend-dev` is now pending with all its DAG dependencies still `"done"`, so it's immediately runnable
+7. **`runItemSession()`** creates a new session for `backend-dev` with `attemptCounts[backend-dev] = 2`
+8. Context injection kicks in: `buildRetryContext()` appends the previous failure details, `buildDownstreamFailureContext()` appends the exact integration-test error including `"GET /api/jobs returns 500"`
+9. The agent reads the injected diagnostic, **knows exactly what to fix**, and doesn't waste tokens exploring
+
+##### The Cognitive Circuit Breaker — Runtime Injection
+
+There is a **fifth injection type** that doesn't happen at prompt assembly time — it happens **during** the session via SDK event hooks. This is the cognitive circuit breaker in `wireToolLogging()` at `session-runner.ts` L1078–1175:
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM Agent
+    participant SDK as SDK Session
+    participant Wire as wireToolLogging
+    participant CB as Circuit Breaker
+
+    loop Tool calls 1..29
+        Agent->>SDK: tool call (read_file, edit_file, bash...)
+        SDK->>Wire: tool.execution_start event
+        Wire->>Wire: Log + count tool calls
+        SDK->>Wire: tool.execution_complete event
+        Wire-->>SDK: Pass result through unchanged
+        SDK-->>Agent: Tool result
+    end
+
+    Agent->>SDK: Tool call 30 (hits soft limit)
+    SDK->>Wire: tool.execution_start
+    Wire->>Wire: totalCalls = 30 >= softLimit
+    SDK->>Wire: tool.execution_complete
+    Wire->>CB: Inject frustration prompt into result
+    CB-->>SDK: result.content += SYSTEM NOTICE
+    SDK-->>Agent: Tool result + frustration prompt
+
+    Note over Agent: Agent reads warning, decides to fail or skip
+
+    Agent->>SDK: Tool call 40 (hits hard limit)
+    SDK->>Wire: tool.execution_start
+    Wire->>Wire: totalCalls = 40 >= hardLimit
+    Wire->>SDK: session.disconnect()
+    Note over SDK: Session force-terminated
+```
+
+This works differently from the other 4 injections — it **mutates the tool result content** that the SDK returns to the LLM on the `tool.execution_complete` event:
+
+```typescript
+// Mutate the result content that will be sent back to the LLM
+if (event.data.result && typeof event.data.result.content === "string") {
+  event.data.result.content += frustrationPrompt;
+}
+```
+
+The frustration prompt is:
+```
+⚠️ SYSTEM NOTICE: You have executed 30 tool calls in this session (soft limit: 30).
+You appear to be stuck in a debugging loop. If you are fighting a persistent testing
+framework limitation, document it with pipeline:doc-note and test.skip() the test.
+If this is a real implementation bug, use `npm run pipeline:fail` to trigger a
+redevelopment cycle. DO NOT continue debugging — decide now.
+```
+
+This is injected **into the content visible to the LLM**, not just logged to console (which the agent can't see). Per-agent tool limits are configurable in `apm.yml` via `toolLimits: { soft: N, hard: M }` — e.g., `live-ui` gets `soft: 50, hard: 65` because Playwright browser testing legitimately requires more tool calls.
+
+##### The Change Manifest — Docs-Expert Injection
+
+One final injection mechanism: `writeChangeManifest()` (`context-injection.ts` L161–198) runs **before** the `docs-archived` session. Instead of appending to the task prompt, it writes a `_CHANGES.json` file that the docs-expert agent reads during its workflow. This file contains:
+
+```json
+{
+  "feature": "my-feature",
+  "stepsCompleted": [
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": ["backend/src/functions/fn-jobs.ts"],
+      "docNote": "Added SSE streaming to /jobs endpoint via new fn-jobs.ts"
+    }
+  ],
+  "allFilesChanged": ["backend/src/functions/fn-jobs.ts", "frontend/src/app/jobs/page.tsx"],
+  "summaryIntents": ["Implementing the /jobs endpoint", "Adding SSE streaming support"]
+}
+```
+
+The `docNote` values come from dev agents calling `npm run pipeline:doc-note` before `pipeline:complete` — this is the "Pass the Baton" pattern where each agent leaves structured notes for downstream agents.
+
+##### Summary of All 6 Injection Points
+
+| # | Injection | Where | When | Target | Mechanism |
+|---|---|---|---|---|---|
+| 1 | Retry context | `context-injection.ts` | `attempt > 1` | Any retried item | Append to `taskPrompt` |
+| 2 | Downstream failure | `context-injection.ts` | Dev item after post-deploy fail | `DEV_ITEMS` only | Append to `taskPrompt` |
+| 3 | Revert warning | `context-injection.ts` | `effectiveAttempts >= 3` | `DEV_ITEMS` only | Append to `taskPrompt` |
+| 4 | Infra rollback | `context-injection.ts` | `infra-architect` after `redevelop-infra` | `infra-architect` only | Append to `taskPrompt` |
+| 5 | Frustration prompt | `session-runner.ts` | Tool calls >= soft limit | Any agent in-session | Mutate `tool.execution_complete` result |
+| 6 | Change manifest | `context-injection.ts` | Before `docs-archived` session | `docs-archived` only | Write `_CHANGES.json` file |
 
 Session creation happens at `session-runner.ts` L800–810:
 
