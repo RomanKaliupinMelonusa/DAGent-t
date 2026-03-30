@@ -30,16 +30,22 @@ flowchart TB
     subgraph SESSIONS["🤖 Copilot SDK Sessions (parallel)"]
         direction TB
         S1["schema-dev"]
+        S_IA["infra-architect"]
+        S_PI["push-infra (script)"]
+        S_DPR["create-draft-pr"]
+        S_PIP["poll-infra-plan (script)"]
+        S_AIA["⏸ await-infra-approval"]
+        S_IH["infra-handoff"]
         S2["backend-dev"]
         S3["frontend-dev"]
         S4["backend-unit-test"]
         S5["frontend-unit-test"]
-        S6["push-code → poll-ci"]
+        S6["push-app (script) → poll-app-ci (script)"]
         S7["integration-test"]
         S8["live-ui"]
         S9["code-cleanup"]
-        S10["docs-expert"]
-        S11["create-pr"]
+        S10["docs-archived"]
+        S11["publish-pr"]
     end
 
     subgraph MCP["🔌 MCP Servers"]
@@ -216,8 +222,20 @@ flowchart LR
         I5["Init APM Compiler"]
     end
 
-    subgraph PRE["Pre-Deploy"]
-        P1["schema-dev"]
+    subgraph W1["Wave 1: Infrastructure"]
+        W1_1["schema-dev"]
+        W1_2["infra-architect"]
+        W1_3["push-infra"]
+        W1_4["create-draft-pr"]
+        W1_5["poll-infra-plan"]
+    end
+
+    subgraph GATE["Approval Gate"]
+        G1["⏸ await-infra-approval"]
+        G2["infra-handoff"]
+    end
+
+    subgraph PRE["Wave 2: Pre-Deploy"]
         P2["backend-dev"]
         P3["frontend-dev"]
         P4["backend-unit-test"]
@@ -225,8 +243,8 @@ flowchart LR
     end
 
     subgraph DEP["Deploy"]
-        D1["push-code"]
-        D2["poll-ci"]
+        D1["push-app"]
+        D2["poll-app-ci"]
     end
 
     subgraph POST["Post-Deploy"]
@@ -236,17 +254,18 @@ flowchart LR
 
     subgraph FIN["Finalize"]
         F1["code-cleanup"]
-        F2["docs-expert"]
-        F3["create-pr"]
+        F2["docs-archived"]
+        F3["publish-pr"]
     end
 
     subgraph RECOVERY["Recovery Paths"]
-        R1["CI failure in poll-ci\n→ triageFailure()\n→ resetForDev()"]
+        R1["CI failure in poll-app-ci\n→ triageFailure()\n→ resetForDev()"]
         R2["Post-deploy failure\n→ triageFailure()\n→ resetForDev()"]
     end
 
-    I1 --> I2 --> I3 --> I4 --> I5 --> PRE
-    P1 --> P2 & P3
+    I1 --> I2 --> I3 --> I4 --> I5 --> W1
+    W1_1 --> W1_2 --> W1_3 --> W1_4 --> W1_5 --> GATE
+    G1 --> G2 --> PRE
     P2 --> P4
     P3 --> P5
     P4 & P5 --> DEP
@@ -262,6 +281,8 @@ flowchart LR
     R2 -.->|"reset dev+test items"| PRE
 
     style INIT fill:#e8f5e9
+    style W1 fill:#e8f5e9
+    style GATE fill:#fff9c4,stroke:#f9a825,stroke-width:2px
     style PRE fill:#e3f2fd
     style DEP fill:#fff9c4
     style POST fill:#fff3e0

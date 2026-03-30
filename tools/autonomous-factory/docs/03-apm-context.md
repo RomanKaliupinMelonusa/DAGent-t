@@ -12,7 +12,7 @@
 flowchart TD
     subgraph COMPILE["Compile Phase (one-time, eager)"]
         direction TB
-        M["Read .apm/apm.yml\n· 12 agents\n· token budget: 6000"]
+        M["Read .apm/apm.yml\n· 18 pipeline items\n· token budget: 6000"]
         R["Read all .md files\nfrom .apm/instructions/\n(28 files, 5 categories)"]
         MCP["Read .apm/mcp/*.mcp.yml\n(2 MCP declarations)"]
         SK["Read .apm/skills/*.skill.md\n(5 skill declarations)"]
@@ -85,7 +85,7 @@ agents:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
-  # ... 10 more agents
+  # ... 16 more agents
 ```
 
 ---
@@ -198,36 +198,48 @@ flowchart LR
         BI["backend/\nintegration-testing.md"]
     end
 
-    subgraph AGENTS["Agents (12)"]
+    subgraph AGENTS["LLM Agents (13 with instructions)"]
         P1["backend-dev"]
         P2["frontend-dev"]
         P3["schema-dev"]
+        P3B["infra-architect"]
         P4["backend-unit-test"]
         P5["frontend-unit-test"]
         P6["integration-test"]
         P7["live-ui"]
         P8["code-cleanup"]
         P9["docs-archived"]
-        P10["create-pr"]
-        P11["push-code"]
-        P12["poll-ci"]
+        P10["publish-pr"]
+        P11["create-draft-pr"]
+        P12["infra-handoff"]
     end
 
-    A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & P12
+    subgraph SCRIPT["Script Bypasses (5 — deterministic, no instructions)"]
+        S1["push-infra"]
+        S2["poll-infra-plan"]
+        S3["push-app"]
+        S4["poll-app-ci"]
+        S5["⏸ await-infra-approval"]
+    end
+
+    A --> P1 & P2 & P3 & P3B & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & P12
     B --> P1
     F --> P2
     I --> P1
-    T1 --> P1 & P2 & P3 & P7 & P8 & P9 & P10
-    T2 --> P1 & P2 & P3 & P8
+    T1 --> P1 & P2 & P3 & P3B & P7 & P8 & P9 & P10
+    T2 --> P1 & P2 & P3 & P3B & P8
     T3 --> P4 & P5 & P7
     T4 --> P6 & P7
-    BS --> P3
+    BS --> P3 & P3B
     FE --> P7
     BI --> P6
 
     style RULES fill:#e3f2fd
     style AGENTS fill:#fff3e0
+    style SCRIPT fill:#f5f5f5,stroke:#9e9e9e
 ```
+
+> Script bypass items (`push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci`, `await-infra-approval`) consume zero LLM tokens — they execute deterministic shell commands and need no instruction context.
 
 ### Detailed Include Map
 
@@ -236,15 +248,19 @@ flowchart LR
 | `backend-dev` | `always`, `backend`, `infra`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 9 + 1 + 1 + 1 = **18** |
 | `frontend-dev` | `always`, `frontend`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 8 + 1 + 1 = **16** |
 | `schema-dev` | `always`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 + 1 = **9** |
+| `infra-architect` | `always`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 + 1 = **9** |
 | `backend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
 | `frontend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
 | `integration-test` | `always`, `backend/integration-testing.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 = **8** |
 | `live-ui` | `always`, `frontend/e2e-testing-mandate.md`, `tooling/roam-tool-rules.md`, `tooling/roam-test-intelligence.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 + 1 + 1 = **10** |
 | `code-cleanup` | `always`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 = **8** |
 | `docs-archived` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
-| `create-pr` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
-| `push-code` | `always` | **6** |
-| `poll-ci` | `always` | **6** |
+| `publish-pr` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
+| `create-draft-pr` | `always` | **6** |
+| `infra-handoff` | `always` | **6** |
+| `push-infra` / `push-app` | — (script bypass) | **0** |
+| `poll-infra-plan` / `poll-app-ci` | — (script bypass) | **0** |
+| `await-infra-approval` | — (human gate) | **0** |
 
 ---
 
@@ -256,8 +272,8 @@ flowchart LR
         direction TB
         B1["backend-dev\n18 files ≈ 4800 tokens\n████████████████░░░░ 80%"]
         B2["frontend-dev\n16 files ≈ 4100 tokens\n██████████████░░░░░░ 68%"]
-        B3["schema-dev\n9 files ≈ 1500 tokens\n█████░░░░░░░░░░░░░░ 25%"]
-        B4["push-code\n6 files ≈ 800 tokens\n██░░░░░░░░░░░░░░░░░ 13%"]
+        B3["schema-dev / infra-architect\n9 files ≈ 1500 tokens\n█████░░░░░░░░░░░░░░ 25%"]
+        B4["script bypasses\n0 files ≈ 0 tokens\n░░░░░░░░░░░░░░░░░░░ 0%"]
     end
 
     style BUDGET fill:#fff9c4
@@ -267,9 +283,10 @@ flowchart LR
 |-------|------------|-------------|----------|
 | `backend-dev` | ~4,800 | 80% | ~1,200 tokens |
 | `frontend-dev` | ~4,100 | 68% | ~1,900 tokens |
-| `schema-dev` | ~1,500 | 25% | ~4,500 tokens |
+| `schema-dev` / `infra-architect` | ~1,500 | 25% | ~4,500 tokens |
 | `test agents` | ~800–1,200 | 13–20% | ~4,800+ tokens |
-| `push-code` / `poll-ci` | ~800 | 13% | ~5,200 tokens |
+| `create-draft-pr` / `infra-handoff` | ~800 | 13% | ~5,200 tokens |
+| Script bypasses (push/poll) | 0 | 0% | N/A (no LLM session) |
 
 **Estimation formula:** `Math.ceil(text.length / 3.5)` — conservative estimate matching Claude's tokenization pattern.
 
