@@ -250,6 +250,12 @@ export interface PipelineRunState {
   circuitBreakerBypassed: Set<string>;
   /** Track git commit SHA before each dev step for reliable change detection */
   preStepRefs: Record<string, string>;
+  /**
+   * Telemetry from a prior session's _SUMMARY.md, parsed once at boot time.
+   * Guarantees monotonic metric accumulation across sessions — every flush
+   * simply adds baseTelemetry to the current session's totals.
+   */
+  baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
 }
 
 /** Immutable config for the pipeline run */
@@ -1223,6 +1229,6 @@ function wireUsageTracking(session: any, itemSummary: ItemSummary): void {
 /** Flush both report files (summary + terminal log) after each item completes */
 function flushReports(config: PipelineRunConfig, state: PipelineRunState): void {
   const { appRoot, repoRoot, baseBranch, slug, apmContext } = config;
-  writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext);
-  writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext);
+  writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
+  writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
 }

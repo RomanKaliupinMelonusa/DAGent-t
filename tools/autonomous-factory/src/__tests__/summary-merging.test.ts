@@ -133,37 +133,122 @@ describe("parsePreviousSummary", () => {
 });
 
 // ---------------------------------------------------------------------------
-// shouldMerge guard logic (mirrors reporting.ts conditional)
+// baseTelemetry monotonic merge (boot-time parse + unconditional add)
 // ---------------------------------------------------------------------------
 
-describe("shouldMerge guard", () => {
-  // Replicate the merge condition: prev.steps > summaries.length
-  function shouldMerge(prev: { steps: number } | null, currentLength: number): boolean {
-    return prev !== null && prev.steps > currentLength;
-  }
+import { writePipelineSummary, type PreviousSummaryTotals } from "../reporting.js";
+import type { ItemSummary } from "../types.js";
 
-  it("does NOT merge within same session (prev.steps === current.length)", () => {
-    // After writing 5 steps, re-reading the same file gives prev.steps=5
-    // and pipelineSummaries still has 5 entries => no merge
-    assert.equal(shouldMerge({ steps: 5 }, 5), false);
+/** Build a minimal valid ItemSummary for testing */
+function makeSummary(overrides: Partial<ItemSummary> = {}): ItemSummary {
+  return {
+    key: "test-step",
+    label: "Test Step",
+    agent: "test-agent",
+    phase: "dev",
+    attempt: 1,
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    durationMs: 60_000,
+    outcome: "completed",
+    intents: [],
+    messages: [],
+    filesRead: [],
+    filesChanged: ["src/foo.ts"],
+    shellCommands: [],
+    toolCounts: {},
+    inputTokens: 5000,
+    outputTokens: 2000,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    ...overrides,
+  };
+}
+
+describe("baseTelemetry merge", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "base-tel-test-"));
+  // writePipelineSummary expects: appRoot/in-progress/<slug>_SUMMARY.md
+  const fakeAppRoot = path.join(tmpDir, "app");
+  const fakeRepoRoot = tmpDir;
+  const slug = "test-merge";
+
+  // Create the in-progress directory
+  fs.mkdirSync(path.join(fakeAppRoot, "in-progress"), { recursive: true });
+
+  const summaryFile = path.join(fakeAppRoot, "in-progress", `${slug}_SUMMARY.md`);
+
+  it("writes correct totals with null baseTelemetry", () => {
+    const summaries = [makeSummary({ durationMs: 30_000 })];
+    writePipelineSummary(fakeAppRoot, fakeRepoRoot, slug, summaries, undefined, null);
+    const content = fs.readFileSync(summaryFile, "utf-8");
+    assert.match(content, /Total steps \| 1/);
+    assert.ok(!content.includes("prior session"));
   });
 
-  it("does NOT merge when current session has MORE steps than prev", () => {
-    // Prev file had 3 steps, but we now have 5 in memory => no merge
-    assert.equal(shouldMerge({ steps: 3 }, 5), false);
+  it("adds baseTelemetry to current totals", () => {
+    const base: PreviousSummaryTotals = {
+      steps: 5, completed: 4, failed: 1,
+      durationMs: 300_000, filesChanged: 10, tokens: 100_000, costUsd: 5.0,
+    };
+    const summaries = [makeSummary({ durationMs: 60_000 })];
+    writePipelineSummary(fakeAppRoot, fakeRepoRoot, slug, summaries, undefined, base);
+    const content = fs.readFileSync(summaryFile, "utf-8");
+    // 1 current + 5 prior = 6 total steps
+    assert.match(content, /Total steps \| 6/);
+    assert.match(content, /includes 5 steps from prior session/);
   });
 
-  it("DOES merge when prev file has MORE steps than current batch", () => {
-    // Prev session wrote 8 steps, we resumed with 3 new ones => merge
-    assert.equal(shouldMerge({ steps: 8 }, 3), true);
+  it("stays monotonic when current steps equal prior steps", () => {
+    // This is the exact scenario that broke the old shouldMerge approach:
+    // Wave 1 wrote 5 steps, Wave 2 also has 5 steps => old guard dropped Wave 1
+    const base: PreviousSummaryTotals = {
+      steps: 5, completed: 5, failed: 0,
+      durationMs: 200_000, filesChanged: 8, tokens: 80_000, costUsd: 3.0,
+    };
+    const summaries = Array.from({ length: 5 }, (_, i) =>
+      makeSummary({ key: `step-${i}`, durationMs: 40_000 }),
+    );
+    writePipelineSummary(fakeAppRoot, fakeRepoRoot, slug, summaries, undefined, base);
+    const content = fs.readFileSync(summaryFile, "utf-8");
+    // 5 current + 5 prior = 10 total steps (NOT 5!)
+    assert.match(content, /Total steps \| 10/);
+    assert.match(content, /includes 5 steps from prior session/);
   });
 
-  it("does NOT merge when prev is null", () => {
-    assert.equal(shouldMerge(null, 5), false);
+  it("stays monotonic when current steps exceed prior steps", () => {
+    const base: PreviousSummaryTotals = {
+      steps: 3, completed: 3, failed: 0,
+      durationMs: 100_000, filesChanged: 5, tokens: 30_000, costUsd: 1.0,
+    };
+    const summaries = Array.from({ length: 7 }, (_, i) =>
+      makeSummary({ key: `step-${i}`, durationMs: 20_000 }),
+    );
+    writePipelineSummary(fakeAppRoot, fakeRepoRoot, slug, summaries, undefined, base);
+    const content = fs.readFileSync(summaryFile, "utf-8");
+    // 7 current + 3 prior = 10 total steps
+    assert.match(content, /Total steps \| 10/);
   });
 
-  it("does NOT merge when prev.steps is 0", () => {
-    assert.equal(shouldMerge({ steps: 0 }, 0), false);
+  it("round-trips: write then parse yields correct baseTelemetry for next boot", () => {
+    const base: PreviousSummaryTotals = {
+      steps: 4, completed: 3, failed: 1,
+      durationMs: 180_000, filesChanged: 12, tokens: 60_000, costUsd: 2.5,
+    };
+    const summaries = [
+      makeSummary({ durationMs: 60_000, filesChanged: ["a.ts", "b.ts"] }),
+      makeSummary({ key: "s2", durationMs: 30_000, outcome: "failed", filesChanged: ["c.ts"] }),
+    ];
+    writePipelineSummary(fakeAppRoot, fakeRepoRoot, slug, summaries, undefined, base);
+
+    // Simulate next boot: parse the file we just wrote
+    const parsed = parsePreviousSummary(summaryFile);
+    assert.ok(parsed !== null);
+    // 2 current + 4 prior = 6 total steps
+    assert.equal(parsed.steps, 6);
+    // 1 current completed + 3 prior = 4
+    assert.equal(parsed.completed, 4);
+    // 1 current failed + 1 prior = 2
+    assert.equal(parsed.failed, 2);
   });
 });
 

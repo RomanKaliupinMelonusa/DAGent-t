@@ -250,19 +250,11 @@ export function writePipelineSummary(
   featureSlug: string,
   summaries: readonly ItemSummary[],
   apmCtx?: ApmCompiledOutput,
+  baseTelemetry?: PreviousSummaryTotals | null,
 ): void {
   const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
 
-  // --- Cross-session merge: read previous totals if resuming ---
-  const prev = parsePreviousSummary(summaryPath);
-  // Only merge if the previous file recorded MORE steps than we currently have
-  // in memory. This means it was written by a prior session that ran steps we
-  // don't have in our in-memory pipelineSummaries array.
-  // Within a single session, pipelineSummaries grows cumulatively, so
-  // summaries.length will always be >= what we just wrote — no merge needed.
-  const shouldMerge = prev !== null && prev.steps > summaries.length;
-
-  // --- Header ---
+  // --- Current session totals ---
   const totalMs = summaries.reduce((sum, s) => sum + s.durationMs, 0);
   const completed = summaries.filter((s) => s.outcome === "completed").length;
   const failed = summaries.filter((s) => s.outcome !== "completed").length;
@@ -270,20 +262,19 @@ export function writePipelineSummary(
   for (const s of summaries) {
     for (const f of s.filesChanged) allFiles.add(f);
   }
-
-  // Pre-compute cost totals for Overview
   const totalTokens = summaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
   const totalCost = summaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
-  // Merged totals (add previous session if applicable)
-  const mergedSteps = shouldMerge ? summaries.length + prev!.steps : summaries.length;
-  const mergedCompleted = shouldMerge ? completed + prev!.completed : completed;
-  const mergedFailed = shouldMerge ? failed + prev!.failed : failed;
-  const mergedMs = shouldMerge ? totalMs + prev!.durationMs : totalMs;
-  const mergedFiles = shouldMerge ? allFiles.size + prev!.filesChanged : allFiles.size;
-  const mergedTokens = shouldMerge ? totalTokens + prev!.tokens : totalTokens;
-  const mergedCost = shouldMerge ? totalCost + prev!.costUsd : totalCost;
-  const mergeNote = shouldMerge ? ` (includes ${prev!.steps} steps from prior session)` : "";
+  // --- Monotonic merge: baseTelemetry was parsed once at boot, just add it ---
+  const base = baseTelemetry ?? null;
+  const mergedSteps = summaries.length + (base?.steps ?? 0);
+  const mergedCompleted = completed + (base?.completed ?? 0);
+  const mergedFailed = failed + (base?.failed ?? 0);
+  const mergedMs = totalMs + (base?.durationMs ?? 0);
+  const mergedFiles = allFiles.size + (base?.filesChanged ?? 0);
+  const mergedTokens = totalTokens + (base?.tokens ?? 0);
+  const mergedCost = totalCost + (base?.costUsd ?? 0);
+  const mergeNote = base ? ` (includes ${base.steps} steps from prior session)` : "";
 
   const lines: string[] = [
     `# Pipeline Summary — ${featureSlug}`,
@@ -445,6 +436,7 @@ export function writeTerminalLog(
   featureSlug: string,
   summaries: readonly ItemSummary[],
   apmCtx?: ApmCompiledOutput,
+  baseTelemetry?: PreviousSummaryTotals | null,
 ): void {
   const logPath = path.join(appRoot, "in-progress", `${featureSlug}_TERMINAL-LOG.md`);
 
@@ -456,17 +448,15 @@ export function writeTerminalLog(
   const totalTokens = summaries.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0);
   const totalCost = summaries.reduce((sum, s) => sum + computeStepCost(s), 0);
 
-  // Cross-session merge (mirror the logic in writePipelineSummary)
-  const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
-  const prev = parsePreviousSummary(summaryPath);
-  const shouldMerge = prev !== null && prev.steps > summaries.length;
-  const mergedSteps = shouldMerge ? summaries.length + prev!.steps : summaries.length;
-  const mergedCompleted = shouldMerge ? completed + prev!.completed : completed;
-  const mergedFailed = shouldMerge ? failed + prev!.failed : failed;
-  const mergedMs = shouldMerge ? totalMs + prev!.durationMs : totalMs;
-  const mergedTokens = shouldMerge ? totalTokens + prev!.tokens : totalTokens;
-  const mergedCost = shouldMerge ? totalCost + prev!.costUsd : totalCost;
-  const mergeNote = shouldMerge ? ` (includes ${prev!.steps} steps from prior session)` : "";
+  // Monotonic merge: baseTelemetry was parsed once at boot, just add it
+  const base = baseTelemetry ?? null;
+  const mergedSteps = summaries.length + (base?.steps ?? 0);
+  const mergedCompleted = completed + (base?.completed ?? 0);
+  const mergedFailed = failed + (base?.failed ?? 0);
+  const mergedMs = totalMs + (base?.durationMs ?? 0);
+  const mergedTokens = totalTokens + (base?.tokens ?? 0);
+  const mergedCost = totalCost + (base?.costUsd ?? 0);
+  const mergeNote = base ? ` (includes ${base.steps} steps from prior session)` : "";
 
   // Compute actual file changes via git diff if possible
   let gitDiffStat = "";
