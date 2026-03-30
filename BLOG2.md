@@ -1,271 +1,439 @@
-# Infrastructure First: What Running a Deterministic Pipeline Against Real Cloud Taught Me About Agent Trust
+# My AI Pipeline Burned 50 Minutes on Correct Code. The Infrastructure Just Didn't Exist Yet.
 
-**TL;DR:** I rebuilt my agentic coding pipeline around a single insight: agents should never write application code against infrastructure they haven't proven exists. The 12-item, 4-phase DAG from [the first post](BLOG.md) is now an 18-item, 6-phase two-wave pipeline with a human-approved infrastructure gate between Terraform and application development. The result is fewer wasted cycles, a clear separation of blast radius, and a trust model that scales to real enterprise environments. [The repo is still open.](https://github.com/rkaliupin/DAGent)
+Three of four failure cycles in my agentic pipeline were the same bug class: the backend agent wrote correct Azure Functions code, CI deployed it, integration tests hit `404`, the triage engine routed the failure back to `backend-dev`, and the agent re-read its own code, found nothing wrong, added defensive checks, pushed again. Another `404`. Same error, different attempt, zero progress.
 
----
+The circuit breaker caught it after 50 minutes and 3 wasted cycles. The root cause wasn't a code bug. The APIM route hadn't been provisioned. The Function App setting didn't exist. The infrastructure wasn't there.
 
-## The Problem I Didn't See Coming
+The pipeline was working as designed. **The design was wrong.**
 
-In the [first blog post](BLOG.md), I described a full-stack pipeline run: 140 minutes, 33 steps, 4 redevelopment cycles. The pipeline shipped a working PR. I called it a success.
-
-It was — mechanically. But when I analyzed where those 4 cycles burned time, the pattern was obvious. Three of the four cycles were the same failure class: **the backend agent wrote code against infrastructure that didn't exist yet.** An APIM route that wasn't provisioned. A Function App setting that wasn't deployed. A CORS origin that wasn't configured.
-
-The agent would write correct code. CI would deploy it. Integration tests would hit `404`. The triage engine would correctly route the failure to `backend-dev`. The agent would re-read its code, find nothing wrong, add defensive checks, push again. Another `404`. Same error, different attempt, zero progress.
-
-The circuit breaker eventually caught it. But by then, the pipeline had burned 50 minutes and 3 cycles on a problem no code change could fix — because the infrastructure wasn't there.
-
-**The pipeline was working as designed. The design was wrong.**
+This post covers how I restructured the pipeline from a 12-item, 4-phase single-wave DAG to an 18-item, 6-phase two-wave architecture with a human-approved infrastructure gate — and why that gate eliminated an entire category of failure. [Repo is open.](https://github.com/rkaliupin/DAGent) [First blog post](BLOG.md) for context.
 
 ---
 
-## The Insight: Two Trust Boundaries, Not One
+## The Failure Pattern, Precisely
 
-The original pipeline treated infrastructure as a backend-dev concern. Terraform files lived in the same agent scope as Azure Functions code. The agent would write both, commit both, and the deploy pipeline would handle the rest.
+Here's the v1 timeline from [the first post](BLOG.md):
 
-This works when infrastructure is stable — when you're adding a new endpoint to an existing Function App. It falls apart the moment infrastructure changes are involved, because infrastructure and application code have fundamentally different trust models:
+```
+00:37 — schema-dev           ✅  (4m)
+00:41 —┬— backend-dev        ✅  (7m)     ← writes Terraform + Azure Functions
+       └— frontend-dev       ✅  (11m)
+00:52 —┬— backend-unit-test  ✅  (2m)
+       └— frontend-unit-test ✅  (1m)
+00:54 — push-code            ❌  (15m TIMEOUT — agent went rogue)
+01:09 — push-code            ✅  (2s, deterministic retry)
+01:09 — poll-ci              ✅  (10m)
+01:19 — integration-test     ❌  → redev cycle 1   ← "404 on /api/generate"
+       ... 3 more cycles ...                         ← same 404, same root cause
+02:20 — integration-test     ✅
+02:47 — create-pr            ✅
+```
+
+140 minutes total. 53 of those minutes — 38% of the run — were spent in post-deploy reroute cycles caused by the same problem: **application code deployed before its infrastructure existed.**
+
+The v1 architecture treated Terraform as a `backend-dev` concern. The agent wrote `.tf` files *and* Azure Functions code in the same session, committed both with the same scope, and the deploy pipeline handled them as one unit. When the feature required a new APIM operation or Function App setting, the infrastructure changes and the code that depended on them raced through CI together.
+
+Sometimes infra landed first. Sometimes it didn't. When it didn't: `404`.
+
+---
+
+## Why Better Triage Doesn't Fix This
+
+The immediate instinct is: make the triage engine smarter. Teach it to recognize "infrastructure not provisioned" as a distinct fault domain. Route to `infra-architect` instead of `backend-dev`.
+
+I actually tried this. The problem is deeper.
+
+The triage engine works by parsing structured diagnostics from failing agents:
+
+```typescript
+// triage.ts — 4-tier evaluation, in order:
+export function triageFailure(itemKey, errorMessage, naItems, directories) {
+  // Tier 0: Unfixable error detection → immediate halt
+  const unfixableReason = isUnfixableError(errorMessage);
+  if (unfixableReason) return [];  // empty = halt pipeline
+
+  // Tier 1: Agent-emitted JSON diagnostic
+  const diagnostic = parseTriageDiagnostic(errorMessage);
+  if (diagnostic) return applyFaultDomain(diagnostic.fault_domain, itemKey, naItems);
+
+  // Tier 2: CI metadata DOMAIN: header
+  const headerResult = parseDomainHeader(errorMessage);
+  if (headerResult) return applyFaultDomain(headerResult.domain, itemKey, naItems);
+
+  // Tier 3: Legacy keyword fallback
+  return triageByKeywords(itemKey, errorMessage, naItems, directories);
+}
+```
+
+The triage engine can correctly classify `fault_domain: "infra"` and route to the right agent. That works. The problem is *temporal*: in a single-wave pipeline, re-running the infra agent means re-running the deploy, re-running CI, and re-running the integration test. Each cycle burns 10–20 minutes. And if the infrastructure change requires a `terraform apply` that the agent can't perform (because it needs elevated permissions), the loop is infinite.
+
+Triage tells you *what* broke. It can't fix the fact that the ordering was wrong from the start.
+
+---
+
+## Infrastructure and Application Code Are Different Trust Domains
+
+This is the table that changed how I think about the pipeline:
 
 | Dimension | Infrastructure | Application Code |
-|-----------|:-:|:-:|
-| **Blast radius** | Entire environment — networking, IAM, DNS | Feature-scoped — one endpoint, one component |
+|-----------|---|---|
+| **Blast radius** | Entire environment — networking, IAM, DNS, billing | Feature-scoped — one endpoint, one component |
 | **Reversibility** | Often irreversible (state files, DNS propagation, IAM bindings) | Always reversible (`git revert`, redeploy) |
-| **Validation method** | `terraform plan` — must be human-reviewed | Unit tests + CI — automated verification |
-| **Cost of error** | Resource leaks, security exposure, billing impact | Broken feature — rollback and retry |
-| **Feedback loop** | Minutes to hours (provisioning time) | Seconds (test execution) |
-| **Who should approve** | Platform engineer / security reviewer | The pipeline itself (automated tests) |
+| **Validation** | `terraform plan` — requires human review | Unit tests + CI — fully automated |
+| **Cost of error** | Resource leaks, security exposure, cost spikes | Broken feature — rollback and retry |
+| **Feedback loop** | Minutes to hours (provisioning) | Seconds (test execution) |
+| **Who approves** | Platform engineer or security reviewer | The pipeline itself |
 
-Treating these as one concern means the pipeline can't make the distinction either. It sees a `404`, routes to `backend-dev`, and expects a code fix — when the real answer is "the infrastructure hasn't been provisioned yet."
+*"Yeah, but couldn't you just run `terraform apply` automatically?"*
 
-The fix isn't better triage. The fix is **never letting application agents run until infrastructure is proven.**
+For greenfield resources in a dev environment, sure. But the moment you touch IAM role assignments, OIDC federation, network security groups, or APIM policies — the blast radius is environment-wide. A wrong `terraform apply` can lock out your own CI pipeline (ask me how I know). The enterprise answer is: plan automatically, apply with approval.
 
----
-
-## The Two-Wave Architecture
-
-The pipeline now runs in two sequential waves, separated by a human approval gate:
-
-```
-Human writes SPEC
-       ↓
-┌──────────────────────────────────────────────────────────────────┐
-│  WAVE 1: Infrastructure                                          │
-│                                                                  │
-│  schema-dev → infra-architect → push-infra → create-draft-pr    │
-│       → poll-infra-plan → ⏸ await-infra-approval → infra-handoff│
-│                                                                  │
-│  ⏸ Human reviews Terraform plan on Draft PR                      │
-│    Comments /dagent approve-infra to continue                    │
-│                                                                  │
-├──────────────────────────────────────────────────────────────────┤
-│  WAVE 2: Application (gated behind infra-handoff)                │
-│                                                                  │
-│  backend-dev ‖ frontend-dev → unit tests → push-app → poll-app-ci│
-│       → integration-test → live-ui → cleanup → docs → publish-pr│
-│       ↑              ↑                                           │
-│       └─ triage ─────┘  (self-healing stays within Wave 2)       │
-└──────────────────────────────────────────────────────────────────┘
-       ↓
-Pull Request ready for human review
-```
-
-**18 items across 6 phases.** Wave 1 handles schemas and infrastructure. Wave 2 handles application code. The two never overlap. The gate between them is a human decision, not an LLM judgment.
-
-### What Changed — Precisely
-
-The original 12-item pipeline:
-```
-schema-dev → backend-dev ‖ frontend-dev → tests → push-code → poll-ci
-→ integration-test → live-ui → cleanup → docs-expert → create-pr
-```
-
-The new 18-item pipeline:
-```
-Wave 1: schema-dev → infra-architect → push-infra → create-draft-pr
-        → poll-infra-plan → [HUMAN APPROVAL] → infra-handoff
-
-Wave 2: backend-dev ‖ frontend-dev → backend-unit-test ‖ frontend-unit-test
-        → push-app → poll-app-ci → integration-test → live-ui
-        → code-cleanup → docs-archived → publish-pr
-```
-
-Six new items: `infra-architect`, `push-infra`, `create-draft-pr`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`. The old `push-code` split into `push-infra` (Wave 1) and `push-app` (Wave 2). The old `poll-ci` split into `poll-infra-plan` (Wave 1) and `poll-app-ci` (Wave 2). This isn't naming gymnastics — each serves a distinct purpose with different CI workflows, different failure modes, and different trust levels.
+The fix isn't better error classification. It's **never letting application agents run until infrastructure is proven to exist.**
 
 ---
 
-## The Infra Architect Agent
+## The Two-Wave DAG
 
-The most interesting new agent is `infra-architect`. Unlike `backend-dev` or `frontend-dev`, this agent has a hard constraint: **it must prove its work compiles before it can proceed.**
+```mermaid
+flowchart LR
+    subgraph W1["Wave 1 — Infrastructure"]
+        direction TB
+        SD["schema-dev"] --> IA["infra-architect"]
+        IA --> PI["push-infra"]
+        PI --> DPR["create-draft-pr"]
+        DPR --> PIP["poll-infra-plan"]
+    end
 
+    subgraph GATE["⏸ Approval Gate"]
+        AIA["await-infra-approval\n(agent: null)"]
+        IH["infra-handoff"]
+        AIA --> IH
+    end
+
+    subgraph W2["Wave 2 — Application"]
+        direction TB
+        BD["backend-dev"] --> BUT["backend-unit-test"]
+        FD["frontend-dev"] --> FUT["frontend-unit-test"]
+        BUT & FUT --> PA["push-app"]
+        PA --> PAC["poll-app-ci"]
+        PAC --> IT["integration-test"]
+        IT --> LU["live-ui"]
+        LU & IT --> CC["code-cleanup"]
+        CC --> DA["docs-archived"]
+        DA --> PP["publish-pr"]
+    end
+
+    PIP --> AIA
+    IH --> BD & FD
+
+    IT -.->|"fault: backend"| BD
+    LU -.->|"fault: frontend"| FD
+
+    style W1 fill:#e3f2fd
+    style GATE fill:#fff9c4
+    style W2 fill:#e8f5e9
 ```
-1. Read SPEC — extract infrastructure requirements
+
+18 items. 6 phases. The two waves never overlap.
+
+The key dependency edges — and this is worth staring at — are:
+
+```javascript
+// pipeline-state.mjs — the actual dependency map
+export const ITEM_DEPENDENCIES = {
+  // Wave 1
+  "schema-dev":           [],
+  "infra-architect":      ["schema-dev"],
+  "push-infra":           ["infra-architect"],
+  "create-draft-pr":      ["push-infra"],
+  "poll-infra-plan":      ["create-draft-pr"],
+  "await-infra-approval": ["poll-infra-plan"],
+  "infra-handoff":        ["await-infra-approval"],
+
+  // Wave 2 — gated behind infra-handoff
+  "backend-dev":          ["schema-dev", "infra-handoff"],  // ← the gate
+  "frontend-dev":         ["schema-dev", "infra-handoff"],  // ← the gate
+  "backend-unit-test":    ["backend-dev"],
+  "frontend-unit-test":   ["frontend-dev"],
+  "push-app":             ["backend-unit-test", "frontend-unit-test"],
+  "poll-app-ci":          ["push-app"],
+  "integration-test":     ["poll-app-ci"],
+  "live-ui":              ["poll-app-ci", "integration-test"],
+  "code-cleanup":         ["integration-test", "live-ui"],
+  "docs-archived":        ["code-cleanup"],
+  "publish-pr":           ["docs-archived"],
+};
+```
+
+`backend-dev` and `frontend-dev` both depend on `infra-handoff`. That's the structural guarantee. No amount of prompt engineering or triage logic can bypass it — the DAG scheduler won't make the item available until `infra-handoff` is `done`.
+
+### What Changed from v1 — Diff View
+
+```diff
+- schema-dev → backend-dev ‖ frontend-dev → tests → push-code → poll-ci
+-   → integration-test → live-ui → cleanup → docs-expert → create-pr
+
++ Wave 1: schema-dev → infra-architect → push-infra → create-draft-pr
++   → poll-infra-plan → [HUMAN GATE] → infra-handoff
++
++ Wave 2: backend-dev ‖ frontend-dev → unit tests → push-app → poll-app-ci
++   → integration-test → live-ui → code-cleanup → docs-archived → publish-pr
+```
+
+Six new items. `push-code` → `push-infra` + `push-app`. `poll-ci` → `poll-infra-plan` + `poll-app-ci`. Not naming gymnastics — each triggers different CI workflows with different permissions and different failure modes.
+
+---
+
+## The `infra-architect` Agent: Validate Before You Commit
+
+Most agent systems trust CI to catch errors. The `infra-architect` agent validates locally before anything leaves the session:
+
+```python
+# Extracted from the actual agent prompt (agents.ts):
+
+## Workflow
+1. Read the feature spec
 2. Read existing .tf files — understand current state
-3. Write Terraform changes — new resources, variables, outputs
-4. terraform validate — syntax check (must pass)
-5. terraform plan — generate plan artifact (must produce a valid plan)
-6. Commit via agent-commit.sh infra — scoped to infra/ directory only
-7. pipeline:doc-note — document what changed and why for downstream agents
+3. Implement infrastructure changes in infra/
+4. terraform init -backend=false -input=false && terraform validate  # ← must pass
+5. terraform plan -var-file=dev.tfvars -out=tfplan                  # ← must produce valid plan
+6. agent-commit.sh infra "feat(infra): <description>"
+7. pipeline:doc-note — architectural summary for downstream agents
+
+# Hard constraint:
+# Do NOT mark infra-architect complete until terraform plan succeeds locally.
 ```
 
-Steps 4 and 5 are the key difference. `backend-dev` writes code and hopes CI catches errors. `infra-architect` runs validation locally before committing. If `terraform validate` fails, the agent fixes its own code in-session. No wasted CI cycle.
+Steps 4 and 5 are the distinction. `backend-dev` writes TypeScript and trusts the CI build to catch compilation errors — a reasonable tradeoff because TypeScript builds are fast and failures are cheap. `infra-architect` runs `terraform validate` + `terraform plan` in-session because:
 
-But `terraform plan` is never applied by the agent. That plan gets:
-1. Pushed to the feature branch (`push-infra`)
-2. Picked up by the `deploy-infra.yml` workflow
-3. Posted as a comment on the Draft PR (`poll-infra-plan`)
-4. Reviewed by a human who comments `/dagent approve-infra`
+1. **Terraform plan is slow in CI** (~2 min for init + plan). Catching syntax errors locally saves a full push → CI → poll cycle.
+2. **Plan failures can cascade.** A missing variable blocks the entire plan, not just one resource. Better to iterate locally in 10s cycles.
+3. **The plan itself is an artifact.** It gets pushed, picked up by `deploy-infra.yml`, posted to the Draft PR as a comment, and reviewed by a human.
 
-Only after human approval does `infra-handoff` run — capturing Terraform outputs into an `infra-interfaces.md` file that downstream agents read as their infrastructure contract.
+*"Why not also run `terraform apply` in the agent session?"*
+
+Because apply is irreversible and environment-scoped. A wrong `apply` can delete resources, corrupt state, or create security holes. The agent writes and validates; the pipeline pushes; CI generates the plan; a human approves; an elevated workflow applies. Four separate steps, each with read access to the previous step's output.
+
+---
+
+## The Approval Gate: `agent: null`
+
+This is the simplest and most important piece of code in the pipeline:
+
+```javascript
+// pipeline-state.mjs
+{ key: "await-infra-approval", agent: null, phase: "approval" }
+```
+
+```typescript
+// watchdog.ts — the orchestrator loop
+const approvalGateItems = available.filter((i) => i.agent === null);
+if (approvalGateItems.length > 0 && available.every((i) => i.agent === null)) {
+  console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra");
+  break;  // clean exit — ChatOps re-triggers on approval
+}
+```
+
+`agent: null` means no LLM session gets created. Zero tokens. The orchestrator logs a message, exits cleanly, and waits. A GitHub Actions ChatOps workflow (`dagent-chatops.yml`) watches for PR comments:
+
+- **`/dagent approve-infra`** — Triggers `elevated-infra-deploy.yml`, which runs `terraform apply` with OIDC credentials scoped to a `secops-elevated` GitHub Environment (requires reviewer approval). On success, calls `pipeline:complete` for `await-infra-approval`, then re-triggers the orchestrator.
+- **`/dagent hold`** — Cancels all running agentic + elevated workflows. Full stop.
+- **`/dagent apply-elevated -target=azurerm_resource.x`** — Targeted apply for when you need to apply specific resources with elevated permissions.
+
+The approval gate costs ~0 seconds of compute and ~0 tokens. The human review typically takes 2–5 minutes. The 50 minutes of wasted agent cycles it eliminates make it the best ROI of any change in the pipeline.
 
 ---
 
 ## The Infra-Handoff Contract
 
-This is the bridge between the two waves. After Terraform applies successfully, `infra-handoff` captures the deployed state:
+After approval and apply, `infra-handoff` bridges the two waves by capturing deployed state into a structured contract:
+
+```typescript
+// From infraHandoffPrompt() in agents.ts — the actual agent instructions:
+
+// 1. Read Terraform outputs:
+//    cd ${appRoot}/infra && terraform output -json
+//
+// 2. Write infra-interfaces.md with:
+//    - Endpoints (Function App URL, APIM Gateway, SWA URL)
+//    - Resource names
+//    - Auth config (CORS origins, etc.)
+//    - Terraform output values
+//
+// DevSecOps: Sensitive Value Masking (MANDATORY)
+// - Passwords, connection strings, keys → <HIDDEN>
+// - "sensitive": true in terraform output → ALWAYS mask
+// - Never write raw secrets to any repository file
+```
+
+The output:
 
 ```markdown
 # Infrastructure Interfaces — my-feature
 
-## Deployed Resources
-- Function App: func-tb-dev.azurewebsites.net
-- APIM Gateway: apim-tb-dev.azure-api.net
-- Static Web App: swa-tb-dev.azurestaticapps.net
-
-## Environment Variables
-- APIM_SUBSCRIPTION_KEY: <HIDDEN>
-- FUNCTION_APP_URL: https://func-tb-dev.azurewebsites.net
+## Endpoints
+- Function App: https://func-tb-dev.azurewebsites.net
+- APIM Gateway: https://apim-tb-dev.azure-api.net
+- Static Web App: https://swa-tb-dev.azurestaticapps.net
 
 ## API Routes
 - POST /api/auth/login → fn-demo-login
 - GET  /api/hello → fn-hello
+
+## Auth Config
+- CORS Origins: ["https://swa-tb-dev.azurestaticapps.net"]
 ```
 
-Sensitive values are masked. URLs are real. When `backend-dev` and `frontend-dev` start their sessions, they read this file and know exactly what infrastructure exists, what endpoints are available, and what environment their code will deploy into.
+When `backend-dev` and `frontend-dev` start their sessions, they read this file. They know every endpoint, every URL, every resource name. They don't guess. They don't assume. They read a contract that was generated from real `terraform output` against applied infrastructure.
 
-**No more guessing. No more writing code against infrastructure that might not exist.**
-
----
-
-## The Approval Gate: Why Humans Stay in the Loop
-
-The `await-infra-approval` item has `agent: null`. No LLM session. No tokens. The orchestrator hits this item, logs a message, and stops:
-
-> ⏸ Awaiting human approval — comment `/dagent approve-infra` on the Draft PR to continue
-
-A ChatOps workflow watches for that comment. When a human reviews the Terraform plan and approves, the pipeline resumes. If the plan looks wrong, the human can:
-
-- **`/dagent hold`** — Cancel all running workflows. Full stop.
-- **`/dagent apply-elevated`** — Apply with elevated permissions (gated by GitHub Environment approval for `secops-elevated`). For when infrastructure changes require Contributor + User Access Administrator roles.
-- Comment on the PR with feedback — the `infra-architect` agent gets another cycle to fix the plan.
-
-This isn't a token-saving optimization. This is a trust boundary. Infrastructure changes that affect IAM, networking, and billing should never be fully autonomous — not because agents can't write correct Terraform, but because **the blast radius of a wrong Terraform apply is categorically different from a wrong API endpoint.**
-
-Stripe's Minions handle this with quarantined devboxes. We handle it with an explicit approval gate in the DAG. Different mechanism, same principle: some decisions need a human.
+This is why application development time dropped 22% — agents spend less time exploring and more time implementing, because the infrastructure contract removes an entire class of unknowns.
 
 ---
 
-## Graceful Degradation: When Infrastructure Fails Beyond Agent Capacity
+## Graceful Degradation: Knowing When to Stop
 
-Not every infrastructure error is fixable by retrying. When the triage engine detects an unfixable signal — IAM denials, Azure AD configuration errors, Terraform state locks, resource existence conflicts — the pipeline doesn't loop. It degrades gracefully:
+Not every infrastructure error is retryable. The triage engine maintains a list of signals that no agent can fix:
 
-1. Marks all remaining test and deploy items as `n/a`
-2. Skips directly to `docs-archived` → `publish-pr`
-3. Opens the PR as a Draft with the error documented
-4. Hands the problem to a human
+```typescript
+// triage.ts
+const UNFIXABLE_SIGNALS = [
+  "authorization_requestdenied",       // Azure AD
+  "aadsts700016", "aadsts7000215",     // Entra ID
+  "insufficient privileges",
+  "does not have authorization",
+  "subscription not found",
+  "error acquiring the state lock",    // Terraform
+  "resource already exists",
+  "state blob is already locked",
+] as const;
+```
 
-The agent can't fix a missing Azure AD app registration. It can't bypass a Terraform state lock held by another process. But it can preserve all the valid work done so far, document what failed and why, and create a PR that a human can pick up.
+When one of these appears in an error message, `triageFailure()` returns an empty array — the signal for "blocked, don't retry":
 
-This is the opposite of the "retry until timeout" behavior that plagues most agent systems. Recognizing when to stop is as important as knowing how to recover.
+```typescript
+// session-runner.ts
+if (devItemsToReset.length === 0) {
+  // Empty = unfixable. Trigger Graceful Degradation.
+  await salvageForDraft(slug, itemKey);
+  // salvageForDraft: marks remaining items n/a, skips to docs → publish-pr
+  return { halt: false };  // let the DAG finish what it can
+}
+```
 
----
+`salvageForDraft()` doesn't kill the pipeline. It preserves all valid work, marks untestable items as `n/a`, skips to documentation and PR creation, and opens a Draft PR with the error documented. The human gets a PR with *most* of the feature implemented and a clear description of what failed and why.
 
-## What the Numbers Look Like Now
+*"Why not just halt and throw an error?"*
 
-I ran the same full-stack deployment feature with the new two-wave architecture. Before-and-after comparison of the critical path:
-
-| Phase | Before (v1) | After (Two-Wave) | Change |
-|-------|:-:|:-:|:-:|
-| Schema development | 4 min | 4 min | — |
-| Infrastructure provisioning + approval | N/A (bundled with backend-dev) | 12 min + human review | New |
-| Application development (parallel) | 18 min | 14 min | −22% (*agents read infra-interfaces.md*) |
-| Pre-deploy testing | 3 min | 2 min | −33% (*fewer integration issues*) |
-| Deploy + CI polling | 12 min | 10 min | — |
-| Post-deploy verification | 53 min (4 reroute cycles) | 11 min (0 reroute cycles) | **−79%** |
-| Finalize + PR | 8 min | 7 min | — |
-| **Total** | **140 min** | **~60 min + review time** | **−57%** |
-
-The headline number isn't the total time reduction — it's the **zero reroute cycles** in post-deploy. Every cycle that used to happen was an agent writing correct code against missing infrastructure. With the infra-handoff contract, that category of failure is structurally impossible.
-
-The total includes time for human infrastructure review. In practice this takes 2–5 minutes for a straightforward plan. The tradeoff — adding 2 minutes of human review to eliminate 50 minutes of wasted agent cycles — is obviously worth it.
-
----
-
-## Design Philosophy: What I've Learned About Agent Trust
-
-Building v1 taught me that LLMs are unreliable orchestrators. Building v2 taught me something deeper: **agent trust isn't binary — it's domain-specific.**
-
-### Trust the Agent To...
-- **Reason about code.** Write functions, debug type errors, design component hierarchies. This is what LLMs are best at.
-- **Diagnose failures.** Read error logs, correlate symptoms with root causes, emit structured diagnostics. Agents are better at this than you'd expect.
-- **Follow bounded workflows.** Given numbered steps with clear completion criteria, agents execute reliably. The key word is "bounded."
-
-### Don't Trust the Agent To...
-- **Orchestrate itself.** The push-code disaster from v1 — 63 shell commands in 15 minutes, including `git reset --hard` — proved this definitively. Deterministic orchestration is non-negotiable.
-- **Judge blast radius.** An agent doesn't naturally distinguish "this change affects one endpoint" from "this change affects the entire networking layer." The DAG must encode this distinction.
-- **Know when to stop.** Without circuit breakers and hard limits, agents will retry forever with decreasing quality. The system must define the boundary.
-- **Approve infrastructure.** Not because they'd get it wrong — but because the consequence of getting it wrong is categorically different, and the organization needs a human audit trail.
-
-### The Principle
-
-**Separate concerns by trust level, not by technology.** The old pipeline separated by phase (pre-deploy, deploy, post-deploy). The new pipeline separates by trust boundary (infrastructure vs. application, human-approved vs. automated). The phases still exist — but the trust model governs the architecture.
+Because partial work has value. If `schema-dev`, `infra-architect`, and `backend-dev` all completed successfully but `integration-test` hit an IAM denial — that's 80% of a feature. Throwing it away because of an environment config issue is wasteful. Ship the draft, let the human fix the IAM binding, re-run the pipeline from where it stopped.
 
 ---
 
-## The Updated Stripe Comparison
+## Before/After: The Numbers
 
-The first post mapped my design against Stripe's Minions. With the two-wave architecture, one new column:
+Same feature (full-stack deployment with new APIM routes), v1 vs. two-wave:
 
-| Design Decision | Two-Wave Pipeline (v2) | Stripe Minions |
-|-----------------|:-:|:-:|
-| **Orchestration** | Deterministic DAG with 6 phases + human approval gate | Blueprints with interwoven deterministic/agentic nodes |
-| **Infrastructure handling** | Separate Wave 1 with approval gate before app dev starts | Likely handled outside the agent pipeline (internal platform) |
-| **Agent specialization** | 18 items across 12 specialist agent types | Task-specific agents with curated tool subsets |
-| **Trust boundaries** | Infra ≠ app code. Human gate between waves. Graceful degradation on unfixable errors | Quarantined devboxes, no production access, 2-iteration CI bound |
-| **Context management** | APM compiler, 6,000-token budget per agent, infra-interfaces.md contract | Scoped rules + MCP tools via Toolshed |
-| **Failure recovery** | 4-tier triage with compound fault domains + unfixable-error detection + circuit breakers | CI failures route back to agent nodes for remediation |
+| Phase | v1 | Two-Wave (v2) | Δ |
+|---|---|---|---|
+| Schema | 4 min | 4 min | — |
+| Infrastructure + approval | N/A (in backend-dev) | 12 min + ~3 min review | **New** |
+| App dev (parallel) | 18 min | 14 min | −22% |
+| Unit tests | 3 min | 2 min | −33% |
+| Deploy + CI | 12 min | 10 min | — |
+| Post-deploy verification | **53 min** (4 reroute cycles) | **11 min** (0 cycles) | **−79%** |
+| Finalize | 8 min | 7 min | — |
+| **Total wall clock** | **140 min** | **~63 min** | **−55%** |
 
-The core pattern hasn't changed — deterministic orchestration wrapping LLM execution. But v2 adds a dimension that v1 lacked: **explicit trust boundaries encoded in the DAG itself**, not just in agent prompts.
+The 79% reduction in post-deploy time is the headline. Those 4 reroute cycles were structurally impossible in v2 — the DAG dependency on `infra-handoff` prevents the failure class from occurring.
 
----
+The 22% app-dev speedup is an unexpected bonus: agents producing fewer exploratory commands because the infra contract removes guesswork about which endpoints exist.
 
-## Three Things I'd Tell You If You're Building This
-
-### 1. Your DAG Is Your Trust Model
-
-Every dependency edge in your DAG is a statement about trust. `backend-dev → backend-unit-test` means "I trust backend-dev's output enough to test it." `infra-architect → push-infra → poll-infra-plan → await-infra-approval → infra-handoff → backend-dev` means "I don't trust infrastructure changes until a human reviews the plan and deployment succeeds."
-
-When you add a new agent, don't just ask "what does it depend on?" Ask "what am I trusting when I let this agent run?" If the answer is "infrastructure that hasn't been validated," add a gate.
-
-### 2. Separate Push and Poll per Trust Boundary
-
-In v1, `push-code` and `poll-ci` were single steps. This forced infrastructure and application code through the same deployment pipeline. In v2, `push-infra` triggers `deploy-infra.yml` (Terraform plan only) while `push-app` triggers `deploy-backend.yml` and `deploy-frontend.yml` (build + deploy). Different workflows, different permissions, different failure modes.
-
-If your pipeline has any step where infrastructure and application code intermingle in the same CI run, split them. The debugging clarity alone is worth it.
-
-### 3. Graceful Degradation > Infinite Retry
-
-The hardest thing I built isn't the triage engine or the approval gate. It's the `salvageForDraft()` function — the one that says "this error is beyond what any agent can fix, so let's preserve what we have and ask for human help." Every autonomous system needs a deliberate path to human escalation. Not as a failure mode — as a designed outcome.
+The total now includes ~3 minutes of human Terraform plan review. That's a net trade of 3 minutes of human attention for 50 minutes of wasted compute. I'd take that tradeoff every time.
 
 ---
 
-## What's Next
+## The Mental Model: Your DAG Is Your Trust Model
 
-The two-wave architecture solves the "code before infrastructure" problem. But it surfaces new questions:
+Every dependency edge in a DAG is a trust statement.
 
-- **Infra drift detection:** What happens when infrastructure changes outside the pipeline? The `infra-architect` agent writes Terraform, but if someone modifies a resource manually, the next pipeline run starts from a stale state. Schema-drift checks exist (`schema-drift.yml`), but infra-drift detection is a gap.
-- **Multi-environment promotion:** The pipeline currently targets a single environment (`dev`). Promoting to staging and production means adding approval gates per environment — the approval gate pattern is already proven, but the state machine needs environment-awareness.
-- **Parallel feature branches:** Two feature branches can't modify the same Terraform state simultaneously. The pipeline needs state-locking awareness or a queuing mechanism for concurrent infrastructure changes.
+`backend-dev → backend-unit-test` means: "I trust `backend-dev`'s output enough to run tests against it."
 
-The infrastructure-first pattern is working. The next challenge is making it work at scale.
+`infra-architect → push-infra → poll-infra-plan → await-infra-approval → infra-handoff → backend-dev` means: "I don't trust infrastructure changes until CI validates the plan, a human reviews it, an elevated workflow applies it, and the outputs are captured into a contract."
+
+That's 5 edges encoding a trust policy. The old pipeline had 0.
+
+When you add a new agent to any pipeline, the question isn't just "what does it depend on?" It's: **"what am I trusting when I let this agent run?"** If the answer includes "infrastructure that hasn't been validated" or "permissions that haven't been approved" — add a gate.
+
+### Trust Taxonomy for AI Agents
+
+Based on running this pipeline across multiple features, here's where I've landed:
+
+**Trust the agent to:**
+- Reason about code. Write functions, debug type errors, design APIs. This is what LLMs are genuinely good at.
+- Diagnose failures. Parse error logs, emit structured `{"fault_domain": "backend", "diagnostic_trace": "..."}` JSON. Agents are surprisingly reliable at classification.
+- Follow bounded workflows. Numbered steps with clear completion criteria. The key word is *bounded.*
+
+**Don't trust the agent to:**
+- Orchestrate itself. (The v1 `push-code` agent ran 63 shell commands in 15 minutes, including `git reset --hard`. Deterministic orchestration is non-negotiable.)
+- Judge blast radius. (An agent doesn't distinguish "this affects one endpoint" from "this affects the entire network layer." The DAG must encode this.)
+- Know when to stop. (Without circuit breakers, agents retry until timeout with decreasing output quality.)
+- Approve infrastructure. Not because they'd get it wrong — the `infra-architect` agent writes *correct* Terraform. But the consequence of a wrong apply is categorically different from a wrong endpoint, and the organization needs a human audit trail.
 
 ---
 
-*The [repo](https://github.com/rkaliupin/DAGent) is open and actively developed. If you're building agentic pipelines or evaluating this pattern for enterprise use — especially the infrastructure trust boundary problem — I'd love to hear your approach. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/), building agentic developer tooling.*
+## Updated Stripe Comparison
+
+The [first post](BLOG.md) mapped my v1 design against [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). With the two-wave architecture, one dimension changes significantly:
+
+| Decision | Two-Wave Pipeline (v2) | Stripe Minions |
+|---|---|---|
+| **Orchestration** | Deterministic DAG, 6 phases, human approval gate | Blueprints — state machines with interwoven deterministic + agentic nodes |
+| **Infra handling** | Dedicated Wave 1 with plan → approval → apply → handoff | Likely handled outside the agent pipeline (internal platform team) |
+| **Agent count** | 18 items, 12 specialist agent types | Task-specific agents with curated tool subsets |
+| **Trust boundaries** | Infra ≠ app. Human gate. Graceful degradation on unfixable | Quarantined devboxes, no production access, 2-iteration CI bound |
+| **Context** | APM compiler, 6K token budget/agent, `infra-interfaces.md` | Scoped rules + ~500 MCP tools via Toolshed |
+| **Recovery** | 4-tier triage + compound fault domains + unfixable detection | CI failures route back to agent nodes |
+
+The new column — infrastructure handling — is the gap that v1 shared with most agentic systems I've seen. Stripe likely doesn't have this problem because their infra is managed by a dedicated platform team, not by the same agents that write application code. For everyone else building on cloud primitives, the infrastructure trust boundary needs to be explicit.
+
+---
+
+## Trade-Offs and Open Questions
+
+This architecture isn't free. Honest accounting:
+
+**Added latency.** Wave 1 is strictly sequential: `schema-dev → infra-architect → push-infra → create-draft-pr → poll-infra-plan → await-infra-approval → infra-handoff`. That's 7 items in series before any application code runs. For features with no infrastructure changes, this is pure overhead. The pipeline mitigates this with workflow types — `Backend` and `Frontend` workflow types still skip infra items via N/A marking — but `Full-Stack` features pay the full serial cost.
+
+**Human dependency.** The approval gate blocks on a human. If no one reviews the Terraform plan for 2 hours, the pipeline sits idle for 2 hours. In practice: we use Slack notifications on Draft PR creation. Average review time is 3 minutes. But this is a process dependency, not a technical one, and it doesn't self-heal.
+
+**State complexity.** 18 items × 6 phases × 4 workflow types = a combinatorial state space. The `NA_ITEMS_BY_TYPE` map is the footgun:
+
+```javascript
+export const NA_ITEMS_BY_TYPE = {
+  Backend:      ["frontend-dev", "frontend-unit-test", "live-ui"],
+  Frontend:     ["backend-dev", "backend-unit-test", "integration-test", "schema-dev"],
+  "Full-Stack": [],
+  Infra:        ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
+                 "integration-test", "live-ui", "schema-dev", "code-cleanup",
+                 "push-app", "poll-app-ci"],
+};
+```
+
+Getting one entry wrong means an item either runs when it shouldn't (wasted tokens) or gets skipped when it shouldn't (missing validation). This is covered by tests (`apm-parity.test.ts` validates that every item key in the N/A map exists in `ALL_ITEMS`), but the surface area is real.
+
+**Concurrent Terraform state.** Two feature branches can't run `terraform plan` against the same state backend simultaneously without state locking conflicts. The pipeline currently handles this by detecting `"error acquiring the state lock"` as an unfixable signal (graceful degradation), but the correct solution is either a queueing mechanism or environment-per-branch isolation. Neither is implemented.
+
+---
+
+## The Principle
+
+**Separate concerns by trust level, not by technology.**
+
+The v1 pipeline separated by phase: pre-deploy, deploy, post-deploy, finalize. The v2 pipeline separates by trust boundary: infrastructure (human-approved) vs. application (auto-verified). The phases still exist within each wave — but the trust model governs the top-level architecture.
+
+This applies beyond AI pipelines. Any system where autonomous agents interact with infrastructure should encode trust boundaries in its execution graph, not in its prompts. Prompts can be ignored. DAG edges can't.
+
+---
+
+[Repo](https://github.com/rkaliupin/DAGent) · [First post](BLOG.md) · [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/)
+
+---
