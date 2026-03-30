@@ -1,6 +1,6 @@
 # I Built a Deterministic Agentic Coding Pipeline. Then I Found Out Stripe Built the Same Thing.
 
-**TL;DR:** I built a headless, DAG-scheduled AI coding pipeline — 12 specialist agents, self-healing recovery, real browser testing — that takes a feature spec and delivers a tested PR with zero human interaction. Then I read Stripe's Minions blog post and realized we independently converged on the same architectural pattern. [The repo is open.](https://github.com/rkaliupin/DAGent)
+**TL;DR:** I built a headless, DAG-scheduled AI coding pipeline — 12 specialist agents, self-healing recovery, real browser testing — that takes a feature spec and delivers a tested PR with zero human interaction. Then I read Stripe's Minions blog post and realized we independently converged on the same architectural pattern. [The repo is open.](https://github.com/RomanKaliupinMelonusa/DAGent-t)
 
 ---
 
@@ -198,7 +198,7 @@ This is the feedback loop that makes deterministic pipelines valuable: every fai
 
 ## Try It
 
-The [entire pipeline is open source](https://github.com/rkaliupin/DAGent). It includes the orchestrator, the APM system, 6 CI/CD workflows, and comprehensive documentation. Every run produces a deterministic audit trail — state files, transition logs, per-step metrics, and Playwright logs.
+The [entire pipeline is open source](https://github.com/RomanKaliupinMelonusa/DAGent-t). It includes the orchestrator, the APM system, 6 CI/CD workflows, and comprehensive documentation. Every run produces a deterministic audit trail — state files, transition logs, per-step metrics, and Playwright logs.
 
 ### It's a Blueprint — Not a Finished Product
 
@@ -229,4 +229,4 @@ I'd love technical feedback — especially on gaps in the architecture or if you
 
 ---
 
-*If you're building deterministic agent orchestration or evaluating this pattern for your org, I'd love to compare notes. [The repo](https://github.com/rkaliupin/DAGent) is open and I'm actively developing it. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*
+*If you're building deterministic agent orchestration or evaluating this pattern for your org, I'd love to compare notes. [The repo](https://github.com/RomanKaliupinMelonusa/DAGent-t) is open and I'm actively developing it. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*

@@ -1,6 +1,6 @@
 # My AI Pipeline Burned 50 Minutes on Correct Code. The Infrastructure Just Didn't Exist Yet.
 
-**TL;DR:** My deterministic AI pipeline burned 50 minutes retrying correct code because infrastructure hadn't been provisioned yet. I restructured from a 12-item single-wave DAG to an 18-item two-wave architecture with a human-approved infrastructure gate — cutting total runtime by 55% and eliminating an entire class of failure. [The repo is open.](https://github.com/rkaliupin/DAGent)
+**TL;DR:** My deterministic AI pipeline burned 50 minutes retrying correct code because infrastructure hadn't been provisioned yet. I restructured from a 12-item single-wave DAG to an 18-item two-wave architecture with a human-approved infrastructure gate — cutting total runtime by 55% and eliminating an entire class of failure. [The repo is open.](https://github.com/RomanKaliupinMelonusa/DAGent-t)
 
 ---
 
@@ -10,7 +10,7 @@ The circuit breaker caught it after 50 minutes and 3 wasted cycles. The root cau
 
 The pipeline was working as designed. **The design was wrong.**
 
-This post covers how I restructured the pipeline from a 12-item, 4-phase single-wave DAG to an 18-item, 6-phase two-wave architecture with a human-approved infrastructure gate — and why that gate eliminated an entire category of failure. [Repo is open.](https://github.com/rkaliupin/DAGent) [First blog post]({{FIRST_POST_URL}}) for context.
+This post covers how I restructured the pipeline from a 12-item, 4-phase single-wave DAG to an 18-item, 6-phase two-wave architecture with a human-approved infrastructure gate — and why that gate eliminated an entire category of failure. [Repo is open.](https://github.com/RomanKaliupinMelonusa/DAGent-t) [First blog post]({{FIRST_POST_URL}}) for context.
 
 ---
 
@@ -325,7 +325,7 @@ This applies beyond AI pipelines. Any system where autonomous agents interact wi
 
 ## What's Next
 
-The [full pipeline is open source](https://github.com/rkaliupin/DAGent) — orchestrator, APM compiler, triage engine, ChatOps workflows, and the two-wave DAG. If you're adapting this to your own stack, the files to start with are `.apm/instructions/` (your project's rules) and the workflow type configs in `pipeline-state.mjs`.
+The [full pipeline is open source](https://github.com/RomanKaliupinMelonusa/DAGent-t) — orchestrator, APM compiler, triage engine, ChatOps workflows, and the two-wave DAG. If you're adapting this to your own stack, the files to start with are `.apm/instructions/` (your project's rules) and the workflow type configs in `pipeline-state.mjs`.
 
 I'm most interested in feedback on:
 - **The approval gate pattern** — is `/dagent approve-infra` via ChatOps the right UX, or should this be a GitHub Environment protection rule?
@@ -334,4 +334,4 @@ I'm most interested in feedback on:
 
 ---
 
-*If you're building deterministic agent pipelines or figuring out where human gates belong in AI-assisted workflows, I'd genuinely like to hear what you've learned. [The repo](https://github.com/rkaliupin/DAGent) is open and actively developed. The [first post]({{FIRST_POST_URL}}) covers the v1 architecture and the Stripe convergence. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*
+*If you're building deterministic agent pipelines or figuring out where human gates belong in AI-assisted workflows, I'd genuinely like to hear what you've learned. [The repo](https://github.com/RomanKaliupinMelonusa/DAGent-t) is open and actively developed. The [first post]({{FIRST_POST_URL}}) covers the v1 architecture and the Stripe convergence. I'm [Roman Kaliupin](https://www.linkedin.com/in/roman-kaliupin-74994b158/) — I build agentic developer tooling and always enjoy connecting with people working on similar problems.*
