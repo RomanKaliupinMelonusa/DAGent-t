@@ -1098,17 +1098,8 @@ function wireToolLogging(
     const category = TOOL_CATEGORIES[name] ?? name;
     itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
 
-    // Cognitive Circuit Breaker — monitor cumulative tool calls
+    // Cognitive Circuit Breaker — hard kill (soft interception is on tool.execution_complete)
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-    if (!softWarningFired && totalCalls >= softLimit) {
-      softWarningFired = true;
-      console.warn(
-        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER: Agent has made ${totalCalls} tool calls (soft limit: ${softLimit}).\n` +
-        `  If you are stuck on a framework limitation, document it with pipeline:doc-note\n` +
-        `  and test.skip() the test. If this is a real bug, use \`npm run pipeline:fail\`\n` +
-        `  to trigger a redevelopment cycle. Do not continue debugging — decide now.\n`,
-      );
-    }
     if (totalCalls >= hardLimit) {
       hardLimitFired = true;
       console.error(
@@ -1148,6 +1139,38 @@ function wireToolLogging(
           }
         }
       }
+    }
+  });
+
+  // Soft interception: inject the Frustration Prompt into the tool result
+  // so the LLM actually reads it on its next turn. console.warn is invisible
+  // to the agent — this mutates the content the SDK sends back to the model.
+  session.on("tool.execution_complete", (event: any) => {
+    if (hardLimitFired) return;
+
+    const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
+
+    if (!softWarningFired && totalCalls >= softLimit) {
+      softWarningFired = true;
+
+      const frustrationPrompt =
+        `\n\n⚠️ SYSTEM NOTICE: You have executed ${totalCalls} tool calls in this session ` +
+        `(soft limit: ${softLimit}). You appear to be stuck in a debugging loop. ` +
+        `If you are fighting a persistent testing framework limitation, document it ` +
+        `with pipeline:doc-note and test.skip() the test. If this is a real ` +
+        `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
+        `cycle. DO NOT continue debugging — decide now.`;
+
+      // Mutate the result content that will be sent back to the LLM
+      if (event.data.result && typeof event.data.result.content === "string") {
+        event.data.result.content += frustrationPrompt;
+      } else {
+        event.data.result = { content: frustrationPrompt };
+      }
+
+      console.warn(
+        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
+      );
     }
   });
 }
