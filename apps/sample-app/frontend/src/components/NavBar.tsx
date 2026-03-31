@@ -11,9 +11,76 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 
 const authMode = process.env.NEXT_PUBLIC_AUTH_MODE ?? "entra";
+
+const HEALTH_URL =
+  (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:7071/api") +
+  "/health";
+
+// ---------------------------------------------------------------------------
+// HealthBadge — fetches /api/health (anonymous) and shows status
+// ---------------------------------------------------------------------------
+
+type HealthStatus = "loading" | "online" | "offline";
+
+function HealthBadge() {
+  const [status, setStatus] = useState<HealthStatus>("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      try {
+        const res = await fetch(HEALTH_URL, { method: "GET" });
+        if (!cancelled) {
+          setStatus(res.ok ? "online" : "offline");
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus("offline");
+        }
+      }
+    }
+
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (status === "loading") {
+    return (
+      <span
+        data-testid="health-badge"
+        className="flex items-center gap-1.5 text-xs text-text-muted"
+      >
+        <span className="inline-block h-2 w-2 rounded-full bg-text-muted" />
+        Checking…
+      </span>
+    );
+  }
+
+  const isOnline = status === "online";
+
+  return (
+    <span
+      data-testid="health-badge"
+      className={`flex items-center gap-1.5 text-xs ${
+        isOnline ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+      }`}
+    >
+      <span
+        className={`inline-block h-2 w-2 rounded-full ${
+          isOnline ? "bg-green-500" : "bg-red-500"
+        }`}
+      />
+      {isOnline ? "System Online" : "Offline"}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Shared — nav link styling helper
@@ -51,6 +118,8 @@ function NavBarShell({ authSlot }: { authSlot: React.ReactNode }) {
               About
             </Link>
           </nav>
+
+          <HealthBadge />
 
           <ThemeToggle />
 
