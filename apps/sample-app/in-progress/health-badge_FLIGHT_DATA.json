@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-31T23:32:29.179Z",
+  "generatedAt": "2026-03-31T23:32:43.648Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -267,6 +267,29 @@
       "cacheReadTokens": 106711,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "26e5146e17d3250a8008c3b8589842ba57c30d28"
+    },
+    {
+      "key": "poll-infra-plan",
+      "label": "Infra Plan CI Passed",
+      "agent": "@deploy-manager",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-03-31T23:32:32.148Z",
+      "finishedAt": "2026-03-31T23:32:43.647Z",
+      "durationMs": 11499,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
