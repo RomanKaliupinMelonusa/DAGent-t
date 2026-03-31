@@ -813,7 +813,9 @@ async function runAgentSession(
   // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
   // without calling the heavy Markdown/Git reporting functions.
   let lastHeartbeat = 0;
+  let isSessionActive = true;
   const triggerHeartbeat = () => {
+    if (!isSessionActive) return;
     if (Date.now() - lastHeartbeat < 1500) return;
     lastHeartbeat = Date.now();
     const liveSummaries = [...state.pipelineSummaries, { ...itemSummary, outcome: "in-progress" as const }];
@@ -928,6 +930,7 @@ async function runAgentSession(
       return { summary: itemSummary, halt: true, createPr: false };
     }
   } finally {
+    isSessionActive = false;
     await session.disconnect();
   }
 
