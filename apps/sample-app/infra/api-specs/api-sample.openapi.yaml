@@ -37,3 +37,26 @@ paths:
                     format: date-time
         "401":
           description: Unauthorized — missing or invalid auth token
+  /health:
+    get:
+      operationId: health
+      summary: Health check
+      description: Returns backend health status. Anonymous — no authentication required.
+      responses:
+        "200":
+          description: Backend is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - timestamp
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                  timestamp:
+                    type: string
+                    format: date-time

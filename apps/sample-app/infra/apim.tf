@@ -336,6 +336,49 @@ resource "azurerm_api_management_api_policy" "sample" {
 }
 
 # =============================================================================
+# 6a. Health Endpoint — Anonymous Passthrough
+# =============================================================================
+# The /health operation bypasses the API-level auth policy (check-header /
+# validate-jwt) by omitting <base /> in its inbound section. CORS and
+# backend routing are applied explicitly.
+# =============================================================================
+
+resource "azurerm_api_management_api_operation_policy" "health" {
+  api_name            = azurerm_api_management_api.sample.name
+  api_management_name = azurerm_api_management.main.name
+  resource_group_name = azurerm_resource_group.main.name
+  operation_id        = "health"
+
+  xml_content = <<-XML
+    <policies>
+      <inbound>
+        <!-- Omit <base /> to skip API-level auth — health is anonymous -->
+        <cors allow-credentials="false">
+          <allowed-origins>
+            ${var.environment == "dev" ? "<origin>http://localhost:3000</origin>" : ""}
+            ${local.frontend_origin != "" ? "<origin>${local.frontend_origin}</origin>" : ""}
+            <origin>${azurerm_api_management.main.gateway_url}</origin>
+          </allowed-origins>
+          <allowed-methods>
+            <method>GET</method>
+            <method>OPTIONS</method>
+          </allowed-methods>
+          <allowed-headers>
+            <header>Content-Type</header>
+          </allowed-headers>
+        </cors>
+        <set-backend-service backend-id="${azurerm_api_management_backend.func.name}" />
+      </inbound>
+      <backend><base /></backend>
+      <outbound><base /></outbound>
+      <on-error><base /></on-error>
+    </policies>
+  XML
+
+  depends_on = [azurerm_api_management_api_policy.sample]
+}
+
+# =============================================================================
 # 7. APIM Observability
 # =============================================================================
 
