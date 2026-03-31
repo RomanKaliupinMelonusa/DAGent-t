@@ -243,6 +243,38 @@ export function parsePreviousSummary(summaryPath: string): PreviousSummaryTotals
   };
 }
 
+/**
+ * Write the flight data JSON file atomically.
+ * Used by both the end-of-step summary flush and the mid-session heartbeat.
+ * Atomic write: tmp file → rename — eliminates partial-read crashes on the dashboard side.
+ */
+export function writeFlightData(
+  appRoot: string,
+  featureSlug: string,
+  summaries: readonly ItemSummary[],
+  silent = false,
+): void {
+  const flightDataPath = path.join(appRoot, "in-progress", `${featureSlug}_FLIGHT_DATA.json`);
+  const tmpPath = `${flightDataPath}.tmp`;
+  try {
+    const envelope = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      featureSlug,
+      items: summaries,
+    };
+    fs.writeFileSync(tmpPath, JSON.stringify(envelope, null, 2), "utf-8");
+    fs.renameSync(tmpPath, flightDataPath);
+    if (!silent) {
+      console.log(`✈ Flight data written to ${path.relative(appRoot, flightDataPath)}`);
+    }
+  } catch {
+    // Best-effort cleanup of orphaned tmp file
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    console.warn("  ⚠ Could not write flight data file");
+  }
+}
+
 /** Write a human-readable markdown summary of the pipeline run */
 export function writePipelineSummary(
   appRoot: string,
@@ -422,6 +454,9 @@ export function writePipelineSummary(
   } catch {
     console.error("  ⚠ Could not write pipeline summary file");
   }
+
+  // --- Flight data JSON export (read-only API contract for external dashboards) ---
+  writeFlightData(appRoot, featureSlug, summaries);
 }
 
 /**

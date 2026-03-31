@@ -175,12 +175,25 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
       fs.rmSync(screenshotsSrc, { recursive: true, force: true });
     }
 
-    // Clean up any remaining feature files
+    // Archive any remaining slug-prefixed files (e.g. _FLIGHT_DATA.json,
+    // _PIPELINE-TRIAGE.md, _CI-FAILURE.log) that weren't in the known list
     const remaining = fs.readdirSync(inProgress).filter(
-      (f) => f.startsWith(`${featureSlug}_`),
+      (f) => f.startsWith(`${featureSlug}_`) || f.startsWith(`${featureSlug}.`),
     );
     for (const f of remaining) {
-      fs.unlinkSync(path.join(inProgress, f));
+      fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
+    }
+
+    // Clean up non-slug-prefixed feature files (infra-interfaces.md, etc.)
+    // that shouldn't persist after the feature is archived.  Keep only README.md.
+    const stragglers = fs.readdirSync(inProgress).filter((f) => {
+      if (f.toLowerCase() === "readme.md") return false;
+      // Skip directories (screenshots already handled above)
+      const stat = fs.statSync(path.join(inProgress, f));
+      return stat.isFile();
+    });
+    for (const f of stragglers) {
+      fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
     }
 
     // Remove PR_BODY.md if it exists
