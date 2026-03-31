@@ -422,6 +422,21 @@ export function writePipelineSummary(
   } catch {
     console.error("  ⚠ Could not write pipeline summary file");
   }
+
+  // --- Flight data JSON export (read-only API contract for external dashboards) ---
+  const flightDataPath = path.join(appRoot, "in-progress", `${featureSlug}_FLIGHT_DATA.json`);
+  try {
+    const envelope = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      featureSlug,
+      items: summaries,
+    };
+    fs.writeFileSync(flightDataPath, JSON.stringify(envelope, null, 2), "utf-8");
+    console.log(`✈ Flight data written to ${path.relative(repoRoot, flightDataPath)}`);
+  } catch {
+    console.warn("  ⚠ Could not write flight data file");
+  }
 }
 
 /**
