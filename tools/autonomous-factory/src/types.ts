@@ -103,7 +103,7 @@ export interface ItemSummary {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
-  outcome: "completed" | "failed" | "error";
+  outcome: "completed" | "failed" | "error" | "in-progress";
   /** Agent-reported intents (high-level "what I'm doing" messages) */
   intents: string[];
   /** Final assistant messages (full text, not truncated) */

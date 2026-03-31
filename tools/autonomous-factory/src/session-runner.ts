@@ -27,7 +27,7 @@ import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
-import { writePipelineSummary, writeTerminalLog, writePlaywrightLog } from "./reporting.js";
+import { writePipelineSummary, writeTerminalLog, writePlaywrightLog, writeFlightData } from "./reporting.js";
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
@@ -809,11 +809,22 @@ async function runAgentSession(
 
   // Wire session event listeners
   const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
-  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits);
-  const playwrightLog = wirePlaywrightLogging(session, next.key);
+
+  // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
+  // without calling the heavy Markdown/Git reporting functions.
+  let lastHeartbeat = 0;
+  const triggerHeartbeat = () => {
+    if (Date.now() - lastHeartbeat < 1500) return;
+    lastHeartbeat = Date.now();
+    const liveSummaries = [...state.pipelineSummaries, { ...itemSummary, outcome: "in-progress" as const }];
+    writeFlightData(config.appRoot, config.slug, liveSummaries, true);
+  };
+
+  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits, triggerHeartbeat);
+  const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
-  wireUsageTracking(session, itemSummary);
+  wireUsageTracking(session, itemSummary, triggerHeartbeat);
 
   // Build task prompt with context injection
   let taskPrompt = buildTaskPrompt(
@@ -1080,6 +1091,7 @@ function wireToolLogging(
   itemSummary: ItemSummary,
   repoRoot: string,
   toolLimits?: { soft?: number; hard?: number },
+  triggerHeartbeat?: () => void,
 ): void {
   const softLimit = toolLimits?.soft ?? TOOL_COUNT_SOFT_LIMIT_DEFAULT;
   const hardLimit = toolLimits?.hard ?? TOOL_COUNT_HARD_LIMIT_DEFAULT;
@@ -1172,10 +1184,12 @@ function wireToolLogging(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
       );
     }
+
+    triggerHeartbeat?.();
   });
 }
 
-function wirePlaywrightLogging(session: any, itemKey: string): PlaywrightLogEntry[] {
+function wirePlaywrightLogging(session: any, itemKey: string, triggerHeartbeat?: () => void): PlaywrightLogEntry[] {
   const playwrightLog: PlaywrightLogEntry[] = [];
   if (itemKey !== "live-ui") return playwrightLog;
 
@@ -1215,6 +1229,8 @@ function wirePlaywrightLogging(session: any, itemKey: string): PlaywrightLogEntr
       const status = event.data.success ? "✅" : "❌";
       console.log(`  🎭 ${status} ${last.tool.replace("playwright-", "")} completed`);
     }
+
+    triggerHeartbeat?.();
   });
 
   return playwrightLog;
@@ -1236,7 +1252,7 @@ function wireMessageCapture(session: any, itemSummary: ItemSummary): void {
   });
 }
 
-function wireUsageTracking(session: any, itemSummary: ItemSummary): void {
+function wireUsageTracking(session: any, itemSummary: ItemSummary, triggerHeartbeat?: () => void): void {
   session.on("assistant.usage", (event: any) => {
     const d = event.data;
     const inp = d.inputTokens ?? 0;
@@ -1249,6 +1265,7 @@ function wireUsageTracking(session: any, itemSummary: ItemSummary): void {
     itemSummary.cacheReadTokens += cacheR;
     itemSummary.cacheWriteTokens += cacheC;
     console.log(`  📊 Tokens: +${inp}in / +${out}out / +${cacheR}cache-read / +${cacheC}cache-write`);
+    triggerHeartbeat?.();
   });
 }
 
