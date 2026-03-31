@@ -69,6 +69,25 @@ graph TD
         CC --> DA["docs-archived"]
         DA --> PPR["publish-pr"]
     end
+
+    style SD fill:#2ecc71,color:#fff
+    style IA fill:#2ecc71,color:#fff
+    style BD fill:#2ecc71,color:#fff
+    style FD fill:#2ecc71,color:#fff
+    style BUT fill:#2ecc71,color:#fff
+    style FUT fill:#2ecc71,color:#fff
+    style IT fill:#2ecc71,color:#fff
+    style LU fill:#2ecc71,color:#fff
+    style CC fill:#2ecc71,color:#fff
+    style DA fill:#2ecc71,color:#fff
+    style DPR fill:#2ecc71,color:#fff
+    style IH fill:#2ecc71,color:#fff
+    style PPR fill:#2ecc71,color:#fff
+    style PI fill:#8e44ad,color:#fff
+    style PA fill:#8e44ad,color:#fff
+    style PIP fill:#8e44ad,color:#fff
+    style PAC fill:#8e44ad,color:#fff
+    style AIA fill:#e74c3c,color:#fff
 ```
 
 **What you need to know to reason about this:**
