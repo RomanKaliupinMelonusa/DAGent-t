@@ -343,6 +343,74 @@ Everything else enters `runAgentSession`, which:
 
 ---
 
+## Level 6 — Telemetry: How Agent Logs Are Scraped
+
+*Only read this if you need to understand what data the orchestrator captures from agents, where it goes, and how it gets reused.*
+
+### Bottom line
+
+Every agent session has 5 SDK event listeners that scrape tool calls, file changes, shell commands, intents, messages, and token usage into an `ItemSummary` struct. After each session, the summary is pushed to an in-memory array and flushed to two markdown reports on disk. Those summaries also feed the self-healing system (retry context, downstream failures, circuit breaker).
+
+### What gets captured
+
+5 listeners are wired immediately after SDK session creation (`session-runner.ts` L822–826):
+
+| Listener | SDK Event | What it captures | `ItemSummary` field |
+|---|---|---|---|
+| `wireToolLogging()` | `tool.execution_start` | Tool name + category, file read/write paths, shell commands (first line ≤200 chars), shell-written files (7 regex patterns for `sed -i`, `tee`, `cat >`, etc.) | `toolCounts`, `filesRead`, `filesChanged`, `shellCommands` |
+| `wireToolLogging()` | `tool.execution_complete` | Soft circuit breaker — injects frustration prompt at soft limit | (mutates SDK result, not summary) |
+| `wirePlaywrightLogging()` | `tool.execution_start/complete` | Playwright-prefixed tool calls with success/failure + result (live-ui only) | Separate `PlaywrightLogEntry[]` → `_PLAYWRIGHT-LOG.md` |
+| `wireIntentLogging()` | `assistant.intent` | Agent self-reported high-level intent strings | `intents` |
+| `wireMessageCapture()` | `assistant.message` | Full text of every assistant turn | `messages` |
+| `wireUsageTracking()` | `assistant.usage` | Input, output, cache-read, cache-write token counts (accumulated via `+=`) | `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` |
+
+Shell file write detection deserves a note: when an agent runs `echo "data" > file.txt` via `bash`, the SDK only sees a shell command — not a file write. `extractShellWrittenFiles()` (L82–95) scans the command against 7 regex patterns (`SHELL_WRITE_PATTERNS` L66–74) to capture the target path and add it to `filesChanged`.
+
+### Where it goes
+
+After every session (success, failure, skip, deterministic bypass), this sequence runs:
+
+1. `pipelineSummaries.push(itemSummary)` — append to in-memory array
+2. `flushReports()` (`session-runner.ts` L1255) — writes two files:
+
+| Output file | Content |
+|---|---|
+| `<slug>_SUMMARY.md` | Overview table (steps, duration, tokens, cost), per-step breakdown by phase, scope of changes, failure log, cost analysis |
+| `<slug>_TERMINAL-LOG.md` | Everything in summary + git commit history, git diff stat, chronological shell command trace with timestamps |
+| `<slug>_PLAYWRIGHT-LOG.md` | Per-action Playwright tool calls with ✅/❌ status (live-ui only) |
+| `<slug>_CHANGES.json` | Files changed + doc-notes per completed step (docs-archived only) |
+
+Both main reports are **monotonically accumulated** — at boot, the orchestrator parses the existing `_SUMMARY.md` into `baseTelemetry` (`PreviousSummaryTotals`) and adds those totals on every subsequent flush. This means metrics never go backwards even across orchestrator restarts.
+
+### How summaries get reused
+
+The same `pipelineSummaries[]` array that produces reports also drives the self-healing system:
+
+- **`shouldSkipRetry()`** reads `errorMessage` + `headAfterAttempt` from the last attempt for the same key → circuit breaker
+- **`buildRetryContext()`** reads the last summary for the retrying item → injects previous error, files changed, intents into the retry prompt
+- **`buildDownstreamFailureContext()`** filters for failed post-deploy summaries → injects production error into dev agent prompt
+- **`writeChangeManifest()`** reads all completed summaries + `docNote` from `_STATE.json` → builds `_CHANGES.json` for docs-expert
+
+> **Key code at this level:**
+> - `ItemSummary` interface — [types.ts#L96](tools/autonomous-factory/src/types.ts#L96), `ShellEntry` — [types.ts#L139](tools/autonomous-factory/src/types.ts#L139), `PlaywrightLogEntry` — [types.ts#L147](tools/autonomous-factory/src/types.ts#L147)
+> - Event listeners — all in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts):
+>   - `wireToolLogging()` — [L1082](tools/autonomous-factory/src/session-runner.ts#L1082) (tool calls, files, shell, circuit breaker)
+>   - `wirePlaywrightLogging()` — [L1179](tools/autonomous-factory/src/session-runner.ts#L1179) (Playwright actions)
+>   - `wireIntentLogging()` — [L1222](tools/autonomous-factory/src/session-runner.ts#L1222) (agent intents)
+>   - `wireMessageCapture()` — [L1228](tools/autonomous-factory/src/session-runner.ts#L1228) (assistant messages)
+>   - `wireUsageTracking()` — [L1236](tools/autonomous-factory/src/session-runner.ts#L1236) (token counts)
+> - Shell write detection: `SHELL_WRITE_PATTERNS` — [session-runner.ts#L66](tools/autonomous-factory/src/session-runner.ts#L66), `extractShellWrittenFiles()` — [session-runner.ts#L82](tools/autonomous-factory/src/session-runner.ts#L82)
+> - Tool categories: `TOOL_CATEGORIES` — [session-runner.ts#L139](tools/autonomous-factory/src/session-runner.ts#L139), `TOOL_LABELS` — [session-runner.ts#L126](tools/autonomous-factory/src/session-runner.ts#L126)
+> - Report flushing: `flushReports()` — [session-runner.ts#L1255](tools/autonomous-factory/src/session-runner.ts#L1255)
+> - Report writers — all in [reporting.ts](tools/autonomous-factory/src/reporting.ts):
+>   - `writePipelineSummary()` — [L252](tools/autonomous-factory/src/reporting.ts#L252) → `_SUMMARY.md`
+>   - `writeTerminalLog()` — [L418](tools/autonomous-factory/src/reporting.ts#L418) → `_TERMINAL-LOG.md`
+>   - `writePlaywrightLog()` — [L143](tools/autonomous-factory/src/reporting.ts#L143) → `_PLAYWRIGHT-LOG.md`
+> - Boot-time telemetry parse: `parsePreviousSummary()` — [reporting.ts#L200](tools/autonomous-factory/src/reporting.ts#L200), `PreviousSummaryTotals` — [reporting.ts#L183](tools/autonomous-factory/src/reporting.ts#L183)
+> - Boot-time wiring: [watchdog.ts#L337](tools/autonomous-factory/src/watchdog.ts#L337)
+
+---
+
 ## Quick Reference
 
 ### Key source files
@@ -356,6 +424,8 @@ Everything else enters `runAgentSession`, which:
 | `tools/autonomous-factory/src/apm-compiler.ts` | APM manifest → compiled rules + token validation |
 | `tools/autonomous-factory/src/context-injection.ts` | Retry/downstream/revert/infra prompt builders |
 | `tools/autonomous-factory/src/triage.ts` | Error triage → fault domain → item reset routing |
+| `tools/autonomous-factory/src/reporting.ts` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
+| `tools/autonomous-factory/src/types.ts` | Shared interfaces: `ItemSummary`, `ShellEntry`, `PlaywrightLogEntry` |
 | `apps/sample-app/.apm/apm.yml` | Agent declarations, instruction refs, MCP servers, tool limits |
 
 ### The design principle

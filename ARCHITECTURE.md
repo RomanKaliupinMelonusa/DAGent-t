@@ -548,6 +548,211 @@ The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4
 
 The LLM is a **worker bee** — it gets narrow, well-scoped instructions and reports through a structured contract. The DAG state machine is the **brain** — it decides what runs next, when to retry, when to give up, and how to self-heal.
 
+## 7. Telemetry: How Agent Logs Are Scraped
+
+Every agent session — whether it completes, fails, or gets circuit-broken — produces a structured `ItemSummary` record. These records feed the reporting system, the self-healing context injection, and the circuit breaker. Here's the full pipeline: collection → accumulation → flush → reuse.
+
+### The ItemSummary Record
+
+Defined in `types.ts` L96–137, `ItemSummary` captures everything about one attempt at one DAG item:
+
+| Field | Type | Captured by |
+|---|---|---|
+| `key`, `label`, `agent`, `phase` | `string` | Set at creation from `NextAction` |
+| `attempt` | `number` | From `attemptCounts[key]` |
+| `startedAt`, `finishedAt`, `durationMs` | timing | Set before/after `sendAndWait()` |
+| `outcome` | `"completed"\|"failed"\|"error"` | Set from post-session state re-read or on SDK exception |
+| `intents` | `string[]` | `wireIntentLogging()` — `assistant.intent` events |
+| `messages` | `string[]` | `wireMessageCapture()` — `assistant.message` events |
+| `filesRead` | `string[]` | `wireToolLogging()` — `read_file`/`view` tool calls |
+| `filesChanged` | `string[]` | `wireToolLogging()` — `write_file`/`edit_file`/`create_file` tool calls + `extractShellWrittenFiles()` |
+| `shellCommands` | `ShellEntry[]` | `wireToolLogging()` — `bash`/`write_bash` tool calls (first line, ≤200 chars) |
+| `toolCounts` | `Record<string, number>` | `wireToolLogging()` — per-category counter (file-read, file-write, shell, search, intent) |
+| `errorMessage` | `string?` | Set on failure, SDK exception, or hard circuit breaker |
+| `headAfterAttempt` | `string?` | `git rev-parse HEAD` after session — used by `shouldSkipRetry()` |
+| `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` | `number` | `wireUsageTracking()` — `assistant.usage` events (accumulated via `+=`) |
+
+Supporting types: `ShellEntry` (L139–144) has `{ command, timestamp, isPipelineOp }` where `isPipelineOp` is true for `pipeline:complete/fail` and `agent-commit.sh` calls. `PlaywrightLogEntry` (L147–153) has `{ timestamp, tool, args, success, result }`.
+
+### The 5 Event Listeners
+
+All 5 are wired in `runAgentSession()` at `session-runner.ts` L822–826, immediately after `client.createSession()`:
+
+```typescript
+wireToolLogging(session, itemSummary, repoRoot, agentToolLimits);
+const playwrightLog = wirePlaywrightLogging(session, next.key);
+wireIntentLogging(session, itemSummary);
+wireMessageCapture(session, itemSummary);
+wireUsageTracking(session, itemSummary);
+```
+
+#### 1. `wireToolLogging()` — `session-runner.ts` L1082–1177
+
+Subscribes to **two** events:
+
+- **`tool.execution_start`** (L1089): On every tool call:
+  1. Logs a human-readable line to console using `TOOL_LABELS` (e.g., `📄 Read → backend/src/functions/fn-hello.ts`)
+  2. Categorizes the tool via `TOOL_CATEGORIES` map (e.g., `read_file` → `"file-read"`, `bash` → `"shell"`), increments `itemSummary.toolCounts[category]`
+  3. File tracking: `write_file`/`edit_file`/`create_file` → pushes to `filesChanged`; `read_file`/`view` → pushes to `filesRead` (both deduped)
+  4. Shell capture: `bash`/`write_bash` → extracts first line (≤200 chars), detects `isPipelineOp` via regex `/pipeline:(complete|fail|set-note|set-url)|agent-commit\.sh/`, pushes `ShellEntry` to `shellCommands`
+  5. Shell file write detection: calls `extractShellWrittenFiles()` (L82–95) which matches against 7 `SHELL_WRITE_PATTERNS` (L66–74) — `sed -i`, `tee`, `cat >`, `echo >`, `printf >`, `cp`, `mv` — and captures target file paths, resolved relative to repo root, excluding `_STATE.json` and `_TRANS.md`
+  6. **Cognitive circuit breaker (hard)**: if `totalCalls >= hardLimit` (default 40), sets `outcome = "error"`, records error message, calls `session.disconnect()` to force-terminate
+
+- **`tool.execution_complete`** (L1140): Soft circuit breaker — if `totalCalls >= softLimit` (default 30) and not yet fired, mutates `event.data.result.content` to append the frustration prompt. This is the only listener that **modifies** SDK data rather than just reading it.
+
+#### 2. `wirePlaywrightLogging()` — `session-runner.ts` L1179–1220
+
+Only active when `itemKey === "live-ui"`. Returns a local `PlaywrightLogEntry[]` array (not written into `ItemSummary`).
+
+- **`tool.execution_start`** (L1183): Filters for tools starting with `"playwright-"`, creates entry with `{ timestamp, tool, args }`, logs with 🎭 prefix
+- **`tool.execution_complete`** (L1199): Finds the open entry (no `success` yet), sets `success` and `result` (truncated to 500 chars)
+
+The array is consumed after the session by `writePlaywrightLog()` in `reporting.ts` L143–177, which writes `<slug>_PLAYWRIGHT-LOG.md` with per-action sections showing ✅/❌ status, arguments, and results.
+
+#### 3. `wireIntentLogging()` — `session-runner.ts` L1222–1226
+
+- **`assistant.intent`**: Pushes `event.data.intent` to `itemSummary.intents`. These are high-level agent self-reports like "Implementing the /generate endpoint".
+
+#### 4. `wireMessageCapture()` — `session-runner.ts` L1228–1234
+
+- **`assistant.message`**: Pushes whitespace-normalized `event.data.content` to `itemSummary.messages`. Captures the full text of every assistant turn.
+
+#### 5. `wireUsageTracking()` — `session-runner.ts` L1236–1249
+
+- **`assistant.usage`**: Accumulates `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` via `+=`. Skips zero-usage events.
+
+```mermaid
+sequenceDiagram
+    participant LLM as LLM Agent
+    participant SDK as Copilot SDK Session
+    participant Wire as 5 Event Listeners
+    participant Sum as ItemSummary (in-memory)
+    participant Flush as flushReports()
+    participant Disk as _SUMMARY.md + _TERMINAL-LOG.md
+
+    Note over SDK,Wire: Session created → wire 5 listeners
+
+    LLM->>SDK: tool call (read_file, edit_file, bash...)
+    SDK->>Wire: tool.execution_start
+    Wire->>Sum: toolCounts++, filesRead/Changed, shellCommands
+    SDK->>Wire: tool.execution_complete
+    Wire->>Sum: (soft circuit breaker check)
+
+    LLM->>SDK: report_intent
+    SDK->>Wire: assistant.intent
+    Wire->>Sum: intents.push()
+
+    LLM->>SDK: assistant turn completes
+    SDK->>Wire: assistant.message
+    Wire->>Sum: messages.push()
+
+    SDK->>Wire: assistant.usage
+    Wire->>Sum: inputTokens += N, outputTokens += N
+
+    Note over Sum: Session ends (success or failure)
+
+    Sum->>Sum: headAfterAttempt = git HEAD
+    Sum->>Sum: pipelineSummaries.push(itemSummary)
+    Sum->>Flush: flushReports(config, state)
+    Flush->>Disk: writePipelineSummary() → _SUMMARY.md
+    Flush->>Disk: writeTerminalLog() → _TERMINAL-LOG.md
+```
+
+### Accumulation and Flushing
+
+After every session (success, failure, circuit-break, auto-skip, deterministic bypass), the same sequence runs:
+
+1. `itemSummary.headAfterAttempt = git rev-parse HEAD` — snapshot for circuit breaker dedup
+2. `pipelineSummaries.push(itemSummary)` — append to the in-memory `PipelineRunState` array
+3. `flushReports(config, state)` (`session-runner.ts` L1255–1260) — calls two report writers:
+
+#### `writePipelineSummary()` — `reporting.ts` L252–412
+
+Writes `<appRoot>/in-progress/<slug>_SUMMARY.md`. Sections:
+
+1. **Overview table** — total steps, duration, files changed, total tokens, estimated cost (USD). All values are **monotonically merged** with `baseTelemetry` (see below).
+2. **Steps** — per-step detail grouped by phase: tool usage breakdown, intents, files changed, pipeline operations (commits, state mutations), final agent summary (last message snippet)
+3. **Scope of Changes** — all changed files grouped by directory
+4. **Failure Log** — table of step/attempt/error/resolution for each failed attempt
+5. **Cost Analysis** — per-step token breakdown with `inputTokens × rate + outputTokens × rate` → USD
+
+#### `writeTerminalLog()` — `reporting.ts` L418–655
+
+Writes `<appRoot>/in-progress/<slug>_TERMINAL-LOG.md`. Contains everything in `_SUMMARY.md` plus:
+
+- Git commit history (`git log <base>..HEAD`)
+- Git diff stat vs base branch
+- Chronological interleaved execution trace per step (shell commands with timestamps + intents)
+- Files read listing per step
+
+Both reports atomically overwrite their file on every flush — the latest version always reflects all sessions in the current run.
+
+### Monotonic Accumulation Across Restarts
+
+When the orchestrator starts, `watchdog.ts` L337–352 calls `parsePreviousSummary()` (`reporting.ts` L200–248) to read the existing `_SUMMARY.md` and extract its overview numbers via regex into a `PreviousSummaryTotals` struct (steps, completed, failed, duration, files, tokens, cost). This becomes `baseTelemetry`.
+
+On every flush, `writePipelineSummary()` adds `baseTelemetry` to the current session's totals:
+
+```typescript
+const mergedSteps = summaries.length + (base?.steps ?? 0);
+const mergedTokens = totalTokens + (base?.tokens ?? 0);
+const mergedCost = totalCost + (base?.costUsd ?? 0);
+```
+
+This guarantees metrics never go backwards even if the orchestrator restarts mid-pipeline — the new run's fresh `pipelineSummaries[]` starts empty, but the persisted totals from the previous run are loaded and added back.
+
+### Downstream Consumers
+
+The `pipelineSummaries[]` array and the flushed files serve **4 downstream purposes** beyond human-readable reports:
+
+| Consumer | What it reads | Purpose |
+|---|---|---|
+| `shouldSkipRetry()` | `errorMessage` + `headAfterAttempt` from last attempt for same key | Circuit breaker — detect identical error loops |
+| `buildRetryContext()` | Last `ItemSummary` for same key (reverse scan) — `errorMessage`, `filesChanged`, `intents`, `shellCommands` | Tell retrying agent what was already tried |
+| `buildDownstreamFailureContext()` | All summaries where `POST_DEPLOY_ITEMS.has(key)` and `outcome !== "completed"` | Tell dev agent what broke in production |
+| `writeChangeManifest()` | All completed summaries — `filesChanged`, plus `docNote` from `_STATE.json` | Build `_CHANGES.json` for docs-expert agent |
+
+### Doc-Notes: Agent → State → Manifest
+
+Doc-notes follow a separate path from telemetry. When a dev agent calls `npm run pipeline:doc-note <slug> <key> <note>`, `pipeline-state.mjs` writes the note to `state.items[key].docNote` in `_STATE.json`. These are **not** captured in `ItemSummary`. Instead, `writeChangeManifest()` reads them from `_STATE.json` when building `_CHANGES.json` for the `docs-archived` agent, combining them with `filesChanged` from `pipelineSummaries`.
+
+```mermaid
+graph TD
+    subgraph Collection["Collection (per session)"]
+        TS["tool.execution_start"] --> TC["toolCounts<br/>filesRead/Changed<br/>shellCommands"]
+        TC2["tool.execution_complete"] --> CB["Circuit breaker check"]
+        AI["assistant.intent"] --> INT["intents[]"]
+        AM["assistant.message"] --> MSG["messages[]"]
+        AU["assistant.usage"] --> TOK["input/output/cache tokens"]
+    end
+
+    subgraph Summary["ItemSummary"]
+        TC --> IS["Per-attempt record"]
+        INT --> IS
+        MSG --> IS
+        TOK --> IS
+        CB --> IS
+    end
+
+    subgraph Accumulation["pipelineSummaries[]"]
+        IS -->|".push()"| PS["Append-only array"]
+    end
+
+    subgraph Outputs["Flushed to disk after every step"]
+        PS --> SM["_SUMMARY.md<br/>Overview + per-step + cost"]
+        PS --> TL["_TERMINAL-LOG.md<br/>Chronological trace + git diff"]
+        PS --> PL["_PLAYWRIGHT-LOG.md<br/>(live-ui only)"]
+        PS --> CJ["_CHANGES.json<br/>(docs-archived only)"]
+    end
+
+    subgraph Reuse["Read back for"]
+        SM --> BT["baseTelemetry<br/>(next orchestrator boot)"]
+        PS --> RC["buildRetryContext()"]
+        PS --> DC["buildDownstreamFailureContext()"]
+        PS --> SR["shouldSkipRetry()"]
+    end
+```
+
 ## Key Source Files
 
 | File | Role |
@@ -559,6 +764,7 @@ The LLM is a **worker bee** — it gets narrow, well-scoped instructions and rep
 | `tools/autonomous-factory/src/apm-compiler.ts` | APM manifest compiler (rules assembly) |
 | `tools/autonomous-factory/src/context-injection.ts` | Retry/downstream/revert prompt augmentation |
 | `tools/autonomous-factory/src/triage.ts` | Structured error triage and fault routing |
-| `tools/autonomous-factory/src/types.ts` | Shared TypeScript interfaces |
+| `tools/autonomous-factory/src/reporting.ts` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
+| `tools/autonomous-factory/src/types.ts` | Shared TypeScript interfaces (`ItemSummary`, `ShellEntry`, `PlaywrightLogEntry`) |
 | `tools/autonomous-factory/src/state.ts` | Thin async wrappers over `pipeline-state.mjs` |
 | `apps/sample-app/.apm/apm.yml` | APM manifest (agent declarations, budgets, MCP) |
