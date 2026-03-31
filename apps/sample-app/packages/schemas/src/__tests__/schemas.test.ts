@@ -10,6 +10,7 @@ import {
   DemoLoginResponseSchema,
   ApiErrorCodeSchema,
   ApiErrorResponseSchema,
+  HealthResponseSchema,
 } from "../index.js";
 
 // ---------------------------------------------------------------------------
@@ -216,5 +217,63 @@ describe("ApiErrorResponseSchema", () => {
   it("rejects empty object", () => {
     const result = ApiErrorResponseSchema.safeParse({});
     expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HealthResponseSchema
+// ---------------------------------------------------------------------------
+
+describe("HealthResponseSchema", () => {
+  it("parses a valid health response", () => {
+    const input = {
+      status: "ok" as const,
+      timestamp: "2026-03-31T00:00:00.000Z",
+    };
+    const result = HealthResponseSchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("accepts timestamp without milliseconds", () => {
+    const input = {
+      status: "ok" as const,
+      timestamp: "2026-03-31T00:00:00Z",
+    };
+    expect(HealthResponseSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects status other than 'ok'", () => {
+    const input = { status: "error", timestamp: "2026-03-31T00:00:00.000Z" };
+    const result = HealthResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing status", () => {
+    const input = { timestamp: "2026-03-31T00:00:00.000Z" };
+    const result = HealthResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing timestamp", () => {
+    const input = { status: "ok" };
+    const result = HealthResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-ISO timestamp", () => {
+    const input = { status: "ok", timestamp: "not-a-date" };
+    const result = HealthResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty object", () => {
+    const result = HealthResponseSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("strips extra fields", () => {
+    const input = { status: "ok" as const, timestamp: "2026-03-31T12:00:00Z", extra: "field" };
+    const result = HealthResponseSchema.parse(input);
+    expect(result).toEqual({ status: "ok", timestamp: "2026-03-31T12:00:00Z" });
   });
 });

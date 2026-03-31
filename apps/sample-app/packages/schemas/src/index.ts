@@ -9,6 +9,10 @@
 export { HelloResponseSchema } from "./hello.js";
 export type { HelloResponse } from "./hello.js";
 
+// Health endpoint
+export { HealthResponseSchema } from "./health.js";
+export type { HealthResponse } from "./health.js";
+
 // Demo auth
 export {
   DemoLoginRequestSchema,
