@@ -71,6 +71,44 @@ describeIntegration("fn-hello (live)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// fn-health — GET /health (anonymous)
+// ---------------------------------------------------------------------------
+
+describeIntegration("fn-health (live)", () => {
+  it("returns 200 with status ok and valid timestamp (anonymous)", async () => {
+    // Health endpoint is anonymous — no function key needed
+    const url = `${BASE_URL}/health`;
+    const res = await fetch(url);
+    expect(res.status).toBe(200);
+
+    const body: Json = await res.json();
+    expect(body.status).toBe("ok");
+    expect(body.timestamp).toBeDefined();
+    // Verify timestamp is valid ISO-8601
+    expect(new Date(body.timestamp).toISOString()).toBe(body.timestamp);
+  });
+
+  it("returns 200 without authentication headers", async () => {
+    // Explicitly verify no auth is required
+    const url = `${BASE_URL}/health`;
+    const res = await fetch(url, {
+      headers: {}, // No x-functions-key, no auth headers
+    });
+    expect(res.status).toBe(200);
+
+    const body: Json = await res.json();
+    expect(body.status).toBe("ok");
+  });
+
+  it("rejects non-GET methods with 404 or 405", async () => {
+    const url = `${BASE_URL}/health`;
+    const res = await fetch(url, { method: "POST" });
+    // Azure Functions returns 404 for unregistered method+route combos
+    expect([404, 405]).toContain(res.status);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // fn-demo-login — POST /auth/login
 // ---------------------------------------------------------------------------
 
