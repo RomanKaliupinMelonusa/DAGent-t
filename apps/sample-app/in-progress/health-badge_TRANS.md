@@ -3,17 +3,17 @@
 ## Workflow
 - **Type:** Full-Stack
 - **Started:** 2026-03-31T00:00:00.000Z
-- **Deployed URL:** [To be filled after deployment]
+- **Deployed URL:** https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/28
 
 ## Implementation Notes
-[To be filled by Dev agents during implementation]
+Draft PR #28 created — awaiting Terraform plan
 
 ## Checklist
 ### Infrastructure (Wave 1)
 - [x] Development Complete — Schemas (@schema-dev)
 - [x] Infrastructure Written — Terraform (@infra-architect)
 - [x] Infra Code Pushed to Origin (@deploy-manager)
-- [ ] Draft PR Created (@pr-creator)
+- [x] Draft PR Created (@pr-creator)
 - [ ] Infra Plan CI Passed (@deploy-manager)
 ### Approval Gate
 - [ ] Infra Approval Received (null)
