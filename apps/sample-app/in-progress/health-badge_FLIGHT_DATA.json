@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-31T23:30:55.089Z",
+  "generatedAt": "2026-03-31T23:31:15.579Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -85,7 +85,8 @@
         "Good — the schema is already created by another agent. The contract is clear: `{ status: \"ok\", timestamp: \"<ISO-8601>\" }`.  Now let me implement the two infrastructure changes:  1. **Update `api-sample.openapi.yaml`** — add `GET /health` path 2. **Add operation-level policy in `apim.tf`** — bypass auth for the health operation  The Sample API has a blanket auth policy applied at the API level. Since `/health` is anonymous, I need an operation-level policy that does NOT inherit the API-level auth check (no `<base />` in inbound).",
         "Now add the operation-level policy in `apim.tf` to bypass auth for the `/health` endpoint. I'll add it right after the API-level policy for the Sample API:",
         "Now let me verify the files look correct:",
-        "Both files look good. Now let me run the Terraform validation gate:"
+        "Both files look good. Now let me run the Terraform validation gate:",
+        "Terraform plan succeeded: **1 resource to add** (`azurerm_api_management_api_operation_policy.health`), 10 existing resources to update (the OpenAPI spec change triggers the API resource update). No destroys.  Now let me commit and complete:"
       ],
       "filesRead": [],
       "filesChanged": [
@@ -121,17 +122,32 @@
           "command": "grep -A2 \"will be created\\|to add\" /workspaces/DAGent-t/apps/sample-app/infra/plan-output.txt | head -20",
           "timestamp": "2026-03-31T23:30:48.046Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh infra \"feat(infra): add GET /health to OpenAPI spec and APIM anonymous passthrough policy\"",
+          "timestamp": "2026-03-31T23:30:55.090Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:doc-note health-badge infra-architect \"## Infrastructure Changes (health-badge)",
+          "timestamp": "2026-03-31T23:31:06.231Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:complete health-badge infra-architect",
+          "timestamp": "2026-03-31T23:31:11.103Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
-        "intent": 4,
+        "intent": 5,
         "file-read": 17,
         "edit": 2,
-        "shell": 6
+        "shell": 9
       },
-      "inputTokens": 481513,
-      "outputTokens": 6981,
-      "cacheReadTokens": 454029,
+      "inputTokens": 590540,
+      "outputTokens": 7693,
+      "cacheReadTokens": 561535,
       "cacheWriteTokens": 0
     }
   ]
