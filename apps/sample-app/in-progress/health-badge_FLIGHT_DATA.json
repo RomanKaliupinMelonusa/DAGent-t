@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-31T23:54:32.710Z",
+  "generatedAt": "2026-03-31T23:54:46.274Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -130,6 +130,29 @@
       "outcome": "completed",
       "intents": [
         "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-03-31T23:54:34.879Z",
+      "finishedAt": "2026-03-31T23:54:46.273Z",
+      "durationMs": 11394,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
       ],
       "messages": [],
       "filesRead": [],
