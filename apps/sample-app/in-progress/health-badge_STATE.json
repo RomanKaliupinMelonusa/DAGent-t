@@ -59,7 +59,7 @@
       "label": "Infra Outputs Captured — Interfaces Written",
       "agent": "@infra-handoff",
       "phase": "approval",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -67,15 +67,16 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added GET /health anonymous Azure Function (fn-health.ts) returning {status:'ok',timestamp} with HealthResponseSchema validation. Integration tests added to smoke suite covering anonymous access and method rejection."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -83,7 +84,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -91,7 +92,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

@@ -17,12 +17,12 @@ Draft PR #28 created — awaiting Terraform plan
 - [x] Infra Plan CI Passed (@deploy-manager)
 ### Approval Gate
 - [x] Infra Approval Received (null)
-- [ ] Infra Outputs Captured — Interfaces Written (@infra-handoff)
+- [x] Infra Outputs Captured — Interfaces Written (@infra-handoff)
 ### Pre-Deploy (Wave 2)
-- [ ] Development Complete — Backend (@backend-dev)
-- [ ] Development Complete — Frontend (@frontend-dev)
-- [ ] Unit Tests Passed — Backend (@backend-test)
-- [ ] Unit Tests Passed — Frontend (@frontend-ui-test)
+- [x] Development Complete — Backend (@backend-dev)
+- [x] Development Complete — Frontend (@frontend-dev)
+- [x] Unit Tests Passed — Backend (@backend-test)
+- [x] Unit Tests Passed — Frontend (@frontend-ui-test)
 ### Deploy
 - [ ] App Code Pushed to Origin (@deploy-manager)
 - [ ] App CI Workflows Passed (@deploy-manager)

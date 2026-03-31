@@ -1,8 +1,61 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-31T23:54:21.847Z",
+  "generatedAt": "2026-03-31T23:54:28.543Z",
   "featureSlug": "health-badge",
   "items": [
+    {
+      "key": "frontend-unit-test",
+      "label": "Unit Tests Passed — Frontend",
+      "agent": "@frontend-ui-test",
+      "phase": "pre-deploy",
+      "attempt": 1,
+      "startedAt": "2026-03-31T23:53:20.198Z",
+      "finishedAt": "2026-03-31T23:54:22.538Z",
+      "durationMs": 62340,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Good, the NavBar.test.tsx already exists with comprehensive tests for the HealthBadge feature. Now let me run the tests.",
+        "All 19 tests pass across 3 suites. Now let me verify E2E tests compile.",
+        "All E2E tests compile and list successfully, including the `health.spec.ts` E2E test. Now let me mark the pipeline step complete.",
+        "All done. Here's a summary of the frontend unit test verification:  ## Results  **✅ All unit tests passed (19/19 across 3 suites)**  | Suite | Tests | Status | |-------|-------|--------| | `NavBar.test.tsx` | 5 | ✅ Pass | | `DemoLoginForm.test.tsx` | 5 | ✅ Pass | | `apiClient.test.ts` | 9 | ✅ Pass |  **Health Badge tests specifically verified:** 1. ✅ Renders \"System Online\" when `/api/health` returns 200 2. ✅ Renders \"Offline\" when `/api/health` returns non-OK status (500) 3. ✅ Renders \"Offline\" when fetch throws a network error 4. ✅ Calls fetch with the correct health endpoint URL 5. ✅ Shows \"Checking…\" in loading state initially  **✅ E2E tests compile** — 10 tests listed across 3 files, including `health.spec.ts` with 2 health badge E2E tests.  **No regressions** — all existing tests continue to pass."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && npx jest --verbose 2>&1",
+          "timestamp": "2026-03-31T23:53:46.992Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npx playwright test --config playwright.config.ts --list 2>&1",
+          "timestamp": "2026-03-31T23:53:59.567Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete health-badge frontend-unit-test 2>&1",
+          "timestamp": "2026-03-31T23:54:09.843Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Unit Tests Passed — Frontend\" 2>&1",
+          "timestamp": "2026-03-31T23:54:15.140Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 7,
+        "glob": 5,
+        "shell": 4
+      },
+      "inputTokens": 202189,
+      "outputTokens": 2066,
+      "cacheReadTokens": 186306,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "2b93234f880b5aa1a3b78c53093f1ba3eb4e8e7a"
+    },
     {
       "key": "backend-unit-test",
       "label": "Unit Tests Passed — Backend",
@@ -10,14 +63,15 @@
       "phase": "pre-deploy",
       "attempt": 1,
       "startedAt": "2026-03-31T23:53:20.184Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-03-31T23:54:28.539Z",
+      "durationMs": 68355,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good. I can see the implementation and tests are already in place. Let me now run the tests.",
         "All 26 tests passed (3 suites passed, 1 skipped which is the integration test). Now let me run schema validation.",
-        "All tests passed: - **Unit tests**: 26 passed (3 suites), 1 integration suite correctly skipped - **Schema validation**: 38 passed (including HealthResponseSchema tests)  Now let me mark the pipeline complete and commit."
+        "All tests passed: - **Unit tests**: 26 passed (3 suites), 1 integration suite correctly skipped - **Schema validation**: 38 passed (including HealthResponseSchema tests)  Now let me mark the pipeline complete and commit.",
+        "All tasks completed successfully:  **Summary:** - ✅ **Unit tests (Jest)**: 26/26 passed across 3 test suites (`fn-health`, `fn-hello`, `fn-demo-login`). The `fn-health` tests validate: 200 response, ISO-8601 timestamp, `HealthResponseSchema` conformance, logging, literal `\"ok\"` status, and timestamp recency. - ✅ **Schema validation**: 38/38 passed, including 8 `HealthResponseSchema` tests (valid parse, timestamp format, status literal enforcement, missing field rejection, extra field stripping). - ✅ Pipeline state marked complete and committed."
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -46,17 +100,23 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete health-badge backend-unit-test 2>&1",
           "timestamp": "2026-03-31T23:54:17.046Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Unit Tests Passed — Backend\" 2>&1",
+          "timestamp": "2026-03-31T23:54:21.850Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 4,
         "file-read": 11,
-        "shell": 5
+        "shell": 6
       },
-      "inputTokens": 177153,
-      "outputTokens": 1736,
-      "cacheReadTokens": 163516,
-      "cacheWriteTokens": 0
+      "inputTokens": 198754,
+      "outputTokens": 1898,
+      "cacheReadTokens": 184804,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "2b93234f880b5aa1a3b78c53093f1ba3eb4e8e7a"
     }
   ]
 }
