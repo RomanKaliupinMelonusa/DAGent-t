@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "## Infrastructure Changes (health-badge)\n\n### Resources Created\n- `azurerm_api_management_api_operation_policy.health` — Operation-level APIM policy that bypasses the API-level auth check (check-header / validate-jwt) for the `GET /health` endpoint. Includes CORS and backend routing but omits `<base />` in inbound to skip auth inheritance.\n\n### Files Modified\n- `infra/api-specs/api-sample.openapi.yaml` — Added `GET /health` path with operationId `health`, 200 response schema: `{ status: 'ok' (enum), timestamp: date-time }`\n- `infra/apim.tf` — Added `azurerm_api_management_api_operation_policy.health` resource (section 6a)\n\n### Key Design Decision\nThe /health endpoint must be anonymous (no auth). Since the Sample API has a blanket auth policy at the API level, the operation-level policy omits `<base />` in inbound to prevent inheriting the auth check. CORS and set-backend-service are applied explicitly instead.\n\n### Terraform Plan Summary\n- 1 to add: `azurerm_api_management_api_operation_policy.health`\n- 10 to change (API spec update propagates to APIM API resource)\n- 0 to destroy\n\n### Outputs\nNo new outputs. Existing outputs unchanged."
     },
     {
       "key": "push-infra",

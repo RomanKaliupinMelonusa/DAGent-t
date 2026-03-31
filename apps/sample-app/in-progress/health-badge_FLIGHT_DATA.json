@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-31T23:31:15.579Z",
+  "generatedAt": "2026-03-31T23:31:25.714Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -76,9 +76,9 @@
       "phase": "infra",
       "attempt": 1,
       "startedAt": "2026-03-31T23:27:31.994Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-03-31T23:31:25.708Z",
+      "durationMs": 233714,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now I have a complete understanding of the infrastructure. Let me analyze:  **Spec requirements for infra:** 1. Update `infra/api-specs/api-sample.openapi.yaml` — add `GET /health` path with 200 response schema 2. The health endpoint is `authLevel: \"anonymous\"` — must work without credentials 3. The Sample API has a blanket auth policy (check-header / validate-jwt) — `/health` needs a passthrough exception  Let me check the existing schemas for the data contract reference:",
@@ -86,7 +86,8 @@
         "Now add the operation-level policy in `apim.tf` to bypass auth for the `/health` endpoint. I'll add it right after the API-level policy for the Sample API:",
         "Now let me verify the files look correct:",
         "Both files look good. Now let me run the Terraform validation gate:",
-        "Terraform plan succeeded: **1 resource to add** (`azurerm_api_management_api_operation_policy.health`), 10 existing resources to update (the OpenAPI spec change triggers the API resource update). No destroys.  Now let me commit and complete:"
+        "Terraform plan succeeded: **1 resource to add** (`azurerm_api_management_api_operation_policy.health`), 10 existing resources to update (the OpenAPI spec change triggers the API resource update). No destroys.  Now let me commit and complete:",
+        "All done. Here's a summary of what was implemented:  ## Infrastructure Changes — health-badge  ### What was done  1. **`infra/api-specs/api-sample.openapi.yaml`** — Added `GET /health` path with:    - `operationId: health`    - 200 response schema matching the `HealthResponseSchema` contract: `{ status: \"ok\" (enum), timestamp: date-time }`    - No auth parameters (anonymous endpoint)  2. **`infra/apim.tf`** — Added `azurerm_api_management_api_operation_policy.health` (section 6a):    - **Operation-level APIM policy** that bypasses the API-level auth check    - Omits `<base />` in `<inbound>` to prevent inheriting `check-header` (demo) / `validate-jwt` (entra) from the Sample API policy    - Explicitly includes CORS (same origins as the API policy) and `set-backend-service` for routing to the Function App    - Only allows `GET` and `OPTIONS` methods  ### Key Design Decision The Sample API applies a blanket auth policy at the API level. Since `/health` must be anonymous (`authLevel: \"anonymous\"`), the operation-level policy skips policy inheritance by omitting `<base />` in inbound, while still providing CORS and backend routing explicitly.  ### Terraform Plan Result - ✅ **1 to add:** `azurerm_api_management_api_operation_policy.health` - ✅ **10 to change** (OpenAPI spec update propagates to existing APIM resources) - ✅ **0 to destroy**"
       ],
       "filesRead": [],
       "filesChanged": [
@@ -137,18 +138,24 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete health-badge infra-architect",
           "timestamp": "2026-03-31T23:31:11.103Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Infrastructure Written — Terraform\"",
+          "timestamp": "2026-03-31T23:31:15.581Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 5,
         "file-read": 17,
         "edit": 2,
-        "shell": 9
+        "shell": 10
       },
-      "inputTokens": 590540,
-      "outputTokens": 7693,
-      "cacheReadTokens": 561535,
-      "cacheWriteTokens": 0
+      "inputTokens": 627584,
+      "outputTokens": 8095,
+      "cacheReadTokens": 598300,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "2c88d29a08215c1c7956f764bee193e551fbe6b3"
     }
   ]
 }
