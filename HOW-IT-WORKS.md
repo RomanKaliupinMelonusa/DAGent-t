@@ -23,6 +23,8 @@ graph LR
 
 That's the whole system. Everything below zooms deeper into each part.
 
+> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/watchdog.ts#L358) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). Session lifecycle lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts).
+
 ---
 
 ## Level 2 — The DAG
@@ -99,6 +101,15 @@ graph TD
 
 **What controls which items exist:** Workflow type. A `Backend`-only feature skips `frontend-dev`, `frontend-unit-test`, and `live-ui` (marked `N/A` at init). The DAG shape adapts, but its edges never change.
 
+> **Key code at this level:**
+> - Item list: `ALL_ITEMS` — [pipeline-state.mjs#L51](tools/autonomous-factory/pipeline-state.mjs#L51)
+> - Dependency edges: `ITEM_DEPENDENCIES` — [pipeline-state.mjs#L95](tools/autonomous-factory/pipeline-state.mjs#L95)
+> - Workflow-based N/A items: `NA_ITEMS_BY_TYPE` — [pipeline-state.mjs#L79](tools/autonomous-factory/pipeline-state.mjs#L79)
+> - DAG resolution: `getNextAvailable()` — [pipeline-state.mjs#L761](tools/autonomous-factory/pipeline-state.mjs#L761) — scans all items, returns everything whose deps are `done`/`na`
+> - Completion: `completeItem()` — [pipeline-state.mjs#L280](tools/autonomous-factory/pipeline-state.mjs#L280) — validates phase gating
+> - Failure: `failItem()` — [pipeline-state.mjs#L320](tools/autonomous-factory/pipeline-state.mjs#L320) — records error, checks retry limit
+> - Concurrency lock: `withLock()` — [pipeline-state.mjs#L219](tools/autonomous-factory/pipeline-state.mjs#L219) — POSIX `mkdirSync` atomic mutex
+
 ---
 
 ## Level 3 — What Each Agent Receives
@@ -144,6 +155,17 @@ backend-dev:
 ```
 
 The APM compiler resolves this: `always` → all `.md` files in `.apm/instructions/always/`, `backend` → all `.md` files in `.apm/instructions/backend/`, etc. Concatenated, validated against a 6000-token budget, then injected as `## Coding Rules` in the system message.
+
+> **Key code at this level:**
+> - Prompt factory: [agents.ts](tools/autonomous-factory/src/agents.ts) — all prompt builders live here
+> - Per-agent routing: `ITEM_ROUTING` — [agents.ts#L1614](tools/autonomous-factory/src/agents.ts#L1614) — maps each item key to its prompt builder
+> - Config assembly: `getAgentConfig()` — [agents.ts#L1710](tools/autonomous-factory/src/agents.ts#L1710) — returns systemMessage + model + mcpServers
+> - Task prompt: `buildTaskPrompt()` — [agents.ts#L1732](tools/autonomous-factory/src/agents.ts#L1732) — builds per-session user message
+> - Completion contract: `completionBlock()` — [agents.ts#L74](tools/autonomous-factory/src/agents.ts#L74) — the `pipeline:complete/fail` commands
+> - Agent context: `AgentContext` interface — [agents.ts#L23](tools/autonomous-factory/src/agents.ts#L23) — slug, paths, URLs, test commands
+> - Example prompt: `backendDevPrompt()` — [agents.ts#L196](tools/autonomous-factory/src/agents.ts#L196)
+> - APM compiler: `compileApm()` — [apm-compiler.ts#L118](tools/autonomous-factory/src/apm-compiler.ts#L118) — resolves instruction refs, validates token budget
+> - APM manifest: [apps/sample-app/.apm/apm.yml](apps/sample-app/.apm/apm.yml) — agent declarations, instruction includes
 
 ---
 
@@ -236,6 +258,27 @@ graph TD
 
 Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-deploy cycles.
 
+> **Key code at this level:**
+> - Context injection builders — all in [context-injection.ts](tools/autonomous-factory/src/context-injection.ts):
+>   - `buildRetryContext()` — [L15](tools/autonomous-factory/src/context-injection.ts#L15)
+>   - `buildDownstreamFailureContext()` — [L43](tools/autonomous-factory/src/context-injection.ts#L43)
+>   - `buildRevertWarning()` — [L99](tools/autonomous-factory/src/context-injection.ts#L99)
+>   - `buildInfraRollbackContext()` — [L115](tools/autonomous-factory/src/context-injection.ts#L115)
+>   - `computeEffectiveDevAttempts()` — [L137](tools/autonomous-factory/src/context-injection.ts#L137) — merges in-memory + persisted cycle counts
+>   - `writeChangeManifest()` — [L155](tools/autonomous-factory/src/context-injection.ts#L155) — writes `_CHANGES.json` for docs-expert
+> - Triage — all in [triage.ts](tools/autonomous-factory/src/triage.ts):
+>   - `triageFailure()` — [L69](tools/autonomous-factory/src/triage.ts#L69) — 4-tier evaluation
+>   - `applyFaultDomain()` — [L209](tools/autonomous-factory/src/triage.ts#L209) — maps domain → item keys
+>   - `UNFIXABLE_SIGNALS` — [L23](tools/autonomous-factory/src/triage.ts#L23) — Azure AD, permission denied, etc.
+>   - `parseTriageDiagnostic()` — [L112](tools/autonomous-factory/src/triage.ts#L112) — extracts structured JSON from error strings
+> - Failure rerouting: `handleFailureReroute()` — [session-runner.ts#L980](tools/autonomous-factory/src/session-runner.ts#L980)
+> - State mutations:
+>   - `resetForDev()` — [pipeline-state.mjs#L627](tools/autonomous-factory/pipeline-state.mjs#L627) — resets items for redevelopment
+>   - `salvageForDraft()` — [pipeline-state.mjs#L358](tools/autonomous-factory/pipeline-state.mjs#L358) — graceful degradation to Draft PR
+> - Circuit breakers:
+>   - Identical-error: `shouldSkipRetry()` — [session-runner.ts#L195](tools/autonomous-factory/src/session-runner.ts#L195)
+>   - Cognitive (soft+hard): `wireToolLogging()` — [session-runner.ts#L1078](tools/autonomous-factory/src/session-runner.ts#L1078)
+
 ---
 
 ## Level 5 — The In-Memory Runtime State
@@ -283,6 +326,20 @@ Everything else enters `runAgentSession`, which:
 6. Pushes `itemSummary` to `pipelineSummaries`, flushes reports
 7. Re-reads `_STATE.json` to check if the agent called `pipeline:complete` or `pipeline:fail`
 8. If failed + post-deploy/test item → `handleFailureReroute()` triggers triage and redevelopment
+
+> **Key code at this level:**
+> - `PipelineRunState` interface — [session-runner.ts#L245](tools/autonomous-factory/src/session-runner.ts#L245)
+> - `PipelineRunConfig` interface — [session-runner.ts#L263](tools/autonomous-factory/src/session-runner.ts#L263)
+> - Entry point: `runItemSession()` — [session-runner.ts#L286](tools/autonomous-factory/src/session-runner.ts#L286) — gates + routing
+> - Agent engine: `runAgentSession()` — [session-runner.ts#L764](tools/autonomous-factory/src/session-runner.ts#L764) — SDK lifecycle
+> - Auto-skip: `tryAutoSkip()` — [session-runner.ts#L403](tools/autonomous-factory/src/session-runner.ts#L403)
+> - Deterministic bypasses: `runPushCode()` — [session-runner.ts#L485](tools/autonomous-factory/src/session-runner.ts#L485), `runPollCi()` — [session-runner.ts#L553](tools/autonomous-factory/src/session-runner.ts#L553)
+> - Report flush: `flushReports()` — [session-runner.ts#L1262](tools/autonomous-factory/src/session-runner.ts#L1262)
+> - Report writer: `writePipelineSummary()` — [reporting.ts#L247](tools/autonomous-factory/src/reporting.ts#L247)
+> - Telemetry type: `PreviousSummaryTotals` — [reporting.ts#L185](tools/autonomous-factory/src/reporting.ts#L185)
+> - Auto-skip helpers: [auto-skip.ts](tools/autonomous-factory/src/auto-skip.ts) — `getMergeBase()` [L12](tools/autonomous-factory/src/auto-skip.ts#L12), `getAutoSkipBaseRef()` [L26](tools/autonomous-factory/src/auto-skip.ts#L26), `getGitChangedFiles()` [L46](tools/autonomous-factory/src/auto-skip.ts#L46)
+> - State commit after batch: `commitAndPushState()` — [watchdog.ts#L219](tools/autonomous-factory/src/watchdog.ts#L219)
+> - Feature archiving: `archiveFeatureFiles()` — [watchdog.ts#L114](tools/autonomous-factory/src/watchdog.ts#L114)
 
 ---
 
