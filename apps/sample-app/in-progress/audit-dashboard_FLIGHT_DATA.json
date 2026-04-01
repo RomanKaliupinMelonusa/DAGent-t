@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:56:37.382Z",
+  "generatedAt": "2026-04-01T23:56:40.539Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -458,7 +458,7 @@
       "startedAt": "2026-04-01T23:45:51.619Z",
       "finishedAt": "2026-04-01T23:56:37.352Z",
       "durationMs": 645733,
-      "outcome": "completed",
+      "outcome": "failed",
       "intents": [],
       "messages": [
         "The live-ui validation is complete. Here's a summary of findings:  ## Live UI Validation — audit-dashboard: FAILED (deployment-stale)  ### Phase 1: HTTP Smoke Tests | Check | Result | |---|---| | `GET /` | ✅ 200, HTML shell loads | | `GET /audit` | ❌ **404 — Azure SWA native 404** | | `GET /about` | ✅ 200 |  ### Phase 2: API Network Validation | Check | Result | |---|---| | CORS preflight `OPTIONS /api/audit` | ✅ 200, correct `Access-Control-Allow-Origin` | | `GET /sample/audit` (with token) | ✅ 200, returns audit log entries | | `POST /sample/audit` (with token) | ✅ 201, creates new entry | | `POST /demo-auth/auth/login` | ✅ 200, returns demo token |  ### Phase 3-4: E2E Tests — 2 FAILED Both tests fail with `timeout waiting for getByRole('link', { name: 'Audit' })` — the deployed NavBar only contains Home, About, Profile. No \"Audit\" link exists.  ### Root Cause: **Deployment Stale** - The audit page code (commit `c4206a4`) **exists on the branch and builds locally** (`next build` → `out/audit.html`) - The deployed SWA **does not contain it** — zero \"audit\" strings in deployed JS chunks - The CI push commit (`c0c1e7d`) only modified `in-progress/` files, which **don't match** `deploy-frontend.yml`'s `apps/*/frontend/**` path filter - **Fix needed:** Trigger a frontend redeployment (workflow_dispatch or push a commit touching `apps/sample-app/frontend/`)"
@@ -637,7 +637,31 @@
       "outputTokens": 19198,
       "cacheReadTokens": 1338478,
       "cacheWriteTokens": 0,
-      "headAfterAttempt": "b6462167d4774aeeddf669d43ca57d8682697e01"
+      "headAfterAttempt": "b6462167d4774aeeddf669d43ca57d8682697e01",
+      "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"Frontend SWA deployment is stale — the /audit page (commit c4206a4) exists on the branch and builds locally (next build produces out/audit.html with /audit route), but the deployed SWA at https://wonderful-grass-0ef9b920f.4.azurestaticapps.net does NOT contain it. Evidence: (1) GET /audit returns Azure SWA native 404, (2) no audit string found in any of 12 deployed JS chunks, (3) Playwright screenshot confirms NavBar only shows Home/About/Profile with no Audit link, (4) deploy-frontend.yml paths filter apps/*/frontend/** was not matched by the latest CI push commit c0c1e7d which only modified in-progress/ files. Backend API is fully working: GET /sample/audit returns 200 with data, POST /sample/audit returns 201, CORS preflight returns 200 with correct Access-Control-Allow-Origin. Fix: trigger a frontend redeployment via workflow_dispatch of deploy-frontend.yml or push a commit that modifies apps/sample-app/frontend/** files.\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-01T23:56:39.867Z",
+      "finishedAt": "2026-04-01T23:56:40.538Z",
+      "durationMs": 671,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
