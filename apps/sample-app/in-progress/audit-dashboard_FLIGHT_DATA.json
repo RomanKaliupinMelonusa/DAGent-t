@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:56:40.539Z",
+  "generatedAt": "2026-04-02T00:01:31.349Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -661,6 +661,137 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-01T23:56:41.704Z",
+      "finishedAt": "2026-04-01T23:56:55.747Z",
+      "durationMs": 14043,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-01T23:56:56.937Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good - `integration-test` is `pending`. The previous attempt's completion was reset by the orchestrator due to live-ui failure which triggered a redevelopment cycle. Let me now run the full integration test workflow.",
+        "`fn-audit` is now deployed. Let me check the integration test coverage and set up authentication.",
+        "Integration test coverage is solid — the `fn-audit` block has: - POST 201 happy path ✓ - POST 400 missing fields ✓ - POST 400 invalid JSON ✓ - GET 200 array response ✓  And I have the function key. Let me now run the integration tests.",
+        "All 11 integration tests passed. Now let me run the APIM gateway validation.",
+        "Token is empty from tfvars. Let me get it from Key Vault properly.",
+        "Got the demo token. Let me re-run the APIM validation.",
+        "All validations passed: - ✅ Integration tests: 11/11 passed (fn-hello, fn-demo-login, fn-audit) - ✅ APIM GET /sample/audit: 200 - ✅ APIM POST /sample/audit: 201 - ✅ APIM CORS preflight: 200"
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | tail -30",
+          "timestamp": "2026-04-01T23:58:17.175Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git log --oneline -5 2>&1",
+          "timestamp": "2026-04-01T23:58:17.175Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/audit-dashboard_STATE.json 2>&1 | python3 -c \"import json,sys; d=json.load(sys.stdin); items=d.get('items',{}); print(json.dumps({k:v.get('st",
+          "timestamp": "2026-04-01T23:58:57.914Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/audit-dashboard_STATE.json 2>&1 | python3 -c \"import json,sys; d=json.load(sys.stdin); items=d.get('items',[]); print(json.dumps([{'key':i.ge",
+          "timestamp": "2026-04-01T23:59:07.118Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/in-progress/audit-dashboard_SPEC.md 2>&1 | head -120",
+          "timestamp": "2026-04-01T23:59:17.093Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && az functionapp function list --name func-sample-app-001 --resource-group rg-sample-app-dev --query '[].{name:name}' -o table 2>&1",
+          "timestamp": "2026-04-01T23:59:17.094Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/*.integration.test.ts 2>&1",
+          "timestamp": "2026-04-01T23:59:17.094Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts 2>&1",
+          "timestamp": "2026-04-01T23:59:36.441Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_KEY=$(az functionapp keys list --name func-sample-app-001 --resource-group rg-sample-app-dev --query 'functionKeys.default' -o tsv 2>/dev/null); if [ -z \"$FUNC_KEY\" ]; then FUNC_KEY=$(az function",
+          "timestamp": "2026-04-01T23:59:36.441Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && RUN_INTEGRATION=true INTEGRATION_API_BASE_URL=\"https://func-sample-app-001.azurewebsites.net/api\" INTEGRATION_FUNCTION_KEY=\"DF3i8XzD7sc0DJoHUOOd0O-dJ",
+          "timestamp": "2026-04-01T23:59:53.153Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token",
+          "timestamp": "2026-04-02T00:00:12.471Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# List key vault secrets",
+          "timestamp": "2026-04-02T00:00:45.700Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Try to get demo token from the function app settings",
+          "timestamp": "2026-04-02T00:00:45.700Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "DEMO_TOKEN=\"16fc3942-557c-ae3d-8f87-d761619d3509\"",
+          "timestamp": "2026-04-02T00:01:00.248Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete audit-dashboard integration-test 2>&1",
+          "timestamp": "2026-04-02T00:01:10.908Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 6,
+        "shell": 16
+      },
+      "inputTokens": 219766,
+      "outputTokens": 4314,
+      "cacheReadTokens": 194622,
       "cacheWriteTokens": 0
     }
   ]
