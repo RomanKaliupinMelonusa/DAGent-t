@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-audit.ts with POST /audit (create event in Cosmos DB) and GET /audit (latest 50 events). Uses lazy CosmosClient singleton with DefaultAzureCredential, AuditLogCreateSchema validation at API boundary, and AuditLogSchema defence-in-depth on reads. No schema drift — reuses existing @branded/schemas audit types."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added /audit page with data table (loading/error/empty states), Audit nav link in NavBar, fire-and-forget POST /api/audit on demo login."
     },
     {
       "key": "backend-unit-test",
