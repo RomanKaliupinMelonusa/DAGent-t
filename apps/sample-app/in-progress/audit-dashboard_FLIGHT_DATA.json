@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:50:58.871Z",
+  "generatedAt": "2026-04-01T22:51:02.088Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -789,6 +789,29 @@
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0,
       "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"validateApp hook: Frontend at ${SWA_URL} returned HTTP 000000 (expected 200)\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-01T22:51:00.952Z",
+      "finishedAt": "2026-04-01T22:51:02.088Z",
+      "durationMs": 1136,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
