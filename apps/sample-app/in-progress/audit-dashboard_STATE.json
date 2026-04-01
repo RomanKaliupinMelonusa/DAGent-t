@@ -186,6 +186,16 @@
       "timestamp": "2026-04-01T22:50:58.912Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 2/5: Frontend at ${SWA_URL} returned HTTP 000000 (expected 200). Reset 2 items: push-app, poll-app-ci"
+    },
+    {
+      "timestamp": "2026-04-01T23:14:53.264Z",
+      "itemKey": "reset-ci",
+      "message": "Re-push cycle triggered (cycle 1/10). Reset 2 items: push-app, poll-app-ci"
+    },
+    {
+      "timestamp": "2026-04-01T23:17:44.851Z",
+      "itemKey": "reset-ci",
+      "message": "Re-push cycle triggered (cycle 2/10). Reset 2 items: push-app, poll-app-ci"
     }
   ],
   "elevatedApply": true
