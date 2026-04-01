@@ -12,7 +12,7 @@ import { z } from "zod";
 // Zod Schemas
 // ---------------------------------------------------------------------------
 
-export const ApmMcpConfigSchema = z.object({
+export const ApmMcpLocalConfigSchema = z.object({
   type: z.literal("local"),
   command: z.string(),
   args: z.array(z.string()),
@@ -20,6 +20,18 @@ export const ApmMcpConfigSchema = z.object({
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]),
 });
+
+export const ApmMcpRemoteConfigSchema = z.object({
+  type: z.literal("remote"),
+  url: z.string().url(),
+  tools: z.array(z.string()),
+  availability: z.enum(["required", "optional"]),
+});
+
+export const ApmMcpConfigSchema = z.discriminatedUnion("type", [
+  ApmMcpLocalConfigSchema,
+  ApmMcpRemoteConfigSchema,
+]);
 
 /**
  * Per-agent cognitive circuit breaker limits.
@@ -134,7 +146,7 @@ export const ApmManifestSchema = z.object({
 // MCP file schema (roam-code.mcp.yml, playwright.mcp.yml)
 // ---------------------------------------------------------------------------
 
-export const ApmMcpFileSchema = z.object({
+export const ApmMcpLocalFileSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   type: z.literal("local"),
@@ -144,6 +156,20 @@ export const ApmMcpFileSchema = z.object({
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]).default("optional"),
 });
+
+export const ApmMcpRemoteFileSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  type: z.literal("remote"),
+  url: z.string().url(),
+  tools: z.array(z.string()).default(["*"]),
+  availability: z.enum(["required", "optional"]).default("optional"),
+});
+
+export const ApmMcpFileSchema = z.discriminatedUnion("type", [
+  ApmMcpLocalFileSchema,
+  ApmMcpRemoteFileSchema,
+]);
 
 // ---------------------------------------------------------------------------
 // Skill file schema (parsed from YAML frontmatter of .skill.md)

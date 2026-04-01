@@ -69,6 +69,7 @@ export const ALL_ITEMS = [
   { key: "live-ui",              label: "Live UI Validated",                            agent: "@frontend-ui-test",   phase: "post-deploy" },
   { key: "code-cleanup",         label: "Dead Code Eliminated",                         agent: "@code-cleanup",       phase: "finalize" },
   { key: "docs-archived",        label: "Docs Updated & Archived",                     agent: "@docs-expert",        phase: "finalize" },
+  { key: "doc-architect",        label: "Architecture & Risk Documented",               agent: "@doc-architect",      phase: "finalize" },
   { key: "publish-pr",           label: "PR Published & Ready for Review",              agent: "@pr-creator",         phase: "finalize" },
 ];
 
@@ -82,7 +83,7 @@ export const NA_ITEMS_BY_TYPE = {
   "Full-Stack": [],
   Infra:       ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
                 "integration-test", "live-ui", "schema-dev", "code-cleanup",
-                "push-app", "poll-app-ci"],
+                "push-app", "poll-app-ci", "doc-architect"],
 };
 // NOTE: infra wave items, docs-archived, and publish-pr are always active for all types.
 // The Infra workflow type skips Wave 2 app items entirely — only infra wave + docs + PR.
@@ -113,7 +114,9 @@ export const ITEM_DEPENDENCIES = {
   "live-ui":              ["poll-app-ci", "integration-test"],
   "code-cleanup":         ["integration-test", "live-ui"],
   "docs-archived":        ["code-cleanup"],
-  "publish-pr":           ["docs-archived"],
+  // ── Wave 3: Architecture Analysis (frozen AST) ────────────────────────
+  "doc-architect":        ["code-cleanup", "docs-archived"],
+  "publish-pr":           ["doc-architect"],
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

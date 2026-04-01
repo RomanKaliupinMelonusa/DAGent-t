@@ -59,17 +59,11 @@ function parseMcpYaml(filePath: string): { name: string; config: ApmMcpConfig } 
       `Invalid MCP file ${filePath}: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
     );
   }
-  return {
-    name: parsed.data.name,
-    config: {
-      type: parsed.data.type,
-      command: parsed.data.command,
-      args: parsed.data.args,
-      tools: parsed.data.tools,
-      cwd: parsed.data.cwd,
-      availability: parsed.data.availability,
-    },
-  };
+  const data = parsed.data;
+  const config: ApmMcpConfig = data.type === "remote"
+    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability }
+    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability };
+  return { name: data.name, config };
 }
 
 // ---------------------------------------------------------------------------
