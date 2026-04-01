@@ -100,7 +100,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -108,7 +108,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -157,6 +157,21 @@
       "timestamp": "2026-03-31T23:36:55.334Z",
       "itemKey": "resume-elevated",
       "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    },
+    {
+      "timestamp": "2026-04-01T00:13:26.555Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"environment\",\"diagnostic_trace\":\"Agent hit hard tool limit (40 calls). 9/10 live integration tests failing with HTTP 401 from APIM — likely missing function key in test config or APIM auth bypass not deployed for /health endpoint.\"}"
+    },
+    {
+      "timestamp": "2026-04-01T00:32:23.212Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"cicd\",\"diagnostic_trace\":\"fn-health function NOT deployed to Azure. GET https://func-sample-app-001.azurewebsites.net/api/health returns 404. az functionapp function list shows only fn-demo-login, fn-hello, fn-profile — fn-health is missing. The function code exists locally (backend/src/functions/fn-health.ts) and builds correctly via esbuild. The deploy-backend.yml workflow must have run before the fn-health commit was included, or the deployment failed silently. 2/10 integration tests failed: fn-health (live) > returns 200 with status ok and valid timestamp (anonymous) — Expected 200, Received 404. fn-health (live) > returns 200 without authentication headers — Expected 200, Received 404. 8/10 tests passed (fn-hello: 3, fn-health non-GET rejection: 1, fn-demo-login: 4). @deploy-manager must re-trigger deploy-backend workflow to deploy fn-health.\"}"
+    },
+    {
+      "timestamp": "2026-04-01T00:32:53.649Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: fn-health function NOT deployed to Azure. GET https://func-sample-app-001.azurewebsites.net/api/health returns 404. az functionapp function list shows only fn-demo-login, fn-hello, fn-profile — fn-health is missing. The function code exists locally (backend/src/functions/fn-health.ts) and builds correctly via esbuild. The deploy-backend.yml workflow must have run before the fn-health commit was included, or the deployment failed silently. 2/10 integration tests failed: fn-health (live) > returns 200 with status ok and valid timestamp (anonymous) — Expected 200, Received 404. fn-health (live) > returns 200 without authentication headers — Expected 200, Received 404. 8/10 tests passed (fn-hello: 3, fn-health non-GET rejection: 1, fn-demo-login: 4). @deploy-manager must re-trigger deploy-backend workflow to deploy fn-health.. Reset 3 items: push-app, poll-app-ci, integration-test"
     }
   ],
   "elevatedApply": true
