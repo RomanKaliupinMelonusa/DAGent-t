@@ -103,6 +103,7 @@ agents:
 config:
   defaultToolLimits: { soft: 60, hard: 80 }
   hooks:
+    resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateInfra: "bash .apm/hooks/validate-infra.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"
     preflightAuth: "bash .apm/hooks/preflight-auth.sh"

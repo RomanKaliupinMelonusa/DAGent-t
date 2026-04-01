@@ -28,6 +28,7 @@ import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
 import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkPreflightAuth, buildRoamIndex } from "./preflight.js";
 import { writePipelineSummary, writeTerminalLog, parsePreviousSummary } from "./reporting.js";
+import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
 import type { PipelineRunConfig, PipelineRunState } from "./session-runner.js";
 
@@ -362,6 +363,18 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     throw err;
+  }
+
+  // --- Resolve environment from infrastructure outputs (before any hooks) ---
+  try {
+    const resolved = runResolveEnvironment(apmContext.config, appRoot, repoRoot);
+    if (resolved > 0) {
+      console.log(`  ✔ Resolved ${resolved} environment variable(s) from infrastructure outputs\n`);
+    }
+  } catch (err) {
+    console.error(`\n  ✖ FATAL: ${err instanceof Error ? err.message : String(err)}`);
+    console.error("  → Check .apm/hooks/resolve-env.sh and verify Terraform state is accessible.\n");
+    process.exit(1);
   }
 
   checkApimRoutes(repoRoot, appRoot, apmContext);
