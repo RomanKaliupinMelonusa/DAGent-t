@@ -27,7 +27,7 @@
       "label": "Infra Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

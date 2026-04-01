@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:30:52.468Z",
+  "generatedAt": "2026-04-01T22:30:53.790Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -163,6 +163,29 @@
       "cacheReadTokens": 567384,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "16f57195e6d58dae0897f6adf5469b19e0d21270"
+    },
+    {
+      "key": "push-infra",
+      "label": "Infra Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-04-01T22:30:52.543Z",
+      "finishedAt": "2026-04-01T22:30:53.788Z",
+      "durationMs": 1245,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
