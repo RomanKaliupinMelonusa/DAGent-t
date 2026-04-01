@@ -47,3 +47,25 @@ echo "✅ Terraform validation passed. CI will run the plan and post it to the D
 
 Do NOT mark infra-architect complete until the terraform plan succeeds locally.
 Do NOT run `terraform apply` — apply is handled by the elevated infrastructure deploy workflow after human approval.
+
+## MANDATORY: Validate-Infra Hook Mutation
+
+When you provision a new data-plane resource (e.g., Cosmos DB, Redis Cache, Service Bus, Key Vault, S3 Bucket), you **MUST** append a lightweight network reachability or authentication check to `.apm/hooks/validate-infra.sh`.
+
+- Read connection strings from `terraform output` or environment variables configured in `apm.yml`
+- If the resource requires a new env var, also add it to `config.environment` in `.apm/apm.yml`
+- The script must `exit 1` with a diagnostic message if the resource is unreachable
+
+Example append:
+```bash
+# --- Cosmos DB reachability ---
+if [[ -n "${COSMOS_ENDPOINT:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$COSMOS_ENDPOINT" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" ]]; then
+    echo "Cosmos DB unreachable at $COSMOS_ENDPOINT"
+    exit 1
+  fi
+fi
+```
+
+The orchestrator runs this hook after `infra-handoff`. If it fails, triage resets `infra-architect` + `infra-handoff` for a redevelopment cycle.

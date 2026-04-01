@@ -412,26 +412,6 @@ export async function runItemSession(
     await new Promise((resolve) => setTimeout(resolve, POST_DEPLOY_PROPAGATION_DELAY_MS));
   }
 
-  // ── Pre-deploy smoke check for post-deploy items ──────────────────────
-  // Fast fail-check BEFORE spinning up expensive agent sessions ($8-37 each).
-  // If the deployment is detectably stale, trigger re-deploy directly.
-  if (LONG_ITEMS.has(next.key)) {
-    const smokeResult = runPreDeploySmokeCheck(next.key, config);
-    if (smokeResult) {
-      console.error(`  🚫 Pre-deploy smoke check failed for ${next.key}: ${smokeResult}`);
-      const staleMessage = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `Pre-deploy smoke check: ${smokeResult}` });
-      try { await failItem(slug, next.key, staleMessage); } catch { /* best-effort */ }
-      itemSummary.outcome = "failed";
-      itemSummary.errorMessage = staleMessage;
-      itemSummary.finishedAt = new Date().toISOString();
-      itemSummary.durationMs = Date.now() - stepStart;
-      itemSummary.intents.push(`Pre-deploy smoke check failed — skipping agent session (saved ~$${next.key === "live-ui" ? "37" : "9"})`);
-      pipelineSummaries.push(itemSummary);
-      flushReports(config, state);
-      return handleFailureReroute(slug, next.key, staleMessage, smokeResult, config, state, itemSummary, roamAvailable);
-    }
-  }
-
   // ── Deterministic bypasses (no agent session) ─────────────────────────
   if (next.key === "push-infra" || next.key === "push-app") {
     return runPushCode(next.key, config, state, itemSummary, stepStart);
@@ -527,74 +507,64 @@ async function tryAutoSkip(
 }
 
 // ---------------------------------------------------------------------------
-// Deployment freshness verification
+// Self-Mutating Validation Hooks
 // ---------------------------------------------------------------------------
 
 /**
- * Verify that deployed artifacts match the current branch code.
- * Called after poll-app-ci succeeds to catch stale deployments BEFORE
- * expensive post-deploy agent sessions (~$8-37 per session).
+ * Validate deployed application endpoints after CI completes.
+ * Delegates to the `hooks.validateApp` command from apm.yml config.
+ * The hook script is a self-mutating bash file — agents append endpoint
+ * checks as they create new routes/services.
  *
- * Delegates to the `hooks.verifyDeployment` command from apm.yml config.
- * The hook script outputs one warning per line (empty = all good).
- *
- * Returns warning strings (empty array = all good). Non-fatal — warnings
- * are logged but don't block the pipeline. Post-deploy agents will catch
- * real staleness and emit `deployment-stale` fault_domain.
+ * Returns a failure reason string if exit code 1, or `null` if pass.
  */
-function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
+function runValidateApp(config: PipelineRunConfig): string | null {
   const { appRoot, apmContext } = config;
-  const hookCmd = apmContext.config?.hooks?.verifyDeployment;
-  if (!hookCmd) return [];
-
-  const env = buildHookEnv(apmContext.config, {
-    APP_ROOT: appRoot,
-    REPO_ROOT: config.repoRoot,
-  });
-
-  try {
-    const result = executeHook(hookCmd, env, appRoot, 30_000);
-    if (!result || !result.stdout) return [];
-    return result.stdout.split("\n").filter(Boolean);
-  } catch {
-    // Non-fatal — hook may not be available in all environments
-    return [];
-  }
-}
-
-/**
- * Fast pre-deploy smoke check — runs BEFORE spinning up an expensive post-deploy
- * agent session. Returns a failure reason string if the deployment is detectably
- * stale, or `null` if the check passes (or is inconclusive).
- *
- * Delegates to the `hooks.smokeCheck` command from apm.yml config.
- * The hook receives ITEM_KEY as an env var and returns:
- *   exit 0 = pass/inconclusive, exit 1 = failure (stdout = reason).
- *
- * This is deliberately conservative — it only catches clear staleness.
- * Subtle issues are left to the full agent session to diagnose.
- */
-function runPreDeploySmokeCheck(
-  itemKey: string,
-  config: PipelineRunConfig,
-): string | null {
-  const { appRoot, apmContext } = config;
-  const hookCmd = apmContext.config?.hooks?.smokeCheck;
+  const hookCmd = apmContext.config?.hooks?.validateApp;
   if (!hookCmd) return null;
 
   const env = buildHookEnv(apmContext.config, {
     APP_ROOT: appRoot,
     REPO_ROOT: config.repoRoot,
-    ITEM_KEY: itemKey,
   });
 
   try {
-    const result = executeHook(hookCmd, env, appRoot, 30_000);
+    const result = executeHook(hookCmd, env, appRoot, 60_000);
     if (!result) return null;
     if (result.exitCode === 1 && result.stdout) {
       return result.stdout;
     }
-    return null; // Pass or inconclusive
+    return null; // Pass
+  } catch {
+    return null; // Inconclusive — let agent handle it
+  }
+}
+
+/**
+ * Validate deployed infrastructure reachability after infra-handoff.
+ * Delegates to the `hooks.validateInfra` command from apm.yml config.
+ * The hook script is a self-mutating bash file — @infra-architect appends
+ * reachability checks as new data-plane resources are provisioned.
+ *
+ * Returns a failure reason string if exit code 1, or `null` if pass.
+ */
+function runValidateInfra(config: PipelineRunConfig): string | null {
+  const { appRoot, apmContext } = config;
+  const hookCmd = apmContext.config?.hooks?.validateInfra;
+  if (!hookCmd) return null;
+
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: config.repoRoot,
+  });
+
+  try {
+    const result = executeHook(hookCmd, env, appRoot, 60_000);
+    if (!result) return null;
+    if (result.exitCode === 1 && result.stdout) {
+      return result.stdout;
+    }
+    return null; // Pass
   } catch {
     return null; // Inconclusive — let agent handle it
   }
@@ -803,13 +773,24 @@ async function runPollCi(
         }
       }
 
-      // ── poll-app-ci: verify deployed artifacts match current code ──────
-      // Catches stale deployments early (before expensive post-deploy agents).
+      // ── poll-app-ci: validate deployed app endpoints ──────────────────
+      // Runs the self-mutating validateApp hook. If the app is dead despite
+      // CI passing, fail immediately and trigger triage before expensive
+      // post-deploy agents (live-ui, integration-test) boot up.
       if (itemKey === "poll-app-ci") {
-        const warnings = verifyDeploymentFreshness(config);
-        if (warnings.length > 0) {
-          for (const w of warnings) console.warn(`  ⚠ ${w}`);
-          itemSummary.intents.push(`Deployment freshness warning: ${warnings.join("; ")}`);
+        const appFailure = runValidateApp(config);
+        if (appFailure) {
+          console.error(`  🚫 App validation failed after CI: ${appFailure}`);
+          const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
+          try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
+          itemSummary.outcome = "failed";
+          itemSummary.errorMessage = failMsg;
+          itemSummary.finishedAt = new Date().toISOString();
+          itemSummary.durationMs = Date.now() - stepStart;
+          itemSummary.intents.push(`App validation failed — blocking before post-deploy agents`);
+          pipelineSummaries.push(itemSummary);
+          flushReports(config, state);
+          return handleFailureReroute(slug, itemKey, failMsg, appFailure, config, state, itemSummary, roamAvailable);
         }
       }
 
@@ -1125,6 +1106,22 @@ async function runAgentSession(
     // Infra-architect permission escalation → route to elevated deploy
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
+    // ── Infra-handoff post-completion: validate infrastructure reachability ──
+    // Runs the self-mutating validateInfra hook after the agent successfully
+    // documents infra outputs. If newly provisioned resources are unreachable,
+    // fail with "infra" fault domain → triage resets ["infra-architect", "infra-handoff"].
+    if (next.key === "infra-handoff") {
+      const infraFailure = runValidateInfra(config);
+      if (infraFailure) {
+        console.error(`  🚫 Infra validation failed after ${next.key}: ${infraFailure}`);
+        const failMsg = JSON.stringify({ fault_domain: "infra", diagnostic_trace: `validateInfra hook: ${infraFailure}` });
+        try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
+        itemSummary.outcome = "failed";
+        itemSummary.errorMessage = failMsg;
+        flushReports(config, state);
+        return handleFailureReroute(slug, next.key, failMsg, infraFailure, config, state, itemSummary, roamAvailable);
+      }
+    }
     console.log(`  ✅ ${next.key} complete`);
   }
 

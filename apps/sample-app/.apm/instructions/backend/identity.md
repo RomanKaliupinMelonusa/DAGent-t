@@ -27,3 +27,25 @@ Common fixes:
 - Module not found → add the module to `esbuild.config.mjs` external array
 
 Do NOT mark backend-dev complete until all function entry points load successfully.
+
+## MANDATORY: Validate-App Hook Mutation
+
+When you expose new critical HTTP endpoints or routing rules, you **MUST** append a lightweight `curl` check to `.apm/hooks/validate-app.sh` that verifies the endpoint returns a valid HTTP status after deployment.
+
+- Read the base URL from environment variables (e.g., `$BACKEND_URL`, `$FRONTEND_URL`)
+- If the endpoint requires a new env var, also add it to `config.environment` in `.apm/apm.yml`
+- The script must `exit 1` with a diagnostic message if the endpoint is unreachable
+
+Example append:
+```bash
+# --- /api/my-new-route reachability ---
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${BACKEND_URL}/api/my-new-route" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" || "$STATUS" == "502" || "$STATUS" == "503" ]]; then
+    echo "Endpoint /api/my-new-route unreachable (HTTP $STATUS)"
+    exit 1
+  fi
+fi
+```
+
+The orchestrator runs this hook after `poll-app-ci`. If it fails, triage routes to re-deploy.

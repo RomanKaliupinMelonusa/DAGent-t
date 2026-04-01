@@ -70,12 +70,14 @@ export const ApmConfigSchema = z.object({
   }).optional(),
   /** Lifecycle hooks — shell commands that abstract cloud-specific operations.
    *  Hook scripts live in `.apm/hooks/` and receive config.environment as env vars.
-   *  The orchestrator executes these instead of inline cloud CLI commands. */
+   *  The orchestrator executes these instead of inline cloud CLI commands.
+   *  Agents MUST append validation checks to these scripts when provisioning new
+   *  resources or endpoints (Self-Mutating Hook pattern). */
   hooks: z.object({
-    /** Verify deployed artifacts match current branch code. Stdout: one warning per line. Exit 0 always. */
-    verifyDeployment: z.string().optional(),
-    /** Pre-deploy smoke check. Receives ITEM_KEY env var. Exit 0 = pass, exit 1 = fail (stdout = reason). */
-    smokeCheck: z.string().optional(),
+    /** Validate deployed infrastructure reachability. Exit 0 = pass, exit 1 = fail (stdout = diagnostic). */
+    validateInfra: z.string().optional(),
+    /** Validate deployed application endpoints. Exit 0 = pass, exit 1 = fail (stdout = diagnostic). */
+    validateApp: z.string().optional(),
     /** Pre-flight auth check. Exit 0 = authenticated, non-zero = not authenticated. */
     preflightAuth: z.string().optional(),
   }).optional(),

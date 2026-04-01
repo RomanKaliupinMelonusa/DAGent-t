@@ -137,6 +137,18 @@ New engine module: **`hooks.ts`** — `executeHook()` + `buildHookEnv()` utility
 | `smokeCheck` | env vars + `ITEM_KEY` | Pass or inconclusive | Detected failure | Failure reason |
 | `preflightAuth` | env vars | Authenticated | Not authenticated | Status message |
 
+**What the hooks validate (sample-app):**
+
+| Check | `verifyDeployment` | `smokeCheck` (integration-test) | `smokeCheck` (live-ui) |
+|-------|--------------------|---------------------------------|------------------------|
+| Functions deployed match local source | ✔ | ✔ | — |
+| Frontend serves HTTP 200 | ✔ | — | ✔ |
+| APIM gateway reachable (not 502/503) | ✔ | ✔ | ✔ |
+| Backend URL reachable (not 502/503) | ✔ | ✔ | — |
+| Anonymous endpoints return non-404 | — | — | ✔ |
+
+The function file glob is configurable via `FUNCTION_FILE_GLOB` env var (defaults to `fn-*.ts`).
+
 ### 6. Stack Decoupling — Agent Prompt Identity
 
 **Core change:** Cloud-specific agent identity moved from hardcoded TypeScript template strings to APM instruction `.md` files.
@@ -236,7 +248,6 @@ The orchestrator engine (`watchdog.ts`, `session-runner.ts`, `agents.ts`, `triag
 |------------|-------|-------------|
 | **GitHub CLI coupling** | 5× `gh` commands in `session-runner.ts` (PR posting, run download) | SCM adapter pattern (Phase 4) |
 | **GitHub Actions assumption** | CI polling via `poll-ci.sh` assumes GH Actions API | Pluggable CI poller |
-| **`fn-*` naming convention** | Hook scripts reference `fn-*.ts` pattern for Azure Functions | Configurable via hook env vars — no engine change needed |
 
 ---
 

@@ -98,8 +98,8 @@ agents:
 config:
   defaultToolLimits: { soft: 30, hard: 40 }
   hooks:
-    verifyDeployment: "bash .apm/hooks/verify-deployment.sh"
-    smokeCheck: "bash .apm/hooks/smoke-check.sh"
+    validateInfra: "bash .apm/hooks/validate-infra.sh"
+    validateApp: "bash .apm/hooks/validate-app.sh"
     preflightAuth: "bash .apm/hooks/preflight-auth.sh"
   environment:
     FRONTEND_URL: "${SWA_URL}"
