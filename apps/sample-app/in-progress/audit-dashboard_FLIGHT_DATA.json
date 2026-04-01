@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:18:14.088Z",
+  "generatedAt": "2026-04-01T23:29:04.262Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -48,6 +48,169 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T23:18:15.255Z",
+      "finishedAt": "2026-04-01T23:29:04.225Z",
+      "durationMs": 648970,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Good — integration test coverage exists for `POST /audit` and `GET /audit` with happy path, 400, and validation error cases. Now let me authenticate and retrieve the function key.",
+        "Intent: The `/api/audit` endpoint returns 404 — the audit function may not be deployed. Let me verify what functions are deployed.",
+        "Intent: The `fn-audit` function is NOT in the deployed function list. The code is correct locally but the deployment is stale. Let me verify the pipeline status to confirm the deploy step status.",
+        "Now I have a clear picture. The `Deploy Backend` workflow was **never triggered** for the `feature/audit-dashboard` branch. Only `CI Integration`, `Schema Drift Check`, and `Deploy Infrastructure` ran. The `fn-audit` function exists in source and builds locally, but was never deployed to Azure.  This is a `deployment-stale` fault — the code is correct but the deployed artifact is missing the audit function.",
+        "The failure has been recorded. Let me summarize what happened:  ## Summary  **Result:** `pipeline:fail` with `fault_domain: deployment-stale`  **Root Cause:** The `fn-audit` Azure Function was never deployed to `func-sample-app-001`.   **Evidence:** - `az functionapp function list` shows only 3 deployed functions: `fn-demo-login`, `fn-health`, `fn-hello` — `fn-audit` is missing - `GET /api/audit` returns **HTTP 404** - `gh run list --branch feature/audit-dashboard` shows **zero** `Deploy Backend` workflow runs - The source code is correct — `fn-audit.ts` exists (commit `0255e04`), builds to a 1.8MB bundled `fn-audit.js` in `dist/`  **Why deployment didn't trigger:** The `deploy-backend.yml` workflow requires a `push` event with file changes matching `apps/*/backend/**`. The deploy-manager's push commit (`c0c1e7d`) only modified `in-progress/` metadata files, so the path filter was never satisfied. The backend code changes were in an earlier commit but were likely pushed in a batch where the HEAD had `[skip ci]` state update commits.  **Fix needed:** The deploy-manager needs to either re-push with backend path changes included, or trigger the `Deploy Backend` workflow via `workflow_dispatch`."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | tail -30",
+          "timestamp": "2026-04-01T23:19:46.036Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | head -60",
+          "timestamp": "2026-04-01T23:19:54.653Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"*.integration.test.*\" 2>/dev/null",
+          "timestamp": "2026-04-01T23:19:54.654Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"fn-audit*\" 2>/dev/null",
+          "timestamp": "2026-04-01T23:19:54.654Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az account show --query '{name: name, id: id}' -o json 2>&1 | head -10",
+          "timestamp": "2026-04-01T23:20:27.787Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_KEY=$(az functionapp keys list --name func-sample-app-001 --resource-group rg-sample-app-dev --query 'functionKeys.default' -o tsv 2>/dev/null)",
+          "timestamp": "2026-04-01T23:20:34.209Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Quick smoke test to verify the backend is reachable",
+          "timestamp": "2026-04-01T23:20:57.208Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# List deployed functions",
+          "timestamp": "2026-04-01T23:21:06.068Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Also check the fn-audit source to see how routes are registered",
+          "timestamp": "2026-04-01T23:21:06.068Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | grep -A3 '\"key\"' | head -80",
+          "timestamp": "2026-04-01T23:21:28.670Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | python3 -c \"",
+          "timestamp": "2026-04-01T23:21:47.150Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | grep -E '\"(key|status)\"' | paste - - | head -20",
+          "timestamp": "2026-04-01T23:21:51.656Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if fn-audit is in the build dist",
+          "timestamp": "2026-04-01T23:22:04.551Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check latest deployment details",
+          "timestamp": "2026-04-01T23:22:04.551Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Try with different URL patterns - maybe route is different",
+          "timestamp": "2026-04-01T23:22:35.045Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the GitHub Actions workflow to see what's being deployed",
+          "timestamp": "2026-04-01T23:22:52.150Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check git log for fn-audit commits",
+          "timestamp": "2026-04-01T23:23:11.105Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the latest deploy-backend workflow runs on the feature branch",
+          "timestamp": "2026-04-01T23:23:11.106Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if the deploy commit c0c1e7d includes fn-audit",
+          "timestamp": "2026-04-01T23:24:04.875Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if fn-audit commit is ancestor of the push commit",
+          "timestamp": "2026-04-01T23:24:04.875Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if fn-audit commit is actually in the deployed branch",
+          "timestamp": "2026-04-01T23:24:17.685Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the full commit history on this branch to understand deployment timing",
+          "timestamp": "2026-04-01T23:25:29.774Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check backend package.json main field  ",
+          "timestamp": "2026-04-01T23:26:01.771Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Let me check if there's a recent GitHub Actions run for deploy-backend",
+          "timestamp": "2026-04-01T23:26:01.771Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check ALL workflow runs for audit-dashboard branch",
+          "timestamp": "2026-04-01T23:27:18.567Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:fail audit-dashboard integration-test '{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"fn-audit is NOT deployed. az functionapp funct",
+          "timestamp": "2026-04-01T23:28:28.504Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "shell": 30,
+        "file-read": 2
+      },
+      "inputTokens": 629247,
+      "outputTokens": 9948,
+      "cacheReadTokens": 588505,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "6de7e555fb68b90a805471ff6fe5e2295470b589"
     }
   ]
 }

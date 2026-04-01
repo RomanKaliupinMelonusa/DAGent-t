@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -109,7 +109,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -196,6 +196,16 @@
       "timestamp": "2026-04-01T23:17:44.851Z",
       "itemKey": "reset-ci",
       "message": "Re-push cycle triggered (cycle 2/10). Reset 2 items: push-app, poll-app-ci"
+    },
+    {
+      "timestamp": "2026-04-01T23:28:29.790Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"fn-audit is NOT deployed. az functionapp function list shows only fn-demo-login, fn-health, fn-hello — fn-audit is missing. GET /api/audit returns 404. The Deploy Backend workflow (deploy-backend.yml) was never triggered for feature/audit-dashboard branch — gh run list shows only CI Integration, Schema Drift Check, and Deploy Infrastructure runs. The fn-audit.ts source exists (commit 0255e04), builds to dist/src/functions/fn-audit.js (1.8MB bundled), and the push-app pipeline item is done, but the push commit c0c1e7d only modified in-progress/ metadata files, not apps/*/backend/** — so the deploy-backend.yml path filter was not matched. The deploy-manager must re-push with backend path changes or use workflow_dispatch to trigger Deploy Backend.\"}"
+    },
+    {
+      "timestamp": "2026-04-01T23:29:04.335Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 3/5: fn-audit is NOT deployed. az functionapp function list shows only fn-demo-login, fn-health, fn-hello — fn-audit is missing. GET /api/audit returns 404. The Deploy Backend workflow (deploy-backend.yml) was never triggered for feature/audit-dashboard branch — gh run list shows only CI Integration, Schema Drift Check, and Deploy Infrastructure runs. The fn-audit.ts source exists (commit 0255e04), builds to dist/src/functions/fn-audit.js (1.8MB bundled), and the push-app pipeline item is done, but the push commit c0c1e7d only modified in-progress/ metadata files, not apps/*/backend/** — so the deploy-backend.yml path filter was not matched. The deploy-manager must re-push with backend path changes or use workflow_dispatch to trigger Deploy Backend.. Reset 3 items: push-app, poll-app-ci, integration-test"
     }
   ],
   "elevatedApply": true
