@@ -76,7 +76,7 @@
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -92,7 +92,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -100,7 +100,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -108,7 +108,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -172,6 +172,16 @@
       "timestamp": "2026-04-01T00:32:53.649Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 1/5: fn-health function NOT deployed to Azure. GET https://func-sample-app-001.azurewebsites.net/api/health returns 404. az functionapp function list shows only fn-demo-login, fn-hello, fn-profile — fn-health is missing. The function code exists locally (backend/src/functions/fn-health.ts) and builds correctly via esbuild. The deploy-backend.yml workflow must have run before the fn-health commit was included, or the deployment failed silently. 2/10 integration tests failed: fn-health (live) > returns 200 with status ok and valid timestamp (anonymous) — Expected 200, Received 404. fn-health (live) > returns 200 without authentication headers — Expected 200, Received 404. 8/10 tests passed (fn-hello: 3, fn-health non-GET rejection: 1, fn-demo-login: 4). @deploy-manager must re-trigger deploy-backend workflow to deploy fn-health.. Reset 3 items: push-app, poll-app-ci, integration-test"
+    },
+    {
+      "timestamp": "2026-04-01T00:59:49.088Z",
+      "itemKey": "live-ui",
+      "message": "{\"fault_domain\":\"frontend+infra\",\"diagnostic_trace\":\"SWA deployment stale — HealthBadge feature code NOT in deployed build. Evidence: (1) After authenticating via demo-auth fixture, page snapshot shows NavBar with Home/About/Profile links but NO data-testid=health-badge element. (2) Searched all 46 deployed JS chunks for System Online, health-badge, HealthBadge — ZERO matches. (3) Deployed build contains Profile feature (commit fd71583) but NOT HealthBadge (commit 3b96258). (4) All commits after 3b96258 are [skip ci] pipeline state updates, so deploy-frontend.yml never re-triggered. (5) Backend health endpoint works correctly: GET https://apim-sample-app-001.azure-api.net/sample/health returns 200 with {status:ok,timestamp:...} and correct CORS headers. (6) APIM CORS preflight returns 200. The API layer is fully functional — only the SWA static frontend deployment is stale. @deploy-manager must re-trigger deploy-frontend workflow for feature/health-badge branch to deploy the HealthBadge NavBar code.\"}"
+    },
+    {
+      "timestamp": "2026-04-01T00:59:58.346Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 2/5: SWA deployment stale — HealthBadge feature code NOT in deployed build. Evidence: (1) After authenticating via demo-auth fixture, page snapshot shows NavBar with Home/About/Profile links but NO data-testid=health-badge element. (2) Searched all 46 deployed JS chunks for System Online, health-badge, HealthBadge — ZERO matches. (3) Deployed build contains Profile feature (commit fd71583) but NOT HealthBadge (commit 3b96258). (4) All commits after 3b96258 are [skip ci] pipeline state updates, so deploy-frontend.yml never re-triggered. (5) Backend health endpoint works correctly: GET https://apim-sample-app-001.azure-api.net/sample/health returns 200 with {status:ok,timestamp:...} and correct CORS headers. (6) APIM CORS preflight returns 200. The API layer is fully functional — only the SWA static frontend deployment is stale. @deploy-manager must re-trigger deploy-frontend workflow for feature/health-badge branch to deploy the HealthBadge NavBar code.. Reset 5 items: frontend-dev, frontend-unit-test, live-ui, push-app, poll-app-ci"
     }
   ],
   "elevatedApply": true
