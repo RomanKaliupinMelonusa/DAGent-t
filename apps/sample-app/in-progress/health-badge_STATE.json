@@ -108,7 +108,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

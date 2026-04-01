@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T00:32:56.814Z",
+  "generatedAt": "2026-04-01T00:47:05.016Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -179,6 +179,244 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T00:32:57.998Z",
+      "finishedAt": "2026-04-01T00:33:09.092Z",
+      "durationMs": 11094,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-01T00:33:10.596Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Intent: Triggered deploy-backend workflow manually. fn-health was never deployed because previous commits didn't trigger CI properly. Now waiting for deployment to complete.",
+        "Deploy is at \"Deploy to Azure Functions\" step — almost done. Let me wait a bit longer.",
+        "Deploy succeeded! Now let me verify fn-health is live and run the integration tests.",
+        "fn-health is now deployed and returning 200 with valid JSON. Now let me get the function key and run the integration tests.",
+        "All 10 integration tests passed! Now let me do the APIM-through validation.",
+        "APIM `/sample/health` returns 200 anonymously — perfect. Now let me test the authenticated endpoints through APIM with the demo token.",
+        "All APIM-through validation passes. Let me summarize the results:  **Direct Function App tests:** 10/10 passed ✅ - fn-hello: 3 tests ✅ - fn-health: 3 tests ✅ (including anonymous access, no-auth, non-GET rejection) - fn-demo-login: 4 tests ✅  **APIM Gateway validation:** - `GET /sample/health` → 200 (anonymous) ✅ - `POST /demo-auth/auth/login` → 200 ✅ - `GET /sample/hello` (with X-Demo-Token) → 200 ✅  Now let me mark integration-test complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status health-badge 2>&1 | tail -30",
+          "timestamp": "2026-04-01T00:33:19.102Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat .env 2>/dev/null || echo \"No .env file\"",
+          "timestamp": "2026-04-01T00:33:19.102Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && source infra/env.sh 2>/dev/null; echo \"FUNC_APP: $AZURE_FUNCTION_APP_NAME\"; echo \"RG: $AZURE_RESOURCE_GROUP\"; echo \"FUNC_URL: $FUNC_URL\"; echo \"APIM_URL: $AP",
+          "timestamp": "2026-04-01T00:33:19.102Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && ls infra/env.sh 2>/dev/null && cat infra/env.sh 2>/dev/null || echo \"No env.sh\"; ls infra/*.tfvars 2>/dev/null; cat infra/dev.tfvars 2>/dev/null | head -30",
+          "timestamp": "2026-04-01T00:33:28.555Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat apm.yml 2>/dev/null || echo \"No apm.yml\"; grep -r \"func-sample-app\" infra/ 2>/dev/null | head -10; grep -r \"azurewebsites\" . --include=\"*.ts\" --include=\"",
+          "timestamp": "2026-04-01T00:33:28.555Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az functionapp function list --name func-sample-app-001 --resource-group rg-sample-app-dev --query \"[].name\" -o tsv 2>&1",
+          "timestamp": "2026-04-01T00:33:40.346Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -s -o /dev/null -w \"%{http_code}\" \"https://func-sample-app-001.azurewebsites.net/api/health\" 2>&1",
+          "timestamp": "2026-04-01T00:33:40.346Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status health-badge 2>&1 | grep -A3 '\"push-app\"\\|\"poll-app-ci\"\\|\"integration-test\"'",
+          "timestamp": "2026-04-01T00:33:47.409Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/health-badge_STATE.json | python3 -c \"",
+          "timestamp": "2026-04-01T00:33:52.630Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && python3 -c \"",
+          "timestamp": "2026-04-01T00:33:57.754Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && cat src/functions/fn-health.ts 2>&1",
+          "timestamp": "2026-04-01T00:34:07.390Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && ls dist/ 2>/dev/null && ls dist/src/functions/ 2>/dev/null || echo \"No dist\"",
+          "timestamp": "2026-04-01T00:34:07.390Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -sv \"https://func-sample-app-001.azurewebsites.net/api/health\" 2>&1",
+          "timestamp": "2026-04-01T00:34:17.827Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check latest GitHub Actions workflow runs for deploy-backend",
+          "timestamp": "2026-04-01T00:34:17.827Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git branch --show-current && git log --oneline -5",
+          "timestamp": "2026-04-01T00:35:03.099Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run list --branch feature/health-badge --limit=10 2>&1 | head -20",
+          "timestamp": "2026-04-01T00:35:03.099Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git log --oneline feature/health-badge | head -30",
+          "timestamp": "2026-04-01T00:35:45.276Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run list --branch feature/health-badge --limit=20 --json name,status,conclusion,createdAt,headBranch 2>&1 | head -40",
+          "timestamp": "2026-04-01T00:35:45.276Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && cat .github/workflows/deploy-backend.yml | head -40",
+          "timestamp": "2026-04-01T00:35:58.586Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git show --stat 7573959 | head -20",
+          "timestamp": "2026-04-01T00:36:06.851Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh workflow run deploy-backend.yml --ref feature/health-badge -f app-path=apps/sample-app 2>&1",
+          "timestamp": "2026-04-01T00:36:06.851Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run watch 23826097261 --exit-status 2>&1",
+          "timestamp": "2026-04-01T00:36:17.430Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Verify fn-health is now deployed",
+          "timestamp": "2026-04-01T00:38:15.826Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -s -w \"\\nHTTP_STATUS: %{http_code}\\n\" \"https://func-sample-app-001.azurewebsites.net/api/health\" 2>&1",
+          "timestamp": "2026-04-01T00:38:15.827Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get function key for authenticated endpoints",
+          "timestamp": "2026-04-01T00:38:25.363Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Read APIM URL and SWA URL from infra-interfaces",
+          "timestamp": "2026-04-01T00:43:42.058Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T00:44:25.469Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the APIM API configuration - maybe path is different",
+          "timestamp": "2026-04-01T00:44:36.520Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -rn \"api_path\\|path.*=.*\\\"\\|azurerm_api_management_api \" infra/main.tf | head -20",
+          "timestamp": "2026-04-01T00:44:42.265Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -rn \"apim\\|api_management\" infra/ --include=\"*.tf\" | head -20",
+          "timestamp": "2026-04-01T00:44:46.993Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -A5 \"azurerm_api_management_api\\.\" infra/apim.tf | head -40",
+          "timestamp": "2026-04-01T00:45:00.905Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -n \"azurerm_api_management_api\\b\" infra/apim.tf",
+          "timestamp": "2026-04-01T00:45:05.365Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T00:45:40.153Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token from the login endpoint itself",
+          "timestamp": "2026-04-01T00:45:53.724Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T00:46:31.371Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete health-badge integration-test 2>&1",
+          "timestamp": "2026-04-01T00:46:41.671Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 4,
+        "shell": 38,
+        "read_bash": 3,
+        "file-read": 1
+      },
+      "inputTokens": 997849,
+      "outputTokens": 8876,
+      "cacheReadTokens": 921709,
       "cacheWriteTokens": 0
     }
   ]
