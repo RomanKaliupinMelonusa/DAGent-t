@@ -187,6 +187,11 @@
       "timestamp": "2026-04-01T01:20:00.738Z",
       "itemKey": "frontend-dev",
       "message": "Timeout after 1200000ms waiting for session.idle"
+    },
+    {
+      "timestamp": "2026-04-01T01:40:02.705Z",
+      "itemKey": "frontend-dev",
+      "message": "Timeout after 1200000ms waiting for session.idle"
     }
   ],
   "elevatedApply": true
