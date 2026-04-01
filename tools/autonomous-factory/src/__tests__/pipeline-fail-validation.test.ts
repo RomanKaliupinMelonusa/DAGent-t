@@ -131,6 +131,20 @@ describe("cmdFail CLI validation — post-deploy items", () => {
     assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
     assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
   });
+
+  it("accepts deployment-stale fault domain for live-ui", () => {
+    const msg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: "SWA deployment stale — feature code NOT in deployed build" });
+    const result = runCli(`fail ${TEST_SLUG} live-ui '${msg}'`);
+    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+    assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
+  });
+
+  it("accepts deployment-stale fault domain for integration-test", () => {
+    const msg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: "fn-health not deployed to Azure" });
+    const result = runCli(`fail ${TEST_SLUG} integration-test '${msg}'`);
+    assert.equal(result.exitCode, 0, `Unexpected failure: ${result.stderr}`);
+    assert.ok(result.stdout.includes("Recorded failure"), `stdout: ${result.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------

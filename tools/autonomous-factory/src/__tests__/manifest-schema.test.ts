@@ -56,7 +56,7 @@ describe("ApmManifestSchema", () => {
     const raw = yaml.load(fs.readFileSync(apmYml, "utf-8")) as Record<string, unknown>;
     const result = ApmConfigSchema.safeParse(raw.config);
     assert.ok(result.success);
-    assert.equal(result.data.urls?.functionApp, "https://mock-python-svc.azurewebsites.net");
+    assert.equal(result.data.environment?.BACKEND_URL, "https://mock-python-svc.azurewebsites.net");
     assert.equal(result.data.testCommands?.backendUnit, "cd {appRoot} && pytest -v");
     assert.equal(result.data.testCommands?.frontendUnit, null);
   });
@@ -67,7 +67,7 @@ describe("ApmManifestSchema", () => {
     assert.ok(output.agents["backend-dev"]);
     assert.ok(output.agents["backend-dev"].rules.includes("Python Service Rules"));
     assert.ok(output.config);
-    assert.equal(output.config.urls?.functionApp, "https://mock-python-svc.azurewebsites.net");
+    assert.equal(output.config.environment?.BACKEND_URL, "https://mock-python-svc.azurewebsites.net");
   });
 
   it("accepts minimal manifest without config section", () => {
@@ -82,13 +82,13 @@ describe("ApmManifestSchema", () => {
     assert.equal(result.data.config, undefined);
   });
 
-  it("rejects invalid URL in config", () => {
+  it("rejects config missing required 'directories' field", () => {
     const invalid = {
       name: "test-app",
       version: "1.0.0",
       tokenBudget: 4500,
       agents: { "backend-dev": { instructions: ["always"], mcp: [], skills: [] } },
-      config: { urls: { swa: "not-a-url" } },
+      config: { environment: { FRONTEND_URL: "https://example.com" } },
     };
     const result = ApmManifestSchema.safeParse(invalid);
     assert.ok(!result.success);

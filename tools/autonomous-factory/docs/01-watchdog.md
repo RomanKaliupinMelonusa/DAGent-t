@@ -2,7 +2,7 @@
 
 > The deterministic headless loop that drives the entire pipeline.
 > Entry point: `tools/autonomous-factory/src/watchdog.ts` (~360 lines)
-> Session runner: `tools/autonomous-factory/src/session-runner.ts` (~950 lines)
+> Session runner: `tools/autonomous-factory/src/session-runner.ts` (~1546 lines)
 > Supporting modules: `preflight.ts`, `reporting.ts`, `auto-skip.ts`, `context-injection.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
@@ -141,12 +141,14 @@ poll-infra-plan item?
     TriageFailure --> BackendReroute: fault: backend\nor backend+infra
     TriageFailure --> FrontendReroute: fault: frontend\nor frontend+infra
     TriageFailure --> SchemaReroute: fault: schema
+    TriageFailure --> DeployStaleReroute: fault: deployment-stale
     TriageFailure --> EnvPause: fault: environment\nor cancelled/timeout
 
     state CycleCheck <<choice>>
     BackendReroute --> CycleCheck
     FrontendReroute --> CycleCheck
     SchemaReroute --> CycleCheck
+    DeployStaleReroute --> CycleCheck
     CycleCheck --> Redevelopment: cycle < 5
     CycleCheck --> PipelineHalted: cycle = 5
 
@@ -180,7 +182,7 @@ poll-infra-plan item?
 | **Approval gate** (await-infra-approval) | ∞ | Human gate — pipeline pauses until `/dagent approve-infra` |
 | **Infra handoff** (infra-handoff) | 15 min | Capture Terraform outputs, write infra-interfaces.md |
 | **App deploy items** (push-app, poll-app-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-app-ci` captures CI failure logs and routes to triage |
-| **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries |
+| **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries. 60-second propagation delay before first attempt |
 | **Finalize items** (code-cleanup, docs-archived, publish-pr) | 15 min | Scoped cleanup and documentation tasks |
 
 ---
@@ -192,7 +194,7 @@ flowchart LR
     PF(["Pre-flight\nChecks"]) --> J["🗑 Junk Files\nDetect leftover temp files\nin working tree"]
     PF --> AP["🔗 APIM Routes\nVerify all fn-* functions\nhave matching APIM operations"]
     PF --> IP["📋 In-Progress Scan\nCheck for stale artifacts\nfrom previous runs"]
-    PF --> AZ["🔑 Azure CLI Auth\nVerify az account show\nreturns valid subscription"]
+    PF --> AZ["🔑 Auth Hook\nRun hooks.preflightAuth\nVerify cloud CLI auth"]
 
     J -->|"found"| WARN1["⚠ Warning logged"]
     J -->|"clean"| OK1["✔"]
@@ -272,14 +274,17 @@ classDiagram
 |----------|--------|---------|----------|
 | `main()` | watchdog.ts | Entry point — init, pre-flight, Phase 0, main loop | CLI |
 | `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After publish-pr |
+| `commitAndPushState()` | watchdog.ts | Commit state files + conditional push (push guard: skips push if unpushed code files exist outside `in-progress/` or `archive/`) | Main loop |
 | `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
 | `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
 | `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
+| `runValidateApp()` | session-runner.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
+| `runValidateInfra()` | session-runner.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
 | `getTimeout()` | session-runner.ts | Session timeout by item type | `runAgentSession()` |
 | `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
 | `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |
 | `checkInProgressArtifacts()` | preflight.ts | Check for stale artifacts from previous runs | `main()` |
-| `checkAzureAuth()` | preflight.ts | Verify Azure CLI auth before pipeline start | `main()` |
+| `checkPreflightAuth()` | preflight.ts | Run configured `hooks.preflightAuth` command before pipeline start | `main()` |
 | `buildRoamIndex()` | preflight.ts | Phase 0 semantic graph build | `main()` |
 | `getAutoSkipBaseRef()` | auto-skip.ts | Git ref for change detection (auto-skip optimization) | `tryAutoSkip()` |
 | `getGitChangedFiles()` | auto-skip.ts | Files changed since a git ref via `git diff --name-only` | Auto-skip |
@@ -292,7 +297,7 @@ classDiagram
 | `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
 | `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
 | `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
-| `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) | `runAgentSession()` |
+| `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | `runAgentSession()` |
 | `triageFailure()` | triage.ts | Keyword/structured routing of post-deploy failures to dev items | `handleFailureReroute()` |
 
 ---

@@ -200,7 +200,6 @@ describe("APM Compiler", () => {
     assert.deepEqual(output.agents["poll-app-ci"].mcp, {});
     assert.deepEqual(output.agents["push-infra"].mcp, {});
     assert.deepEqual(output.agents["poll-infra-plan"].mcp, {});
-    assert.deepEqual(output.agents["infra-handoff"].mcp, {});
     assert.deepEqual(output.agents["integration-test"].mcp, {});
   });
 

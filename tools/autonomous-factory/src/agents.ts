@@ -31,16 +31,9 @@ export interface AgentContext {
   baseBranch: string;
   /** True when infra/ files changed — forces live-ui to run CORS/APIM verification even without frontend changes. */
   infraChanges?: boolean;
-  /** Default SWA URL from manifest (replaces hardcoded constant). */
-  defaultSwaUrl?: string;
-  /** Default Function App URL from manifest (replaces hardcoded constant). */
-  defaultFuncUrl?: string;
-  /** Default APIM URL from manifest config.urls.apim. */
-  defaultApimUrl?: string;
-  /** Azure Function App resource name from manifest config.azureResources.functionAppName. */
-  defaultFuncAppName?: string;
-  /** Azure Resource Group from manifest config.azureResources.resourceGroup. */
-  defaultResourceGroup?: string;
+  /** Generic environment dictionary from apm.yml config.environment — cloud-agnostic key-value pairs.
+   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP, APIM_URL). */
+  environment?: Record<string, string>;
   /** Test command templates from manifest. Keys map to logical test names, values use {appRoot} placeholder. */
   testCommands?: Record<string, string | null>;
   /** Commit scope path overrides from manifest. Keys are scope names, values are arrays of paths relative to appRoot. */
@@ -71,60 +64,13 @@ const MODEL = "claude-opus-4.6";
 // Shared prompt fragments
 // ---------------------------------------------------------------------------
 
-function completionBlock(slug: string, itemKey: string, scope: string, appRoot?: string): string {
-  const tfGate = itemKey === "infra-architect" && appRoot
-    ? `
-## MANDATORY: Terraform Validation Gate
-
-You MUST validate the infrastructure code locally before marking complete.
-CI will run the full plan. A human will approve the apply via \`/dagent approve-infra\`.
-
-\`\`\`bash
-cd ${appRoot}/infra
-
-# Step 1: Verify Azure CLI auth (required for remote backend + provider)
-az account show > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-  echo "❌ Not authenticated to Azure."
-  npm run pipeline:fail ${slug} ${itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure CLI not authenticated — cannot run terraform validate. Run az login first."}'
-  exit 0
-fi
-
-# Step 2: Initialize with remote backend
-terraform init -input=false 2>&1
-if [ $? -ne 0 ]; then
-  echo "❌ Terraform init failed. Fix backend configuration."
-  exit 1
-fi
-
-# Step 3: Validate syntax
-terraform validate 2>&1
-if [ $? -ne 0 ]; then
-  echo "❌ Terraform validation failed. Fix errors before completing."
-  exit 1
-fi
-
-# Step 4: Plan (validates resource graph — CI will re-run this)
-terraform plan -var-file=dev.tfvars -out=tfplan -no-color 2>&1 | tee plan-output.txt
-if [ $? -ne 0 ]; then
-  echo "❌ Terraform plan failed. Diagnose and fix."
-  exit 1
-fi
-
-echo "✅ Terraform validation passed. CI will run the plan and post it to the Draft PR."
-\`\`\`
-
-Do NOT mark infra-architect complete until terraform plan succeeds locally.
-Do NOT run terraform apply — apply is handled by the elevated infrastructure deploy workflow after human approval.
-`
-    : "";
-
+function completionBlock(slug: string, itemKey: string, scope: string): string {
   // Items subject to the Zod gate must always use structured JSON for pipeline:fail
   const failExample = JSON_GATED_ITEMS.has(itemKey)
     ? `npm run pipeline:fail ${slug} ${itemKey} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'`
     : `npm run pipeline:fail ${slug} ${itemKey} "<detailed reason>"`;
 
-  return `${tfGate}
+  return `
 ## Completion
 
 When your work is done successfully:
@@ -189,6 +135,18 @@ function resolveCmd(template: string | null | undefined, appRoot: string): strin
   return template.replace(/\{appRoot\}/g, appRoot);
 }
 
+/**
+ * Renders the environment dictionary from apm.yml config as a prompt section.
+ * Returns empty string if no environment variables are configured.
+ */
+function environmentContext(ctx: AgentContext): string {
+  if (!ctx.environment || Object.keys(ctx.environment).length === 0) return "";
+  const lines = Object.entries(ctx.environment)
+    .map(([k, v]) => `- ${k}: \`${v}\``)
+    .join("\n");
+  return `\n## Environment\n\n${lines}\n`;
+}
+
 // ---------------------------------------------------------------------------
 // Agent prompt builders
 // ---------------------------------------------------------------------------
@@ -196,7 +154,7 @@ function resolveCmd(template: string | null | undefined, appRoot: string): strin
 function backendDevPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   return `# Backend & Infrastructure Developer
 
-You are a senior backend developer specializing in **Azure Functions v4 with TypeScript** and **Terraform infrastructure** (azurerm + azapi + azuread). You implement features in the \`backend/\` directory and infrastructure changes in the \`infra/\` directory.
+You are a senior backend developer. You implement features in the \`backend/\` directory and infrastructure changes in the \`infra/\` directory.
 
 # Context
 
@@ -224,7 +182,7 @@ ${apmContext.agents["backend-dev"].rules}
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
 9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. All tests, type-checking, and linting MUST pass with zero errors before committing. If any fail, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
-9b. **Integration Test Mandate (MANDATORY):** If you created or modified any HTTP-triggered Azure Function (any \`fn-*.ts\` file that registers an \`httpTrigger\`), you MUST add corresponding test blocks to the existing \`.integration.test.ts\` suite (e.g., \`${ctx.appRoot}/backend/src/functions/smoke.integration.test.ts\`). Cover at minimum: authenticated 200 happy path, 401 unauthenticated rejection, and one validation error path (400). Unit tests alone are insufficient — the post-deploy \`integration-test\` agent will fail the pipeline if coverage is missing.
+9b. **Integration Test Mandate (MANDATORY):** If you created or modified any HTTP-triggered backend endpoint, you MUST add corresponding test blocks to the existing \`.integration.test.ts\` suite. See your coding rules for coverage requirements. Unit tests alone are insufficient — the post-deploy \`integration-test\` agent will fail the pipeline if coverage is missing.
 10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
 11. If tests fail and you cannot fix after 2 attempts, record the failure.
 
@@ -245,34 +203,17 @@ npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "<1-2 sentence summa
 \`\`\`
 Example: \`npm run pipeline:doc-note ${ctx.featureSlug} ${ctx.itemKey} "Added SSE streaming to /generate endpoint via new fn-generate-stream.ts. No schema drift."\`
 
-## Pre-Completion Validation (MANDATORY)
-
-Before calling pipeline:complete, verify the esbuild output is loadable:
-\`\`\`bash
-cd ${ctx.appRoot}/backend && npm run build
-# Verify each function entry point loads without errors
-for f in ${ctx.appRoot}/backend/dist/src/functions/fn-*.js; do
-  node -e "require('$f')" || { echo "FATAL: $f failed to load"; exit 1; }
-done
-\`\`\`
-If any require() call fails, fix the build configuration before proceeding.
-Common fixes:
-- Missing dependency → add to backend/package.json dependencies (not devDependencies) and ensure esbuild bundles it
-- "Dynamic require of X" → switch esbuild format to "cjs" (Azure Functions v4 requires CJS)
-- Module not found → add the module to esbuild.config.mjs external array
-Do NOT mark backend-dev complete until all function entry points load successfully.
-
 ${completionBlock(ctx.featureSlug, ctx.itemKey, "backend")}`;
 }
 
 function backendTestPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   const isPostDeploy = ctx.itemKey === "integration-test";
-  const deployedUrl = ctx.deployedUrl ?? ctx.defaultFuncUrl ?? "DEPLOY_URL_NOT_SET";
+  const deployedUrl = ctx.deployedUrl ?? ctx.environment?.BACKEND_URL ?? "DEPLOY_URL_NOT_SET";
 
   if (isPostDeploy) {
     return `# Backend Test Agent — Integration Tests (Post-Deploy)
 
-You are the backend testing specialist. You run integration tests **locally inside the Devcontainer** against the live deployed Azure Functions endpoint. The tests hit real Azure endpoints using \`DefaultAzureCredential\`.
+You are the backend testing specialist. You run integration tests **locally inside the Devcontainer** against the live deployed backend endpoint.
 
 # Context
 
@@ -281,14 +222,16 @@ You are the backend testing specialist. You run integration tests **locally insi
 - Repo root: ${ctx.repoRoot}
 - App root: ${ctx.appRoot}
 - Deployed URL: ${deployedUrl}
+${environmentContext(ctx)}
 
 ${apmContext.agents["integration-test"].rules}
 
 ## Prerequisites
 
-- The deployed Function App URL: \`${deployedUrl}\`
-- You must be logged into Azure: \`az login\` (the Devcontainer has Azure CLI pre-installed)
+- The deployed backend URL: \`${deployedUrl}\`
+- Cloud CLI must be authenticated (the Devcontainer has CLI tools pre-installed)
 - Integration tests live in \`backend/**/__tests__/**/*.integration.test.ts\`
+- Follow the authentication setup described in your coding rules above
 
 ## Workflow
 
@@ -296,19 +239,7 @@ ${apmContext.agents["integration-test"].rules}
    \`\`\`bash
    npm run pipeline:status ${ctx.featureSlug}
    \`\`\`
-1b. **Fetch the Function App host key** (all endpoints use \`authLevel: "function"\`):
-   \`\`\`bash
-   FUNC_KEY=$(az functionapp keys list --name ${ctx.defaultFuncAppName ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.defaultResourceGroup ?? 'YOUR_RESOURCE_GROUP'} --query 'functionKeys.default' -o tsv 2>/dev/null)
-   if [ -z "$FUNC_KEY" ]; then
-     # Try masterKey as fallback
-     FUNC_KEY=$(az functionapp keys list --name ${ctx.defaultFuncAppName ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.defaultResourceGroup ?? 'YOUR_RESOURCE_GROUP'} --query 'masterKey' -o tsv 2>/dev/null)
-   fi
-   if [ -z "$FUNC_KEY" ]; then
-     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure auth failed — cannot retrieve function key. az functionapp keys list returned empty for both functionKeys.default and masterKey."}'
-     exit 0
-   fi
-   export INTEGRATION_FUNCTION_KEY="$FUNC_KEY"
-   \`\`\`
+1b. **Authenticate and retrieve API keys** as described in your coding rules above.
 2. **Verify integration test coverage** before running tests:
    - Read the feature spec \`${ctx.specPath}\` to identify new or modified API endpoints.
    - Open \`backend/src/functions/__tests__/smoke.integration.test.ts\` and confirm each new/modified endpoint has a corresponding \`describeIntegration\` block.
@@ -323,16 +254,16 @@ ${apmContext.agents["integration-test"].rules}
 4. **APIM-through API validation** (Required — catches CORS/policy issues):
    After integration tests pass against the direct Function App URL, verify every new/modified endpoint is also reachable through the APIM gateway. CORS errors and missing APIM operations only manifest when calling through APIM, not the direct Function URL.
 
-   Read the feature spec to identify the APIM base path (e.g., \`/generation\`, \`/bulk\`). The APIM URL is: \`${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}\`.
+   Read the feature spec to identify the APIM base path (e.g., \`/generation\`, \`/bulk\`). The APIM URL is: \`${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}\`.
 
    For each new/modified endpoint, run a curl with the demo token:
    \`\`\`bash
-   APIM_URL="${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}"
+   APIM_URL="${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}"
    DEMO_TOKEN=$(grep 'demo_token' ${ctx.appRoot}/infra/dev.tfvars | awk -F'"' '{print $2}' 2>/dev/null || echo "")
    # Example for GET endpoint:
-   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Origin: ${ctx.defaultSwaUrl ?? 'YOUR_SWA_URL'}" "$APIM_URL/<api-path>/<endpoint>?<required-params>"
+   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Origin: ${ctx.environment?.FRONTEND_URL ?? 'YOUR_FRONTEND_URL'}" "$APIM_URL/<api-path>/<endpoint>?<required-params>"
    # Example for POST endpoint:
-   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Content-Type: application/json" -H "Origin: ${ctx.defaultSwaUrl ?? 'YOUR_SWA_URL'}" -d '{...}' "$APIM_URL/<api-path>/<endpoint>"
+   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Content-Type: application/json" -H "Origin: ${ctx.environment?.FRONTEND_URL ?? 'YOUR_FRONTEND_URL'}" -d '{...}' "$APIM_URL/<api-path>/<endpoint>"
    \`\`\`
 
    If any endpoint returns 0 (CORS blocked), 404 (missing APIM operation), or 403 (policy rejection):
@@ -342,9 +273,9 @@ ${apmContext.agents["integration-test"].rules}
 
 5. **If all pass (both direct + APIM-through):** Mark complete.
 6. **If tests fail:** Do NOT attempt to fix implementation code. Record the failure with root cause triage.
-7. **If you cannot run tests** (missing credentials, Azure CLI not authenticated, \`INTEGRATION_FUNCTION_KEY\` not set, 401/403 errors): You MUST record a failure. Never mark this item complete without actually running the test suite to completion.
+7. **If you cannot run tests** (missing credentials, cloud CLI not authenticated, API key not available, 401/403 errors): You MUST record a failure. Never mark this item complete without actually running the test suite to completion.
    \`\`\`bash
-   npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure auth not available — cannot run integration tests. Requires INTEGRATION_FUNCTION_KEY or az login."}'
+   npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Cloud auth not available — cannot run integration tests. API key retrieval failed."}'
    \`\`\`
 
 ## HARD CONSTRAINT — No False Passes
@@ -369,8 +300,9 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 |---|---|
 | \`backend\` | Wrong response shape, logic errors, missing fields, 500 errors, test assertion failures |
 | \`backend+infra\` | Backend works directly but fails through APIM — missing APIM routes, gateway config, Function App env vars |
+| \`deployment-stale\` | Function exists locally and builds correctly, but the deployed artifact list shows it's missing. The code is correct — just not deployed. Use when the deployed artifact is outdated, not when the code is wrong |
 | \`cicd\` | CI/CD workflow file issue — deploy artifact misconfigured, wrong package.json fields in deploy step, workflow YAML errors. Use when the fix is in \`.github/workflows/\` |
-| \`environment\` | Auth failures, \`az login\` required, cannot retrieve function key, managed identity errors, IAM permission denied |
+| \`environment\` | Auth failures, CLI login required, cannot retrieve API keys, managed identity errors, IAM permission denied |
 
 **\`diagnostic_trace\` must include:**
 - Test names that failed and their assertion errors
@@ -381,7 +313,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 \`\`\`bash
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"API endpoint /api/bulk/jobs returns 500 — backend handler throws on missing field priority. Test: should create bulk job"}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"APIM gateway validation failed: PATCH /api/bulk/copies returned 0 (CORS blocked). Preflight OPTIONS request missing allowed-methods in apim.tf"}'
-npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure auth not available — cannot retrieve function key. az login returned: ERROR: No subscription found"}'
+npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Cloud auth not available — cannot retrieve API key. CLI returned empty for function keys."}'
 \`\`\`
 
 **Shell quoting:** If your \`diagnostic_trace\` contains single quotes (e.g. JS errors like \`Cannot read property 'id'\`), replace them with Unicode \`\\u0027\` in the JSON string. The outer wrapper MUST be single quotes to preserve the JSON structure.
@@ -406,7 +338,7 @@ ${apmContext.agents["backend-unit-test"].rules}
 
 Reference \`.github/instructions/backend.instructions.md\` for full backend rules.
 
-- **Unit tests:** Jest with dependency injection. All Azure SDK clients mocked via \`getDepsForTest()\`. No live Azure calls.
+- **Unit tests:** Jest with dependency injection. All external service clients mocked via \`getDepsForTest()\`. No live service calls.
 - **Test location:** Tests co-located with source or in \`__tests__/\` directories.
 - **Cache isolation:** \`_clearCache()\` exported from \`brandContextLoader\` — call in \`beforeEach\` to prevent test pollution.
 - **Mocking:** Use \`getDepsForTest()\` for service deps. Never mock at module level — use the DI pattern.
@@ -434,7 +366,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}
 ## What NOT to Do
 
 - Never skip schema validation to unblock a PR.
-- Never mock \`DefaultAzureCredential\` incorrectly — use the \`getDepsForTest()\` pattern.
+- Never mock authentication credentials incorrectly — use the \`getDepsForTest()\` pattern.
 - Never modify \`safetyService.ts\` prohibited terms without following the 4-step sync procedure.
 - Never edit \`_TRANS.md\` or \`_STATE.json\` manually — use \`pipeline:complete\` / \`pipeline:fail\`.`;
 }
@@ -459,7 +391,7 @@ ${apmContext.agents["frontend-dev"].rules}
 1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
    - Use the APIM gateway URL from \`infra-interfaces.md\` as your API base — never construct URLs from resource names.
    - **NEVER** hardcode or invent resource URLs. All infra bindings come from \`infra-interfaces.md\`.
-1c. **Environment Variable & Secrets Compliance (MANDATORY):** Cross-reference the **Environment Variables** section of \`infra-interfaces.md\` against \`.github/workflows/deploy-frontend.yml\`. If \`infra-interfaces.md\` declares any new or renamed environment variables (e.g., \`NEXT_PUBLIC_API_BASE_URL\`, \`NEXT_PUBLIC_DEMO_AUTH_URL\`), you MUST update the workflow's \`env:\` block and verify the corresponding GitHub Actions secrets exist. Do NOT ignore the Environment Variables section of the handoff document — a mismatch here causes silent 404s in production that cost $50+ to diagnose via live-ui retries.
+1c. **Environment Variable & Secrets Compliance (MANDATORY):** Cross-reference the **Environment Variables** section of \`infra-interfaces.md\` against the frontend CI/CD deploy workflow under \`.github/workflows/\`. If \`infra-interfaces.md\` declares any new or renamed environment variables (e.g., \`NEXT_PUBLIC_API_BASE_URL\`, \`NEXT_PUBLIC_DEMO_AUTH_URL\`), you MUST update the workflow's \`env:\` block and verify the corresponding GitHub Actions secrets exist. Do NOT ignore the Environment Variables section of the handoff document — a mismatch here causes silent 404s in production that cost $50+ to diagnose via live-ui retries.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the frontend.
 3. Use \`roam_context <component> ${ctx.appRoot}\` for each component/file you need to modify — get exact line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
@@ -499,12 +431,12 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "frontend")}`;
 
 function frontendUiTestPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   const isLiveUi = ctx.itemKey === "live-ui";
-  const swaUrl = ctx.deployedUrl ?? ctx.defaultSwaUrl ?? "DEPLOY_URL_NOT_SET";
+  const swaUrl = ctx.deployedUrl ?? ctx.environment?.FRONTEND_URL ?? "DEPLOY_URL_NOT_SET";
 
   if (isLiveUi) {
     return `# Frontend UI Test Agent — Live UI Validation (Post-Deploy)
 
-You are the frontend testing specialist. Your job is to validate the live SWA deployment works correctly via HTTP checks and (optionally) Playwright browser automation.
+You are the frontend testing specialist. Your job is to validate the live frontend deployment works correctly via HTTP checks and (optionally) Playwright browser automation.
 
 # Context
 
@@ -513,12 +445,13 @@ You are the frontend testing specialist. Your job is to validate the live SWA de
 - Repo root: ${ctx.repoRoot}
 - App root: ${ctx.appRoot}
 - Deployed URL: ${swaUrl}
+${environmentContext(ctx)}
 
 ${apmContext.agents["live-ui"].rules}
 
 ## Prerequisites
 
-- The live SWA URL: \`${swaUrl}\`
+- The live frontend URL: \`${swaUrl}\`
 - Demo credentials: username \`demo\`, password \`YOUR_DEMO_PASSWORD\` (from \`infra/dev.tfvars\`)
 - Auth mode is \`demo\` — the site shows a \`DemoLoginForm\` at \`/\`
 
@@ -559,7 +492,7 @@ Before running Playwright, verify that every API endpoint the feature depends on
 Read the feature spec \`${ctx.specPath}\` to identify which API endpoints the feature uses. Then verify each one:
 
 \`\`\`bash
-APIM_URL="${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}"
+APIM_URL="${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}"
 SWA_ORIGIN="${swaUrl}"
 DEMO_TOKEN=$(grep 'demo_token' ${ctx.appRoot}/infra/dev.tfvars | awk -F'"' '{print $2}' 2>/dev/null || echo "")
 
@@ -726,6 +659,8 @@ EOF
 | Page loads but API returns 404 via APIM (direct Function URL works) | APIM route mismatch | \`backend+infra\` |
 | Both API errors AND UI rendering bugs | Mixed root cause | \`both\` |
 | Auth/credential/managed-identity errors | Environment, not a code bug | \`environment\` |
+| Feature code on branch but not in deployed build; searching deployed JS chunks for feature strings yields zero matches | Deployment pipeline didn't trigger after last code push | \`deployment-stale\` |
+| Deployed artifact list missing expected function; code builds locally | Deploy workflow ran before commit or didn't retrigger | \`deployment-stale\` |
 
 **Important:** Log everything you observe at each step — page content, visible errors, console messages, network responses — so the failure message is maximally useful for the developer agent that will fix it.
 
@@ -789,6 +724,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 | \`frontend\` | Element not found, wrong text/rendering, broken navigation, UI assertion failures, client-side JS errors |
 | \`frontend+infra\` | UI works locally but fails deployed — APIM URL mismatch, CORS policy blocking, SWA routing misconfigured |
 | \`backend+infra\` | Backend works directly but fails through APIM — gateway errors, missing APIM operations, Function App env vars |
+| \`deployment-stale\` | Feature code exists on the branch and builds correctly, but the deployed application is serving an older build. The code is correct — just not deployed. Evidence: searching deployed JS chunks for feature strings yields zero matches, or the deployed artifact list is missing expected functions. Use this instead of \`frontend+infra\` or \`backend+infra\` when the root cause is stale deployment, not code/config bugs |
 | \`both\` | Both API errors AND UI rendering bugs in the same session |
 | \`environment\` | Auth/credential failures, Azure CLI not authenticated, managed identity issues, IAM permission denied |
 
@@ -881,18 +817,13 @@ ${apmContext.agents[ctx.itemKey].rules}
 
 In the linear feature-branch model, pushing to \`feature/${ctx.featureSlug}\` triggers CI workflows directly:
 
-1. Push triggers \`deploy-backend.yml\`, \`deploy-frontend.yml\`, and/or \`deploy-infra.yml\` on the \`feature/**\` branch.
-2. A concurrency group (\`azure-shared-env\`) ensures only one deployment runs at a time.
+1. Push triggers the configured deploy workflows on the \`feature/**\` branch.
+2. A concurrency group ensures only one deployment runs at a time.
 3. \`poll-ci.sh\` waits for all workflows to finish.
 
 ## CI/CD Pipelines
 
-| Workflow | Trigger | Target |
-|---|---|---|
-| \`deploy-backend.yml\` | Push to \`main\` or \`feature/**\` on \`backend/**\` | Azure Functions |
-| \`deploy-frontend.yml\` | Push to \`main\` or \`feature/**\` on \`frontend/**\` | Static Web App |
-| \`deploy-infra.yml\` | Push to \`main\` or \`feature/**\` on \`infra/**\` | Terraform |
-| \`schema-drift.yml\` | PRs touching schema files | Validation only |
+The CI workflows are configured in \`.github/workflows/\`. Consult the repository's workflow files for trigger conditions and deployment targets.
 
 ## Workflow
 
@@ -1507,7 +1438,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
 function infraArchitectPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   return `# Infrastructure Architect
 
-You are a senior infrastructure engineer specializing in **Terraform** (azurerm + azapi + azuread).
+You are a senior infrastructure engineer.
 You implement infrastructure changes in the \`infra/\` directory based on the feature spec and schema contracts.
 
 # Context
@@ -1549,7 +1480,7 @@ You do NOT modify:
    - If plan succeeds → mark complete.
    - If plan fails → diagnose and fix the Terraform code, then retry from step 6.
 
-${completionBlock(ctx.featureSlug, ctx.itemKey, "infra", ctx.appRoot)}`;
+${completionBlock(ctx.featureSlug, ctx.itemKey, "infra")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1723,7 +1654,27 @@ export function getAgentConfig(
       `Unknown item key "${itemKey}". Valid keys: ${Object.keys(ITEM_ROUTING).join(", ")}`,
     );
   }
-  return builder(context, apmContext);
+  const config = builder(context, apmContext);
+
+  // Inject tool budget into system message — resolved from apm.yml
+  // Resolution order: per-agent toolLimits → config.defaultToolLimits
+  const agentLimits = apmContext.agents[itemKey]?.toolLimits;
+  const manifestDefaults = apmContext.config?.defaultToolLimits;
+  const soft = agentLimits?.soft ?? manifestDefaults?.soft ?? 30;
+  const hard = agentLimits?.hard ?? manifestDefaults?.hard ?? 40;
+  const budgetSection = `
+
+## Tool Call Budget
+
+You have a **hard limit of ${hard} tool calls** for this session. A warning will fire at ${soft} calls.
+Plan your work to finish — including commit and pipeline:complete — within this budget.
+- Batch file reads where possible (read large ranges, not many small reads).
+- Avoid exploratory grepping — use targeted reads and roam tools.
+- Reserve at least **3 tool calls** at the end for: commit, pipeline:complete, and a safety margin.
+- If you are approaching the limit, **prioritize committing your work** over further exploration.`;
+
+  config.systemMessage += budgetSection;
+  return config;
 }
 
 /**

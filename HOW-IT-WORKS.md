@@ -162,7 +162,7 @@ The APM compiler resolves this: `always` → all `.md` files in `.apm/instructio
 > - Config assembly: `getAgentConfig()` — [agents.ts#L1710](tools/autonomous-factory/src/agents.ts#L1710) — returns systemMessage + model + mcpServers
 > - Task prompt: `buildTaskPrompt()` — [agents.ts#L1732](tools/autonomous-factory/src/agents.ts#L1732) — builds per-session user message
 > - Completion contract: `completionBlock()` — [agents.ts#L74](tools/autonomous-factory/src/agents.ts#L74) — the `pipeline:complete/fail` commands
-> - Agent context: `AgentContext` interface — [agents.ts#L23](tools/autonomous-factory/src/agents.ts#L23) — slug, paths, URLs, test commands
+> - Agent context: `AgentContext` interface — [agents.ts#L23](tools/autonomous-factory/src/agents.ts#L23) — slug, paths, environment dict, test commands
 > - Example prompt: `backendDevPrompt()` — [agents.ts#L196](tools/autonomous-factory/src/agents.ts#L196)
 > - APM compiler: `compileApm()` — [apm-compiler.ts#L118](tools/autonomous-factory/src/apm-compiler.ts#L118) — resolves instruction refs, validates token budget
 > - APM manifest: [apps/sample-app/.apm/apm.yml](apps/sample-app/.apm/apm.yml) — agent declarations, instruction includes
@@ -181,7 +181,7 @@ There are **4 injection types**, each triggered by a different condition:
 
 | Injection | Trigger | What it tells the agent |
 |---|---|---|
-| **Retry context** | Same item retried (`attempt > 1`) | Previous error message, files already changed, last intent. "Start from where you left off." |
+| **Retry context** | Same item retried (`attempt > 1`) | Previous error message, files already changed, last intent. "Start from where you left off." For **timeouts**, switches to scope reduction: "Focus ONLY on unfinished work." |
 | **Downstream failure** | Dev item re-runs after a post-deploy test failed | The exact production error (e.g., "GET /api/jobs returns 500"). "Fix the root cause." |
 | **Revert warning** | 3+ failed attempts on a dev item | "You're in a loop. Run `agent-branch.sh revert` to wipe everything and start over with a different approach." |
 | **Infra rollback** | `infra-architect` re-runs after app team rejected infra | "The application deployment failed because infrastructure X was missing. Add it." |
@@ -212,7 +212,7 @@ sequenceDiagram
 1. `integration-test` runs against a live endpoint, gets a 500 error
 2. Agent calls `pipeline:fail` with structured JSON: `{"fault_domain":"backend","diagnostic_trace":"GET /api/jobs returns 500"}`
 3. `handleFailureReroute()` calls `triageFailure()`, which reads `fault_domain` and maps it to items: `[backend-dev, backend-unit-test, integration-test]`
-4. `resetForDev()` resets those items plus the deploy pipeline (`push-app`, `poll-app-ci`) back to pending
+4. `resetForDev()` resets those items plus the deploy pipeline (`push-app`, `poll-app-ci`) back to pending. Any `done` post-deploy items are also cascaded back to pending to ensure they re-verify the new deployment
 5. Watchdog loop's next `getNextAvailable()` returns `backend-dev` — it's pending and its dependencies are still done
 6. New `backend-dev` session gets the base task *plus* the downstream failure context with the exact error message
 7. Agent reads "GET /api/jobs returns 500", fixes the handler, completes. Pipeline continues forward.
@@ -231,12 +231,17 @@ sequenceDiagram
 | `backend` | backend-dev + backend-unit-test + failing item |
 | `frontend` | frontend-dev + frontend-unit-test + failing item |
 | `both` | All dev + test items |
-| `backend+infra` | backend-dev + infra-architect + tests |
-| `environment` | Pipeline halt (no agent fix possible) |
+| `backend+infra` | backend-dev + backend-unit-test + failing item |
+| `frontend+infra` | frontend-dev + frontend-unit-test + failing item |
+| `deployment-stale` | push-app + poll-app-ci + failing item (code correct — re-deploy only) |
+| `cicd` | push-app + poll-app-ci + failing item |
+| `infra` | infra-architect + failing item |
+| `environment` | Failing item only (retry may resolve) |
+| `blocked` | Empty — pipeline halts, opens Draft PR |
 
 ### Safety rails: preventing runaway agents
 
-Two separate circuit breakers protect against loops:
+Multiple safety mechanisms protect against loops and waste:
 
 ```mermaid
 graph TD
@@ -244,17 +249,22 @@ graph TD
     CHECK -->|No| RETRY["Normal retry"]
     CHECK -->|Yes| DEV{"DEV item?"}
     DEV -->|No| HALT["Halt pipeline"]
-    DEV -->|Yes| BYPASS{"Already<br/>bypassed once?"}
+    DEV -->|Yes| TIMEOUT{"Timeout loop?"}
+    TIMEOUT -->|Yes| SALVAGE["salvageForDraft<br/>→ Draft PR for human review"]
+    TIMEOUT -->|No| BYPASS{"Already<br/>bypassed once?"}
     BYPASS -->|No| GRANT["Grant 1 bypass<br/>→ revert warning fires"]
     BYPASS -->|Yes| HALT
 
     SOFT["Tool calls ≥ soft limit<br/>(default 30)"] --> INJECT["Inject frustration prompt<br/>into tool result"]
+    PRE["80% of session timeout"] --> WRAP["Inject wrap-up signal<br/>into tool result"]
     HARD["Tool calls ≥ hard limit<br/>(default 40)"] --> KILL["Force disconnect session"]
 ```
 
-**Identical-error circuit breaker** (top): If an agent fails with the exact same error *and* the same git HEAD (meaning it changed nothing), retrying is pointless. For dev items, one bypass is granted so the revert warning can fire and the agent gets a chance to wipe-and-rebuild.
+**Identical-error circuit breaker** (top): If an agent fails with the exact same error *and* the same git HEAD (meaning it changed nothing), retrying is pointless. For dev items, one bypass is granted so the revert warning can fire and the agent gets a chance to wipe-and-rebuild. If a DEV item is stuck in a **timeout loop** (error is "Timeout" and circuit breaker fires), the pipeline calls `salvageForDraft()` instead of halting — this opens a Draft PR for human review rather than losing all progress.
 
-**Cognitive circuit breaker** (bottom): Counts tool calls during a live session. At the soft limit, a frustration prompt is injected *into the tool result* (not console — the LLM actually reads it). At the hard limit, the session is force-disconnected.
+**Cognitive circuit breaker** (bottom): Counts tool calls during a live session. At the soft limit, a frustration prompt is injected *into the tool result* (not console — the LLM actually reads it). At the hard limit, the session is force-disconnected. At **80% of session timeout**, a pre-timeout wrap-up signal is injected telling the agent to commit, test, and report status before the hard kill.
+
+**Self-mutating validation hooks**: The orchestrator delegates deployment verification to bash scripts that agents dynamically extend. After `poll-app-ci` succeeds, `runValidateApp()` executes `hooks.validateApp` — if it fails, triggers `deployment-stale` reroute before expensive post-deploy agents boot up. After `infra-handoff` completes, `runValidateInfra()` executes `hooks.validateInfra` — if it fails, triggers `infra` fault domain reroute to `infra-architect`. Agents MUST append new validation checks to these hooks when they provision new resources or endpoints.
 
 Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-deploy cycles.
 
@@ -289,11 +299,12 @@ Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-depl
 
 ```typescript
 interface PipelineRunState {
-  pipelineSummaries: ItemSummary[];     // append-only log of every attempt
-  attemptCounts: Record<string, number>; // retry counter per item
-  circuitBreakerBypassed: Set<string>;   // one-time bypass tracker
-  preStepRefs: Record<string, string>;   // git HEAD before each step
-  baseTelemetry: PreviousSummaryTotals;  // metric baseline from prior run
+  pipelineSummaries: ItemSummary[];       // append-only log of every attempt
+  attemptCounts: Record<string, number>;   // retry counter per item
+  circuitBreakerBypassed: Set<string>;     // one-time bypass tracker
+  preStepRefs: Record<string, string>;     // git HEAD before each step
+  baseTelemetry: PreviousSummaryTotals;    // metric baseline from prior run
+  lastPushedShas: Record<string, string>;  // SHA per push-item for CI polling
 }
 ```
 
@@ -306,6 +317,7 @@ Where each field is read and written:
 | `circuitBreakerBypassed` | `.add()` on first DEV bypass | Circuit breaker — skip if already used | Ensures revert warning fires exactly once |
 | `preStepRefs` | `= git HEAD` before each step | `tryAutoSkip` (diff against current HEAD) | Skip test/deploy items if no relevant code changed |
 | `baseTelemetry` | Once at boot | `flushReports` (add to current totals) | Monotonic metric accumulation across restarts |
+| `lastPushedShas` | `runPushCode()` after `git push` | `runPollCi()` for SHA-pinned polling | Track exact commit per push-item to prevent cross-contamination |
 
 **Why two state systems?** `_STATE.json` is the durable DAG state that survives crashes — which items are done, fail counts, cycle counts. `PipelineRunState` is per-run telemetry and behavioral guards. Restarting the orchestrator resets `PipelineRunState` (attempt counts reset, bypasses reset) but `_STATE.json` persists where the pipeline left off.
 
@@ -318,7 +330,7 @@ Where each field is read and written:
 3. **Deterministic bypass**: `push-*` and `poll-*` items run shell scripts directly, no SDK session
 
 Everything else enters `runAgentSession`, which:
-1. Builds `AgentContext` from config + APM manifest
+1. Builds `AgentContext` from config + APM manifest (environment dict, test commands, commit scopes)
 2. Calls `getAgentConfig()` → system message, model, MCP servers
 3. Creates an SDK session + wires event listeners (tool logging, circuit breaker, intent capture)
 4. Assembles the task prompt + all applicable context injections
@@ -338,7 +350,7 @@ Everything else enters `runAgentSession`, which:
 > - Report writer: `writePipelineSummary()` — [reporting.ts#L247](tools/autonomous-factory/src/reporting.ts#L247)
 > - Telemetry type: `PreviousSummaryTotals` — [reporting.ts#L185](tools/autonomous-factory/src/reporting.ts#L185)
 > - Auto-skip helpers: [auto-skip.ts](tools/autonomous-factory/src/auto-skip.ts) — `getMergeBase()` [L12](tools/autonomous-factory/src/auto-skip.ts#L12), `getAutoSkipBaseRef()` [L26](tools/autonomous-factory/src/auto-skip.ts#L26), `getGitChangedFiles()` [L46](tools/autonomous-factory/src/auto-skip.ts#L46)
-> - State commit after batch: `commitAndPushState()` — [watchdog.ts#L219](tools/autonomous-factory/src/watchdog.ts#L219)
+> - State commit after batch: `commitAndPushState()` — [watchdog.ts#L219](tools/autonomous-factory/src/watchdog.ts#L219) — includes a **push guard** that defers push when unpushed code commits exist (prevents premature deploy-workflow triggers)
 > - Feature archiving: `archiveFeatureFiles()` — [watchdog.ts#L114](tools/autonomous-factory/src/watchdog.ts#L114)
 
 ---

@@ -99,7 +99,7 @@ flowchart LR
     end
 
     subgraph CORE["Core Modules"]
-        SR["session-runner.ts\n(~950 lines)\nSession Lifecycle"]
+        SR["session-runner.ts\n(~1546 lines)\nSession Lifecycle"]
         A["agents.ts\n(~1400 lines)\nPrompt Factory"]
         PA["apm-compiler.ts\n(~310 lines)\nRule Engine"]
         S["state.ts\n(~130 lines)\nTyped Wrapper"]

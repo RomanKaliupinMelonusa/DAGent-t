@@ -72,6 +72,13 @@ describe("parseTriageDiagnostic", () => {
     assert.equal(result?.fault_domain, "infra");
   });
 
+  it("parses valid deployment-stale diagnostic", () => {
+    const msg = makeJsonMsg("deployment-stale", "SWA deployment stale");
+    const result = parseTriageDiagnostic(msg);
+    assert.equal(result?.fault_domain, "deployment-stale");
+    assert.equal(result?.diagnostic_trace, "SWA deployment stale");
+  });
+
   it("returns null for invalid fault_domain value", () => {
     const msg = makeJsonMsg("database", "connection refused");
     assert.equal(parseTriageDiagnostic(msg), null);
@@ -774,6 +781,68 @@ describe("triageFailure with unfixable errors (Tier 0)", () => {
     const keys = triageFailure("poll-ci", msg, NO_NA);
     assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triageFailure — deployment-stale fault domain (Phase 2.1)
+// ---------------------------------------------------------------------------
+
+describe("triageFailure (deployment-stale)", () => {
+  it("structured JSON deployment-stale → resets push-app + poll-app-ci only (no dev items)", () => {
+    const msg = makeJsonMsg("deployment-stale", "SWA deployment stale — HealthBadge code not in deployed build");
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci", "live-ui"]);
+    // MUST NOT include any dev items — code is correct
+    assert.ok(!keys.includes("frontend-dev"), "deployment-stale should NOT reset frontend-dev");
+    assert.ok(!keys.includes("backend-dev"), "deployment-stale should NOT reset backend-dev");
+  });
+
+  it("structured JSON deployment-stale from integration-test", () => {
+    const msg = makeJsonMsg("deployment-stale", "fn-health not deployed to Azure — 404 from function app");
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci", "integration-test"]);
+    assert.ok(!keys.includes("backend-dev"));
+  });
+
+  it("deployment-stale filters N/A items", () => {
+    const msg = makeJsonMsg("deployment-stale", "stale deployment");
+    const naItems = new Set(["poll-app-ci"]);
+    const keys = triageFailure("live-ui", msg, naItems);
+    assert.ok(keys.includes("push-app"));
+    assert.ok(!keys.includes("poll-app-ci"), "poll-app-ci should be filtered (N/A)");
+    assert.ok(keys.includes("live-ui"));
+  });
+
+  it("keyword 'SWA deployment stale' → deployment-stale route (no dev reset)", () => {
+    const msg = "SWA deployment stale — feature code NOT in deployed build. All 46 JS chunks searched.";
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(keys.includes("poll-app-ci"), `Expected poll-app-ci in: ${keys}`);
+    assert.ok(keys.includes("live-ui"));
+    assert.ok(!keys.includes("frontend-dev"), "Stale deployment keyword should NOT reset frontend-dev");
+  });
+
+  it("keyword 'not in deployed build' → deployment-stale route", () => {
+    const msg = "HealthBadge code NOT in deployed build — commits after 3b96258 are [skip ci]";
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev for stale deployment");
+  });
+
+  it("keyword 'function not deployed' → deployment-stale route", () => {
+    const msg = "fn-health function not deployed to Azure, code builds locally";
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(!keys.includes("backend-dev"), "Should NOT reset backend-dev for stale deployment");
+  });
+
+  it("keyword 'deploy-frontend.yml never' → deployment-stale route (with config patterns)", () => {
+    const msg = "All commits after 3b96258 are [skip ci] — deploy-frontend.yml never re-triggered";
+    const patterns = ["deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml"];
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, patterns);
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev");
   });
 });
 

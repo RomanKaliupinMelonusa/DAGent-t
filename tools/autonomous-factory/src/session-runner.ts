@@ -22,8 +22,9 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 import { getStatus, failItem, resetForDev, completeItem, salvageForDraft } from "./state.js";
 import { getAgentConfig, buildTaskPrompt } from "./agents.js";
 import type { AgentContext } from "./agents.js";
-import type { ApmCompiledOutput } from "./apm-types.js";
+import type { ApmCompiledOutput, ApmConfig } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
+import { executeHook, buildHookEnv } from "./hooks.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
@@ -94,20 +95,19 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
 
 /**
  * Delay (ms) after CI deployment completes before running post-deploy tests.
- * Azure Functions and SWA can take 30-60s to propagate after a deployment
+ * Azure Functions and SWA can take 30-90s to propagate after a deployment
  * workflow reports success. Without this delay, integration tests hit stale
  * deployment artifacts and produce false 404s.
  */
-const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
+const POST_DEPLOY_PROPAGATION_DELAY_MS = 60_000;
 
 /**
- * Cognitive Circuit Breaker — default tool call limits per session.
- * Used when an agent does not declare per-agent toolLimits in apm.yml.
- * Soft limit: logs a structured warning to console (visible in _TERMINAL-LOG.md).
- * Hard limit: force-disconnects the session to prevent runaway compute waste.
+ * Cognitive Circuit Breaker — absolute last-resort fallback.
+ * Only used if apm.yml has neither per-agent toolLimits nor config.defaultToolLimits.
+ * All real configuration should be in apm.yml.
  */
-export const TOOL_COUNT_SOFT_LIMIT_DEFAULT = 30;
-export const TOOL_COUNT_HARD_LIMIT_DEFAULT = 40;
+const TOOL_LIMIT_FALLBACK_SOFT = 30;
+const TOOL_LIMIT_FALLBACK_HARD = 40;
 
 function getTimeout(itemKey: string): number {
   if (DEV_ITEMS.has(itemKey)) return TIMEOUT_DEV;
@@ -257,6 +257,13 @@ export interface PipelineRunState {
    * simply adds baseTelemetry to the current session's totals.
    */
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
+  /**
+   * Last pushed commit SHA per push-item key ("push-infra" | "push-app").
+   * Captured by runPushCode(), consumed by runPollCi() for SHA-pinned CI polling.
+   * Scoped per-item to prevent cross-contamination if multiple push items ever
+   * run in the same batch.
+   */
+  lastPushedShas: Record<string, string>;
 }
 
 /** Immutable config for the pipeline run */
@@ -329,6 +336,28 @@ export async function runItemSession(
       try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
       pipelineSummaries.push(skipSummary);
       flushReports(config, state);
+
+      // For DEV items stuck in timeout loops, salvage to Draft PR instead of
+      // halting — gives humans something to review rather than losing all work.
+      const lastError = pipelineSummaries
+        .filter((s) => s.key === next.key && s.outcome !== "completed")
+        .pop()?.errorMessage ?? "";
+      const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
+
+      if (DEV_ITEMS.has(next.key) && isTimeoutLoop) {
+        console.log(`  📝 DEV item ${next.key} stuck in timeout loop — triggering Graceful Degradation to Draft PR`);
+        try {
+          await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
+          await salvageForDraft(slug, next.key);
+          const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
+          fs.writeFileSync(draftFlagPath, `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`, "utf-8");
+        } catch (e) {
+          console.error("  ✖ Failed to salvage pipeline state", e);
+          return { summary: skipSummary, halt: true, createPr: false };
+        }
+        return { summary: skipSummary, halt: false, createPr: false };
+      }
+
       return { summary: skipSummary, halt: true, createPr: false };
     }
   }
@@ -376,7 +405,9 @@ export async function runItemSession(
   if (autoSkipResult) return autoSkipResult;
 
   // ── Post-deploy propagation delay ─────────────────────────────────────
-  if (LONG_ITEMS.has(next.key) && attemptCounts[next.key] <= 1) {
+  // Applied on ALL attempts (not just the first) because Azure Functions and
+  // SWA can take up to 90s to propagate after a deployment workflow succeeds.
+  if (LONG_ITEMS.has(next.key)) {
     console.log(`  ⏳ Waiting ${POST_DEPLOY_PROPAGATION_DELAY_MS / 1000}s for deployment propagation before ${next.key}...`);
     await new Promise((resolve) => setTimeout(resolve, POST_DEPLOY_PROPAGATION_DELAY_MS));
   }
@@ -476,11 +507,78 @@ async function tryAutoSkip(
 }
 
 // ---------------------------------------------------------------------------
+// Self-Mutating Validation Hooks
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate deployed application endpoints after CI completes.
+ * Delegates to the `hooks.validateApp` command from apm.yml config.
+ * The hook script is a self-mutating bash file — agents append endpoint
+ * checks as they create new routes/services.
+ *
+ * Returns a failure reason string if exit code 1, or `null` if pass.
+ */
+function runValidateApp(config: PipelineRunConfig): string | null {
+  const { appRoot, apmContext } = config;
+  const hookCmd = apmContext.config?.hooks?.validateApp;
+  if (!hookCmd) return null;
+
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: config.repoRoot,
+  });
+
+  try {
+    const result = executeHook(hookCmd, env, appRoot, 60_000);
+    if (!result) return null;
+    if (result.exitCode === 1 && result.stdout) {
+      return result.stdout;
+    }
+    return null; // Pass
+  } catch {
+    return null; // Inconclusive — let agent handle it
+  }
+}
+
+/**
+ * Validate deployed infrastructure reachability after infra-handoff.
+ * Delegates to the `hooks.validateInfra` command from apm.yml config.
+ * The hook script is a self-mutating bash file — @infra-architect appends
+ * reachability checks as new data-plane resources are provisioned.
+ *
+ * Returns a failure reason string if exit code 1, or `null` if pass.
+ */
+function runValidateInfra(config: PipelineRunConfig): string | null {
+  const { appRoot, apmContext } = config;
+  const hookCmd = apmContext.config?.hooks?.validateInfra;
+  if (!hookCmd) return null;
+
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: config.repoRoot,
+  });
+
+  try {
+    const result = executeHook(hookCmd, env, appRoot, 60_000);
+    if (!result) return null;
+    if (result.exitCode === 1 && result.stdout) {
+      return result.stdout;
+    }
+    return null; // Pass
+  } catch {
+    return null; // Inconclusive — let agent handle it
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Deterministic bypasses
 // ---------------------------------------------------------------------------
 
-/** Last pushed commit SHA — captured by runPushCode, consumed by runPollCi */
-let lastPushedSha: string | null = null;
+/** Map push items to their poll counterparts for SHA lookup */
+const PUSH_TO_POLL: Record<string, string> = {
+  "poll-infra-plan": "push-infra",
+  "poll-app-ci": "push-app",
+};
 
 async function runPushCode(
   itemKey: string,
@@ -513,10 +611,10 @@ async function runPushCode(
 
     // Capture the exact commit SHA that was pushed (for SHA-pinned CI polling)
     try {
-      lastPushedSha = execSync("git rev-parse HEAD", {
+      state.lastPushedShas[itemKey] = execSync("git rev-parse HEAD", {
         cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
       }).trim();
-    } catch { lastPushedSha = null; }
+    } catch { /* non-fatal */ }
 
     // Mark complete
     await completeItem(slug, itemKey);
@@ -563,6 +661,10 @@ async function runPollCi(
 
   const inProgressDir = path.join(appRoot, "in-progress");
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
+
+  // Resolve the pushed SHA from the corresponding push item
+  const pushItemKey = PUSH_TO_POLL[itemKey];
+  const lastPushedSha = pushItemKey ? state.lastPushedShas[pushItemKey] ?? null : null;
 
   // Build poll command args — pass commit SHA if available for pinned filtering
   const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
@@ -614,8 +716,9 @@ async function runPollCi(
         try {
           const branch = `feature/${slug}`;
           // Find the latest successful infra CI run on this branch
+          const infraPlanFile = config.apmContext.config?.ciWorkflows?.infraPlanFile ?? "deploy-infra.yml";
           const runIdOutput = execSync(
-            `gh run list --branch "${branch}" --workflow deploy-infra.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
+            `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
             { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
           ).toString().trim();
 
@@ -667,6 +770,27 @@ async function runPollCi(
           }
         } catch (planErr) {
           console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+        }
+      }
+
+      // ── poll-app-ci: validate deployed app endpoints ──────────────────
+      // Runs the self-mutating validateApp hook. If the app is dead despite
+      // CI passing, fail immediately and trigger triage before expensive
+      // post-deploy agents (live-ui, integration-test) boot up.
+      if (itemKey === "poll-app-ci") {
+        const appFailure = runValidateApp(config);
+        if (appFailure) {
+          console.error(`  🚫 App validation failed after CI: ${appFailure}`);
+          const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
+          try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
+          itemSummary.outcome = "failed";
+          itemSummary.errorMessage = failMsg;
+          itemSummary.finishedAt = new Date().toISOString();
+          itemSummary.durationMs = Date.now() - stepStart;
+          itemSummary.intents.push(`App validation failed — blocking before post-deploy agents`);
+          pipelineSummaries.push(itemSummary);
+          flushReports(config, state);
+          return handleFailureReroute(slug, itemKey, failMsg, appFailure, config, state, itemSummary, roamAvailable);
         }
       }
 
@@ -784,11 +908,7 @@ async function runAgentSession(
     itemKey: next.key,
     baseBranch,
     ...(liveUiInfraChanges && { infraChanges: true }),
-    defaultSwaUrl: apmContext.config?.urls?.swa,
-    defaultFuncUrl: apmContext.config?.urls?.functionApp,
-    defaultApimUrl: apmContext.config?.urls?.apim,
-    defaultFuncAppName: apmContext.config?.azureResources?.functionAppName,
-    defaultResourceGroup: apmContext.config?.azureResources?.resourceGroup,
+    environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
     commitScopes: apmContext.config?.commitScopes,
   };
@@ -808,7 +928,13 @@ async function runAgentSession(
   });
 
   // Wire session event listeners
+  const manifestDefaults = apmContext.config?.defaultToolLimits;
   const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
+  // Resolution order: per-agent → manifest default → last-resort fallback
+  const resolvedToolLimits = {
+    soft: agentToolLimits?.soft ?? manifestDefaults?.soft ?? TOOL_LIMIT_FALLBACK_SOFT,
+    hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
+  };
 
   // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
   // without calling the heavy Markdown/Git reporting functions.
@@ -822,7 +948,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits, triggerHeartbeat);
+  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat);
   const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -854,7 +980,11 @@ async function runAgentSession(
   }
 
   // Inject downstream failure context
-  const downstreamCtx = buildDownstreamFailureContext(next.key, pipelineSummaries);
+  const downstreamCtx = buildDownstreamFailureContext(
+    next.key,
+    pipelineSummaries,
+    apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
+  );
   if (downstreamCtx) {
     taskPrompt += downstreamCtx;
     const downstreamCount = pipelineSummaries.filter(
@@ -976,6 +1106,22 @@ async function runAgentSession(
     // Infra-architect permission escalation → route to elevated deploy
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
+    // ── Infra-handoff post-completion: validate infrastructure reachability ──
+    // Runs the self-mutating validateInfra hook after the agent successfully
+    // documents infra outputs. If newly provisioned resources are unreachable,
+    // fail with "infra" fault domain → triage resets ["infra-architect", "infra-handoff"].
+    if (next.key === "infra-handoff") {
+      const infraFailure = runValidateInfra(config);
+      if (infraFailure) {
+        console.error(`  🚫 Infra validation failed after ${next.key}: ${infraFailure}`);
+        const failMsg = JSON.stringify({ fault_domain: "infra", diagnostic_trace: `validateInfra hook: ${infraFailure}` });
+        try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
+        itemSummary.outcome = "failed";
+        itemSummary.errorMessage = failMsg;
+        flushReports(config, state);
+        return handleFailureReroute(slug, next.key, failMsg, infraFailure, config, state, itemSummary, roamAvailable);
+      }
+    }
     console.log(`  ✅ ${next.key} complete`);
   }
 
@@ -1008,7 +1154,8 @@ async function handleFailureReroute(
     pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
   );
   const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
-  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
+  const ciFilePatterns = config.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined;
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns);
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
@@ -1093,13 +1240,18 @@ function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
   repoRoot: string,
-  toolLimits?: { soft?: number; hard?: number },
+  toolLimits: { soft: number; hard: number },
+  sessionTimeout: number,
   triggerHeartbeat?: () => void,
 ): void {
-  const softLimit = toolLimits?.soft ?? TOOL_COUNT_SOFT_LIMIT_DEFAULT;
-  const hardLimit = toolLimits?.hard ?? TOOL_COUNT_HARD_LIMIT_DEFAULT;
+  const softLimit = toolLimits.soft;
+  const hardLimit = toolLimits.hard;
   let softWarningFired = false;
   let hardLimitFired = false;
+  /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
+  let preTimeoutFired = false;
+  const sessionStartMs = Date.now();
+  const preTimeoutThresholdMs = sessionTimeout * 0.8;
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
     if (hardLimitFired) return;
@@ -1185,6 +1337,30 @@ function wireToolLogging(
 
       console.warn(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
+      );
+    }
+
+    // Pre-timeout wrap-up signal — at 80% of session timeout, inject a
+    // "wrap up NOW" directive so the LLM can commit and complete gracefully
+    // instead of being hard-killed by the timeout.
+    if (!preTimeoutFired && (Date.now() - sessionStartMs) >= preTimeoutThresholdMs) {
+      preTimeoutFired = true;
+      const remainingSec = Math.round((sessionTimeout - (Date.now() - sessionStartMs)) / 1000);
+      const wrapUpPrompt =
+        `\n\n⏰ SYSTEM NOTICE: Session timeout approaching — ~${remainingSec}s remaining. ` +
+        `You MUST wrap up NOW. Commit whatever work you have completed so far via ` +
+        `agent-commit.sh, then call pipeline:complete if the feature is functional, ` +
+        `or pipeline:fail with a diagnostic if it is not. ` +
+        `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
+
+      if (event.data.result && typeof event.data.result.content === "string") {
+        event.data.result.content += wrapUpPrompt;
+      } else {
+        event.data.result = { content: wrapUpPrompt };
+      }
+
+      console.warn(
+        `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,
       );
     }
 

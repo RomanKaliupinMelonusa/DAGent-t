@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "./apm-types.js";
+import { executeHook, buildHookEnv } from "./hooks.js";
 
 /**
  * Warn about unexpected untracked files in the repo root.
@@ -97,20 +98,32 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
 }
 
 /**
- * Warn early if `az login` hasn't been run so the user can fix it
- * before the pipeline spends 30+ minutes reaching integration-test.
+ * Run the pre-flight auth check hook to verify cloud CLI authentication.
+ * Warns early so the user can fix it before the pipeline reaches post-deploy.
+ *
+ * Delegates to the `hooks.preflightAuth` command from apm.yml config.
+ * If no hook is configured, the check is silently skipped.
  */
-export function checkAzureAuth(repoRoot: string): void {
-  try {
-    execSync("az account show --query name -o tsv", {
-      cwd: repoRoot, encoding: "utf-8", timeout: 10_000, stdio: "pipe",
-    });
-    console.log("  ✔ Azure CLI authenticated\n");
-  } catch {
+export function checkPreflightAuth(repoRoot: string, appRoot: string, apmContext: ApmCompiledOutput): void {
+  const hookCmd = apmContext.config?.hooks?.preflightAuth;
+  if (!hookCmd) {
+    console.log("  ⊘ No preflight auth hook configured — skipping\n");
+    return;
+  }
+
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: repoRoot,
+  });
+
+  const result = executeHook(hookCmd, env, appRoot, 10_000);
+  if (result && result.exitCode === 0) {
+    console.log(`  ✔ Cloud CLI authenticated${result.stdout ? ` (${result.stdout})` : ""}\n`);
+  } else {
     console.warn(
-      "  ⚠ Azure CLI not authenticated (az login required).\n" +
+      "  ⚠ Cloud CLI not authenticated.\n" +
       "    Integration tests will be skipped or fail at the post-deploy phase.\n" +
-      "    Run 'az login' in another terminal now if you need integration tests.\n",
+      `    ${result?.stdout ? `Detail: ${result.stdout}\n` : ""}`,
     );
   }
 }

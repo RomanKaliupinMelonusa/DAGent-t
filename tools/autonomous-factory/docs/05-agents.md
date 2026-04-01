@@ -26,7 +26,7 @@ flowchart TB
 
     subgraph PRE["Wave 2: Pre-Deploy"]
         direction LR
-        A8["⚙️ backend-dev\nAzure Functions v4\n+ TypeScript"]
+        A8["⚙️ backend-dev\nBackend + Infra Dev"]
         A9["🎨 frontend-dev\nNext.js 16 + React 19\n+ Playwright E2E tests"]
         A10["🧪 backend-unit-test\nJest unit tests\n+ schema validation"]
         A11["🧪 frontend-unit-test\nJest unit tests\n+ RTL"]
@@ -228,9 +228,9 @@ flowchart TD
 | Function | Agent(s) | Key Content |
 |----------|----------|-------------|
 | `schemaDevPrompt()` | schema-dev | Zod v4 schemas, @branded/schemas, validate:schemas |
-| `infraArchitectPrompt()` | infra-architect | Terraform HCL, validate + plan, infra-interfaces.md |
+| `infraArchitectPrompt()` | infra-architect | IaC validate + plan, infra-interfaces.md (identity from APM instructions) |
 | `infraHandoffPrompt()` | infra-handoff | Capture `terraform output -json`, write infra-interfaces.md |
-| `backendDevPrompt()` | backend-dev | Azure Functions v4, TypeScript, BrandedAgentService |
+| `backendDevPrompt()` | backend-dev | Backend + infra dev, TypeScript (identity from APM instructions) |
 | `frontendDevPrompt()` | frontend-dev | Next.js 16, React 19, Playwright E2E mandate |
 | `backendTestPrompt()` | backend-unit-test, integration-test | Jest unit tests (pre-deploy) OR integration tests (post-deploy) |
 | `frontendUiTestPrompt()` | frontend-unit-test, live-ui | Jest (pre-deploy) OR AST-driven Playwright E2E with deep diagnostic interception (post-deploy) |
@@ -340,6 +340,7 @@ When post-deploy or test items fail, `triageFailure()` in `triage.ts` (called fr
 | `frontend+infra` | frontend-dev, frontend-unit-test |
 | `infra` | infra-architect |
 | `cicd` | push-app, poll-app-ci |
+| `deployment-stale` | push-app, poll-app-ci (code correct — re-deploy only) |
 | `environment` | itemKey only (retry, not a code bug) |
 | `blocked` | `[]` — halt pipeline (unfixable) |
 
