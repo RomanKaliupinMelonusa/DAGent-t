@@ -21,7 +21,9 @@
     "validate:schemas": "cd ../packages/schemas && npx jest --verbose"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.3.1",
     "@azure/functions": "^4.7.0",
+    "@azure/identity": "^4.8.0",
     "@branded/schemas": "0.1.0",
     "zod": "^3.24.0"
   },

@@ -126,3 +126,69 @@ describeIntegration("fn-demo-login (live)", () => {
     expect(body.error).toBe("INVALID_INPUT");
   });
 });
+
+// ---------------------------------------------------------------------------
+// fn-audit — POST /audit + GET /audit
+// ---------------------------------------------------------------------------
+
+describeIntegration("fn-audit (live)", () => {
+  it("POST /audit returns 201 with valid audit event", async () => {
+    const res = await apiFetch("/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: "integration-test",
+        action: "TEST_ACTION",
+      }),
+    });
+    expect(res.status).toBe(201);
+
+    const body: Json = await res.json();
+    expect(body.id).toBeDefined();
+    expect(body.userId).toBe("integration-test");
+    expect(body.action).toBe("TEST_ACTION");
+    expect(body.timestamp).toBeDefined();
+    // Verify timestamp is valid ISO-8601
+    expect(new Date(body.timestamp).toISOString()).toBe(body.timestamp);
+  });
+
+  it("POST /audit returns 400 for missing fields", async () => {
+    const res = await apiFetch("/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("INVALID_INPUT");
+  });
+
+  it("POST /audit returns 400 for invalid JSON body", async () => {
+    const res = await apiFetch("/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not-json",
+    });
+    expect(res.status).toBe(400);
+
+    const body: Json = await res.json();
+    expect(body.error).toBe("INVALID_INPUT");
+  });
+
+  it("GET /audit returns 200 with array of audit logs", async () => {
+    const res = await apiFetch("/audit");
+    expect(res.status).toBe(200);
+
+    const body: Json = await res.json();
+    expect(Array.isArray(body)).toBe(true);
+    // After the POST test above, there should be at least one log
+    if (body.length > 0) {
+      const log = body[0];
+      expect(log.id).toBeDefined();
+      expect(log.userId).toBeDefined();
+      expect(log.action).toBeDefined();
+      expect(log.timestamp).toBeDefined();
+    }
+  });
+});
