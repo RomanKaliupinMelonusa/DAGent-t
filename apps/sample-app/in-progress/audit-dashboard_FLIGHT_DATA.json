@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:51:02.088Z",
+  "generatedAt": "2026-04-01T22:51:03.348Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -812,6 +812,31 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-01T22:51:03.345Z",
+      "finishedAt": "2026-04-01T22:51:03.345Z",
+      "durationMs": 0,
+      "outcome": "failed",
+      "intents": [
+        "Circuit breaker: identical error, no code changes — skipped"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "errorMessage": "Circuit breaker: identical error repeated without code changes",
+      "headAfterAttempt": "094a04afdaf294ebf9add8e0cd7cac1db6f62928"
     }
   ]
 }
