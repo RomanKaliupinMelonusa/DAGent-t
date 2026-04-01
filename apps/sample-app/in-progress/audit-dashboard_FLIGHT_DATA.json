@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:34:18.148Z",
+  "generatedAt": "2026-04-01T22:34:31.540Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -275,6 +275,29 @@
       "cacheReadTokens": 111807,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "2ff495c7a8534c76f1f6fe1a902006b559997733"
+    },
+    {
+      "key": "poll-infra-plan",
+      "label": "Infra Plan CI Passed",
+      "agent": "@deploy-manager",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-04-01T22:34:19.572Z",
+      "finishedAt": "2026-04-01T22:34:31.539Z",
+      "durationMs": 11967,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
