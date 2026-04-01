@@ -543,8 +543,8 @@ function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
   const warnings: string[] = [];
 
   // --- Backend: verify expected functions exist in Azure ---
-  const funcAppName = apmContext.config?.azureResources?.functionAppName;
-  const resourceGroup = apmContext.config?.azureResources?.resourceGroup;
+  const funcAppName = apmContext.config?.environment?.FUNC_APP_NAME;
+  const resourceGroup = apmContext.config?.environment?.RESOURCE_GROUP;
   if (funcAppName && resourceGroup) {
     try {
       // Discover expected functions from local source
@@ -580,7 +580,7 @@ function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
   }
 
   // --- Frontend: verify SWA is reachable (lightweight HTTP smoke) ---
-  const swaUrl = apmContext.config?.urls?.swa;
+  const swaUrl = apmContext.config?.environment?.FRONTEND_URL;
   if (swaUrl) {
     try {
       const curlResult = execSync(
@@ -617,8 +617,8 @@ function runPreDeploySmokeCheck(
   const { repoRoot, appRoot, apmContext } = config;
 
   if (itemKey === "integration-test") {
-    const funcAppName = apmContext.config?.azureResources?.functionAppName;
-    const resourceGroup = apmContext.config?.azureResources?.resourceGroup;
+    const funcAppName = apmContext.config?.environment?.FUNC_APP_NAME;
+    const resourceGroup = apmContext.config?.environment?.RESOURCE_GROUP;
     if (!funcAppName || !resourceGroup) return null; // Can't verify — let agent handle it
 
     try {
@@ -651,7 +651,7 @@ function runPreDeploySmokeCheck(
   }
 
   if (itemKey === "live-ui") {
-    const funcUrl = apmContext.config?.urls?.functionApp;
+    const funcUrl = apmContext.config?.environment?.BACKEND_URL;
     if (!funcUrl) return null;
 
     // Check that the backend API is reachable — if it's 404, the deploy is stale
@@ -837,8 +837,9 @@ async function runPollCi(
         try {
           const branch = `feature/${slug}`;
           // Find the latest successful infra CI run on this branch
+          const infraPlanFile = config.apmContext.config?.ciWorkflows?.infraPlanFile ?? "deploy-infra.yml";
           const runIdOutput = execSync(
-            `gh run list --branch "${branch}" --workflow deploy-infra.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
+            `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
             { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
           ).toString().trim();
 
@@ -1017,11 +1018,7 @@ async function runAgentSession(
     itemKey: next.key,
     baseBranch,
     ...(liveUiInfraChanges && { infraChanges: true }),
-    defaultSwaUrl: apmContext.config?.urls?.swa,
-    defaultFuncUrl: apmContext.config?.urls?.functionApp,
-    defaultApimUrl: apmContext.config?.urls?.apim,
-    defaultFuncAppName: apmContext.config?.azureResources?.functionAppName,
-    defaultResourceGroup: apmContext.config?.azureResources?.resourceGroup,
+    environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
     commitScopes: apmContext.config?.commitScopes,
   };
@@ -1093,7 +1090,11 @@ async function runAgentSession(
   }
 
   // Inject downstream failure context
-  const downstreamCtx = buildDownstreamFailureContext(next.key, pipelineSummaries);
+  const downstreamCtx = buildDownstreamFailureContext(
+    next.key,
+    pipelineSummaries,
+    apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
+  );
   if (downstreamCtx) {
     taskPrompt += downstreamCtx;
     const downstreamCount = pipelineSummaries.filter(
@@ -1247,7 +1248,8 @@ async function handleFailureReroute(
     pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
   );
   const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
-  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs);
+  const ciFilePatterns = config.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined;
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns);
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {

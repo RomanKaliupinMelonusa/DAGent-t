@@ -30,8 +30,8 @@ agents:
     skills: []
 
 config:
-  urls:
-    functionApp: "https://mock-python-svc.azurewebsites.net"
+  environment:
+    BACKEND_URL: "https://mock-python-svc.azurewebsites.net"
   directories:
     backend: src
     frontend: null

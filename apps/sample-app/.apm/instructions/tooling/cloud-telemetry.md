@@ -32,7 +32,7 @@ empty, report the failure without telemetry — do not loop.
 ### Fetch exceptions (primary query)
 
 ```bash
-# TODO: Replace YOUR-APP-INSIGHTS and YOUR-RESOURCE-GROUP with values from apm.yml config.azureResources
+# TODO: Replace YOUR-APP-INSIGHTS and YOUR-RESOURCE-GROUP with values from apm.yml config.environment
 az monitor app-insights query \
   --app YOUR-APP-INSIGHTS \
   --resource-group YOUR-RESOURCE-GROUP \

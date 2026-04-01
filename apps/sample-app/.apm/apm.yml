@@ -97,14 +97,13 @@ agents:
 
 config:
   defaultToolLimits: { soft: 30, hard: 40 }
-  urls:
-    swa: "${SWA_URL}"
-    functionApp: "${FUNCTION_APP_URL}"
-    apim: "${APIM_URL}"
-  azureResources:
-    functionAppName: "${AZURE_FUNCTION_APP_NAME}"
-    resourceGroup: "${AZURE_RESOURCE_GROUP}"
-    appInsightsName: "${AZURE_APP_INSIGHTS_NAME}"
+  environment:
+    FRONTEND_URL: "${SWA_URL}"
+    BACKEND_URL: "${FUNCTION_APP_URL}"
+    APIM_URL: "${APIM_URL}"
+    FUNC_APP_NAME: "${AZURE_FUNCTION_APP_NAME}"
+    RESOURCE_GROUP: "${AZURE_RESOURCE_GROUP}"
+    APP_INSIGHTS_NAME: "${AZURE_APP_INSIGHTS_NAME}"
   directories:
     backend: backend
     frontend: frontend
@@ -122,4 +121,6 @@ config:
   ciWorkflows:
     app: "Deploy Backend,Deploy Frontend"
     infra: "Deploy Infrastructure,Schema Drift Check"
+    filePatterns: ["deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml", "ci-integration.yml"]
+    infraPlanFile: "deploy-infra.yml"
 

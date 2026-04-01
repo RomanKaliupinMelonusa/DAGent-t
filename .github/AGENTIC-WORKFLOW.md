@@ -341,7 +341,7 @@ All secrets are configured in **Settings > Secrets and variables > Actions**.
 
 | Secret | Used By | How to Obtain |
 |--------|---------|---------------|
-| `NEXT_PUBLIC_API_BASE_URL` | `deploy-frontend.yml` | The APIM gateway URL (e.g., `https://your-apim.azure-api.net`). Must match `config.urls.apim` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
+| `NEXT_PUBLIC_API_BASE_URL` | `deploy-frontend.yml` | The APIM gateway URL (e.g., `https://your-apim.azure-api.net`). Must match `config.environment.APIM_URL` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
 | `NEXT_PUBLIC_AUTH_MODE` | `deploy-frontend.yml` | Auth strategy: `entra` (Entra ID SSO) or `demo` (bypass auth for testing). |
 | `NEXT_PUBLIC_ENTRA_CLIENT_ID` | `deploy-frontend.yml` | Azure Portal: **App registrations > [frontend app] > Application (client) ID**. The Entra app registration for frontend auth. |
 | `NEXT_PUBLIC_ENTRA_TENANT_ID` | `deploy-frontend.yml` | Same as `AZURE_TENANT_ID` (or a different tenant if frontend auth is separate). |
@@ -351,8 +351,8 @@ All secrets are configured in **Settings > Secrets and variables > Actions**.
 
 | Secret | Used By | How to Obtain |
 |--------|---------|---------------|
-| `FUNCTION_APP_URL` | `regression-tests.yml` | The deployed Azure Function App URL (e.g., `https://your-func-app.azurewebsites.net`). Must match `config.urls.functionApp` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
-| `SWA_URL` | `regression-tests.yml` | The deployed SWA URL (e.g., `https://your-app.azurestaticapps.net`). Must match `config.urls.swa` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
+| `FUNCTION_APP_URL` | `regression-tests.yml` | The deployed Azure Function App URL (e.g., `https://your-func-app.azurewebsites.net`). Must match `config.environment.BACKEND_URL` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
+| `SWA_URL` | `regression-tests.yml` | The deployed SWA URL (e.g., `https://your-app.azurestaticapps.net`). Must match `config.environment.FRONTEND_URL` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
 
 #### Variables (Non-Secret — Visible in Logs)
 
@@ -360,8 +360,8 @@ Configure in **Settings > Secrets and variables > Actions > Variables**.
 
 | Variable | Used By | How to Obtain |
 |----------|---------|---------------|
-| `AZURE_FUNCTION_APP_NAME` | `deploy-backend.yml`, `regression-tests.yml` | The Azure Function App resource name (e.g., `my-func-app-dev`). Must match `config.azureResources.functionAppName` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
-| `AZURE_RESOURCE_GROUP` | `regression-tests.yml` | The Azure resource group name (e.g., `rg-dev-ecom`). Must match `config.azureResources.resourceGroup` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
+| `AZURE_FUNCTION_APP_NAME` | `deploy-backend.yml`, `regression-tests.yml` | The Azure Function App resource name (e.g., `my-func-app-dev`). Must match `config.environment.FUNC_APP_NAME` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
+| `AZURE_RESOURCE_GROUP` | `regression-tests.yml` | The Azure resource group name (e.g., `rg-dev-ecom`). Must match `config.environment.RESOURCE_GROUP` in [`apm.yml`](../apps/sample-app/.apm/apm.yml). |
 
 ### OIDC Federated Credentials (Zero-Secret Auth)
 
@@ -396,11 +396,11 @@ Several CI/CD secrets must stay in sync with the APM manifest ([`apps/sample-app
 
 | GitHub Secret/Variable | `apm.yml` Field | Used By |
 |------------------------|----------------|---------|
-| `FUNCTION_APP_URL` | `config.urls.functionApp` | `integration-test` agent, `regression-tests.yml` |
-| `SWA_URL` | `config.urls.swa` | `live-ui` agent, `regression-tests.yml` |
-| `NEXT_PUBLIC_API_BASE_URL` | `config.urls.apim` | Frontend build, `deploy-frontend.yml` |
-| `AZURE_FUNCTION_APP_NAME` | `config.azureResources.functionAppName` | `deploy-backend.yml`, `regression-tests.yml`, cloud telemetry |
-| `AZURE_RESOURCE_GROUP` | `config.azureResources.resourceGroup` | `regression-tests.yml`, cloud telemetry |
+| `FUNCTION_APP_URL` | `config.environment.BACKEND_URL` | `integration-test` agent, `regression-tests.yml` |
+| `SWA_URL` | `config.environment.FRONTEND_URL` | `live-ui` agent, `regression-tests.yml` |
+| `NEXT_PUBLIC_API_BASE_URL` | `config.environment.APIM_URL` | Frontend build, `deploy-frontend.yml` |
+| `AZURE_FUNCTION_APP_NAME` | `config.environment.FUNC_APP_NAME` | `deploy-backend.yml`, `regression-tests.yml`, cloud telemetry |
+| `AZURE_RESOURCE_GROUP` | `config.environment.RESOURCE_GROUP` | `regression-tests.yml`, cloud telemetry |
 
 > When you change Azure resource names or URLs, update **both** the GitHub secret/variable **and** the `apm.yml` config. The orchestrator reads URLs from `apm.yml`; CI workflows read from GitHub secrets.
 

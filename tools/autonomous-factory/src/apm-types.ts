@@ -51,20 +51,10 @@ export const ApmCompiledAgentSchema = z.object({
 export const ApmConfigSchema = z.object({
   /** Default cognitive circuit breaker limits — used when an agent does not declare per-agent toolLimits. */
   defaultToolLimits: ApmToolLimitsSchema,
-  urls: z
-    .object({
-      swa: z.string().optional(),
-      functionApp: z.string().optional(),
-      apim: z.string().optional(),
-    })
-    .optional(),
-  azureResources: z
-    .object({
-      functionAppName: z.string().optional(),
-      resourceGroup: z.string().optional(),
-      appInsightsName: z.string().optional(),
-    })
-    .optional(),
+  /** Generic key-value environment dictionary — replaces cloud-specific url/resource blocks.
+   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP).
+   *  Values support ${ENV_VAR} interpolation resolved at compile time. */
+  environment: z.record(z.string(), z.string()).optional(),
   directories: z.record(z.string(), z.nullable(z.string())),
   testCommands: z.record(z.string(), z.nullable(z.string())).optional(),
   commitScopes: z.record(z.string(), z.array(z.string())).optional(),
@@ -72,6 +62,11 @@ export const ApmConfigSchema = z.object({
   ciWorkflows: z.object({
     app: z.string().optional(),
     infra: z.string().optional(),
+    /** Workflow filename patterns for detection in error logs (e.g. ["deploy-backend.yml", "deploy-frontend.yml"]).
+     *  Used by triage signal matching and context-injection scope detection. */
+    filePatterns: z.array(z.string()).optional(),
+    /** Exact workflow filename for `gh run list --workflow` when polling infra plan results. */
+    infraPlanFile: z.string().optional(),
   }).optional(),
   preflight: z
     .object({

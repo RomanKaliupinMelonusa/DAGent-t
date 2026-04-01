@@ -62,6 +62,7 @@ export function buildRetryContext(
 export function buildDownstreamFailureContext(
   itemKey: string,
   pipelineSummaries: readonly ItemSummary[],
+  ciWorkflowFilePatterns?: string[],
 ): string {
   if (!DEV_ITEMS.has(itemKey)) return "";
 
@@ -87,7 +88,7 @@ export function buildDownstreamFailureContext(
   // Detect cross-cutting scope issues: if the error mentions .github/workflows
   // or CI/CD files, warn the agent about commit scope and provide the cicd scope
   const lastError = downstreamFailures[downstreamFailures.length - 1]?.errorMessage ?? "";
-  const cicdFilePatterns = [".github/workflows", "deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml"];
+  const cicdFilePatterns = [".github/workflows", ...(ciWorkflowFilePatterns ?? [])];
   const involvesCicd = cicdFilePatterns.some((p) => lastError.includes(p));
 
   let scopeGuidance = "";

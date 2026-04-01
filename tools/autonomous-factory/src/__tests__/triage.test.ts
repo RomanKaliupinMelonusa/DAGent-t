@@ -837,9 +837,10 @@ describe("triageFailure (deployment-stale)", () => {
     assert.ok(!keys.includes("backend-dev"), "Should NOT reset backend-dev for stale deployment");
   });
 
-  it("keyword 'deploy-frontend.yml never' → deployment-stale route", () => {
+  it("keyword 'deploy-frontend.yml never' → deployment-stale route (with config patterns)", () => {
     const msg = "All commits after 3b96258 are [skip ci] — deploy-frontend.yml never re-triggered";
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const patterns = ["deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml"];
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, patterns);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev");
   });

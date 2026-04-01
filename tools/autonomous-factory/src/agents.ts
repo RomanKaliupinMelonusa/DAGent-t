@@ -31,16 +31,9 @@ export interface AgentContext {
   baseBranch: string;
   /** True when infra/ files changed — forces live-ui to run CORS/APIM verification even without frontend changes. */
   infraChanges?: boolean;
-  /** Default SWA URL from manifest (replaces hardcoded constant). */
-  defaultSwaUrl?: string;
-  /** Default Function App URL from manifest (replaces hardcoded constant). */
-  defaultFuncUrl?: string;
-  /** Default APIM URL from manifest config.urls.apim. */
-  defaultApimUrl?: string;
-  /** Azure Function App resource name from manifest config.azureResources.functionAppName. */
-  defaultFuncAppName?: string;
-  /** Azure Resource Group from manifest config.azureResources.resourceGroup. */
-  defaultResourceGroup?: string;
+  /** Generic environment dictionary from apm.yml config.environment — cloud-agnostic key-value pairs.
+   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP, APIM_URL). */
+  environment?: Record<string, string>;
   /** Test command templates from manifest. Keys map to logical test names, values use {appRoot} placeholder. */
   testCommands?: Record<string, string | null>;
   /** Commit scope path overrides from manifest. Keys are scope names, values are arrays of paths relative to appRoot. */
@@ -267,7 +260,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "backend")}`;
 
 function backendTestPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   const isPostDeploy = ctx.itemKey === "integration-test";
-  const deployedUrl = ctx.deployedUrl ?? ctx.defaultFuncUrl ?? "DEPLOY_URL_NOT_SET";
+  const deployedUrl = ctx.deployedUrl ?? ctx.environment?.BACKEND_URL ?? "DEPLOY_URL_NOT_SET";
 
   if (isPostDeploy) {
     return `# Backend Test Agent — Integration Tests (Post-Deploy)
@@ -298,10 +291,10 @@ ${apmContext.agents["integration-test"].rules}
    \`\`\`
 1b. **Fetch the Function App host key** (all endpoints use \`authLevel: "function"\`):
    \`\`\`bash
-   FUNC_KEY=$(az functionapp keys list --name ${ctx.defaultFuncAppName ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.defaultResourceGroup ?? 'YOUR_RESOURCE_GROUP'} --query 'functionKeys.default' -o tsv 2>/dev/null)
+   FUNC_KEY=$(az functionapp keys list --name ${ctx.environment?.FUNC_APP_NAME ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.environment?.RESOURCE_GROUP ?? 'YOUR_RESOURCE_GROUP'} --query 'functionKeys.default' -o tsv 2>/dev/null)
    if [ -z "$FUNC_KEY" ]; then
      # Try masterKey as fallback
-     FUNC_KEY=$(az functionapp keys list --name ${ctx.defaultFuncAppName ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.defaultResourceGroup ?? 'YOUR_RESOURCE_GROUP'} --query 'masterKey' -o tsv 2>/dev/null)
+     FUNC_KEY=$(az functionapp keys list --name ${ctx.environment?.FUNC_APP_NAME ?? 'YOUR_FUNCTION_APP_NAME'} --resource-group ${ctx.environment?.RESOURCE_GROUP ?? 'YOUR_RESOURCE_GROUP'} --query 'masterKey' -o tsv 2>/dev/null)
    fi
    if [ -z "$FUNC_KEY" ]; then
      npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Azure auth failed — cannot retrieve function key. az functionapp keys list returned empty for both functionKeys.default and masterKey."}'
@@ -323,16 +316,16 @@ ${apmContext.agents["integration-test"].rules}
 4. **APIM-through API validation** (Required — catches CORS/policy issues):
    After integration tests pass against the direct Function App URL, verify every new/modified endpoint is also reachable through the APIM gateway. CORS errors and missing APIM operations only manifest when calling through APIM, not the direct Function URL.
 
-   Read the feature spec to identify the APIM base path (e.g., \`/generation\`, \`/bulk\`). The APIM URL is: \`${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}\`.
+   Read the feature spec to identify the APIM base path (e.g., \`/generation\`, \`/bulk\`). The APIM URL is: \`${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}\`.
 
    For each new/modified endpoint, run a curl with the demo token:
    \`\`\`bash
-   APIM_URL="${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}"
+   APIM_URL="${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}"
    DEMO_TOKEN=$(grep 'demo_token' ${ctx.appRoot}/infra/dev.tfvars | awk -F'"' '{print $2}' 2>/dev/null || echo "")
    # Example for GET endpoint:
-   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Origin: ${ctx.defaultSwaUrl ?? 'YOUR_SWA_URL'}" "$APIM_URL/<api-path>/<endpoint>?<required-params>"
+   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Origin: ${ctx.environment?.FRONTEND_URL ?? 'YOUR_FRONTEND_URL'}" "$APIM_URL/<api-path>/<endpoint>?<required-params>"
    # Example for POST endpoint:
-   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Content-Type: application/json" -H "Origin: ${ctx.defaultSwaUrl ?? 'YOUR_SWA_URL'}" -d '{...}' "$APIM_URL/<api-path>/<endpoint>"
+   curl -s -o /dev/null -w "%{http_code}" -H "X-Demo-Token: $DEMO_TOKEN" -H "Content-Type: application/json" -H "Origin: ${ctx.environment?.FRONTEND_URL ?? 'YOUR_FRONTEND_URL'}" -d '{...}' "$APIM_URL/<api-path>/<endpoint>"
    \`\`\`
 
    If any endpoint returns 0 (CORS blocked), 404 (missing APIM operation), or 403 (policy rejection):
@@ -460,7 +453,7 @@ ${apmContext.agents["frontend-dev"].rules}
 1b. **Read infrastructure bindings:** \`cat ${ctx.appRoot}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"\`
    - Use the APIM gateway URL from \`infra-interfaces.md\` as your API base — never construct URLs from resource names.
    - **NEVER** hardcode or invent resource URLs. All infra bindings come from \`infra-interfaces.md\`.
-1c. **Environment Variable & Secrets Compliance (MANDATORY):** Cross-reference the **Environment Variables** section of \`infra-interfaces.md\` against \`.github/workflows/deploy-frontend.yml\`. If \`infra-interfaces.md\` declares any new or renamed environment variables (e.g., \`NEXT_PUBLIC_API_BASE_URL\`, \`NEXT_PUBLIC_DEMO_AUTH_URL\`), you MUST update the workflow's \`env:\` block and verify the corresponding GitHub Actions secrets exist. Do NOT ignore the Environment Variables section of the handoff document — a mismatch here causes silent 404s in production that cost $50+ to diagnose via live-ui retries.
+1c. **Environment Variable & Secrets Compliance (MANDATORY):** Cross-reference the **Environment Variables** section of \`infra-interfaces.md\` against the frontend CI/CD deploy workflow under \`.github/workflows/\`. If \`infra-interfaces.md\` declares any new or renamed environment variables (e.g., \`NEXT_PUBLIC_API_BASE_URL\`, \`NEXT_PUBLIC_DEMO_AUTH_URL\`), you MUST update the workflow's \`env:\` block and verify the corresponding GitHub Actions secrets exist. Do NOT ignore the Environment Variables section of the handoff document — a mismatch here causes silent 404s in production that cost $50+ to diagnose via live-ui retries.
 2. Run \`roam_understand ${ctx.appRoot}\` to get a structural briefing of the frontend.
 3. Use \`roam_context <component> ${ctx.appRoot}\` for each component/file you need to modify — get exact line ranges.
 4. Run \`roam_preflight <symbol> ${ctx.appRoot}\` before modifying any significant symbol.
@@ -500,7 +493,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "frontend")}`;
 
 function frontendUiTestPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   const isLiveUi = ctx.itemKey === "live-ui";
-  const swaUrl = ctx.deployedUrl ?? ctx.defaultSwaUrl ?? "DEPLOY_URL_NOT_SET";
+  const swaUrl = ctx.deployedUrl ?? ctx.environment?.FRONTEND_URL ?? "DEPLOY_URL_NOT_SET";
 
   if (isLiveUi) {
     return `# Frontend UI Test Agent — Live UI Validation (Post-Deploy)
@@ -560,7 +553,7 @@ Before running Playwright, verify that every API endpoint the feature depends on
 Read the feature spec \`${ctx.specPath}\` to identify which API endpoints the feature uses. Then verify each one:
 
 \`\`\`bash
-APIM_URL="${ctx.defaultApimUrl ?? 'YOUR_APIM_URL'}"
+APIM_URL="${ctx.environment?.APIM_URL ?? 'YOUR_APIM_URL'}"
 SWA_ORIGIN="${swaUrl}"
 DEMO_TOKEN=$(grep 'demo_token' ${ctx.appRoot}/infra/dev.tfvars | awk -F'"' '{print $2}' 2>/dev/null || echo "")
 
@@ -885,18 +878,13 @@ ${apmContext.agents[ctx.itemKey].rules}
 
 In the linear feature-branch model, pushing to \`feature/${ctx.featureSlug}\` triggers CI workflows directly:
 
-1. Push triggers \`deploy-backend.yml\`, \`deploy-frontend.yml\`, and/or \`deploy-infra.yml\` on the \`feature/**\` branch.
-2. A concurrency group (\`azure-shared-env\`) ensures only one deployment runs at a time.
+1. Push triggers the configured deploy workflows on the \`feature/**\` branch.
+2. A concurrency group ensures only one deployment runs at a time.
 3. \`poll-ci.sh\` waits for all workflows to finish.
 
 ## CI/CD Pipelines
 
-| Workflow | Trigger | Target |
-|---|---|---|
-| \`deploy-backend.yml\` | Push to \`main\` or \`feature/**\` on \`backend/**\` | Azure Functions |
-| \`deploy-frontend.yml\` | Push to \`main\` or \`feature/**\` on \`frontend/**\` | Static Web App |
-| \`deploy-infra.yml\` | Push to \`main\` or \`feature/**\` on \`infra/**\` | Terraform |
-| \`schema-drift.yml\` | PRs touching schema files | Validation only |
+The CI workflows are configured in \`.github/workflows/\`. Consult the repository's workflow files for trigger conditions and deployment targets.
 
 ## Workflow
 

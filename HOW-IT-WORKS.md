@@ -162,7 +162,7 @@ The APM compiler resolves this: `always` → all `.md` files in `.apm/instructio
 > - Config assembly: `getAgentConfig()` — [agents.ts#L1710](tools/autonomous-factory/src/agents.ts#L1710) — returns systemMessage + model + mcpServers
 > - Task prompt: `buildTaskPrompt()` — [agents.ts#L1732](tools/autonomous-factory/src/agents.ts#L1732) — builds per-session user message
 > - Completion contract: `completionBlock()` — [agents.ts#L74](tools/autonomous-factory/src/agents.ts#L74) — the `pipeline:complete/fail` commands
-> - Agent context: `AgentContext` interface — [agents.ts#L23](tools/autonomous-factory/src/agents.ts#L23) — slug, paths, URLs, test commands
+> - Agent context: `AgentContext` interface — [agents.ts#L23](tools/autonomous-factory/src/agents.ts#L23) — slug, paths, environment dict, test commands
 > - Example prompt: `backendDevPrompt()` — [agents.ts#L196](tools/autonomous-factory/src/agents.ts#L196)
 > - APM compiler: `compileApm()` — [apm-compiler.ts#L118](tools/autonomous-factory/src/apm-compiler.ts#L118) — resolves instruction refs, validates token budget
 > - APM manifest: [apps/sample-app/.apm/apm.yml](apps/sample-app/.apm/apm.yml) — agent declarations, instruction includes
@@ -330,7 +330,7 @@ Where each field is read and written:
 3. **Deterministic bypass**: `push-*` and `poll-*` items run shell scripts directly, no SDK session
 
 Everything else enters `runAgentSession`, which:
-1. Builds `AgentContext` from config + APM manifest
+1. Builds `AgentContext` from config + APM manifest (environment dict, test commands, commit scopes)
 2. Calls `getAgentConfig()` → system message, model, MCP servers
 3. Creates an SDK session + wires event listeners (tool logging, circuit breaker, intent capture)
 4. Assembles the task prompt + all applicable context injections

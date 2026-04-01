@@ -176,7 +176,7 @@ You are a senior backend developer specializing in **Azure Functions v4 with Typ
 - App root: ${ctx.appRoot}`
 ```
 
-The `AgentContext` interface (`agents.ts` L23–48) is populated from the APM manifest's `config` section — URLs, resource names, test commands are all manifest-driven, not hardcoded.
+The `AgentContext` interface (`agents.ts` L23–38) is populated from the APM manifest's `config.environment` dictionary — a generic key-value map where keys are app-defined (e.g., `BACKEND_URL`, `FRONTEND_URL`, `FUNC_APP_NAME`). Test commands and commit scopes are also manifest-driven. No cloud-provider-specific fields in the interface.
 
 #### Layer 3: APM Compiled Rules (HIGHEST importance — gold box above)
 

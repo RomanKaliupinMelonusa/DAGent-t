@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-01T03:04:19.174Z",
+  "compiledAt": "2026-04-01T04:04:23.284Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -41,8 +41,8 @@
     }
   },
   "config": {
-    "urls": {
-      "functionApp": "https://mock-python-svc.azurewebsites.net"
+    "environment": {
+      "BACKEND_URL": "https://mock-python-svc.azurewebsites.net"
     },
     "directories": {
       "backend": "src",

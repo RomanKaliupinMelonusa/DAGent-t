@@ -71,6 +71,7 @@ export function triageFailure(
   errorMessage: string,
   naItems: Set<string>,
   directories?: Record<string, string | null>,
+  ciWorkflowFilePatterns?: string[],
 ): string[] {
   // --- Tier 0: Unfixable error detection → immediate halt ---
   const unfixableReason = isUnfixableError(errorMessage);
@@ -102,7 +103,7 @@ export function triageFailure(
 
   // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
   console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON or DOMAIN header found)");
-  return triageByKeywords(itemKey, errorMessage, naItems, directories);
+  return triageByKeywords(itemKey, errorMessage, naItems, directories, ciWorkflowFilePatterns);
 }
 
 /**
@@ -260,6 +261,7 @@ function triageByKeywords(
   errorMessage: string,
   naItems: Set<string>,
   directories?: Record<string, string | null>,
+  ciWorkflowFilePatterns?: string[],
 ): string[] {
   const msg = errorMessage.toLowerCase();
   const resetKeys: string[] = [];
@@ -292,9 +294,10 @@ function triageByKeywords(
   // Must be checked BEFORE backend/frontend signals to avoid misrouting.
   const deploymentStaleSignals = [
     "deployment stale", "not in deployed build", "never re-triggered",
-    "deploy-frontend.yml never", "deploy-backend.yml never",
     "deployed build contains", "swa deployment stale",
     "function not deployed", "not deployed to azure",
+    // Dynamic: "<workflow>.yml never" patterns from config
+    ...(ciWorkflowFilePatterns ?? []).map((f) => `${f} never`),
   ];
   if (deploymentStaleSignals.some((s) => msg.includes(s))) {
     console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
@@ -315,8 +318,9 @@ function triageByKeywords(
     "click", "data mapping",
   ];
   const cicdSignals = [
-    "deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml",
-    "ci-integration.yml", ".github/workflows", "workflow file",
+    // Dynamic: workflow file patterns from config
+    ...(ciWorkflowFilePatterns ?? []),
+    ".github/workflows", "workflow file",
     "ci failed", "ci timeout",
     "deploy artifact", "package.json type", "type:module",
     "never committed", "working-tree fix",
