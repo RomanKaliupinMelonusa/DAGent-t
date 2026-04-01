@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T00:32:53.617Z",
+  "generatedAt": "2026-04-01T00:32:56.814Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -12,7 +12,7 @@
       "startedAt": "2026-04-01T00:26:45.459Z",
       "finishedAt": "2026-04-01T00:32:53.612Z",
       "durationMs": 368153,
-      "outcome": "completed",
+      "outcome": "failed",
       "intents": [],
       "messages": [
         "The integration tests have been run and the failure has been recorded. Here's a summary:  ## Integration Test Results  | Suite | Tests | Status | |-------|-------|--------| | fn-hello (live) | 3/3 | ✅ All passed | | fn-health (live) | 1/3 | ❌ 2 failed, 1 passed | | fn-demo-login (live) | 4/4 | ✅ All passed | | **Total** | **8/10 passed** | **❌ FAILED** |  ## Root Cause  **`fn-health` function is NOT deployed to Azure.**   - `GET /api/health` returns **404** on the live Function App - `az functionapp function list` shows only `fn-demo-login`, `fn-hello`, `fn-profile` — no `fn-health` - The function code exists locally and builds correctly via esbuild - The `deploy-backend.yml` workflow likely ran before the `fn-health` commit was included in the deployment, or the deployment failed silently  ## Action Required  **Fault domain: `cicd`** — The `@deploy-manager` must re-trigger the `deploy-backend` workflow on the `feature/health-badge` branch so that `fn-health` gets deployed to Azure. Once deployed, integration tests should pass (the anonymous endpoint test and non-GET rejection test both validate correctly against the 404 status)."
@@ -155,7 +155,31 @@
       "outputTokens": 8445,
       "cacheReadTokens": 471774,
       "cacheWriteTokens": 0,
-      "headAfterAttempt": "1621a5573baf1bbf681582273a0c878a4c59499f"
+      "headAfterAttempt": "1621a5573baf1bbf681582273a0c878a4c59499f",
+      "errorMessage": "{\"fault_domain\":\"cicd\",\"diagnostic_trace\":\"fn-health function NOT deployed to Azure. GET https://func-sample-app-001.azurewebsites.net/api/health returns 404. az functionapp function list shows only fn-demo-login, fn-hello, fn-profile — fn-health is missing. The function code exists locally (backend/src/functions/fn-health.ts) and builds correctly via esbuild. The deploy-backend.yml workflow must have run before the fn-health commit was included, or the deployment failed silently. 2/10 integration tests failed: fn-health (live) > returns 200 with status ok and valid timestamp (anonymous) — Expected 200, Received 404. fn-health (live) > returns 200 without authentication headers — Expected 200, Received 404. 8/10 tests passed (fn-hello: 3, fn-health non-GET rejection: 1, fn-demo-login: 4). @deploy-manager must re-trigger deploy-backend workflow to deploy fn-health.\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T00:32:56.045Z",
+      "finishedAt": "2026-04-01T00:32:56.813Z",
+      "durationMs": 768,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
