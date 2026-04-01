@@ -55,9 +55,11 @@ function HealthBadge() {
     return (
       <span
         data-testid="health-badge"
+        role="status"
+        aria-live="polite"
         className="flex items-center gap-1.5 text-xs text-text-muted"
       >
-        <span className="inline-block h-2 w-2 rounded-full bg-text-muted" />
+        <span className="inline-block h-2 w-2 rounded-full bg-text-muted" aria-hidden="true" />
         Checking…
       </span>
     );
@@ -68,6 +70,9 @@ function HealthBadge() {
   return (
     <span
       data-testid="health-badge"
+      role="status"
+      aria-live="polite"
+      aria-label={isOnline ? "System Online" : "System Offline"}
       className={`flex items-center gap-1.5 text-xs ${
         isOnline ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
       }`}
@@ -76,6 +81,7 @@ function HealthBadge() {
         className={`inline-block h-2 w-2 rounded-full ${
           isOnline ? "bg-green-500" : "bg-red-500"
         }`}
+        aria-hidden="true"
       />
       {isOnline ? "System Online" : "Offline"}
     </span>
