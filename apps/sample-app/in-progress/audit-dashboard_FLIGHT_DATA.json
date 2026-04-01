@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:29:07.225Z",
+  "generatedAt": "2026-04-01T23:45:22.113Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -234,6 +234,212 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-01T23:29:08.364Z",
+      "finishedAt": "2026-04-01T23:29:21.657Z",
+      "durationMs": 13293,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-01T23:29:22.767Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Intent: The Deploy Backend workflow has `workflow_dispatch` support. Let me try triggering it to unblock testing, since the orchestrator's re-push cycles haven't matched the path filter.",
+        "Good progress - build and tests passed, now deploying to Azure Functions. Let me wait for it to complete.",
+        "Deploy succeeded! Now let me verify the function is live and proceed with integration testing.",
+        "fn-audit is deployed and returning 401 (expected - requires auth). Now let me proceed with the integration testing workflow.",
+        "Good - I have the spec, function key, and know where the integration tests are. Let me check the test coverage and review the test file.",
+        "Integration test coverage looks good for all endpoints including fn-audit. Now let me run the tests.",
+        "All 11 integration tests passed. Now let me do the APIM-through validation.",
+        "The APIM API is under the `sample` path prefix. Let me re-run with the correct URL.",
+        "Got the demo token. Now let me validate the APIM gateway with the correct path prefix.",
+        "All APIM-through validations pass: - ✅ GET /sample/audit → 200 with audit log array - ✅ POST /sample/audit → 201 with created audit event - ✅ OPTIONS /sample/audit → 200 with proper CORS headers - ✅ GET without token → 401 (auth policy working)  Now let me also verify the GET preflight allows GET method:",
+        "All validations pass. Let me mark the integration test as complete."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status audit-dashboard 2>&1 | tail -30",
+          "timestamp": "2026-04-01T23:30:36.796Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && az functionapp function list --name func-sample-app-001 --resource-group rg-sample-app-dev --query \"[].{name:name}\" -o table 2>&1",
+          "timestamp": "2026-04-01T23:30:36.796Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run list --limit 10 --json name,status,conclusion,createdAt,headBranch 2>&1",
+          "timestamp": "2026-04-01T23:31:27.006Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && curl -s -o /dev/null -w \"%{http_code}\" \"https://func-sample-app-001.azurewebsites.net/api/audit\" 2>&1",
+          "timestamp": "2026-04-01T23:31:27.006Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run list --workflow deploy-backend.yml --limit 5 --json name,status,conclusion,createdAt,headBranch 2>&1",
+          "timestamp": "2026-04-01T23:33:14.271Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && curl -s -w \"\\nHTTP_STATUS: %{http_code}\" \"https://func-sample-app-001.azurewebsites.net/api/audit?code=test\" 2>&1",
+          "timestamp": "2026-04-01T23:33:14.271Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git log --oneline -5 2>&1",
+          "timestamp": "2026-04-01T23:33:14.271Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run list --status in_progress --json name,status,headBranch,createdAt 2>&1 && echo \"---\" && gh run list --status queued --json name,status,headBranch,createdAt 2>&1",
+          "timestamp": "2026-04-01T23:34:28.415Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git log --oneline -15 --all -- apps/sample-app/backend/ 2>&1 | head -20",
+          "timestamp": "2026-04-01T23:34:28.415Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && head -30 .github/workflows/deploy-backend.yml 2>&1",
+          "timestamp": "2026-04-01T23:35:35.212Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && grep -A5 'workflow_dispatch' .github/workflows/deploy-backend.yml 2>&1 | head -10",
+          "timestamp": "2026-04-01T23:35:40.383Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh workflow run deploy-backend.yml --ref feature/audit-dashboard -f app-path=apps/sample-app 2>&1",
+          "timestamp": "2026-04-01T23:36:53.572Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run watch 23876114979 --exit-status 2>&1",
+          "timestamp": "2026-04-01T23:37:07.151Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "tail -30 /tmp/copilot-tool-output-1775086748680-kjvo3a.txt",
+          "timestamp": "2026-04-01T23:39:38.386Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az functionapp function list --name func-sample-app-001 --resource-group rg-sample-app-dev --query \"[].{name:name}\" -o table 2>&1",
+          "timestamp": "2026-04-01T23:39:57.090Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -s -w \"\\nHTTP_STATUS: %{http_code}\" \"https://func-sample-app-001.azurewebsites.net/api/audit\" 2>&1",
+          "timestamp": "2026-04-01T23:39:57.090Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/audit-dashboard_SPEC.md 2>&1 | head -120",
+          "timestamp": "2026-04-01T23:40:24.296Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"*.integration.test.ts\" 2>&1",
+          "timestamp": "2026-04-01T23:40:24.296Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_KEY=$(az functionapp keys list --name func-sample-app-001 --resource-group rg-sample-app-dev --query 'functionKeys.default' -o tsv 2>/dev/null)",
+          "timestamp": "2026-04-01T23:40:24.296Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts 2>&1",
+          "timestamp": "2026-04-01T23:40:46.902Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-01T23:41:23.327Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token for APIM auth",
+          "timestamp": "2026-04-01T23:42:03.580Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the OpenAPI spec for path definitions",
+          "timestamp": "2026-04-01T23:42:50.882Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Also check the APIM terraform to understand path mapping",
+          "timestamp": "2026-04-01T23:42:50.882Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token from Key Vault",
+          "timestamp": "2026-04-01T23:42:59.909Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Try getting demo token by logging in through the APIM demo-auth endpoint",
+          "timestamp": "2026-04-01T23:44:00.802Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "DEMO_TOKEN=\"16fc3942-557c-ae3d-8f87-d761619d3509\"",
+          "timestamp": "2026-04-01T23:44:29.783Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ORIGIN=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T23:44:46.170Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete audit-dashboard integration-test 2>&1",
+          "timestamp": "2026-04-01T23:45:14.383Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 9,
+        "shell": 34,
+        "read_bash": 2
+      },
+      "inputTokens": 670323,
+      "outputTokens": 9063,
+      "cacheReadTokens": 641230,
       "cacheWriteTokens": 0
     }
   ]
