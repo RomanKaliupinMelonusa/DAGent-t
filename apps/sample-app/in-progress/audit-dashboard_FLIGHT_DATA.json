@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:29:04.262Z",
+  "generatedAt": "2026-04-01T23:29:07.225Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -58,7 +58,7 @@
       "startedAt": "2026-04-01T23:18:15.255Z",
       "finishedAt": "2026-04-01T23:29:04.225Z",
       "durationMs": 648970,
-      "outcome": "completed",
+      "outcome": "failed",
       "intents": [],
       "messages": [
         "Good — integration test coverage exists for `POST /audit` and `GET /audit` with happy path, 400, and validation error cases. Now let me authenticate and retrieve the function key.",
@@ -210,7 +210,31 @@
       "outputTokens": 9948,
       "cacheReadTokens": 588505,
       "cacheWriteTokens": 0,
-      "headAfterAttempt": "6de7e555fb68b90a805471ff6fe5e2295470b589"
+      "headAfterAttempt": "6de7e555fb68b90a805471ff6fe5e2295470b589",
+      "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"fn-audit is NOT deployed. az functionapp function list shows only fn-demo-login, fn-health, fn-hello — fn-audit is missing. GET /api/audit returns 404. The Deploy Backend workflow (deploy-backend.yml) was never triggered for feature/audit-dashboard branch — gh run list shows only CI Integration, Schema Drift Check, and Deploy Infrastructure runs. The fn-audit.ts source exists (commit 0255e04), builds to dist/src/functions/fn-audit.js (1.8MB bundled), and the push-app pipeline item is done, but the push commit c0c1e7d only modified in-progress/ metadata files, not apps/*/backend/** — so the deploy-backend.yml path filter was not matched. The deploy-manager must re-push with backend path changes or use workflow_dispatch to trigger Deploy Backend.\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-01T23:29:06.506Z",
+      "finishedAt": "2026-04-01T23:29:07.224Z",
+      "durationMs": 718,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
