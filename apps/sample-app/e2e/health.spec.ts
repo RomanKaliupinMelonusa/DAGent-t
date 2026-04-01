@@ -1,16 +1,18 @@
 // =============================================================================
 // E2E — Health Badge
 // =============================================================================
-// Verifies the HealthBadge component renders "System Online" on the page when
-// the backend /api/health endpoint is reachable. Uses a plain page (no auth
-// required) since the health endpoint is anonymous.
+// Verifies the HealthBadge component renders "System Online" in the NavBar when
+// the backend /api/health endpoint is reachable. Requires authentication because
+// the DemoGate in providers.tsx replaces the entire layout (including NavBar)
+// with the login form when unauthenticated. The health endpoint itself is
+// anonymous, but the NavBar that hosts the badge is only visible post-login.
 // =============================================================================
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/demo-auth.fixture";
 
 test.describe("Health Badge", () => {
   test('displays "System Online" when backend is reachable', async ({
-    page,
+    authenticatedPage: page,
   }) => {
     // --- Deep Diagnostic Interception ---
     const consoleLogs: string[] = [];
@@ -32,8 +34,8 @@ test.describe("Health Badge", () => {
     });
 
     try {
-      await page.goto("/", { waitUntil: "domcontentloaded" });
-
+      // authenticatedPage already loaded "/" and injected the session token.
+      // NavBar (with HealthBadge) is now visible post-auth.
       const badge = page.getByTestId("health-badge");
       await expect(badge).toBeVisible({ timeout: 15_000 });
       await expect(badge).toHaveText("System Online", { timeout: 15_000 });
@@ -58,7 +60,9 @@ test.describe("Health Badge", () => {
     }
   });
 
-  test("health badge element exists on about page too", async ({ page }) => {
+  test("health badge element exists on about page too", async ({
+    authenticatedPage: page,
+  }) => {
     // --- Deep Diagnostic Interception ---
     const consoleLogs: string[] = [];
     page.on("console", (msg) => {

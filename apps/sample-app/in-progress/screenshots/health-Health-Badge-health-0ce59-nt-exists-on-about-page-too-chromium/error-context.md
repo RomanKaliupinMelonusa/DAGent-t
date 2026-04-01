@@ -1,0 +1,42 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "Sample App." [ref=e4] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e5]:
+        - navigation [ref=e6]:
+          - link "Home" [ref=e7] [cursor=pointer]:
+            - /url: /
+          - link "About" [ref=e8] [cursor=pointer]:
+            - /url: /about
+          - link "Profile" [ref=e9] [cursor=pointer]:
+            - /url: /profile
+        - button "Switch to dark mode" [ref=e10]:
+          - img [ref=e11]
+        - generic [ref=e13]:
+          - generic [ref=e14]: Demo User
+          - button "Sign out" [ref=e15]
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - heading "About" [level=1] [ref=e18]
+      - paragraph [ref=e19]: This is a sample Azure serverless application with dual-mode authentication.
+      - generic [ref=e20]:
+        - heading "Auth Modes" [level=2] [ref=e21]
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - term [ref=e24]: Demo Mode
+            - definition [ref=e25]:
+              - text: Shared username/password credentials. No Microsoft account required. Set
+              - code [ref=e26]: NEXT_PUBLIC_AUTH_MODE=demo
+              - text: .
+          - generic [ref=e27]:
+            - term [ref=e28]: Entra ID Mode
+            - definition [ref=e29]:
+              - text: MSAL v5 redirect-based single-tenant login. Production default. Set
+              - code [ref=e30]: NEXT_PUBLIC_AUTH_MODE=entra
+              - text: and configure your Entra ID app registration.
+  - alert [ref=e31]
+```

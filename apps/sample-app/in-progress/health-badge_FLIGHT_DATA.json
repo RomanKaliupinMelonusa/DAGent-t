@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T00:47:13.648Z",
+  "generatedAt": "2026-04-01T00:59:37.889Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -425,6 +425,178 @@
       "cacheReadTokens": 967731,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "29f9f0e1e3150da4295152a3623eb855e75b3820"
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T00:47:14.984Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now I have the full picture. Let me execute the phases systematically.  **Phase 1: HTTP Smoke Tests**",
+        "Phase 1 and 2 pass. SWA loads, health endpoint works through APIM with correct CORS. Now let me run E2E tests.",
+        "Good, Playwright is installed and the test listing shows 10 tests including the 2 health badge tests. Now let me run the feature-scoped tests:",
+        "Now I understand the issue. The `DemoGate` in `providers.tsx` wraps the entire layout (including `<NavBar />`) behind authentication. When unauthenticated, the login form replaces everything, hiding the NavBar and health badge. The E2E test needs to authenticate first to see the NavBar.  Let me fix the E2E test:",
+        "Now I'll rewrite the health E2E test to authenticate first using the demo-auth fixture, since the NavBar is only visible post-authentication:",
+        "Tests compile. Now let me run them against the live deployment:",
+        "APIM login works. Now run the tests with the correct URL:",
+        "Intent: The HealthBadge commit `3b96258` IS on the remote branch but the deployed SWA doesn't include it. All subsequent commits are `[skip ci]` state updates. The SWA deployment is stale — the frontend was not rebuilt after the HealthBadge code was added.  This is a CI/CD deployment issue. As the test agent, I should report this failure clearly. Let me verify by checking if the Profile page (which IS in the deployed build) exists in the git history before the HealthBadge commit, and capture the exact diagnostic evidence."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:48:24.657Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Try different URL patterns for the health endpoint",
+          "timestamp": "2026-04-01T00:48:45.068Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check SWA linked backend configuration",
+          "timestamp": "2026-04-01T00:48:59.791Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:49:12.458Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check what NEXT_PUBLIC_API_BASE_URL the SWA frontend uses",
+          "timestamp": "2026-04-01T00:49:31.346Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "SWA_URL=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T00:49:40.016Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "SWA_URL=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T00:49:53.565Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "SWA_URL=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T00:50:11.840Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "SWA_URL=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T00:50:28.666Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the SWA environment config for NEXT_PUBLIC_API_BASE_URL",
+          "timestamp": "2026-04-01T00:50:35.425Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# The apiClient uses APIM_URL/sample as the base. So health should be at /sample/health",
+          "timestamp": "2026-04-01T00:50:46.407Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:50:58.097Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:51:09.917Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the error context files for diagnostic info",
+          "timestamp": "2026-04-01T00:52:19.550Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:53:00.093Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:53:10.049Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:54:02.608Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:54:11.172Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# First verify the APIM login endpoint works",
+          "timestamp": "2026-04-01T00:54:34.666Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:54:41.419Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/in-progress/screenshots/health-Health-Badge-displa-e3c79-e-when-backend-is-reachable-chromium/error-context.md",
+          "timestamp": "2026-04-01T00:55:06.633Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "SWA_URL=\"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-01T00:55:44.587Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:57:00.068Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T00:58:13.382Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T00:58:18.497Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:58:42.356Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T00:59:29.925Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 7,
+        "file-read": 13,
+        "shell": 31,
+        "stop_bash": 1,
+        "edit": 1
+      },
+      "inputTokens": 2040030,
+      "outputTokens": 22155,
+      "cacheReadTokens": 1963244,
+      "cacheWriteTokens": 0
     }
   ]
 }
