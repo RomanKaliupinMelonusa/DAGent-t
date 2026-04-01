@@ -153,7 +153,7 @@ When post-deploy verification fails, the pipeline doesn't stop — it triages th
 
 ## Key Capabilities
 
-1. **DAG-Scheduled Parallel Execution** — 12 pipeline items across 4 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification runs sequentially (`integration-test` before `live-ui`) to avoid wasting Playwright time against a failing backend. Deploy-phase items (`push-code`, `poll-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
+1. **DAG-Scheduled Parallel Execution** — 18 pipeline items across 6 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification runs sequentially (`integration-test` before `live-ui`) to avoid wasting Playwright time against a failing backend. Deploy-phase items (`push-code`, `poll-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
    → *Deep dive: [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md)*
 
 2. **APM: Agent Package Manager** — Each agent receives *only* the rules relevant to its domain from modular `.md` instruction fragments. Token budget enforcement (`6,000 tokens`) prevents context degradation as rules grow. Built on [Microsoft's APM](https://github.com/microsoft/apm) standard.
@@ -257,7 +257,7 @@ Different roles need different depth. Start with the row that matches you, then 
 | [02-roam-code.md](tools/autonomous-factory/docs/02-roam-code.md) | Developer | Roam-code: 6 capabilities, integration, agent rules |
 | [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) | Developer | APM manifest, rule resolution, token budgets |
 | [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) | Architect | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
-| [05-agents.md](tools/autonomous-factory/docs/05-agents.md) | Architect | 12 specialist agents, MCP assignments, prompt anatomy |
+| [05-agents.md](tools/autonomous-factory/docs/05-agents.md) | Architect | 18 specialist agents, MCP assignments, prompt anatomy |
 | [06-roadmap/](tools/autonomous-factory/docs/06-roadmap/) | All | Standing feature deep-dives with implementation plans |
 
 ---

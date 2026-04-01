@@ -369,6 +369,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 |---|---|
 | \`backend\` | Wrong response shape, logic errors, missing fields, 500 errors, test assertion failures |
 | \`backend+infra\` | Backend works directly but fails through APIM — missing APIM routes, gateway config, Function App env vars |
+| \`deployment-stale\` | Function exists locally and builds correctly, but \`az functionapp function list\` shows it's missing from Azure. The code is correct — just not deployed. Use when the deployed artifact is outdated, not when the code is wrong |
 | \`cicd\` | CI/CD workflow file issue — deploy artifact misconfigured, wrong package.json fields in deploy step, workflow YAML errors. Use when the fix is in \`.github/workflows/\` |
 | \`environment\` | Auth failures, \`az login\` required, cannot retrieve function key, managed identity errors, IAM permission denied |
 
@@ -726,6 +727,8 @@ EOF
 | Page loads but API returns 404 via APIM (direct Function URL works) | APIM route mismatch | \`backend+infra\` |
 | Both API errors AND UI rendering bugs | Mixed root cause | \`both\` |
 | Auth/credential/managed-identity errors | Environment, not a code bug | \`environment\` |
+| Feature code on branch but not in deployed build; searching deployed JS chunks for feature strings yields zero matches | Deployment pipeline didn't trigger after last code push | \`deployment-stale\` |
+| \`az functionapp function list\` missing expected function; code builds locally | Deploy workflow ran before commit or didn't retrigger | \`deployment-stale\` |
 
 **Important:** Log everything you observe at each step — page content, visible errors, console messages, network responses — so the failure message is maximally useful for the developer agent that will fix it.
 
@@ -789,6 +792,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 | \`frontend\` | Element not found, wrong text/rendering, broken navigation, UI assertion failures, client-side JS errors |
 | \`frontend+infra\` | UI works locally but fails deployed — APIM URL mismatch, CORS policy blocking, SWA routing misconfigured |
 | \`backend+infra\` | Backend works directly but fails through APIM — gateway errors, missing APIM operations, Function App env vars |
+| \`deployment-stale\` | Feature code exists on the branch and builds correctly, but the deployed SWA/Function App is serving an older build. The code is correct — just not deployed. Evidence: searching deployed JS chunks for feature strings yields zero matches, or \`az functionapp function list\` is missing expected functions. Use this instead of \`frontend+infra\` or \`backend+infra\` when the root cause is stale deployment, not code/config bugs |
 | \`both\` | Both API errors AND UI rendering bugs in the same session |
 | \`environment\` | Auth/credential failures, Azure CLI not authenticated, managed identity issues, IAM permission denied |
 

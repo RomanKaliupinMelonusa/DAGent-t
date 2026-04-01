@@ -646,6 +646,21 @@ export function resetForDev(slug, itemKeys, reason) {
     ? ["push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "push-app", "poll-app-ci"]
     : ["push-app", "poll-app-ci"];
   const keysToReset = new Set([...itemKeys, ...deployItems]);
+
+  // Cascade: when deploy items are being reset, also reset any "done" post-deploy
+  // items that depend on them. This prevents stale `integration-test: done` while
+  // `push-app: pending` — the post-deploy items must re-run to verify the new
+  // deployment.
+  const deployItemSet = new Set(deployItems);
+  const hasDeployReset = [...keysToReset].some(k => deployItemSet.has(k));
+  if (hasDeployReset) {
+    for (const item of state.items) {
+      if (item.phase === "post-deploy" && item.status === "done") {
+        keysToReset.add(item.key);
+      }
+    }
+  }
+
   let resetCount = 0;
   for (const item of state.items) {
     if (keysToReset.has(item.key) && item.status !== "na") {

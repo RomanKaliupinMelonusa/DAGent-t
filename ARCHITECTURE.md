@@ -78,7 +78,7 @@ The **State** (`_STATE.json`) is owned exclusively by `pipeline-state.mjs` and s
 |---|---|
 | **DAG resolution** | `getNextAvailable()` (L761–806) scans all items, checks if every dependency is `done` or `na`, returns **all parallelizable items** |
 | **Phase gating** | `completeItem()` (L276–312) validates no items in prior phases are incomplete |
-| **Failure routing** | `failItem()` records structured errors; `resetForDev()` resets items for redevelopment cycles |
+| **Failure routing** | `failItem()` records structured errors; `resetForDev()` resets items for redevelopment cycles with **cascading post-deploy resets** — when deploy items are reset, any `done` post-deploy items are also reset to prevent stale verification results |
 | **Concurrency control** | `withLock()` (L217–236) uses POSIX `mkdirSync` as an atomic mutex to prevent TOCTOU races when parallel agents complete simultaneously |
 
 State transitions are **strictly deterministic** — agents never edit state files directly. They can only call:
@@ -126,7 +126,7 @@ Key architectural decisions:
 
 1. **Agents are stateless** — each gets a fresh `CopilotClient` session with no memory of prior sessions
 2. **The watchdog is a `while(true)` loop** (`watchdog.ts` L288–380) that terminates on `complete`, `blocked`, or `halt`
-3. **State commits are centralized** — `commitAndPushState()` (`watchdog.ts` L218–264) runs **after** each parallel batch, eliminating git contention between parallel agents
+3. **State commits are centralized** — `commitAndPushState()` (`watchdog.ts` L218–290) runs **after** each parallel batch, eliminating git contention between parallel agents. A **push guard** inspects `git diff --name-only origin/<branch>..HEAD` — if any files outside `in-progress/` or `archive/` are unpushed, the push is deferred to the deterministic `push-app`/`push-infra` step, preventing premature deploy-workflow triggers from stale code pushes
 4. **Deterministic bypasses** — `push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci` skip the SDK entirely and run shell scripts directly (`session-runner.ts` L487–560)
 
 ## 4. Agent Prompt Assembly: What Each Agent Receives
@@ -269,7 +269,9 @@ Start by checking what was already done (git status, run tests) rather than re-r
 
 This prevents the agent from wasting tokens re-reading files it already modified. The data comes from `ItemSummary` — `filesChanged`, `intents`, `shellCommands` captured by `wireToolLogging()` during the previous session.
 
-One critical detail: if `atRevertThreshold` is true (effective attempts ≥ 3 for dev items), the incremental advice ("Start by checking what was already done...") is **omitted** — because the revert warning (below) tells the agent to wipe everything, making incremental advice counterproductive.
+Two critical details:
+- If `atRevertThreshold` is true (effective attempts ≥ 3 for dev items), the incremental advice ("Start by checking what was already done...") is **omitted** — because the revert warning (below) tells the agent to wipe everything, making incremental advice counterproductive.
+- If the previous attempt **timed out** (error contains "Timeout"), the retry context switches to **scope reduction mode**: "Start by checking what was already done: `git status`, run tests. Focus ONLY on unfinished work — do NOT re-read the full codebase." This prevents the common failure pattern where a retrying agent wastes its entire budget re-exploring files that were already modified.
 
 **2. Downstream Failure Context** — `buildDownstreamFailureContext()` (`context-injection.ts` L51–97)
 
@@ -354,7 +356,7 @@ Step by step:
 2. Agent calls `pipeline:fail` with a structured `TriageDiagnostic` JSON (`fault_domain: "backend"`)
 3. **`handleFailureReroute()`** in `session-runner.ts` reads the error and calls `triageFailure()`
 4. **`triageFailure()`** in `triage.ts` parses the JSON, extracts `fault_domain`, and calls `applyFaultDomain("backend")` → returns `["backend-dev", "backend-unit-test", "integration-test"]`
-5. **`resetForDev()`** in `pipeline-state.mjs` sets those items + `push-app` + `poll-app-ci` back to `"pending"`, records a `"reset-for-dev"` entry in `errorLog`, and checks the 5-cycle limit
+5. **`resetForDev()`** in `pipeline-state.mjs` sets those items + `push-app` + `poll-app-ci` back to `"pending"`, cascades any `done` post-deploy items back to `"pending"`, records a `"reset-for-dev"` entry in `errorLog`, and checks the 5-cycle limit
 6. The **watchdog loop** calls `getNextAvailable()` again — `backend-dev` is now pending with all its DAG dependencies still `"done"`, so it's immediately runnable
 7. **`runItemSession()`** creates a new session for `backend-dev` with `attemptCounts[backend-dev] = 2`
 8. Context injection kicks in: `buildRetryContext()` appends the previous failure details, `buildDownstreamFailureContext()` appends the exact integration-test error including `"GET /api/jobs returns 500"`
@@ -362,7 +364,7 @@ Step by step:
 
 ##### The Cognitive Circuit Breaker — Runtime Injection
 
-There is a **fifth injection type** that doesn't happen at prompt assembly time — it happens **during** the session via SDK event hooks. This is the cognitive circuit breaker in `wireToolLogging()` at `session-runner.ts` L1078–1175:
+There are **two more injection types** that don't happen at prompt assembly time — they happen **during** the session via SDK event hooks. The first is the cognitive circuit breaker in `wireToolLogging()` at `session-runner.ts` L1078–1175:
 
 ```mermaid
 sequenceDiagram
@@ -397,7 +399,7 @@ sequenceDiagram
     Note over SDK: Session force-terminated
 ```
 
-This works differently from the other 4 injections — it **mutates the tool result content** that the SDK returns to the LLM on the `tool.execution_complete` event:
+These work differently from the prompt-time injections — they **mutate the tool result content** that the SDK returns to the LLM on the `tool.execution_complete` event:
 
 ```typescript
 // Mutate the result content that will be sent back to the LLM
@@ -416,6 +418,20 @@ redevelopment cycle. DO NOT continue debugging — decide now.
 ```
 
 This is injected **into the content visible to the LLM**, not just logged to console (which the agent can't see). Per-agent tool limits are configurable in `apm.yml` via `toolLimits: { soft: N, hard: M }` — e.g., `live-ui` gets `soft: 50, hard: 65` because Playwright browser testing legitimately requires more tool calls.
+
+##### The Pre-Timeout Wrap-Up Signal — Runtime Injection
+
+A second runtime injection fires at **80% of the session timeout** (e.g., 16 minutes into a 20-minute DEV session). Like the frustration prompt, it mutates `tool.execution_complete` result content:
+
+```
+⏰ SYSTEM NOTICE: Session timeout approaching — ~240s remaining.
+You MUST wrap up NOW. Commit whatever work you have completed so far via
+agent-commit.sh, then call pipeline:complete if the feature is functional,
+or pipeline:fail with a diagnostic if it is not.
+Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.
+```
+
+This gives the LLM a window to gracefully commit and report status before the hard timeout kills the session. Without this, timed-out sessions produce zero diagnostic context — the circuit breaker sees "Timeout after 1200000ms" with no indication of what was accomplished.
 
 ##### The Change Manifest — Docs-Expert Injection
 
@@ -439,7 +455,7 @@ One final injection mechanism: `writeChangeManifest()` (`context-injection.ts` L
 
 The `docNote` values come from dev agents calling `npm run pipeline:doc-note` before `pipeline:complete` — this is the "Pass the Baton" pattern where each agent leaves structured notes for downstream agents.
 
-##### Summary of All 6 Injection Points
+##### Summary of All 7 Injection Points
 
 | # | Injection | Where | When | Target | Mechanism |
 |---|---|---|---|---|---|
@@ -448,7 +464,8 @@ The `docNote` values come from dev agents calling `npm run pipeline:doc-note` be
 | 3 | Revert warning | `context-injection.ts` | `effectiveAttempts >= 3` | `DEV_ITEMS` only | Append to `taskPrompt` |
 | 4 | Infra rollback | `context-injection.ts` | `infra-architect` after `redevelop-infra` | `infra-architect` only | Append to `taskPrompt` |
 | 5 | Frustration prompt | `session-runner.ts` | Tool calls >= soft limit | Any agent in-session | Mutate `tool.execution_complete` result |
-| 6 | Change manifest | `context-injection.ts` | Before `docs-archived` session | `docs-archived` only | Write `_CHANGES.json` file |
+| 6 | Pre-timeout wrap-up | `session-runner.ts` | 80% of session timeout elapsed | Any agent in-session | Mutate `tool.execution_complete` result |
+| 7 | Change manifest | `context-injection.ts` | Before `docs-archived` session | `docs-archived` only | Write `_CHANGES.json` file |
 
 Session creation happens at `session-runner.ts` L800–810:
 
@@ -510,13 +527,21 @@ The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4
 | `backend` | `backend-dev` + `backend-unit-test` + failing item |
 | `frontend` | `frontend-dev` + `frontend-unit-test` + failing item |
 | `both` | All dev + test items |
-| `backend+infra` | `backend-dev` + `infra-architect` + tests |
-| `environment` | Pipeline halt (no agent fix possible) |
+| `backend+infra` | `backend-dev` + `backend-unit-test` + failing item |
+| `frontend+infra` | `frontend-dev` + `frontend-unit-test` + failing item |
+| `deployment-stale` | `push-app` + `poll-app-ci` + failing item (code is correct — only re-deploy needed) |
+| `cicd` | `push-app` + `poll-app-ci` + failing item (workflow file issue) |
+| `infra` | `infra-architect` + failing item |
+| `environment` | Failing item only (not a code bug — retry may resolve) |
+| `blocked` | Empty — pipeline halts, triggers Graceful Degradation to Draft PR |
 
 ### Safety Rails
 
-- **Circuit breaker** (`session-runner.ts` L195–238) — skips retry if identical error + no code changed since last attempt
-- **Cognitive circuit breaker** (`session-runner.ts` L1088–1175) — soft limit injects frustration prompt into tool results; hard limit force-disconnects
+- **Circuit breaker** (`session-runner.ts` L195–238) — skips retry if identical error + no code changed since last attempt. For DEV items stuck in **timeout loops**, triggers `salvageForDraft()` instead of halting — opens a Draft PR for human review rather than losing all work
+- **Cognitive circuit breaker** (`session-runner.ts` L1088–1175) — soft limit injects frustration prompt into tool results; hard limit force-disconnects. **Pre-timeout wrap-up** fires at 80% of session timeout to give the agent a chance to commit and report status
+- **Pre-deploy smoke check** (`session-runner.ts` `runPreDeploySmokeCheck()`) — before spinning up expensive post-deploy agent sessions ($8–37 each), verifies deployment freshness: checks `az functionapp function list` for missing functions (integration-test) and probes anonymous endpoints for 404s (live-ui). If stale, triggers `deployment-stale` reroute directly, saving the full agent session cost
+- **Deployment freshness verification** (`session-runner.ts` `verifyDeploymentFreshness()`) — after `poll-app-ci` succeeds, non-fatally verifies that deployed artifacts match current branch code (function list + SWA HTTP smoke)
+- **Post-deploy propagation delay** — 60-second wait before all post-deploy items on every attempt. Azure Functions and SWA can take 30–90s to propagate after deployment workflow success
 - **Max limits** — 10 retries per item, 5 redevelopment cycles, 10 re-deploy cycles
 
 ## 6. What Matters Most vs. Least

@@ -228,6 +228,14 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
  * parallel agents fighting over _STATE.json rebases.
  *
  * Only the orchestrator commits state files. Agents commit code only (local).
+ *
+ * CRITICAL GUARD: The push step checks whether the local branch contains
+ * unpushed code commits (files outside in-progress/ or archive/). If so, the
+ * push is skipped — state stays committed locally and gets pushed later by
+ * the deterministic `push-app` or `push-infra` step. This prevents premature
+ * pushes from triggering deploy-* CI workflows before the pipeline formally
+ * reaches the push-code DAG node, which caused stale deployment artifacts
+ * and $130+ in wasted agent sessions (health-badge incident).
  */
 function commitAndPushState(
   repoRootDir: string,
@@ -258,6 +266,32 @@ function commitAndPushState(
       `git commit -m "chore(pipeline): state update [batch ${batchNumber}] [skip ci]" --no-verify`,
       { cwd: repoRootDir, timeout: 10_000, stdio: "pipe" },
     );
+
+    // ── PUSH GUARD: only push when no unpushed code commits exist ──────
+    // If local branch has commits containing files outside in-progress/ or
+    // archive/ that haven't been pushed yet, defer the push to push-app/push-infra.
+    // This prevents deploy-* workflows from triggering prematurely.
+    let hasUnpushedCodeCommits = false;
+    try {
+      const unpushedFiles = execSync(
+        `git diff --name-only origin/${branch}..HEAD`,
+        { cwd: repoRootDir, encoding: "utf-8", timeout: 10_000 },
+      ).trim();
+      if (unpushedFiles) {
+        hasUnpushedCodeCommits = unpushedFiles.split("\n").some(
+          (f) => !f.includes("in-progress/") && !f.includes("archive/"),
+        );
+      }
+    } catch {
+      // If origin/<branch> doesn't exist yet (first push), allow the push —
+      // push-infra will be the first code push and will trigger CI properly.
+      // This initial push only contains state/spec files.
+    }
+
+    if (hasUnpushedCodeCommits) {
+      console.log(`  🔒 State committed locally [batch ${batchNumber}] — push deferred (unpushed code commits exist)`);
+      return;
+    }
 
     // Push with exponential backoff retry (2s, 4s, 8s) using --force-with-lease
     for (let i = 0; i < 3; i++) {
@@ -363,6 +397,7 @@ async function main(): Promise<void> {
     circuitBreakerBypassed: new Set<string>(),
     preStepRefs: {},
     baseTelemetry,
+    lastPushedShas: {},
   };
 
   // --- Main DAG loop ---

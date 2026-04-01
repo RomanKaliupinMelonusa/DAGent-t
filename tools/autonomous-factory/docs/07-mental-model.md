@@ -164,7 +164,7 @@ sequenceDiagram
         Note over DEV,TRIAGE: DAGent Pipeline (automated)
         DEV->>CI: push-code (deterministic)
         CI-->>TRIAGE: poll-ci captures failure logs
-        TRIAGE->>TRIAGE: Classify fault domain<br/>(backend / frontend / schema / cicd / environment)
+        TRIAGE->>TRIAGE: Classify fault domain<br/>(backend / frontend / schema / cicd / deployment-stale / environment)
         TRIAGE->>DEV: resetForDev() with<br/>injected failure context
         DEV->>DEV: Re-run with prior error<br/>+ diagnostic trace
         DEV->>CI: push-code (retry)

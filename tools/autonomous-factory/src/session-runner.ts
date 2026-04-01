@@ -94,11 +94,11 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
 
 /**
  * Delay (ms) after CI deployment completes before running post-deploy tests.
- * Azure Functions and SWA can take 30-60s to propagate after a deployment
+ * Azure Functions and SWA can take 30-90s to propagate after a deployment
  * workflow reports success. Without this delay, integration tests hit stale
  * deployment artifacts and produce false 404s.
  */
-const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
+const POST_DEPLOY_PROPAGATION_DELAY_MS = 60_000;
 
 /**
  * Cognitive Circuit Breaker — absolute last-resort fallback.
@@ -256,6 +256,13 @@ export interface PipelineRunState {
    * simply adds baseTelemetry to the current session's totals.
    */
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
+  /**
+   * Last pushed commit SHA per push-item key ("push-infra" | "push-app").
+   * Captured by runPushCode(), consumed by runPollCi() for SHA-pinned CI polling.
+   * Scoped per-item to prevent cross-contamination if multiple push items ever
+   * run in the same batch.
+   */
+  lastPushedShas: Record<string, string>;
 }
 
 /** Immutable config for the pipeline run */
@@ -328,6 +335,28 @@ export async function runItemSession(
       try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
       pipelineSummaries.push(skipSummary);
       flushReports(config, state);
+
+      // For DEV items stuck in timeout loops, salvage to Draft PR instead of
+      // halting — gives humans something to review rather than losing all work.
+      const lastError = pipelineSummaries
+        .filter((s) => s.key === next.key && s.outcome !== "completed")
+        .pop()?.errorMessage ?? "";
+      const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
+
+      if (DEV_ITEMS.has(next.key) && isTimeoutLoop) {
+        console.log(`  📝 DEV item ${next.key} stuck in timeout loop — triggering Graceful Degradation to Draft PR`);
+        try {
+          await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
+          await salvageForDraft(slug, next.key);
+          const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
+          fs.writeFileSync(draftFlagPath, `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`, "utf-8");
+        } catch (e) {
+          console.error("  ✖ Failed to salvage pipeline state", e);
+          return { summary: skipSummary, halt: true, createPr: false };
+        }
+        return { summary: skipSummary, halt: false, createPr: false };
+      }
+
       return { summary: skipSummary, halt: true, createPr: false };
     }
   }
@@ -375,9 +404,31 @@ export async function runItemSession(
   if (autoSkipResult) return autoSkipResult;
 
   // ── Post-deploy propagation delay ─────────────────────────────────────
-  if (LONG_ITEMS.has(next.key) && attemptCounts[next.key] <= 1) {
+  // Applied on ALL attempts (not just the first) because Azure Functions and
+  // SWA can take up to 90s to propagate after a deployment workflow succeeds.
+  if (LONG_ITEMS.has(next.key)) {
     console.log(`  ⏳ Waiting ${POST_DEPLOY_PROPAGATION_DELAY_MS / 1000}s for deployment propagation before ${next.key}...`);
     await new Promise((resolve) => setTimeout(resolve, POST_DEPLOY_PROPAGATION_DELAY_MS));
+  }
+
+  // ── Pre-deploy smoke check for post-deploy items ──────────────────────
+  // Fast fail-check BEFORE spinning up expensive agent sessions ($8-37 each).
+  // If the deployment is detectably stale, trigger re-deploy directly.
+  if (LONG_ITEMS.has(next.key)) {
+    const smokeResult = runPreDeploySmokeCheck(next.key, config);
+    if (smokeResult) {
+      console.error(`  🚫 Pre-deploy smoke check failed for ${next.key}: ${smokeResult}`);
+      const staleMessage = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `Pre-deploy smoke check: ${smokeResult}` });
+      try { await failItem(slug, next.key, staleMessage); } catch { /* best-effort */ }
+      itemSummary.outcome = "failed";
+      itemSummary.errorMessage = staleMessage;
+      itemSummary.finishedAt = new Date().toISOString();
+      itemSummary.durationMs = Date.now() - stepStart;
+      itemSummary.intents.push(`Pre-deploy smoke check failed — skipping agent session (saved ~$${next.key === "live-ui" ? "37" : "9"})`);
+      pipelineSummaries.push(itemSummary);
+      flushReports(config, state);
+      return handleFailureReroute(slug, next.key, staleMessage, smokeResult, config, state, itemSummary, roamAvailable);
+    }
   }
 
   // ── Deterministic bypasses (no agent session) ─────────────────────────
@@ -475,11 +526,180 @@ async function tryAutoSkip(
 }
 
 // ---------------------------------------------------------------------------
+// Deployment freshness verification
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify that deployed artifacts match the current branch code.
+ * Called after poll-app-ci succeeds to catch stale deployments BEFORE
+ * expensive post-deploy agent sessions (~$8-37 per session).
+ *
+ * Returns warning strings (empty array = all good). Non-fatal — warnings
+ * are logged but don't block the pipeline. Post-deploy agents will catch
+ * real staleness and emit `deployment-stale` fault_domain.
+ */
+function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
+  const { repoRoot, appRoot, apmContext } = config;
+  const warnings: string[] = [];
+
+  // --- Backend: verify expected functions exist in Azure ---
+  const funcAppName = apmContext.config?.azureResources?.functionAppName;
+  const resourceGroup = apmContext.config?.azureResources?.resourceGroup;
+  if (funcAppName && resourceGroup) {
+    try {
+      // Discover expected functions from local source
+      const functionsDir = path.join(appRoot, "backend", "src", "functions");
+      if (fs.existsSync(functionsDir)) {
+        const localFunctions = fs.readdirSync(functionsDir)
+          .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."))
+          .map((f) => f.replace(/\.ts$/, ""));
+
+        // Query Azure for deployed functions
+        const azOutput = execSync(
+          `az functionapp function list --name "${funcAppName}" --resource-group "${resourceGroup}" -o json`,
+          { cwd: repoRoot, encoding: "utf-8", timeout: 30_000, stdio: "pipe" },
+        ).trim();
+        const deployedFunctions = JSON.parse(azOutput || "[]")
+          .map((f: { name?: string }) => {
+            const n = f.name ?? "";
+            // Azure returns "appName/functionName" — extract just the function name
+            return n.includes("/") ? n.split("/").pop()! : n;
+          })
+          .filter(Boolean) as string[];
+
+        const missing = localFunctions.filter((f) => !deployedFunctions.includes(f));
+        if (missing.length > 0) {
+          warnings.push(
+            `Backend deployment may be stale: local functions [${missing.join(", ")}] not found in Azure (deployed: [${deployedFunctions.join(", ")}])`,
+          );
+        }
+      }
+    } catch {
+      // Non-fatal — Azure CLI may not be authenticated in all environments
+    }
+  }
+
+  // --- Frontend: verify SWA is reachable (lightweight HTTP smoke) ---
+  const swaUrl = apmContext.config?.urls?.swa;
+  if (swaUrl) {
+    try {
+      const curlResult = execSync(
+        `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${swaUrl}"`,
+        { cwd: repoRoot, encoding: "utf-8", timeout: 15_000, stdio: "pipe" },
+      ).trim();
+      if (curlResult !== "200") {
+        warnings.push(`SWA smoke check returned HTTP ${curlResult} (expected 200)`);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Fast pre-deploy smoke check — runs BEFORE spinning up an expensive post-deploy
+ * agent session. Returns a failure reason string if the deployment is detectably
+ * stale, or `null` if the check passes (or is inconclusive).
+ *
+ * For integration-test: verifies expected functions exist in Azure.
+ * For live-ui: verifies SWA returns 200 (basic reachability).
+ *
+ * This is deliberately conservative — it only catches clear staleness
+ * (missing functions, unreachable SWA). Subtle issues are left to the
+ * full agent session to diagnose.
+ */
+function runPreDeploySmokeCheck(
+  itemKey: string,
+  config: PipelineRunConfig,
+): string | null {
+  const { repoRoot, appRoot, apmContext } = config;
+
+  if (itemKey === "integration-test") {
+    const funcAppName = apmContext.config?.azureResources?.functionAppName;
+    const resourceGroup = apmContext.config?.azureResources?.resourceGroup;
+    if (!funcAppName || !resourceGroup) return null; // Can't verify — let agent handle it
+
+    try {
+      const functionsDir = path.join(appRoot, "backend", "src", "functions");
+      if (!fs.existsSync(functionsDir)) return null;
+
+      const localFunctions = fs.readdirSync(functionsDir)
+        .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."))
+        .map((f) => f.replace(/\.ts$/, ""));
+
+      const azOutput = execSync(
+        `az functionapp function list --name "${funcAppName}" --resource-group "${resourceGroup}" -o json`,
+        { cwd: repoRoot, encoding: "utf-8", timeout: 30_000, stdio: "pipe" },
+      ).trim();
+      const deployedFunctions = JSON.parse(azOutput || "[]")
+        .map((f: { name?: string }) => {
+          const n = f.name ?? "";
+          // Azure returns "appName/functionName" — extract just the function name
+          return n.includes("/") ? n.split("/").pop()! : n;
+        })
+        .filter(Boolean) as string[];
+
+      const missing = localFunctions.filter((f) => !deployedFunctions.includes(f));
+      if (missing.length > 0) {
+        return `Functions [${missing.join(", ")}] exist locally but not deployed to Azure (deployed: [${deployedFunctions.join(", ")}])`;
+      }
+    } catch {
+      return null; // Inconclusive — let agent handle it
+    }
+  }
+
+  if (itemKey === "live-ui") {
+    const funcUrl = apmContext.config?.urls?.functionApp;
+    if (!funcUrl) return null;
+
+    // Check that the backend API is reachable — if it's 404, the deploy is stale
+    try {
+      const functionsDir = path.join(appRoot, "backend", "src", "functions");
+      if (!fs.existsSync(functionsDir)) return null;
+
+      // Find anonymous endpoints (health checks) to smoke-test
+      const localFunctions = fs.readdirSync(functionsDir)
+        .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."));
+
+      for (const fnFile of localFunctions) {
+        const content = fs.readFileSync(path.join(functionsDir, fnFile), "utf-8");
+        if (content.includes('authLevel: "anonymous"')) {
+          const routeMatch = content.match(/route:\s*["']([^"']+)["']/);
+          if (routeMatch) {
+            const endpoint = `${funcUrl}/api/${routeMatch[1]}`;
+            try {
+              const status = execSync(
+                `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${endpoint}"`,
+                { encoding: "utf-8", timeout: 15_000, stdio: "pipe" },
+              ).trim();
+              if (status === "404") {
+                return `Anonymous endpoint ${endpoint} returns 404 — function not deployed to Azure`;
+              }
+            } catch {
+              // Network error — inconclusive
+            }
+          }
+        }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null; // All checks passed or inconclusive
+}
+
+// ---------------------------------------------------------------------------
 // Deterministic bypasses
 // ---------------------------------------------------------------------------
 
-/** Last pushed commit SHA — captured by runPushCode, consumed by runPollCi */
-let lastPushedSha: string | null = null;
+/** Map push items to their poll counterparts for SHA lookup */
+const PUSH_TO_POLL: Record<string, string> = {
+  "poll-infra-plan": "push-infra",
+  "poll-app-ci": "push-app",
+};
 
 async function runPushCode(
   itemKey: string,
@@ -512,10 +732,10 @@ async function runPushCode(
 
     // Capture the exact commit SHA that was pushed (for SHA-pinned CI polling)
     try {
-      lastPushedSha = execSync("git rev-parse HEAD", {
+      state.lastPushedShas[itemKey] = execSync("git rev-parse HEAD", {
         cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
       }).trim();
-    } catch { lastPushedSha = null; }
+    } catch { /* non-fatal */ }
 
     // Mark complete
     await completeItem(slug, itemKey);
@@ -562,6 +782,10 @@ async function runPollCi(
 
   const inProgressDir = path.join(appRoot, "in-progress");
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
+
+  // Resolve the pushed SHA from the corresponding push item
+  const pushItemKey = PUSH_TO_POLL[itemKey];
+  const lastPushedSha = pushItemKey ? state.lastPushedShas[pushItemKey] ?? null : null;
 
   // Build poll command args — pass commit SHA if available for pinned filtering
   const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
@@ -666,6 +890,16 @@ async function runPollCi(
           }
         } catch (planErr) {
           console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+        }
+      }
+
+      // ── poll-app-ci: verify deployed artifacts match current code ──────
+      // Catches stale deployments early (before expensive post-deploy agents).
+      if (itemKey === "poll-app-ci") {
+        const warnings = verifyDeploymentFreshness(config);
+        if (warnings.length > 0) {
+          for (const w of warnings) console.warn(`  ⚠ ${w}`);
+          itemSummary.intents.push(`Deployment freshness warning: ${warnings.join("; ")}`);
         }
       }
 
@@ -827,7 +1061,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, triggerHeartbeat);
+  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat);
   const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -1099,12 +1333,17 @@ function wireToolLogging(
   itemSummary: ItemSummary,
   repoRoot: string,
   toolLimits: { soft: number; hard: number },
+  sessionTimeout: number,
   triggerHeartbeat?: () => void,
 ): void {
   const softLimit = toolLimits.soft;
   const hardLimit = toolLimits.hard;
   let softWarningFired = false;
   let hardLimitFired = false;
+  /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
+  let preTimeoutFired = false;
+  const sessionStartMs = Date.now();
+  const preTimeoutThresholdMs = sessionTimeout * 0.8;
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
     if (hardLimitFired) return;
@@ -1190,6 +1429,30 @@ function wireToolLogging(
 
       console.warn(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
+      );
+    }
+
+    // Pre-timeout wrap-up signal — at 80% of session timeout, inject a
+    // "wrap up NOW" directive so the LLM can commit and complete gracefully
+    // instead of being hard-killed by the timeout.
+    if (!preTimeoutFired && (Date.now() - sessionStartMs) >= preTimeoutThresholdMs) {
+      preTimeoutFired = true;
+      const remainingSec = Math.round((sessionTimeout - (Date.now() - sessionStartMs)) / 1000);
+      const wrapUpPrompt =
+        `\n\n⏰ SYSTEM NOTICE: Session timeout approaching — ~${remainingSec}s remaining. ` +
+        `You MUST wrap up NOW. Commit whatever work you have completed so far via ` +
+        `agent-commit.sh, then call pipeline:complete if the feature is functional, ` +
+        `or pipeline:fail with a diagnostic if it is not. ` +
+        `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
+
+      if (event.data.result && typeof event.data.result.content === "string") {
+        event.data.result.content += wrapUpPrompt;
+      } else {
+        event.data.result = { content: wrapUpPrompt };
+      }
+
+      console.warn(
+        `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,
       );
     }
 

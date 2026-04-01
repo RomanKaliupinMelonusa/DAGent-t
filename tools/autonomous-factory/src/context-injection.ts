@@ -20,6 +20,9 @@ export function buildRetryContext(
   prevAttempt: ItemSummary,
   atRevertThreshold: boolean,
 ): string {
+  const isTimeout = prevAttempt.outcome === "error" &&
+    (prevAttempt.errorMessage?.includes("Timeout") || prevAttempt.errorMessage?.includes("timeout"));
+
   const retryLines = [
     `\n## Previous Attempt Context (attempt ${prevAttempt.attempt})`,
     `The previous session ${prevAttempt.outcome === "error" ? "timed out" : "failed"}: ${prevAttempt.errorMessage ?? "unknown"}`,
@@ -38,7 +41,15 @@ export function buildRetryContext(
     // When the revert warning will fire, skip incremental advice — the agent should wipe and restart
     atRevertThreshold
       ? ""
-      : `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
+      : isTimeout
+        // Timeout-specific scope reduction: previous session ran out of time, not failed with an error
+        ? `\nThe previous session ran out of time (not a code error). ` +
+          `Start by checking what was already done: \`git status\`, run tests. ` +
+          `Focus ONLY on unfinished work — do NOT re-read the full codebase or redo completed steps. ` +
+          (prevAttempt.filesChanged.length > 0
+            ? `The files listed above were already modified — verify they are correct, then move to the next task.`
+            : `Check git log for any commits from the prior attempt.`)
+        : `\nStart by checking what was already done (git status, run tests) rather than re-reading the full codebase from scratch.`,
   ];
   return retryLines.filter(Boolean).join("\n");
 }

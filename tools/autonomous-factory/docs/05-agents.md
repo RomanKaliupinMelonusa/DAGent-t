@@ -340,6 +340,7 @@ When post-deploy or test items fail, `triageFailure()` in `triage.ts` (called fr
 | `frontend+infra` | frontend-dev, frontend-unit-test |
 | `infra` | infra-architect |
 | `cicd` | push-app, poll-app-ci |
+| `deployment-stale` | push-app, poll-app-ci (code correct — re-deploy only) |
 | `environment` | itemKey only (retry, not a code bug) |
 | `blocked` | `[]` — halt pipeline (unfixable) |
 

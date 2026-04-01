@@ -223,6 +223,8 @@ sequenceDiagram
         TF-->>W: route → infra-architect
     else Structured JSON: fault_domain=cicd
         TF-->>W: route → push-app, poll-app-ci
+    else Structured JSON: fault_domain=deployment-stale
+        TF-->>W: route → push-app, poll-app-ci (code correct — re-deploy only)
     else Structured JSON: fault_domain=environment
         TF-->>W: route → itemKey only (not a code bug)
     else Structured JSON: fault_domain=blocked
@@ -245,6 +247,8 @@ sequenceDiagram
 
     W->>S: resetForDev(slug, itemKeys, reason)
     S->>PS: resetForDev(slug, itemKeys, reason)
+
+    Note over PS: resetForDev() also cascades:<br/>if deploy items reset,<br/>any "done" post-deploy items<br/>(integration-test, live-ui)<br/>reset to pending too
 
     alt cycle < 5
         PS-->>S: { state, cycleCount, halted: false }
@@ -272,7 +276,9 @@ When `poll-app-ci` or `poll-infra-plan` fails, the orchestrator handles triage *
 
 **Cancelled runs** emit `CI_RUN_CANCELLED_MANUALLY`, which matches `envSignals` in `triageByKeywords()` → routes to environment fault domain (retry the poll item only, don't reset dev items).
 
-**Poll timeouts** (exit code 2) emit `"CI is still running"`, which also matches `envSignals` → same retry-only behavior.
+**Poll timeouts** (exit code 2) trigger a transient retry loop — the polling item is retried without resetting any dev items.
+
+**Post-deploy freshness checks:** After `poll-app-ci` succeeds, `verifyDeploymentFreshness()` compares deployed Azure Function endpoints against the last pushed SHA. If the live deployment is stale (serving old code), the orchestrator emits `deployment-stale` fault domain — reruns `push-app` + `poll-app-ci` without resetting dev items. A pre-deploy smoke check (`runPreDeploySmokeCheck()`) runs the same staleness detection *before* agent sessions to fail fast.
 
 ---
 

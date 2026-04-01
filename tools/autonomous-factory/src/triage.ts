@@ -230,6 +230,11 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       // deploy-manager agent which has the correct commit scope for .github/
       resetKeys.push("push-app", "poll-app-ci");
       break;
+    case "deployment-stale":
+      // Deployed artifact is outdated but code on branch is correct.
+      // Only re-deploy — do NOT reset dev items (code doesn't need fixing).
+      resetKeys.push("push-app", "poll-app-ci");
+      break;
     case "infra":
       // Infrastructure error — route to infra-architect (Wave 1 redevelopment)
       resetKeys.push("infra-architect");
@@ -281,6 +286,19 @@ function triageByKeywords(
   if (envSignals.some((s) => msg.includes(s))) {
     console.log(`  ⚠ Environment/auth issue detected — skipping ${itemKey} (not a code bug)`);
     return [itemKey].filter((k) => !naItems.has(k));
+  }
+
+  // Deployment-stale signals — deployed artifact is outdated, code is correct.
+  // Must be checked BEFORE backend/frontend signals to avoid misrouting.
+  const deploymentStaleSignals = [
+    "deployment stale", "not in deployed build", "never re-triggered",
+    "deploy-frontend.yml never", "deploy-backend.yml never",
+    "deployed build contains", "swa deployment stale",
+    "function not deployed", "not deployed to azure",
+  ];
+  if (deploymentStaleSignals.some((s) => msg.includes(s))) {
+    console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
+    return ["push-app", "poll-app-ci", itemKey].filter((k) => !naItems.has(k));
   }
 
   const backendSignals = [
