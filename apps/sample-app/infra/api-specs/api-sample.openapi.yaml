@@ -37,3 +37,74 @@ paths:
                     format: date-time
         "401":
           description: Unauthorized — missing or invalid auth token
+  /audit:
+    get:
+      operationId: getAuditLogs
+      summary: Get audit logs
+      description: Returns the latest 50 audit log events, ordered by timestamp descending. Protected by APIM auth policy.
+      responses:
+        "200":
+          description: Successful response — list of audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "500":
+          description: Internal server error
+    post:
+      operationId: createAuditLog
+      summary: Record an audit event
+      description: Creates a new audit log entry. Server generates id and timestamp. Protected by APIM auth policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditLogCreate"
+      responses:
+        "201":
+          description: Audit event recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
+        "400":
+          description: Bad request — invalid payload
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "500":
+          description: Internal server error
+components:
+  schemas:
+    AuditLog:
+      type: object
+      required:
+        - id
+        - userId
+        - action
+        - timestamp
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        action:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    AuditLogCreate:
+      type: object
+      required:
+        - userId
+        - action
+      properties:
+        userId:
+          type: string
+        action:
+          type: string
