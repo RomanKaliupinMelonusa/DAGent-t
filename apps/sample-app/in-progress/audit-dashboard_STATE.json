@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -166,6 +166,16 @@
       "timestamp": "2026-04-01T22:39:30.047Z",
       "itemKey": "resume-elevated",
       "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    },
+    {
+      "timestamp": "2026-04-01T22:50:43.277Z",
+      "itemKey": "poll-app-ci",
+      "message": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"validateApp hook: Frontend at ${SWA_URL} returned HTTP 000000 (expected 200)\"}"
+    },
+    {
+      "timestamp": "2026-04-01T22:50:43.357Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: Frontend at ${SWA_URL} returned HTTP 000000 (expected 200). Reset 2 items: push-app, poll-app-ci"
     }
   ],
   "elevatedApply": true
