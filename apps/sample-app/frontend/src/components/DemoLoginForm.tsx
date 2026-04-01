@@ -6,6 +6,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useDemoAuth } from "@/lib/demoAuthContext";
+import { apiFetch } from "@/lib/apiClient";
 import { Button, Input } from "@/components/ui/primitives";
 
 export default function DemoLoginForm() {
@@ -23,6 +24,11 @@ export default function DemoLoginForm() {
 
     try {
       await login(username, password);
+      // Fire-and-forget audit event — login must never be blocked by audit failure
+      apiFetch("/audit", {
+        method: "POST",
+        body: JSON.stringify({ userId: username, action: "USER_LOGIN" }),
+      }).catch(() => {});
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Invalid username or password.",
