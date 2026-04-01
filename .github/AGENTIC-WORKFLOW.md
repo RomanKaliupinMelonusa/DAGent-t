@@ -755,4 +755,4 @@ az login --scope https://graph.microsoft.com/.default
 az account set --subscription "<your-subscription-id>"
 ```
 
-The watchdog runs `az account show` as a pre-flight check and warns early if Azure auth is missing. GitHub CLI auth is checked implicitly when the Copilot SDK initializes.
+The watchdog runs the configured `hooks.preflightAuth` command (e.g., `az account show` for Azure) as a pre-flight check and warns early if cloud CLI auth is missing. GitHub CLI auth is checked implicitly when the Copilot SDK initializes.

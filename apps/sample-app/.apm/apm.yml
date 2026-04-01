@@ -10,7 +10,7 @@ agents:
     skills: [test-schema-validation]
     toolLimits: { soft: 25, hard: 35 }
   infra-architect:
-    instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md]
+    instructions: [always, infra, backend/schema-sync.md, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 35, hard: 50 }
@@ -70,7 +70,7 @@ agents:
     skills: []
     toolLimits: { soft: 15, hard: 20 }
   integration-test:
-    instructions: [always, backend/integration-testing.md, tooling/cloud-telemetry.md]
+    instructions: [always, backend/integration-testing.md, backend/integration-auth.md, tooling/cloud-telemetry.md]
     mcp: []
     skills: [test-integration]
     toolLimits: { soft: 35, hard: 60 }
@@ -97,6 +97,10 @@ agents:
 
 config:
   defaultToolLimits: { soft: 30, hard: 40 }
+  hooks:
+    verifyDeployment: "bash .apm/hooks/verify-deployment.sh"
+    smokeCheck: "bash .apm/hooks/smoke-check.sh"
+    preflightAuth: "bash .apm/hooks/preflight-auth.sh"
   environment:
     FRONTEND_URL: "${SWA_URL}"
     BACKEND_URL: "${FUNCTION_APP_URL}"

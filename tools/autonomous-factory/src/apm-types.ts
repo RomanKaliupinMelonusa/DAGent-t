@@ -68,6 +68,17 @@ export const ApmConfigSchema = z.object({
     /** Exact workflow filename for `gh run list --workflow` when polling infra plan results. */
     infraPlanFile: z.string().optional(),
   }).optional(),
+  /** Lifecycle hooks — shell commands that abstract cloud-specific operations.
+   *  Hook scripts live in `.apm/hooks/` and receive config.environment as env vars.
+   *  The orchestrator executes these instead of inline cloud CLI commands. */
+  hooks: z.object({
+    /** Verify deployed artifacts match current branch code. Stdout: one warning per line. Exit 0 always. */
+    verifyDeployment: z.string().optional(),
+    /** Pre-deploy smoke check. Receives ITEM_KEY env var. Exit 0 = pass, exit 1 = fail (stdout = reason). */
+    smokeCheck: z.string().optional(),
+    /** Pre-flight auth check. Exit 0 = authenticated, non-zero = not authenticated. */
+    preflightAuth: z.string().optional(),
+  }).optional(),
   preflight: z
     .object({
       apimRouteCheck: z

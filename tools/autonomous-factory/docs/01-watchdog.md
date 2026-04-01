@@ -194,7 +194,7 @@ flowchart LR
     PF(["Pre-flight\nChecks"]) --> J["🗑 Junk Files\nDetect leftover temp files\nin working tree"]
     PF --> AP["🔗 APIM Routes\nVerify all fn-* functions\nhave matching APIM operations"]
     PF --> IP["📋 In-Progress Scan\nCheck for stale artifacts\nfrom previous runs"]
-    PF --> AZ["🔑 Azure CLI Auth\nVerify az account show\nreturns valid subscription"]
+    PF --> AZ["🔑 Auth Hook\nRun hooks.preflightAuth\nVerify cloud CLI auth"]
 
     J -->|"found"| WARN1["⚠ Warning logged"]
     J -->|"clean"| OK1["✔"]
@@ -278,13 +278,13 @@ classDiagram
 | `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
 | `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
 | `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
-| `verifyDeploymentFreshness()` | session-runner.ts | Post-poll-app-ci staleness check — compares deployed functions against last pushed SHA | `runItemSession()` |
-| `runPreDeploySmokeCheck()` | session-runner.ts | Pre-agent fast-fail staleness detection for post-deploy items | `runItemSession()` |
+| `verifyDeploymentFreshness()` | session-runner.ts | Post-poll-app-ci staleness check — delegates to `hooks.verifyDeployment` command | `runItemSession()` |
+| `runPreDeploySmokeCheck()` | session-runner.ts | Pre-agent fast-fail staleness detection — delegates to `hooks.smokeCheck` command | `runItemSession()` |
 | `getTimeout()` | session-runner.ts | Session timeout by item type | `runAgentSession()` |
 | `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
 | `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |
 | `checkInProgressArtifacts()` | preflight.ts | Check for stale artifacts from previous runs | `main()` |
-| `checkAzureAuth()` | preflight.ts | Verify Azure CLI auth before pipeline start | `main()` |
+| `checkPreflightAuth()` | preflight.ts | Run configured `hooks.preflightAuth` command before pipeline start | `main()` |
 | `buildRoamIndex()` | preflight.ts | Phase 0 semantic graph build | `main()` |
 | `getAutoSkipBaseRef()` | auto-skip.ts | Git ref for change detection (auto-skip optimization) | `tryAutoSkip()` |
 | `getGitChangedFiles()` | auto-skip.ts | Files changed since a git ref via `git diff --name-only` | Auto-skip |

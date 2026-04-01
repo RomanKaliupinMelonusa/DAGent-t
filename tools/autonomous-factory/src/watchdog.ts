@@ -26,7 +26,7 @@ import { loadApmContext } from "./apm-context-loader.js";
 import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
-import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkAzureAuth, buildRoamIndex } from "./preflight.js";
+import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkPreflightAuth, buildRoamIndex } from "./preflight.js";
 import { writePipelineSummary, writeTerminalLog, parsePreviousSummary } from "./reporting.js";
 import { runItemSession } from "./session-runner.js";
 import type { PipelineRunConfig, PipelineRunState } from "./session-runner.js";
@@ -366,7 +366,7 @@ async function main(): Promise<void> {
 
   checkApimRoutes(repoRoot, appRoot, apmContext);
   checkInProgressArtifacts(repoRoot, appRoot);
-  checkAzureAuth(repoRoot);
+  checkPreflightAuth(repoRoot, appRoot, apmContext);
 
   // --- Phase 0: Build semantic graph with roam-code ---
   const roamAvailable = buildRoamIndex(repoRoot);

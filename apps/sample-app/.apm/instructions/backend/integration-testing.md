@@ -1,16 +1,16 @@
 ## Integration Testing
 
-<!-- TODO: Document your integration testing patterns here.
-     This file is included in the integration-test agent's instructions.
-
-     Suggested topics:
-     - How to authenticate against live endpoints (DefaultAzureCredential, API keys, etc.)
-     - Test database setup and teardown
-     - Environment variables required for integration tests
-     - Test data isolation strategy
-     - Which endpoints to test and expected response shapes
--->
-
 - Integration tests run against the live deployed backend URL.
 - Use `RUN_INTEGRATION=true` environment variable to enable integration tests.
 - Set `INTEGRATION_API_BASE_URL` to the deployed backend URL.
+
+## Integration Test Coverage Mandate
+
+When creating or modifying any HTTP-triggered backend endpoint (any `fn-*.ts` file that registers an `httpTrigger`), you MUST add corresponding test blocks to the existing `.integration.test.ts` suite (e.g., `backend/src/functions/smoke.integration.test.ts`).
+
+Cover at minimum:
+- Authenticated 200 happy path
+- 401 unauthenticated rejection
+- One validation error path (400)
+
+Unit tests alone are insufficient — the post-deploy `integration-test` agent will fail the pipeline if coverage is missing.

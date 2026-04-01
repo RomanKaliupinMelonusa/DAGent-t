@@ -278,7 +278,7 @@ When `poll-app-ci` or `poll-infra-plan` fails, the orchestrator handles triage *
 
 **Poll timeouts** (exit code 2) trigger a transient retry loop — the polling item is retried without resetting any dev items.
 
-**Post-deploy freshness checks:** After `poll-app-ci` succeeds, `verifyDeploymentFreshness()` compares deployed Azure Function endpoints against the last pushed SHA. If the live deployment is stale (serving old code), the orchestrator emits `deployment-stale` fault domain — reruns `push-app` + `poll-app-ci` without resetting dev items. A pre-deploy smoke check (`runPreDeploySmokeCheck()`) runs the same staleness detection *before* agent sessions to fail fast.
+**Post-deploy freshness checks:** After `poll-app-ci` succeeds, `verifyDeploymentFreshness()` delegates to the configured `hooks.verifyDeployment` command to check whether deployed artifacts match the current branch. If stale, the orchestrator emits `deployment-stale` fault domain — reruns `push-app` + `poll-app-ci` without resetting dev items. A pre-deploy smoke check (`runPreDeploySmokeCheck()`) delegates to `hooks.smokeCheck` *before* agent sessions to fail fast.
 
 ---
 

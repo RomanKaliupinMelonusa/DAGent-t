@@ -43,12 +43,14 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
 | Session runner (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
+| Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
 | Sample app instruction fragments | `apps/sample-app/.apm/instructions/**/*.md` |
+| Sample app lifecycle hooks | `apps/sample-app/.apm/hooks/*.sh` |
 | Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
 | APM compiler & context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
@@ -77,6 +79,7 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
+| Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
@@ -100,7 +103,7 @@ Trigger the `agentic-feature.yml` workflow via `workflow_dispatch` with a featur
 The orchestrator is a deterministic `while` loop that:
 1. Builds the roam-code semantic graph index (Phase 0, non-fatal)
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
-3. Runs pre-flight checks: junk file detection, in-progress artifact scan, Azure CLI auth verification
+3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
 5. Maps each item to a specialist agent config via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules
 6. Spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready

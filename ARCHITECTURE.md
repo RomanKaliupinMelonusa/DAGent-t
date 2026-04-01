@@ -539,9 +539,9 @@ The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4
 
 - **Circuit breaker** (`session-runner.ts` L195–238) — skips retry if identical error + no code changed since last attempt. For DEV items stuck in **timeout loops**, triggers `salvageForDraft()` instead of halting — opens a Draft PR for human review rather than losing all work
 - **Cognitive circuit breaker** (`session-runner.ts` L1088–1175) — soft limit injects frustration prompt into tool results; hard limit force-disconnects. **Pre-timeout wrap-up** fires at 80% of session timeout to give the agent a chance to commit and report status
-- **Pre-deploy smoke check** (`session-runner.ts` `runPreDeploySmokeCheck()`) — before spinning up expensive post-deploy agent sessions ($8–37 each), verifies deployment freshness: checks `az functionapp function list` for missing functions (integration-test) and probes anonymous endpoints for 404s (live-ui). If stale, triggers `deployment-stale` reroute directly, saving the full agent session cost
-- **Deployment freshness verification** (`session-runner.ts` `verifyDeploymentFreshness()`) — after `poll-app-ci` succeeds, non-fatally verifies that deployed artifacts match current branch code (function list + SWA HTTP smoke)
-- **Post-deploy propagation delay** — 60-second wait before all post-deploy items on every attempt. Azure Functions and SWA can take 30–90s to propagate after deployment workflow success
+- **Pre-deploy smoke check** (`session-runner.ts` `runPreDeploySmokeCheck()`) — before spinning up expensive post-deploy agent sessions ($8–37 each), delegates to the configured `hooks.smokeCheck` command to verify deployment freshness. If stale, triggers `deployment-stale` reroute directly, saving the full agent session cost
+- **Deployment freshness verification** (`session-runner.ts` `verifyDeploymentFreshness()`) — after `poll-app-ci` succeeds, delegates to `hooks.verifyDeployment` to non-fatally verify that deployed artifacts match current branch code
+- **Post-deploy propagation delay** — 60-second wait before all post-deploy items on every attempt. Deployments can take 30–90s to propagate after workflow success
 - **Max limits** — 10 retries per item, 5 redevelopment cycles, 10 re-deploy cycles
 
 ## 6. What Matters Most vs. Least

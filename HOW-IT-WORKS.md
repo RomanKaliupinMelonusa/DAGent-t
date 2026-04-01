@@ -264,7 +264,7 @@ graph TD
 
 **Cognitive circuit breaker** (bottom): Counts tool calls during a live session. At the soft limit, a frustration prompt is injected *into the tool result* (not console — the LLM actually reads it). At the hard limit, the session is force-disconnected. At **80% of session timeout**, a pre-timeout wrap-up signal is injected telling the agent to commit, test, and report status before the hard kill.
 
-**Pre-deploy smoke check**: Before spinning up expensive post-deploy agent sessions ($8–37 each), a lightweight HTTP check verifies deployment freshness — `az functionapp function list` for missing functions (integration-test), anonymous endpoint probe for 404s (live-ui). If stale, reroutes directly to `deployment-stale` without burning an agent session.
+**Pre-deploy smoke check**: Before spinning up expensive post-deploy agent sessions ($8–37 each), the orchestrator delegates to the configured `hooks.smokeCheck` command to verify deployment freshness. If stale, reroutes directly to `deployment-stale` without burning an agent session.
 
 Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-deploy cycles.
 

@@ -465,6 +465,7 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **MCP `availability` field** | `optional` = graceful degradation (roam), `required` = fail fast (playwright) |
 | **Skill declarations separate from instructions** | Skills are capabilities (commands + descriptions), not governance rules |
 | **App-agnostic manifest** | Any app provides `.apm/apm.yml` — orchestrator doesn't know language or framework |
+| **Lifecycle hooks** | `config.hooks` delegates cloud-specific operations (auth, smoke checks, deployment verification) to app-provided scripts in `.apm/hooks/` — engine stays stack-agnostic |
 | **Per-agent tool limits** | `toolLimits: { soft, hard }` — optional per-agent circuit breaker overrides, defaults to 30/40 if omitted |
 
 ---

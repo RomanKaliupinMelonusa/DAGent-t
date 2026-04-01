@@ -22,8 +22,9 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 import { getStatus, failItem, resetForDev, completeItem, salvageForDraft } from "./state.js";
 import { getAgentConfig, buildTaskPrompt } from "./agents.js";
 import type { AgentContext } from "./agents.js";
-import type { ApmCompiledOutput } from "./apm-types.js";
+import type { ApmCompiledOutput, ApmConfig } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
+import { executeHook, buildHookEnv } from "./hooks.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
@@ -534,68 +535,31 @@ async function tryAutoSkip(
  * Called after poll-app-ci succeeds to catch stale deployments BEFORE
  * expensive post-deploy agent sessions (~$8-37 per session).
  *
+ * Delegates to the `hooks.verifyDeployment` command from apm.yml config.
+ * The hook script outputs one warning per line (empty = all good).
+ *
  * Returns warning strings (empty array = all good). Non-fatal — warnings
  * are logged but don't block the pipeline. Post-deploy agents will catch
  * real staleness and emit `deployment-stale` fault_domain.
  */
 function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
-  const { repoRoot, appRoot, apmContext } = config;
-  const warnings: string[] = [];
+  const { appRoot, apmContext } = config;
+  const hookCmd = apmContext.config?.hooks?.verifyDeployment;
+  if (!hookCmd) return [];
 
-  // --- Backend: verify expected functions exist in Azure ---
-  const funcAppName = apmContext.config?.environment?.FUNC_APP_NAME;
-  const resourceGroup = apmContext.config?.environment?.RESOURCE_GROUP;
-  if (funcAppName && resourceGroup) {
-    try {
-      // Discover expected functions from local source
-      const functionsDir = path.join(appRoot, "backend", "src", "functions");
-      if (fs.existsSync(functionsDir)) {
-        const localFunctions = fs.readdirSync(functionsDir)
-          .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."))
-          .map((f) => f.replace(/\.ts$/, ""));
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: config.repoRoot,
+  });
 
-        // Query Azure for deployed functions
-        const azOutput = execSync(
-          `az functionapp function list --name "${funcAppName}" --resource-group "${resourceGroup}" -o json`,
-          { cwd: repoRoot, encoding: "utf-8", timeout: 30_000, stdio: "pipe" },
-        ).trim();
-        const deployedFunctions = JSON.parse(azOutput || "[]")
-          .map((f: { name?: string }) => {
-            const n = f.name ?? "";
-            // Azure returns "appName/functionName" — extract just the function name
-            return n.includes("/") ? n.split("/").pop()! : n;
-          })
-          .filter(Boolean) as string[];
-
-        const missing = localFunctions.filter((f) => !deployedFunctions.includes(f));
-        if (missing.length > 0) {
-          warnings.push(
-            `Backend deployment may be stale: local functions [${missing.join(", ")}] not found in Azure (deployed: [${deployedFunctions.join(", ")}])`,
-          );
-        }
-      }
-    } catch {
-      // Non-fatal — Azure CLI may not be authenticated in all environments
-    }
+  try {
+    const result = executeHook(hookCmd, env, appRoot, 30_000);
+    if (!result || !result.stdout) return [];
+    return result.stdout.split("\n").filter(Boolean);
+  } catch {
+    // Non-fatal — hook may not be available in all environments
+    return [];
   }
-
-  // --- Frontend: verify SWA is reachable (lightweight HTTP smoke) ---
-  const swaUrl = apmContext.config?.environment?.FRONTEND_URL;
-  if (swaUrl) {
-    try {
-      const curlResult = execSync(
-        `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${swaUrl}"`,
-        { cwd: repoRoot, encoding: "utf-8", timeout: 15_000, stdio: "pipe" },
-      ).trim();
-      if (curlResult !== "200") {
-        warnings.push(`SWA smoke check returned HTTP ${curlResult} (expected 200)`);
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
-
-  return warnings;
 }
 
 /**
@@ -603,92 +567,37 @@ function verifyDeploymentFreshness(config: PipelineRunConfig): string[] {
  * agent session. Returns a failure reason string if the deployment is detectably
  * stale, or `null` if the check passes (or is inconclusive).
  *
- * For integration-test: verifies expected functions exist in Azure.
- * For live-ui: verifies SWA returns 200 (basic reachability).
+ * Delegates to the `hooks.smokeCheck` command from apm.yml config.
+ * The hook receives ITEM_KEY as an env var and returns:
+ *   exit 0 = pass/inconclusive, exit 1 = failure (stdout = reason).
  *
- * This is deliberately conservative — it only catches clear staleness
- * (missing functions, unreachable SWA). Subtle issues are left to the
- * full agent session to diagnose.
+ * This is deliberately conservative — it only catches clear staleness.
+ * Subtle issues are left to the full agent session to diagnose.
  */
 function runPreDeploySmokeCheck(
   itemKey: string,
   config: PipelineRunConfig,
 ): string | null {
-  const { repoRoot, appRoot, apmContext } = config;
+  const { appRoot, apmContext } = config;
+  const hookCmd = apmContext.config?.hooks?.smokeCheck;
+  if (!hookCmd) return null;
 
-  if (itemKey === "integration-test") {
-    const funcAppName = apmContext.config?.environment?.FUNC_APP_NAME;
-    const resourceGroup = apmContext.config?.environment?.RESOURCE_GROUP;
-    if (!funcAppName || !resourceGroup) return null; // Can't verify — let agent handle it
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: config.repoRoot,
+    ITEM_KEY: itemKey,
+  });
 
-    try {
-      const functionsDir = path.join(appRoot, "backend", "src", "functions");
-      if (!fs.existsSync(functionsDir)) return null;
-
-      const localFunctions = fs.readdirSync(functionsDir)
-        .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."))
-        .map((f) => f.replace(/\.ts$/, ""));
-
-      const azOutput = execSync(
-        `az functionapp function list --name "${funcAppName}" --resource-group "${resourceGroup}" -o json`,
-        { cwd: repoRoot, encoding: "utf-8", timeout: 30_000, stdio: "pipe" },
-      ).trim();
-      const deployedFunctions = JSON.parse(azOutput || "[]")
-        .map((f: { name?: string }) => {
-          const n = f.name ?? "";
-          // Azure returns "appName/functionName" — extract just the function name
-          return n.includes("/") ? n.split("/").pop()! : n;
-        })
-        .filter(Boolean) as string[];
-
-      const missing = localFunctions.filter((f) => !deployedFunctions.includes(f));
-      if (missing.length > 0) {
-        return `Functions [${missing.join(", ")}] exist locally but not deployed to Azure (deployed: [${deployedFunctions.join(", ")}])`;
-      }
-    } catch {
-      return null; // Inconclusive — let agent handle it
+  try {
+    const result = executeHook(hookCmd, env, appRoot, 30_000);
+    if (!result) return null;
+    if (result.exitCode === 1 && result.stdout) {
+      return result.stdout;
     }
+    return null; // Pass or inconclusive
+  } catch {
+    return null; // Inconclusive — let agent handle it
   }
-
-  if (itemKey === "live-ui") {
-    const funcUrl = apmContext.config?.environment?.BACKEND_URL;
-    if (!funcUrl) return null;
-
-    // Check that the backend API is reachable — if it's 404, the deploy is stale
-    try {
-      const functionsDir = path.join(appRoot, "backend", "src", "functions");
-      if (!fs.existsSync(functionsDir)) return null;
-
-      // Find anonymous endpoints (health checks) to smoke-test
-      const localFunctions = fs.readdirSync(functionsDir)
-        .filter((f) => f.startsWith("fn-") && f.endsWith(".ts") && !f.includes(".test."));
-
-      for (const fnFile of localFunctions) {
-        const content = fs.readFileSync(path.join(functionsDir, fnFile), "utf-8");
-        if (content.includes('authLevel: "anonymous"')) {
-          const routeMatch = content.match(/route:\s*["']([^"']+)["']/);
-          if (routeMatch) {
-            const endpoint = `${funcUrl}/api/${routeMatch[1]}`;
-            try {
-              const status = execSync(
-                `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${endpoint}"`,
-                { encoding: "utf-8", timeout: 15_000, stdio: "pipe" },
-              ).trim();
-              if (status === "404") {
-                return `Anonymous endpoint ${endpoint} returns 404 — function not deployed to Azure`;
-              }
-            } catch {
-              // Network error — inconclusive
-            }
-          }
-        }
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  return null; // All checks passed or inconclusive
 }
 
 // ---------------------------------------------------------------------------
