@@ -8,15 +8,17 @@ agents:
     instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-schema-validation]
+    toolLimits: { soft: 25, hard: 35 }
   infra-architect:
     instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
+    toolLimits: { soft: 35, hard: 50 }
   infra-handoff:
-    instructions: [always]
-    mcp: []
+    instructions: [always, tooling/roam-tool-rules.md]
+    mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 10, hard: 15 }
+    toolLimits: { soft: 15, hard: 25 }
   push-infra:
     instructions: [always]
     mcp: []
@@ -41,18 +43,22 @@ agents:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
+    toolLimits: { soft: 40, hard: 55 }
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
+    toolLimits: { soft: 40, hard: 55 }
   backend-unit-test:
     instructions: [always, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
+    toolLimits: { soft: 30, hard: 45 }
   frontend-unit-test:
     instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
+    toolLimits: { soft: 30, hard: 45 }
   push-app:
     instructions: [always]
     mcp: []
@@ -67,6 +73,7 @@ agents:
     instructions: [always, backend/integration-testing.md, tooling/cloud-telemetry.md]
     mcp: []
     skills: [test-integration]
+    toolLimits: { soft: 35, hard: 60 }
   live-ui:
     instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
@@ -76,6 +83,7 @@ agents:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: []
+    toolLimits: { soft: 25, hard: 35 }
   docs-archived:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
@@ -88,6 +96,7 @@ agents:
     toolLimits: { soft: 15, hard: 20 }
 
 config:
+  defaultToolLimits: { soft: 30, hard: 40 }
   urls:
     swa: "${SWA_URL}"
     functionApp: "${FUNCTION_APP_URL}"

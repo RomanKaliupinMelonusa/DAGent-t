@@ -449,7 +449,12 @@ async function main(): Promise<void> {
     }
   } finally {
     if (client) {
-      try { await client.stop(); } catch { /* best effort */ }
+      try {
+        await Promise.race([
+          client.stop(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("client.stop() timed out")), 10_000)),
+        ]);
+      } catch { /* best effort — don't hang on stale SDK connections */ }
       client = null;
     }
 
@@ -473,4 +478,10 @@ async function main(): Promise<void> {
 main().catch((err) => {
   console.error("Fatal orchestrator error:", err);
   process.exitCode = 1;
+}).finally(() => {
+  // Hard exit safety net — force-kill if cleanup hangs beyond 15s
+  setTimeout(() => {
+    console.warn("  ⚠ Watchdog cleanup timed out — forcing exit.");
+    process.exit(process.exitCode ?? 0);
+  }, 15_000).unref();
 });

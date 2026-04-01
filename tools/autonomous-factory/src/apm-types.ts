@@ -49,6 +49,8 @@ export const ApmCompiledAgentSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const ApmConfigSchema = z.object({
+  /** Default cognitive circuit breaker limits — used when an agent does not declare per-agent toolLimits. */
+  defaultToolLimits: ApmToolLimitsSchema,
   urls: z
     .object({
       swa: z.string().optional(),

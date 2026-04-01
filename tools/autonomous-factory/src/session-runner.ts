@@ -101,13 +101,12 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 30_000;
 
 /**
- * Cognitive Circuit Breaker — default tool call limits per session.
- * Used when an agent does not declare per-agent toolLimits in apm.yml.
- * Soft limit: logs a structured warning to console (visible in _TERMINAL-LOG.md).
- * Hard limit: force-disconnects the session to prevent runaway compute waste.
+ * Cognitive Circuit Breaker — absolute last-resort fallback.
+ * Only used if apm.yml has neither per-agent toolLimits nor config.defaultToolLimits.
+ * All real configuration should be in apm.yml.
  */
-export const TOOL_COUNT_SOFT_LIMIT_DEFAULT = 30;
-export const TOOL_COUNT_HARD_LIMIT_DEFAULT = 40;
+const TOOL_LIMIT_FALLBACK_SOFT = 30;
+const TOOL_LIMIT_FALLBACK_HARD = 40;
 
 function getTimeout(itemKey: string): number {
   if (DEV_ITEMS.has(itemKey)) return TIMEOUT_DEV;
@@ -808,7 +807,13 @@ async function runAgentSession(
   });
 
   // Wire session event listeners
+  const manifestDefaults = apmContext.config?.defaultToolLimits;
   const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
+  // Resolution order: per-agent → manifest default → last-resort fallback
+  const resolvedToolLimits = {
+    soft: agentToolLimits?.soft ?? manifestDefaults?.soft ?? TOOL_LIMIT_FALLBACK_SOFT,
+    hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
+  };
 
   // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
   // without calling the heavy Markdown/Git reporting functions.
@@ -822,7 +827,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, agentToolLimits, triggerHeartbeat);
+  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, triggerHeartbeat);
   const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -1093,11 +1098,11 @@ function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
   repoRoot: string,
-  toolLimits?: { soft?: number; hard?: number },
+  toolLimits: { soft: number; hard: number },
   triggerHeartbeat?: () => void,
 ): void {
-  const softLimit = toolLimits?.soft ?? TOOL_COUNT_SOFT_LIMIT_DEFAULT;
-  const hardLimit = toolLimits?.hard ?? TOOL_COUNT_HARD_LIMIT_DEFAULT;
+  const softLimit = toolLimits.soft;
+  const hardLimit = toolLimits.hard;
   let softWarningFired = false;
   let hardLimitFired = false;
   session.on("tool.execution_start", (event: any) => {

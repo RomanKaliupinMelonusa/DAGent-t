@@ -1723,7 +1723,27 @@ export function getAgentConfig(
       `Unknown item key "${itemKey}". Valid keys: ${Object.keys(ITEM_ROUTING).join(", ")}`,
     );
   }
-  return builder(context, apmContext);
+  const config = builder(context, apmContext);
+
+  // Inject tool budget into system message — resolved from apm.yml
+  // Resolution order: per-agent toolLimits → config.defaultToolLimits
+  const agentLimits = apmContext.agents[itemKey]?.toolLimits;
+  const manifestDefaults = apmContext.config?.defaultToolLimits;
+  const soft = agentLimits?.soft ?? manifestDefaults?.soft ?? 30;
+  const hard = agentLimits?.hard ?? manifestDefaults?.hard ?? 40;
+  const budgetSection = `
+
+## Tool Call Budget
+
+You have a **hard limit of ${hard} tool calls** for this session. A warning will fire at ${soft} calls.
+Plan your work to finish — including commit and pipeline:complete — within this budget.
+- Batch file reads where possible (read large ranges, not many small reads).
+- Avoid exploratory grepping — use targeted reads and roam tools.
+- Reserve at least **3 tool calls** at the end for: commit, pipeline:complete, and a safety margin.
+- If you are approaching the limit, **prioritize committing your work** over further exploration.`;
+
+  config.systemMessage += budgetSection;
+  return config;
 }
 
 /**
