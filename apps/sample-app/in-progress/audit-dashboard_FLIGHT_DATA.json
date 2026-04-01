@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:56:26.337Z",
+  "generatedAt": "2026-04-01T23:56:37.382Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -456,11 +456,13 @@
       "phase": "post-deploy",
       "attempt": 1,
       "startedAt": "2026-04-01T23:45:51.619Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-01T23:56:37.352Z",
+      "durationMs": 645733,
+      "outcome": "completed",
       "intents": [],
-      "messages": [],
+      "messages": [
+        "The live-ui validation is complete. Here's a summary of findings:  ## Live UI Validation — audit-dashboard: FAILED (deployment-stale)  ### Phase 1: HTTP Smoke Tests | Check | Result | |---|---| | `GET /` | ✅ 200, HTML shell loads | | `GET /audit` | ❌ **404 — Azure SWA native 404** | | `GET /about` | ✅ 200 |  ### Phase 2: API Network Validation | Check | Result | |---|---| | CORS preflight `OPTIONS /api/audit` | ✅ 200, correct `Access-Control-Allow-Origin` | | `GET /sample/audit` (with token) | ✅ 200, returns audit log entries | | `POST /sample/audit` (with token) | ✅ 201, creates new entry | | `POST /demo-auth/auth/login` | ✅ 200, returns demo token |  ### Phase 3-4: E2E Tests — 2 FAILED Both tests fail with `timeout waiting for getByRole('link', { name: 'Audit' })` — the deployed NavBar only contains Home, About, Profile. No \"Audit\" link exists.  ### Root Cause: **Deployment Stale** - The audit page code (commit `c4206a4`) **exists on the branch and builds locally** (`next build` → `out/audit.html`) - The deployed SWA **does not contain it** — zero \"audit\" strings in deployed JS chunks - The CI push commit (`c0c1e7d`) only modified `in-progress/` files, which **don't match** `deploy-frontend.yml`'s `apps/*/frontend/**` path filter - **Fix needed:** Trigger a frontend redeployment (workflow_dispatch or push a commit touching `apps/sample-app/frontend/`)"
+      ],
       "filesRead": [],
       "filesChanged": [],
       "shellCommands": [
@@ -618,18 +620,24 @@
           "command": "cd /workspaces/DAGent-t",
           "timestamp": "2026-04-01T23:56:19.722Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:56:26.339Z",
+          "isPipelineOp": false
         }
       ],
       "toolCounts": {
         "intent": 7,
         "file-read": 3,
-        "shell": 33,
+        "shell": 34,
         "stop_bash": 1
       },
-      "inputTokens": 1340945,
-      "outputTokens": 18736,
-      "cacheReadTokens": 1275609,
-      "cacheWriteTokens": 0
+      "inputTokens": 1404442,
+      "outputTokens": 19198,
+      "cacheReadTokens": 1338478,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "b6462167d4774aeeddf669d43ca57d8682697e01"
     }
   ]
 }

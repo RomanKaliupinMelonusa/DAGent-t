@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -109,7 +109,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -117,7 +117,7 @@
       "label": "Integration Tests Passed",
       "agent": "@backend-test",
       "phase": "post-deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -206,6 +206,16 @@
       "timestamp": "2026-04-01T23:29:04.335Z",
       "itemKey": "reset-for-dev",
       "message": "Redevelopment cycle 3/5: fn-audit is NOT deployed. az functionapp function list shows only fn-demo-login, fn-health, fn-hello — fn-audit is missing. GET /api/audit returns 404. The Deploy Backend workflow (deploy-backend.yml) was never triggered for feature/audit-dashboard branch — gh run list shows only CI Integration, Schema Drift Check, and Deploy Infrastructure runs. The fn-audit.ts source exists (commit 0255e04), builds to dist/src/functions/fn-audit.js (1.8MB bundled), and the push-app pipeline item is done, but the push commit c0c1e7d only modified in-progress/ metadata files, not apps/*/backend/** — so the deploy-backend.yml path filter was not matched. The deploy-manager must re-push with backend path changes or use workflow_dispatch to trigger Deploy Backend.. Reset 3 items: push-app, poll-app-ci, integration-test"
+    },
+    {
+      "timestamp": "2026-04-01T23:56:21.136Z",
+      "itemKey": "live-ui",
+      "message": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"Frontend SWA deployment is stale — the /audit page (commit c4206a4) exists on the branch and builds locally (next build produces out/audit.html with /audit route), but the deployed SWA at https://wonderful-grass-0ef9b920f.4.azurestaticapps.net does NOT contain it. Evidence: (1) GET /audit returns Azure SWA native 404, (2) no audit string found in any of 12 deployed JS chunks, (3) Playwright screenshot confirms NavBar only shows Home/About/Profile with no Audit link, (4) deploy-frontend.yml paths filter apps/*/frontend/** was not matched by the latest CI push commit c0c1e7d which only modified in-progress/ files. Backend API is fully working: GET /sample/audit returns 200 with data, POST /sample/audit returns 201, CORS preflight returns 200 with correct Access-Control-Allow-Origin. Fix: trigger a frontend redeployment via workflow_dispatch of deploy-frontend.yml or push a commit that modifies apps/sample-app/frontend/** files.\"}"
+    },
+    {
+      "timestamp": "2026-04-01T23:56:37.433Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 4/5: Frontend SWA deployment is stale — the /audit page (commit c4206a4) exists on the branch and builds locally (next build produces out/audit.html with /audit route), but the deployed SWA at https://wonderful-grass-0ef9b920f.4.azurestaticapps.net does NOT contain it. Evidence: (1) GET /audit returns Azure SWA native 404, (2) no audit string found in any of 12 deployed JS chunks, (3) Playwright screenshot confirms NavBar only shows Home/About/Profile with no Audit link, (4) deploy-frontend.yml paths filter apps/*/frontend/** was not matched by the latest CI push commit c0c1e7d which only modified in-progress/ files. Backend API is fully working: GET /sample/audit returns 200 with data, POST /sample/audit returns 201, CORS preflight returns 200 with correct Access-Control-Allow-Origin. Fix: trigger a frontend redeployment via workflow_dispatch of deploy-frontend.yml or push a commit that modifies apps/sample-app/frontend/** files.. Reset 4 items: push-app, poll-app-ci, live-ui, integration-test"
     }
   ],
   "elevatedApply": true
