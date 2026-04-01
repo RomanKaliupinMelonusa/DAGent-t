@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:17:58.822Z",
+  "generatedAt": "2026-04-01T23:18:14.088Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -15,6 +15,29 @@
       "outcome": "completed",
       "intents": [
         "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T23:17:59.997Z",
+      "finishedAt": "2026-04-01T23:18:14.087Z",
+      "durationMs": 14090,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
       ],
       "messages": [],
       "filesRead": [],
