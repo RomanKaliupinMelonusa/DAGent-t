@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T00:47:05.016Z",
+  "generatedAt": "2026-04-01T00:47:13.648Z",
   "featureSlug": "health-badge",
   "items": [
     {
@@ -211,9 +211,9 @@
       "phase": "post-deploy",
       "attempt": 2,
       "startedAt": "2026-04-01T00:33:10.596Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-01T00:47:13.621Z",
+      "durationMs": 843025,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Intent: Triggered deploy-backend workflow manually. fn-health was never deployed because previous commits didn't trigger CI properly. Now waiting for deployment to complete.",
@@ -222,7 +222,8 @@
         "fn-health is now deployed and returning 200 with valid JSON. Now let me get the function key and run the integration tests.",
         "All 10 integration tests passed! Now let me do the APIM-through validation.",
         "APIM `/sample/health` returns 200 anonymously — perfect. Now let me test the authenticated endpoints through APIM with the demo token.",
-        "All APIM-through validation passes. Let me summarize the results:  **Direct Function App tests:** 10/10 passed ✅ - fn-hello: 3 tests ✅ - fn-health: 3 tests ✅ (including anonymous access, no-auth, non-GET rejection) - fn-demo-login: 4 tests ✅  **APIM Gateway validation:** - `GET /sample/health` → 200 (anonymous) ✅ - `POST /demo-auth/auth/login` → 200 ✅ - `GET /sample/hello` (with X-Demo-Token) → 200 ✅  Now let me mark integration-test complete and commit."
+        "All APIM-through validation passes. Let me summarize the results:  **Direct Function App tests:** 10/10 passed ✅ - fn-hello: 3 tests ✅ - fn-health: 3 tests ✅ (including anonymous access, no-auth, non-GET rejection) - fn-demo-login: 4 tests ✅  **APIM Gateway validation:** - `GET /sample/health` → 200 (anonymous) ✅ - `POST /demo-auth/auth/login` → 200 ✅ - `GET /sample/hello` (with X-Demo-Token) → 200 ✅  Now let me mark integration-test complete and commit.",
+        "All done. Here's a summary of what happened:  ## Integration Test Results — health-badge ✅  **Root cause of previous failure:** The `deploy-backend.yml` workflow had never been triggered for the `feature/health-badge` branch — all commits had `[skip ci]` tags. I manually triggered the workflow via `gh workflow run`, which successfully deployed `fn-health` to Azure.  **Direct Function App tests (10/10 passed):** | Suite | Tests | Status | |-------|-------|--------| | fn-hello | 3 | ✅ | | fn-health | 3 | ✅ | | fn-demo-login | 4 | ✅ |  **APIM Gateway validation (3/3 passed):** | Endpoint | Auth | Status | |----------|------|--------| | `GET /sample/health` | anonymous | 200 ✅ | | `POST /demo-auth/auth/login` | none (login endpoint) | 200 ✅ | | `GET /sample/hello` | X-Demo-Token | 200 ✅ |  Pipeline item `integration-test` marked **done** and committed."
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -406,18 +407,24 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete health-badge integration-test 2>&1",
           "timestamp": "2026-04-01T00:46:41.671Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-01T00:47:05.021Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 4,
-        "shell": 38,
+        "shell": 39,
         "read_bash": 3,
         "file-read": 1
       },
-      "inputTokens": 997849,
-      "outputTokens": 8876,
-      "cacheReadTokens": 921709,
-      "cacheWriteTokens": 0
+      "inputTokens": 1044249,
+      "outputTokens": 9163,
+      "cacheReadTokens": 967731,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "29f9f0e1e3150da4295152a3623eb855e75b3820"
     }
   ]
 }
