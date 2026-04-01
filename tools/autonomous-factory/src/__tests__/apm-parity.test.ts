@@ -43,6 +43,7 @@ const ALL_AGENT_KEYS = [
   "live-ui",
   "code-cleanup",
   "docs-archived",
+  "doc-architect",
   "publish-pr",
 ];
 
@@ -179,19 +180,27 @@ describe("APM Compiler", () => {
   it("loads MCP declarations for roam-code", () => {
     const output = compileApm(APP_ROOT);
     const backendDev = output.agents["backend-dev"];
-    assert.ok(backendDev.mcp["roam-code"], "backend-dev should have roam-code MCP");
-    assert.equal(backendDev.mcp["roam-code"].command, "roam");
-    assert.deepEqual(backendDev.mcp["roam-code"].args, ["mcp"]);
-    assert.equal(backendDev.mcp["roam-code"].availability, "optional");
+    const roam = backendDev.mcp["roam-code"];
+    assert.ok(roam, "backend-dev should have roam-code MCP");
+    assert.equal(roam.type, "local");
+    if (roam.type === "local") {
+      assert.equal(roam.command, "roam");
+      assert.deepEqual(roam.args, ["mcp"]);
+    }
+    assert.equal(roam.availability, "optional");
   });
 
   it("loads MCP declarations for playwright", () => {
     const output = compileApm(APP_ROOT);
     const liveUi = output.agents["live-ui"];
-    assert.ok(liveUi.mcp["playwright"], "live-ui should have playwright MCP");
-    assert.ok(liveUi.mcp["playwright"].command.includes("playwright-mcp"));
-    assert.equal(liveUi.mcp["playwright"].availability, "required");
-    assert.ok(liveUi.mcp["playwright"].args.includes("--headless"));
+    const pw = liveUi.mcp["playwright"];
+    assert.ok(pw, "live-ui should have playwright MCP");
+    assert.equal(pw.type, "local");
+    if (pw.type === "local") {
+      assert.ok(pw.command.includes("playwright-mcp"));
+      assert.ok(pw.args.includes("--headless"));
+    }
+    assert.equal(pw.availability, "required");
   });
 
   it("agents without MCP have empty mcp record", () => {

@@ -84,13 +84,18 @@ agents:
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+  doc-architect:
+    instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    mcp: [roam-code, mermaid]
+    skills: []
+    toolLimits: { soft: 40, hard: 55 }
   docs-archived:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
   publish-pr:
-    instructions: [always, tooling/roam-tool-rules.md]
+    instructions: [always]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
