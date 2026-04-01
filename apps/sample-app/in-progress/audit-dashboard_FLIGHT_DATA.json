@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:50:46.304Z",
+  "generatedAt": "2026-04-01T22:50:58.871Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -765,6 +765,30 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-01T22:50:47.526Z",
+      "finishedAt": "2026-04-01T22:50:58.870Z",
+      "durationMs": 11344,
+      "outcome": "failed",
+      "intents": [
+        "App validation failed — blocking before post-deploy agents"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"validateApp hook: Frontend at ${SWA_URL} returned HTTP 000000 (expected 200)\"}"
     }
   ]
 }
