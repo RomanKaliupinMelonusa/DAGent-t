@@ -86,6 +86,10 @@ export const ApmConfigSchema = z.object({
    *  Agents MUST append validation checks to these scripts when provisioning new
    *  resources or endpoints (Self-Mutating Hook pattern). */
   hooks: z.object({
+    /** Resolve environment variables from infrastructure outputs (e.g. terraform output).
+     *  Runs BEFORE any other hook. Script must print KEY=VALUE lines to stdout.
+     *  The orchestrator merges these into config.environment, replacing any unresolved ${VAR} references. */
+    resolveEnvironment: z.string().optional(),
     /** Validate deployed infrastructure reachability. Exit 0 = pass, exit 1 = fail (stdout = diagnostic). */
     validateInfra: z.string().optional(),
     /** Validate deployed application endpoints. Exit 0 = pass, exit 1 = fail (stdout = diagnostic). */
