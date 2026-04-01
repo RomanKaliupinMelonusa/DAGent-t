@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "## Terraform Resources Created\n\n### New Resources (cosmos.tf)\n- **azurerm_cosmosdb_account.audit** → `cosmos-sampleapp-001` (Serverless, SQL API, RBAC-only — local_authentication_disabled=true)\n- **azurerm_cosmosdb_sql_database.audit** → `AuditDB`\n- **azurerm_cosmosdb_sql_container.audit_logs** → `AuditLogs` (partition key: /userId)\n- **azurerm_cosmosdb_sql_role_assignment.func_audit_contributor** → Grants Function App MI 'Cosmos DB Built-in Data Contributor' (role ID 00000000-0000-0000-0000-000000000002)\n\n### Modified Resources\n- **azurerm_function_app_flex_consumption.main** → Added `COSMOS_ENDPOINT` app setting\n- **azurerm_api_management_api.sample** → Updated OpenAPI spec with POST /audit + GET /audit operations\n\n### Terraform Outputs\n- `cosmosdb_account_name` → Name of the Cosmos DB account\n- `cosmosdb_endpoint` → Cosmos DB endpoint URL (used as COSMOS_ENDPOINT env var)\n\n### API Spec (api-sample.openapi.yaml)\n- GET /audit → operationId: getAuditLogs\n- POST /audit → operationId: createAuditLog\n- Added components/schemas: AuditLog, AuditLogCreate\n\n### Hooks\n- validate-infra.sh → Cosmos DB data-plane reachability check via curl (accepts 200/401)\n\n### Plan Summary: 4 to add, 4 to change, 0 to destroy"
     },
     {
       "key": "push-infra",
