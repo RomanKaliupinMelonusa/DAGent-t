@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T22:30:21.943Z",
+  "generatedAt": "2026-04-01T22:30:43.443Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -90,7 +90,9 @@
         "Now update the validate-infra.sh hook with the Cosmos DB data-plane reachability check:",
         "Now let me validate the Terraform code:",
         "Validation passed. Now let's run the full plan:",
-        "Terraform plan succeeded: **4 to add, 4 to change, 0 to destroy**. The new Cosmos DB resources will be created and the outputs will be exported.  Let me verify the plan includes the right resources:"
+        "Terraform plan succeeded: **4 to add, 4 to change, 0 to destroy**. The new Cosmos DB resources will be created and the outputs will be exported.  Let me verify the plan includes the right resources:",
+        "All resources are correct. Now let me commit and complete:",
+        "Now leave a doc-note and mark complete:"
       ],
       "filesRead": [],
       "filesChanged": [
@@ -126,18 +128,33 @@
           "command": "grep -E '^\\s+# (azurerm_cosmosdb|azurerm_function_app|azurerm_api_management_api)' /workspaces/DAGent-t/apps/sample-app/infra/plan-output.txt",
           "timestamp": "2026-04-01T22:30:15.713Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh infra \"feat(infra): add Cosmos DB for audit-dashboard — account, database, container, RBAC, APIM routes, COSMOS_ENDPOINT app se",
+          "timestamp": "2026-04-01T22:30:21.945Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:doc-note audit-dashboard infra-architect \"## Terraform Resources Created",
+          "timestamp": "2026-04-01T22:30:33.610Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:complete audit-dashboard infra-architect",
+          "timestamp": "2026-04-01T22:30:38.899Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
-        "intent": 4,
+        "intent": 5,
         "file-read": 11,
         "create": 1,
         "edit": 4,
-        "shell": 6
+        "shell": 9
       },
-      "inputTokens": 456712,
-      "outputTokens": 5337,
-      "cacheReadTokens": 430567,
+      "inputTokens": 560259,
+      "outputTokens": 6133,
+      "cacheReadTokens": 532390,
       "cacheWriteTokens": 0
     }
   ]
