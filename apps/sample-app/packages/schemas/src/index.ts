@@ -16,6 +16,10 @@ export {
 } from "./auth.js";
 export type { DemoLoginRequest, DemoLoginResponse } from "./auth.js";
 
+// Audit log
+export { AuditLogSchema, AuditLogCreateSchema } from "./audit.js";
+export type { AuditLog, AuditLogCreate } from "./audit.js";
+
 // Error envelope
 export { ApiErrorCodeSchema, ApiErrorResponseSchema } from "./errors.js";
 export type { ApiErrorCode, ApiErrorResponse } from "./errors.js";
