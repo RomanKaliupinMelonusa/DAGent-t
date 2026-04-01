@@ -2,8 +2,8 @@
   "feature": "audit-dashboard",
   "workflowType": "Full-Stack",
   "started": "2026-04-01T22:24:15.694Z",
-  "deployedUrl": null,
-  "implementationNotes": null,
+  "deployedUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/31",
+  "implementationNotes": "Draft PR #31 created — awaiting Terraform plan",
   "items": [
     {
       "key": "schema-dev",
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
