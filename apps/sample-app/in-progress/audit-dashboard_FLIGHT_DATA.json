@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-01T23:45:22.113Z",
+  "generatedAt": "2026-04-01T23:56:26.337Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -266,9 +266,9 @@
       "phase": "post-deploy",
       "attempt": 2,
       "startedAt": "2026-04-01T23:29:22.767Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-01T23:45:50.245Z",
+      "durationMs": 987478,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Intent: The Deploy Backend workflow has `workflow_dispatch` support. Let me try triggering it to unblock testing, since the orchestrator's re-push cycles haven't matched the path filter.",
@@ -281,7 +281,8 @@
         "The APIM API is under the `sample` path prefix. Let me re-run with the correct URL.",
         "Got the demo token. Now let me validate the APIM gateway with the correct path prefix.",
         "All APIM-through validations pass: - ✅ GET /sample/audit → 200 with audit log array - ✅ POST /sample/audit → 201 with created audit event - ✅ OPTIONS /sample/audit → 200 with proper CORS headers - ✅ GET without token → 401 (auth policy working)  Now let me also verify the GET preflight allows GET method:",
-        "All validations pass. Let me mark the integration test as complete."
+        "All validations pass. Let me mark the integration test as complete.",
+        "All done. Here's a summary of what was accomplished:  ## Integration Test Results ✅  ### Problem Resolved The previous attempt failed because `fn-audit` was never deployed — the Deploy Backend workflow hadn't been triggered for the `feature/audit-dashboard` branch. I triggered it manually via `workflow_dispatch` and the deployment succeeded in ~2 minutes.  ### Direct Function App Tests (11/11 passed) | Endpoint | Test | Status | |----------|------|--------| | GET /hello | Default greeting | ✅ 200 | | GET /hello?name=X | Custom greeting | ✅ 200 | | GET /hello (long name) | Validation error | ✅ 400 | | POST /auth/login | Valid credentials | ✅ 200 | | POST /auth/login | Invalid credentials | ✅ 401 | | POST /auth/login | Missing fields | ✅ 400 | | POST /auth/login | Invalid JSON | ✅ 400 | | **POST /audit** | Valid audit event | ✅ 201 | | **POST /audit** | Missing fields | ✅ 400 | | **POST /audit** | Invalid JSON | ✅ 400 | | **GET /audit** | Returns audit logs | ✅ 200 |  ### APIM Gateway Validation (all passed) | Method | Path | Status | Result | |--------|------|--------|--------| | GET | /sample/audit | 200 | Returns audit array | | POST | /sample/audit | 201 | Creates audit event | | OPTIONS | /sample/audit (POST) | 200 | CORS headers correct | | OPTIONS | /sample/audit (GET) | 200 | CORS headers correct | | GET (no token) | /sample/audit | 401 | Auth policy enforced |"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -430,16 +431,204 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete audit-dashboard integration-test 2>&1",
           "timestamp": "2026-04-01T23:45:14.383Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-01T23:45:22.114Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 9,
-        "shell": 34,
+        "shell": 35,
         "read_bash": 2
       },
-      "inputTokens": 670323,
-      "outputTokens": 9063,
-      "cacheReadTokens": 641230,
+      "inputTokens": 708758,
+      "outputTokens": 9519,
+      "cacheReadTokens": 679315,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "876b974cf3354499947a5b6229163809ed94b9e9"
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-01T23:45:51.619Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t && cat apps/sample-app/playwright.config.ts",
+          "timestamp": "2026-04-01T23:47:11.408Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && ls e2e/ 2>/dev/null && echo \"---\" && ls e2e/fixtures/ 2>/dev/null",
+          "timestamp": "2026-04-01T23:47:11.408Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Phase 1: HTTP Smoke Tests",
+          "timestamp": "2026-04-01T23:47:11.408Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check what's actually returned for /audit - is it an SWA 404 or Next.js 404?",
+          "timestamp": "2026-04-01T23:47:24.556Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the frontend source for the audit page",
+          "timestamp": "2026-04-01T23:47:24.556Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if the audit page code is in the deployed build",
+          "timestamp": "2026-04-01T23:47:35.846Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Search deployed JS chunks for audit-related strings",
+          "timestamp": "2026-04-01T23:47:44.854Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the Next.js config for static export settings",
+          "timestamp": "2026-04-01T23:48:02.480Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:49:02.600Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:49:07.905Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:49:18.822Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:49:23.765Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:49:42.664Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend",
+          "timestamp": "2026-04-01T23:49:57.096Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Phase 2: API Network Validation",
+          "timestamp": "2026-04-01T23:50:21.291Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check backend directly (bypassing APIM)",
+          "timestamp": "2026-04-01T23:50:37.613Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check what happens with a known-good endpoint through APIM without token",
+          "timestamp": "2026-04-01T23:50:54.094Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T23:51:18.004Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check what API base URL the frontend is configured with",
+          "timestamp": "2026-04-01T23:51:41.737Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/frontend/src/lib/apiClient.ts",
+          "timestamp": "2026-04-01T23:51:49.045Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T23:52:01.799Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-01T23:52:16.172Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check existing E2E tests",
+          "timestamp": "2026-04-01T23:52:31.681Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if NavBar audit link exists in deployed build",
+          "timestamp": "2026-04-01T23:52:45.975Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T23:53:17.637Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T23:53:29.268Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T23:54:47.024Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# View the screenshot to describe it",
+          "timestamp": "2026-04-01T23:55:34.111Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/in-progress/screenshots/audit-Audit-Log-Dashboard--f6eae-it-and-displays-audit-table-chromium/error-context.md",
+          "timestamp": "2026-04-01T23:55:40.062Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-01T23:56:06.689Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t",
+          "timestamp": "2026-04-01T23:56:19.722Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 7,
+        "file-read": 3,
+        "shell": 33,
+        "stop_bash": 1
+      },
+      "inputTokens": 1340945,
+      "outputTokens": 18736,
+      "cacheReadTokens": 1275609,
       "cacheWriteTokens": 0
     }
   ]
