@@ -264,7 +264,7 @@ graph TD
 
 **Cognitive circuit breaker** (bottom): Counts tool calls during a live session. At the soft limit, a frustration prompt is injected *into the tool result* (not console — the LLM actually reads it). At the hard limit, the session is force-disconnected. At **80% of session timeout**, a pre-timeout wrap-up signal is injected telling the agent to commit, test, and report status before the hard kill.
 
-**Pre-deploy smoke check**: Before spinning up expensive post-deploy agent sessions ($8–37 each), the orchestrator delegates to the configured `hooks.smokeCheck` command to verify deployment freshness. If stale, reroutes directly to `deployment-stale` without burning an agent session.
+**Self-mutating validation hooks**: The orchestrator delegates deployment verification to bash scripts that agents dynamically extend. After `poll-app-ci` succeeds, `runValidateApp()` executes `hooks.validateApp` — if it fails, triggers `deployment-stale` reroute before expensive post-deploy agents boot up. After `infra-handoff` completes, `runValidateInfra()` executes `hooks.validateInfra` — if it fails, triggers `infra` fault domain reroute to `infra-architect`. Agents MUST append new validation checks to these hooks when they provision new resources or endpoints.
 
 Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-deploy cycles.
 

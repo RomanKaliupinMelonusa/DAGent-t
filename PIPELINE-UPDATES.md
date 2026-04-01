@@ -54,12 +54,8 @@ Dev agents write code → commitAndPushState() checks: unpushed code files?
   ↓
 push-app runs → pushes all code → deploy workflows trigger correctly
   ↓
-poll-app-ci succeeds → verifyDeploymentFreshness() via HOOK
-  ↓ (hook runs app-specific verification — e.g. az functionapp function list)
-  ↓ warnings logged, non-fatal
-  ↓
-Before post-deploy agent session → runPreDeploySmokeCheck() via HOOK
-  ↓ hook checks deployment freshness per item type
+poll-app-ci succeeds → runValidateApp() via HOOK
+  ↓ (self-mutating hook — agents append checks as they add endpoints)
   ↓ EXIT 1 → deployment-stale reroute (skip agent, save $37)
   ↓ EXIT 0 → proceed to agent session
   ↓
@@ -86,8 +82,8 @@ Re-deploy without re-running dev agents → save $96
 | Change | File | What |
 |--------|------|------|
 | Push guard | `watchdog.ts` | `commitAndPushState()` skips push when unpushed code files exist outside `in-progress/` and `archive/` — prevents premature deploy triggers |
-| Deployment freshness check | `session-runner.ts` | `verifyDeploymentFreshness()` runs after `poll-app-ci` succeeds — warns if deployed artifacts don't match branch code |
-| Pre-deploy smoke check | `session-runner.ts` | `runPreDeploySmokeCheck()` runs before post-deploy agent sessions — if stale, triggers `deployment-stale` reroute without burning an agent session ($8–37 saved per incident) |
+| App validation hook | `session-runner.ts` | `runValidateApp()` runs after `poll-app-ci` succeeds — self-mutating hook that agents extend as they add endpoints; exit 1 triggers `deployment-stale` reroute ($8–37 saved per incident) |
+| Infra validation hook | `session-runner.ts` | `runValidateInfra()` runs after `infra-handoff` completes — self-mutating hook that infra agents extend as they provision resources; exit 1 triggers `infra` fault domain reroute |
 | Post-deploy propagation delay | `session-runner.ts` | Increased from 30s to 60s, now applies on ALL attempts (not just first) |
 | Scoped push SHAs | `session-runner.ts` | `lastPushedShas: Record<string, string>` per push item — prevents cross-contamination if `push-infra` and `push-app` run in same batch |
 
@@ -117,37 +113,35 @@ Re-deploy without re-running dev agents → save $96
 | Hardcoded `"deploy-infra.yml"` string | `config.ciWorkflows.infraPlanFile` | `session-runner.ts` |
 | Hardcoded CI filename lists | `config.ciWorkflows.filePatterns` array | `triage.ts`, `context-injection.ts` |
 
-### 5. Stack Decoupling — Lifecycle Hooks
+### 5. Stack Decoupling — Self-Mutating Validation Hooks
 
-**Core change:** Cloud-specific shell commands extracted from TypeScript engine into app-provided bash scripts.
+**Core change:** Static, hardcoded deployment checks replaced with **self-mutating bash scripts** that AI agents extend as they provision new resources and endpoints. Cloud-specific auth extracted into a preflight hook.
 
-| Before (inline in engine) | After (hook delegation) | Hook script |
-|---------------------------|------------------------|-------------|
-| `az functionapp function list` in `verifyDeploymentFreshness()` | Delegates to `hooks.verifyDeployment` | `.apm/hooks/verify-deployment.sh` |
-| `az functionapp function list` + `curl` anonymous endpoints in `runPreDeploySmokeCheck()` | Delegates to `hooks.smokeCheck` | `.apm/hooks/smoke-check.sh` |
+| Before (inline in engine) | After (self-mutating hook) | Hook script |
+|---------------------------|---------------------------|-------------|
+| `az functionapp function list` + `curl` in engine functions | Delegates to `hooks.validateApp` — agents append endpoint checks | `.apm/hooks/validate-app.sh` |
+| N/A (infra never validated post-apply) | Delegates to `hooks.validateInfra` — infra agents append resource checks | `.apm/hooks/validate-infra.sh` |
 | `az account show` in `checkAzureAuth()` | Delegates to `hooks.preflightAuth` | `.apm/hooks/preflight-auth.sh` |
 
 New engine module: **`hooks.ts`** — `executeHook()` + `buildHookEnv()` utility. Hooks receive `config.environment` vars as env vars, plus orchestrator context (`APP_ROOT`, `REPO_ROOT`, `ITEM_KEY`).
 
 **Hook contract:**
 
-| Hook | Receives | Exit 0 | Exit 1 | Stdout |
-|------|----------|--------|--------|--------|
-| `verifyDeployment` | env vars | Always | N/A | Warnings (one per line) |
-| `smokeCheck` | env vars + `ITEM_KEY` | Pass or inconclusive | Detected failure | Failure reason |
-| `preflightAuth` | env vars | Authenticated | Not authenticated | Status message |
+| Hook | Receives | Exit 0 | Exit 1 | Stdout | Called by |
+|------|----------|--------|--------|--------|----------|
+| `validateApp` | env vars | All checks pass | Any check fails | Failure diagnostic | `runValidateApp()` after `poll-app-ci` |
+| `validateInfra` | env vars | All checks pass | Any check fails | Failure diagnostic | `runValidateInfra()` after `infra-handoff` |
+| `preflightAuth` | env vars | Authenticated | Not authenticated | Status message | `checkPreflightAuth()` at startup |
 
-**What the hooks validate (sample-app):**
+**Self-mutating pattern:** Hooks ship as seed scripts with minimal baseline checks. When agents provision new resources (e.g., Cosmos DB, new API endpoint), they MUST append validation `curl` commands to the appropriate hook script. This ensures the orchestrator always validates what was actually deployed — not a stale hardcoded list.
 
-| Check | `verifyDeployment` | `smokeCheck` (integration-test) | `smokeCheck` (live-ui) |
-|-------|--------------------|---------------------------------|------------------------|
-| Functions deployed match local source | ✔ | ✔ | — |
-| Frontend serves HTTP 200 | ✔ | — | ✔ |
-| APIM gateway reachable (not 502/503) | ✔ | ✔ | ✔ |
-| Backend URL reachable (not 502/503) | ✔ | ✔ | — |
-| Anonymous endpoints return non-404 | — | — | ✔ |
+**Seed checks in sample-app:**
 
-The function file glob is configurable via `FUNCTION_FILE_GLOB` env var (defaults to `fn-*.ts`).
+| Check | `validate-app.sh` | `validate-infra.sh` |
+|-------|--------------------|----------------------|
+| Frontend serves HTTP 200 | ✔ | — |
+| Backend URL reachable (not 000/502/503) | ✔ | — |
+| (agents append new checks as they add endpoints/resources) | ✔ | ✔ |
 
 ### 6. Stack Decoupling — Agent Prompt Identity
 
@@ -178,8 +172,8 @@ The engine's `agents.ts` now renders a generic `## Environment` section from `ct
 # NEW: Lifecycle hooks
 config:
   hooks:
-    verifyDeployment: "bash .apm/hooks/verify-deployment.sh"
-    smokeCheck: "bash .apm/hooks/smoke-check.sh"
+    validateInfra: "bash .apm/hooks/validate-infra.sh"
+    validateApp: "bash .apm/hooks/validate-app.sh"
     preflightAuth: "bash .apm/hooks/preflight-auth.sh"
 
   # CHANGED: flat dictionary replaces urls + azureResources blocks
@@ -204,8 +198,8 @@ config:
 | File | Purpose |
 |------|---------|
 | `tools/autonomous-factory/src/hooks.ts` | Hook execution engine (`executeHook` + `buildHookEnv`) |
-| `apps/sample-app/.apm/hooks/verify-deployment.sh` | Azure: compare local fn-*.ts functions against `az functionapp function list` |
-| `apps/sample-app/.apm/hooks/smoke-check.sh` | Azure: pre-deploy staleness check per item type |
+| `apps/sample-app/.apm/hooks/validate-infra.sh` | Self-mutating: seed script — infra agents append resource reachability checks |
+| `apps/sample-app/.apm/hooks/validate-app.sh` | Self-mutating: baseline frontend/backend checks — dev agents append endpoint checks |
 | `apps/sample-app/.apm/hooks/preflight-auth.sh` | Azure: verify `az account show` succeeds |
 | `apps/sample-app/.apm/instructions/backend/identity.md` | Azure Functions v4 identity + build validation |
 | `apps/sample-app/.apm/instructions/backend/integration-auth.md` | Function key retrieval auth script |
@@ -218,8 +212,8 @@ config:
 To port the pipeline to a non-Azure stack (e.g., AWS Lambda + CloudFront):
 
 1. **Replace hook scripts** in `.apm/hooks/`:
-   - `verify-deployment.sh` → `aws lambda list-functions` comparison
-   - `smoke-check.sh` → `curl` against CloudFront distribution
+   - `validate-infra.sh` → seed with AWS resource reachability checks
+   - `validate-app.sh` → `curl` against CloudFront distribution + API Gateway
    - `preflight-auth.sh` → `aws sts get-caller-identity`
 
 2. **Replace instruction files** in `.apm/instructions/`:

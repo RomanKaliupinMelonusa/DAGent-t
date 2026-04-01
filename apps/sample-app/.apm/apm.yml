@@ -8,95 +8,95 @@ agents:
     instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-schema-validation]
-    toolLimits: { soft: 25, hard: 35 }
+    toolLimits: { soft: 60, hard: 80 }
   infra-architect:
     instructions: [always, infra, backend/schema-sync.md, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 35, hard: 50 }
+    toolLimits: { soft: 70, hard: 100 }
   infra-handoff:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 15, hard: 25 }
+    toolLimits: { soft: 60, hard: 80 }
   push-infra:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 10, hard: 15 }
+    toolLimits: { soft: 60, hard: 80 }
   poll-infra-plan:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 15, hard: 20 }
+    toolLimits: { soft: 60, hard: 80 }
   create-draft-pr:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 15, hard: 20 }
+    toolLimits: { soft: 60, hard: 80 }
   await-infra-approval:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 10, hard: 15 }
+    toolLimits: { soft: 60, hard: 80 }
   backend-dev:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
-    toolLimits: { soft: 40, hard: 55 }
+    toolLimits: { soft: 80, hard: 110 }
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
-    toolLimits: { soft: 40, hard: 55 }
+    toolLimits: { soft: 80, hard: 110 }
   backend-unit-test:
     instructions: [always, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
-    toolLimits: { soft: 30, hard: 45 }
+    toolLimits: { soft: 60, hard: 90 }
   frontend-unit-test:
     instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
-    toolLimits: { soft: 30, hard: 45 }
+    toolLimits: { soft: 60, hard: 90 }
   push-app:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 10, hard: 15 }
+    toolLimits: { soft: 60, hard: 80 }
   poll-app-ci:
     instructions: [always]
     mcp: []
     skills: []
-    toolLimits: { soft: 15, hard: 20 }
+    toolLimits: { soft: 60, hard: 80 }
   integration-test:
     instructions: [always, backend/integration-testing.md, backend/integration-auth.md, tooling/cloud-telemetry.md]
     mcp: []
     skills: [test-integration]
-    toolLimits: { soft: 35, hard: 60 }
+    toolLimits: { soft: 70, hard: 120 }
   live-ui:
     instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
     skills: []
-    toolLimits: { soft: 50, hard: 65 }
+    toolLimits: { soft: 100, hard: 130 }
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 25, hard: 35 }
+    toolLimits: { soft: 60, hard: 80 }
   docs-archived:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 15, hard: 20 }
+    toolLimits: { soft: 60, hard: 80 }
   publish-pr:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
-    toolLimits: { soft: 15, hard: 20 }
+    toolLimits: { soft: 60, hard: 80 }
 
 config:
-  defaultToolLimits: { soft: 30, hard: 40 }
+  defaultToolLimits: { soft: 60, hard: 80 }
   hooks:
     validateInfra: "bash .apm/hooks/validate-infra.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"

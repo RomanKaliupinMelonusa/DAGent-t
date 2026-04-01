@@ -278,8 +278,8 @@ classDiagram
 | `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
 | `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
 | `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
-| `verifyDeploymentFreshness()` | session-runner.ts | Post-poll-app-ci staleness check — delegates to `hooks.verifyDeployment` command | `runItemSession()` |
-| `runPreDeploySmokeCheck()` | session-runner.ts | Pre-agent fast-fail staleness detection — delegates to `hooks.smokeCheck` command | `runItemSession()` |
+| `runValidateApp()` | session-runner.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
+| `runValidateInfra()` | session-runner.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
 | `getTimeout()` | session-runner.ts | Session timeout by item type | `runAgentSession()` |
 | `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
 | `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |

@@ -278,7 +278,7 @@ When `poll-app-ci` or `poll-infra-plan` fails, the orchestrator handles triage *
 
 **Poll timeouts** (exit code 2) trigger a transient retry loop — the polling item is retried without resetting any dev items.
 
-**Post-deploy freshness checks:** After `poll-app-ci` succeeds, `verifyDeploymentFreshness()` delegates to the configured `hooks.verifyDeployment` command to check whether deployed artifacts match the current branch. If stale, the orchestrator emits `deployment-stale` fault domain — reruns `push-app` + `poll-app-ci` without resetting dev items. A pre-deploy smoke check (`runPreDeploySmokeCheck()`) delegates to `hooks.smokeCheck` *before* agent sessions to fail fast.
+**Self-mutating validation hooks:** After `poll-app-ci` succeeds, `runValidateApp()` delegates to the configured `hooks.validateApp` command — a self-mutating bash script that agents extend as they add new endpoints. Exit 1 triggers `deployment-stale` fault domain (reruns `push-app` + `poll-app-ci` without resetting dev items). After `infra-handoff` completes, `runValidateInfra()` delegates to `hooks.validateInfra` — also self-mutating, extended by infra agents as they provision new resources. Exit 1 triggers `infra` fault domain (resets `infra-architect` + `infra-handoff`).
 
 ---
 
