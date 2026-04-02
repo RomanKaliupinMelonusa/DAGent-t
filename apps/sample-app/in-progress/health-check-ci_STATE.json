@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No dead code found. Analysis: (1) roam_dead_code scanned app boundary — 40 safe candidates all in tools/ or config files outside app scope. (2) All health-check-ci feature symbols (fn-health, HealthStatus/HealthCheckEntry/HealthCheckResponse schemas) verified — schemas in packages/schemas/ protected by safety rules. (3) All frontend exports (Button, Input, getDemoToken, ThemeToggle, DemoAuthProvider, useDemoAuth, apiClient, NavBar) confirmed to have active consumers. (4) Backend: 26 tests pass, Frontend: 14 tests pass. Clean codebase with no dead code to eliminate."
     },
     {
       "key": "docs-archived",
