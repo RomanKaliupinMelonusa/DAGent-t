@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T05:05:39.865Z",
+  "generatedAt": "2026-04-02T05:08:42.784Z",
   "featureSlug": "health-check-ci",
   "items": [
     {
@@ -429,6 +429,120 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-02T05:05:41.078Z",
+      "finishedAt": "2026-04-02T05:08:42.773Z",
+      "durationMs": 181695,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Good, I have the function key. Now let me first verify the health endpoint is reachable directly, then run the full integration test suite.",
+        "The health endpoint returns 404 - the function may not be deployed yet. Let me check what's deployed and also verify the hello endpoint works.",
+        "The `fn-health` function is NOT deployed to Azure - it's missing from the deployed function list. The hello endpoint works fine (200). Let me check the deploy workflow to understand why.",
+        "The `fn-health` function exists in source code and compiles to `dist/`, but it's NOT deployed. The deployed function list only shows `fn-audit`, `fn-demo-login`, and `fn-hello`. This is a `deployment-stale` issue.  Let me still run the integration tests to document the exact failure, and then check if perhaps the tests pass for the already-deployed endpoints.",
+        "Integration tests confirm: the `fn-health` function returns 404 because it's not deployed to Azure. All other existing tests pass (7/7). This is a `deployment-stale` issue - the code is correct but the deployed artifact is outdated.",
+        "The failure has been recorded. Here's a summary of what happened:  ## Integration Test Results — `health-check-ci`  | Test Suite | Tests | Result | |---|---|---| | `smoke.integration.test.ts` (fn-hello) | 3/3 | ✅ Pass | | `smoke.integration.test.ts` (fn-demo-login) | 4/4 | ✅ Pass | | `health.integration.test.ts` (fn-health) | 0/2 | ❌ Fail | | **Total** | **7 passed, 2 failed** | ❌ |  ### Root Cause: `deployment-stale`  The `fn-health` Azure Function exists in source code and compiles successfully to `dist/`, but is **not present in the deployed function list** on Azure. The deployed Function App only contains `fn-audit`, `fn-demo-login`, and `fn-hello`. Both health integration tests fail with HTTP 404 because the function simply isn't deployed.  **Fault domain:** `deployment-stale` — the code is correct, just not deployed. The orchestrator will trigger a redeployment cycle."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status health-check-ci 2>&1",
+          "timestamp": "2026-04-02T05:06:47.550Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t -name \"*health-check*SPEC*\" -o -name \"*health-check*spec*\" 2>/dev/null | head -10",
+          "timestamp": "2026-04-02T05:06:53.855Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls /workspaces/DAGent-t/apps/sample-app/in-progress/ 2>/dev/null",
+          "timestamp": "2026-04-02T05:06:53.855Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"*.integration.test.*\" 2>/dev/null",
+          "timestamp": "2026-04-02T05:07:01.593Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"fn-health*\" -o -name \"*health*\" 2>/dev/null | head -20",
+          "timestamp": "2026-04-02T05:07:01.594Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && cat package.json | grep -A2 '\"test:integration\"'",
+          "timestamp": "2026-04-02T05:07:18.432Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_KEY=$(az functionapp keys list --name func-sample-app-001 --resource-group rg-sample-app-dev --query 'functionKeys.default' -o tsv 2>/dev/null)",
+          "timestamp": "2026-04-02T05:07:18.432Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Quick smoke check on the health endpoint first",
+          "timestamp": "2026-04-02T05:07:26.002Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -sv https://func-sample-app-001.azurewebsites.net/api/health 2>&1",
+          "timestamp": "2026-04-02T05:07:31.026Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check what functions are deployed",
+          "timestamp": "2026-04-02T05:07:38.434Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if hello endpoint works (already deployed)",
+          "timestamp": "2026-04-02T05:07:38.434Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/.github/workflows/deploy-backend.yml",
+          "timestamp": "2026-04-02T05:07:53.176Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if fn-health is in the built dist",
+          "timestamp": "2026-04-02T05:08:01.537Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the entry point / main field in package.json",
+          "timestamp": "2026-04-02T05:08:01.538Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-02T05:08:18.351Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:fail health-check-ci integration-test '{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"GET /api/health returns HTTP 404. fn-health is NOT in the depl",
+          "timestamp": "2026-04-02T05:08:33.828Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 5,
+        "shell": 16
+      },
+      "inputTokens": 284825,
+      "outputTokens": 5088,
+      "cacheReadTokens": 252940,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "fb9899909e5dc1cce86fbd951dfc8bb2c20eb04f"
     }
   ]
 }

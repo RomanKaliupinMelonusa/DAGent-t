@@ -101,7 +101,7 @@
       "label": "App Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -109,7 +109,7 @@
       "label": "App CI Workflows Passed",
       "agent": "@deploy-manager",
       "phase": "deploy",
-      "status": "done",
+      "status": "pending",
       "error": null
     },
     {
@@ -166,6 +166,16 @@
       "timestamp": "2026-04-02T04:59:03.740Z",
       "itemKey": "resume-elevated",
       "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
+    },
+    {
+      "timestamp": "2026-04-02T05:08:35.016Z",
+      "itemKey": "integration-test",
+      "message": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"GET /api/health returns HTTP 404. fn-health is NOT in the deployed Azure Function list (only fn-audit, fn-demo-login, fn-hello are deployed). The function exists locally in backend/src/functions/fn-health.ts, builds to dist/src/functions/fn-health.js, and package.json main glob includes it. Integration test failures: (1) returns 200 with status ok and mode from STRICT_HEALTH_MODE — Expected 200, Received 404 at health.integration.test.ts:37. (2) returns valid JSON with expected shape — Expected 200, Received 404 at health.integration.test.ts:57. All 7 pre-existing smoke tests pass (fn-hello: 3/3, fn-demo-login: 4/4). The deploy-backend.yml workflow appears correct but the artifact was not deployed with fn-health included. Needs redeployment.\"}"
+    },
+    {
+      "timestamp": "2026-04-02T05:08:42.827Z",
+      "itemKey": "reset-for-dev",
+      "message": "Redevelopment cycle 1/5: GET /api/health returns HTTP 404. fn-health is NOT in the deployed Azure Function list (only fn-audit, fn-demo-login, fn-hello are deployed). The function exists locally in backend/src/functions/fn-health.ts, builds to dist/src/functions/fn-health.js, and package.json main glob includes it. Integration test failures: (1) returns 200 with status ok and mode from STRICT_HEALTH_MODE — Expected 200, Received 404 at health.integration.test.ts:37. (2) returns valid JSON with expected shape — Expected 200, Received 404 at health.integration.test.ts:57. All 7 pre-existing smoke tests pass (fn-hello: 3/3, fn-demo-login: 4/4). The deploy-backend.yml workflow appears correct but the artifact was not deployed with fn-health included. Needs redeployment.. Reset 3 items: push-app, poll-app-ci, integration-test"
     }
   ],
   "elevatedApply": true
