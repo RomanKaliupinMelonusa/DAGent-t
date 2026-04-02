@@ -59,7 +59,7 @@
       "label": "Infra Outputs Captured — Interfaces Written",
       "agent": "@infra-handoff",
       "phase": "approval",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
