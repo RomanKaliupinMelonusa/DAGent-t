@@ -43,7 +43,7 @@
       "label": "Infra Plan CI Passed",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

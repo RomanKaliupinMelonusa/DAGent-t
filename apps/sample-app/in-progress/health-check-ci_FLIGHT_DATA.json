@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T04:56:04.023Z",
+  "generatedAt": "2026-04-02T04:56:21.067Z",
   "featureSlug": "health-check-ci",
   "items": [
     {
@@ -285,6 +285,29 @@
       "cacheReadTokens": 140667,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "81d5e258e1c7f0b8a37f3b2265de7d4fc4dfeb09"
+    },
+    {
+      "key": "poll-infra-plan",
+      "label": "Infra Plan CI Passed",
+      "agent": "@deploy-manager",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-04-02T04:56:05.843Z",
+      "finishedAt": "2026-04-02T04:56:21.066Z",
+      "durationMs": 15223,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
