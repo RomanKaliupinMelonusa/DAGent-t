@@ -19,3 +19,15 @@ export type { DemoLoginRequest, DemoLoginResponse } from "./auth.js";
 // Error envelope
 export { ApiErrorCodeSchema, ApiErrorResponseSchema } from "./errors.js";
 export type { ApiErrorCode, ApiErrorResponse } from "./errors.js";
+
+// Health check
+export {
+  HealthStatusSchema,
+  HealthCheckEntrySchema,
+  HealthCheckResponseSchema,
+} from "./health.js";
+export type {
+  HealthStatus,
+  HealthCheckEntry,
+  HealthCheckResponse,
+} from "./health.js";

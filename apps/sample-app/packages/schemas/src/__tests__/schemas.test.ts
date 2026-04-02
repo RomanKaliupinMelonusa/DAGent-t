@@ -10,6 +10,9 @@ import {
   DemoLoginResponseSchema,
   ApiErrorCodeSchema,
   ApiErrorResponseSchema,
+  HealthStatusSchema,
+  HealthCheckEntrySchema,
+  HealthCheckResponseSchema,
 } from "../index.js";
 
 // ---------------------------------------------------------------------------
@@ -215,6 +218,195 @@ describe("ApiErrorResponseSchema", () => {
 
   it("rejects empty object", () => {
     const result = ApiErrorResponseSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HealthStatusSchema
+// ---------------------------------------------------------------------------
+
+describe("HealthStatusSchema", () => {
+  it.each(["healthy", "degraded", "unhealthy"])(
+    "accepts valid status: %s",
+    (status) => {
+      expect(HealthStatusSchema.parse(status)).toBe(status);
+    },
+  );
+
+  it("rejects unknown status", () => {
+    const result = HealthStatusSchema.safeParse("warning");
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    const result = HealthStatusSchema.safeParse("");
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HealthCheckEntrySchema
+// ---------------------------------------------------------------------------
+
+describe("HealthCheckEntrySchema", () => {
+  it("parses a valid entry with all fields", () => {
+    const input = {
+      name: "database",
+      status: "healthy",
+      message: "Connection pool active",
+      durationMs: 12,
+    };
+    const result = HealthCheckEntrySchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("parses a minimal entry (only required fields)", () => {
+    const input = { name: "self", status: "healthy" };
+    const result = HealthCheckEntrySchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("accepts zero durationMs", () => {
+    const input = { name: "cache", status: "healthy", durationMs: 0 };
+    const result = HealthCheckEntrySchema.parse(input);
+    expect(result.durationMs).toBe(0);
+  });
+
+  it("rejects negative durationMs", () => {
+    const input = { name: "cache", status: "healthy", durationMs: -1 };
+    const result = HealthCheckEntrySchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty name", () => {
+    const input = { name: "", status: "healthy" };
+    const result = HealthCheckEntrySchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing name", () => {
+    const input = { status: "healthy" };
+    const result = HealthCheckEntrySchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing status", () => {
+    const input = { name: "database" };
+    const result = HealthCheckEntrySchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid status in entry", () => {
+    const input = { name: "database", status: "unknown" };
+    const result = HealthCheckEntrySchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty object", () => {
+    const result = HealthCheckEntrySchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HealthCheckResponseSchema
+// ---------------------------------------------------------------------------
+
+describe("HealthCheckResponseSchema", () => {
+  it("parses a full health check response", () => {
+    const input = {
+      status: "healthy",
+      timestamp: "2026-04-01T12:00:00.000Z",
+      version: "0.1.0",
+      checks: [
+        { name: "self", status: "healthy", durationMs: 1 },
+        { name: "database", status: "healthy", message: "OK", durationMs: 12 },
+      ],
+    };
+    const result = HealthCheckResponseSchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("parses a minimal response (only required fields)", () => {
+    const input = {
+      status: "healthy",
+      timestamp: "2026-04-01T12:00:00Z",
+    };
+    const result = HealthCheckResponseSchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("accepts degraded status", () => {
+    const input = {
+      status: "degraded",
+      timestamp: "2026-04-01T12:00:00.000Z",
+      checks: [
+        { name: "cache", status: "unhealthy", message: "Connection refused" },
+      ],
+    };
+    const result = HealthCheckResponseSchema.parse(input);
+    expect(result.status).toBe("degraded");
+  });
+
+  it("accepts unhealthy status", () => {
+    const input = {
+      status: "unhealthy",
+      timestamp: "2026-04-01T12:00:00.000Z",
+    };
+    const result = HealthCheckResponseSchema.parse(input);
+    expect(result.status).toBe("unhealthy");
+  });
+
+  it("accepts empty checks array", () => {
+    const input = {
+      status: "healthy",
+      timestamp: "2026-04-01T12:00:00.000Z",
+      checks: [],
+    };
+    const result = HealthCheckResponseSchema.parse(input);
+    expect(result.checks).toEqual([]);
+  });
+
+  it("rejects missing status", () => {
+    const input = { timestamp: "2026-04-01T12:00:00.000Z" };
+    const result = HealthCheckResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing timestamp", () => {
+    const input = { status: "healthy" };
+    const result = HealthCheckResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-ISO timestamp", () => {
+    const input = { status: "healthy", timestamp: "not-a-date" };
+    const result = HealthCheckResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid status in response", () => {
+    const input = {
+      status: "broken",
+      timestamp: "2026-04-01T12:00:00.000Z",
+    };
+    const result = HealthCheckResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid entry inside checks array", () => {
+    const input = {
+      status: "healthy",
+      timestamp: "2026-04-01T12:00:00.000Z",
+      checks: [{ name: "", status: "healthy" }],
+    };
+    const result = HealthCheckResponseSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty object", () => {
+    const result = HealthCheckResponseSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 });
