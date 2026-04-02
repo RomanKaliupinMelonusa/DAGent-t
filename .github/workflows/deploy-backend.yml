@@ -112,3 +112,10 @@ jobs:
         with:
           app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
           package: deploy/
+
+      - name: Set STRICT_HEALTH_MODE app setting
+        run: |
+          az functionapp config appsettings set \
+            --name ${{ vars.AZURE_FUNCTION_APP_NAME }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --settings STRICT_HEALTH_MODE=true
