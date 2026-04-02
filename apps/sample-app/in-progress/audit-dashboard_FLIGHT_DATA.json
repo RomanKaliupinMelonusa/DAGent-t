@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T00:28:27.962Z",
+  "generatedAt": "2026-04-02T00:28:42.888Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -1400,7 +1400,8 @@
         "Now let me combine the bodies and update the PR:",
         "PR body updated. Now promote to ready-for-review:",
         "PR promoted. Now update pipeline state and commit:",
-        "Let me verify there are no uncommitted files remaining:"
+        "Let me verify there are no uncommitted files remaining:",
+        "There are remaining uncommitted files from prior agent steps. Let me commit them (agent-commit.sh auto-excludes `_STATE.json` and `_TRANS.md`):"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1509,15 +1510,25 @@
           "command": "cd /workspaces/DAGent-t && git status --porcelain",
           "timestamp": "2026-04-02T00:28:16.362Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git add apps/sample-app/.apm/.compiled/context.json apps/sample-app/.apm/hooks/validate-app.sh apps/sample-app/.apm/hooks/validate-infra.sh apps/sample-app/backend/README.md",
+          "timestamp": "2026-04-02T00:28:27.968Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git status --porcelain",
+          "timestamp": "2026-04-02T00:28:32.426Z",
+          "isPipelineOp": false
         }
       ],
       "toolCounts": {
         "intent": 2,
-        "shell": 22
+        "shell": 24
       },
-      "inputTokens": 409402,
-      "outputTokens": 6697,
-      "cacheReadTokens": 366416,
+      "inputTokens": 482805,
+      "outputTokens": 7335,
+      "cacheReadTokens": 438898,
       "cacheWriteTokens": 0
     }
   ]
