@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T05:34:10.531Z",
+  "generatedAt": "2026-04-02T05:36:38.820Z",
   "featureSlug": "health-check-ci",
   "items": [
     {
@@ -1123,7 +1123,8 @@
         "Now update pipeline state and commit:",
         "Let me verify no uncommitted files remain:",
         "The `_STATE.json`, `_TRANS.md`, and `_FLIGHT_DATA.json` are pipeline state files managed by the orchestrator — I must not commit those. The `validate-app.sh` and `backend/README.md` are legitimate code/docs changes from earlier agents that weren't fully committed. Let me commit those:",
-        "Good — that picked up `validate-app.sh` and `backend/README.md`. Let me verify what's left:"
+        "Good — that picked up `validate-app.sh` and `backend/README.md`. Let me verify what's left:",
+        "The `validate-app.sh` is in `.apm/hooks/` which isn't covered by the `backend` scope. Let me commit it with the `all` scope:"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1212,16 +1213,56 @@
           "command": "cd /workspaces/DAGent-t && git status --porcelain",
           "timestamp": "2026-04-02T05:33:57.392Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh all \"chore(health-check-ci): commit validate-app hook changes\" 2>&1",
+          "timestamp": "2026-04-02T05:34:10.534Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git status --porcelain",
+          "timestamp": "2026-04-02T05:34:14.936Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git diff --cached --stat",
+          "timestamp": "2026-04-02T05:34:23.151Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git diff --cached --name-only && echo \"---\" && git log --oneline -3",
+          "timestamp": "2026-04-02T05:35:06.232Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && GIT_PAGER=cat git status --porcelain",
+          "timestamp": "2026-04-02T05:35:59.270Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && GIT_PAGER=cat git diff --cached apps/sample-app/.apm/hooks/validate-app.sh | head -30",
+          "timestamp": "2026-04-02T05:36:03.749Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && GIT_PAGER=cat git diff apps/sample-app/.apm/hooks/validate-app.sh | head -20",
+          "timestamp": "2026-04-02T05:36:09.979Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && GIT_PAGER=cat git show --stat HEAD",
+          "timestamp": "2026-04-02T05:36:24.788Z",
+          "isPipelineOp": false
         }
       ],
       "toolCounts": {
         "intent": 3,
-        "shell": 19,
+        "shell": 30,
         "create": 1
       },
-      "inputTokens": 413348,
-      "outputTokens": 6644,
-      "cacheReadTokens": 389759,
+      "inputTokens": 784717,
+      "outputTokens": 9499,
+      "cacheReadTokens": 756528,
       "cacheWriteTokens": 0
     }
   ]

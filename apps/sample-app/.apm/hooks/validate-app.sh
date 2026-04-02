@@ -45,4 +45,13 @@ fi
 
 # ─── @backend-dev / @frontend-dev append endpoint checks below this line ──
 
+# --- /api/health reachability (anonymous auth, no function key needed) ---
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${BACKEND_URL}/api/health" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" || "$STATUS" == "502" || "$STATUS" == "503" ]]; then
+    echo "Endpoint /api/health unreachable (HTTP $STATUS)"
+    exit 1
+  fi
+fi
+
 exit 0
