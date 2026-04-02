@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T00:01:31.349Z",
+  "generatedAt": "2026-04-02T00:01:59.291Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -693,9 +693,9 @@
       "phase": "post-deploy",
       "attempt": 3,
       "startedAt": "2026-04-01T23:56:56.937Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-02T00:01:59.285Z",
+      "durationMs": 302348,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good - `integration-test` is `pending`. The previous attempt's completion was reset by the orchestrator due to live-ui failure which triggered a redevelopment cycle. Let me now run the full integration test workflow.",
@@ -704,7 +704,8 @@
         "All 11 integration tests passed. Now let me run the APIM gateway validation.",
         "Token is empty from tfvars. Let me get it from Key Vault properly.",
         "Got the demo token. Let me re-run the APIM validation.",
-        "All validations passed: - ✅ Integration tests: 11/11 passed (fn-hello, fn-demo-login, fn-audit) - ✅ APIM GET /sample/audit: 200 - ✅ APIM POST /sample/audit: 201 - ✅ APIM CORS preflight: 200"
+        "All validations passed: - ✅ Integration tests: 11/11 passed (fn-hello, fn-demo-login, fn-audit) - ✅ APIM GET /sample/audit: 200 - ✅ APIM POST /sample/audit: 201 - ✅ APIM CORS preflight: 200",
+        "All done. Here's a summary of the integration test results:  ## Integration Tests — Complete ✅  **Direct Function App tests** (11/11 passed): | Suite | Test | Status | |-------|------|--------| | fn-hello | GET /hello default greeting | ✅ 200 | | fn-hello | GET /hello?name=... custom greeting | ✅ 200 | | fn-hello | GET /hello with name >100 chars | ✅ 400 | | fn-demo-login | POST /auth/login valid creds | ✅ 200 | | fn-demo-login | POST /auth/login invalid creds | ✅ 401 | | fn-demo-login | POST /auth/login missing fields | ✅ 400 | | fn-demo-login | POST /auth/login invalid JSON | ✅ 400 | | fn-audit | POST /audit valid event | ✅ 201 | | fn-audit | POST /audit missing fields | ✅ 400 | | fn-audit | POST /audit invalid JSON | ✅ 400 | | fn-audit | GET /audit returns array | ✅ 200 |  **APIM Gateway validation** (3/3 passed): | Method | Path | Status | |--------|------|--------| | GET | /sample/audit | ✅ 200 | | POST | /sample/audit | ✅ 201 | | OPTIONS | /sample/audit (CORS) | ✅ 200 |"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -783,16 +784,22 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete audit-dashboard integration-test 2>&1",
           "timestamp": "2026-04-02T00:01:10.908Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-02T00:01:31.352Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 6,
-        "shell": 16
+        "shell": 17
       },
-      "inputTokens": 219766,
-      "outputTokens": 4314,
-      "cacheReadTokens": 194622,
-      "cacheWriteTokens": 0
+      "inputTokens": 244388,
+      "outputTokens": 4701,
+      "cacheReadTokens": 218893,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "5ba71fd0d7b8af0a0e213bbd5d4c1f76dbf0c2d6"
     }
   ]
 }
