@@ -150,7 +150,7 @@
       "label": "Architecture & Risk Documented",
       "agent": "@doc-architect",
       "phase": "finalize",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
