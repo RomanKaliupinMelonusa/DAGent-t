@@ -88,8 +88,10 @@ for p in "${PATHS[@]}"; do
   fi
 done
 
-# Exclude pipeline state files — committed exclusively by the orchestrator (mutex)
-git reset HEAD -- '*_STATE.json' '*_TRANS.md' 2>/dev/null || true
+# Exclude pipeline state files from in-progress/ — committed exclusively by the
+# orchestrator (mutex).  Only reset files under in-progress/, NOT archive/ where
+# they belong after archiveFeatureFiles() moves them.
+git reset HEAD -- "${AR}/in-progress/*_STATE.json" "${AR}/in-progress/*_TRANS.md" 2>/dev/null || true
 
 # Auto-include package-lock.json when package.json is in the staged changeset.
 # Prevents lockfile desync that causes CI `npm ci` failures.
