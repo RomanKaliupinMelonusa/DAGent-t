@@ -1,0 +1,97 @@
+{
+  "feature": "health-check-ci",
+  "stepsCompleted": [
+    {
+      "key": "infra-handoff",
+      "agent": "@infra-handoff",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [],
+      "docNote": "No frontend changes required for health-check-ci. The feature is a backend-only health endpoint (GET /api/health) with CI/CD env var injection. Verified existing frontend builds, tests (14/14), and lint pass cleanly."
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [
+        ".github/workflows/deploy-backend.yml",
+        "apps/sample-app/backend/src/functions/__tests__/health.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-health.ts"
+      ],
+      "docNote": "Added GET /api/health endpoint (fn-health.ts, authLevel: anonymous) returning {status,mode} with STRICT_HEALTH_MODE env var. Added integration test and validate-app.sh hook for /api/health reachability."
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [
+        "apps/sample-app/backend/src/functions/__tests__/fn-health.test.ts"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "No dead code found. Analysis: (1) roam_dead_code scanned app boundary — 40 safe candidates all in tools/ or config files outside app scope. (2) All health-check-ci feature symbols (fn-health, HealthStatus/HealthCheckEntry/HealthCheckResponse schemas) verified — schemas in packages/schemas/ protected by safety rules. (3) All frontend exports (Button, Input, getDemoToken, ThemeToggle, DemoAuthProvider, useDemoAuth, apiClient, NavBar) confirmed to have active consumers. (4) Backend: 26 tests pass, Frontend: 14 tests pass. Clean codebase with no dead code to eliminate."
+    }
+  ],
+  "allFilesChanged": [
+    ".github/workflows/deploy-backend.yml",
+    "apps/sample-app/backend/src/functions/__tests__/health.integration.test.ts",
+    "apps/sample-app/backend/src/functions/fn-health.ts",
+    "apps/sample-app/backend/src/functions/__tests__/fn-health.test.ts"
+  ],
+  "summaryIntents": [
+    "Auto-skipped: no frontend changes detected (git diff)",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed",
+    "Auto-skipped: no frontend/e2e/infra changes detected (git diff)"
+  ]
+}
