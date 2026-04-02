@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No new Terraform resources required for health-check-ci feature. Per SPEC: 'Infra: No Terraform changes — the environment variable is injected by CI/CD, not IaC.' The GET /api/health endpoint uses authLevel:anonymous on the Function App (bypasses APIM auth). STRICT_HEALTH_MODE is injected via az functionapp config appsettings set in deploy-backend.yml (CI/CD scope). Terraform plan validates clean (0 to add, 0 to destroy). Existing resources: Function App (func-sample-app-001), APIM (apim-sample-app-001), Key Vault (kv-sampleapp-001) — all unchanged."
     },
     {
       "key": "push-infra",
