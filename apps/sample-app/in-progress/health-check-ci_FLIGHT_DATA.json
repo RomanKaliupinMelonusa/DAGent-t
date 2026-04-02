@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T05:21:30.457Z",
+  "generatedAt": "2026-04-02T05:21:40.337Z",
   "featureSlug": "health-check-ci",
   "items": [
     {
@@ -598,9 +598,9 @@
       "phase": "post-deploy",
       "attempt": 2,
       "startedAt": "2026-04-02T05:09:01.088Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-02T05:21:40.325Z",
+      "durationMs": 759237,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Intent: The deploy-backend workflow was NEVER triggered for `feature/health-check-ci` branch. Zero runs found. The code commits were likely batched with `[skip ci]` state updates, causing GitHub to skip all workflows. Let me trigger the deployment manually.",
@@ -610,7 +610,8 @@
         "Good, both keys retrieved. Let me check the integration test files and then run them.",
         "The tests expect `/api` in the base URL. Let me re-run with the correct URL:",
         "All 9 tests pass (2 health + 7 smoke). Now let me run the APIM gateway validation.",
-        "All tests pass. The health endpoint is anonymous and designed for CI probes (not APIM-routed), and pre-existing APIM endpoints work correctly (`/hello`: 200, `/auth/login`: 200). Time to mark complete."
+        "All tests pass. The health endpoint is anonymous and designed for CI probes (not APIM-routed), and pre-existing APIM endpoints work correctly (`/hello`: 200, `/auth/login`: 200). Time to mark complete.",
+        "All done. Here's a summary of the integration test results:  ## ✅ Integration Tests Passed — `health-check-ci`  | Test Suite | Tests | Result | |---|---|---| | `health.integration.test.ts` (fn-health) | 2/2 | ✅ Pass | | `smoke.integration.test.ts` (fn-hello) | 3/3 | ✅ Pass | | `smoke.integration.test.ts` (fn-demo-login) | 4/4 | ✅ Pass | | **Total** | **9 passed, 0 failed** | ✅ |  ### APIM Gateway Validation  | Endpoint | Method | Path | Status | |---|---|---|---| | Health | GET | Direct only (anonymous, by design) | ✅ 200 | | Hello | GET | `/hello` through APIM | ✅ 200 | | Demo Login | POST | `/auth/login` through APIM | ✅ 200 |  ### What happened on this attempt  The previous attempt failed because the `deploy-backend.yml` workflow was **never triggered** for `feature/health-check-ci` (zero runs found). The code commits were batched with `[skip ci]` state updates, causing GitHub to skip all workflows. I manually triggered the deployment via `gh workflow run`, waited for it to succeed, then ran and passed all tests."
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -834,17 +835,23 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete health-check-ci integration-test 2>&1",
           "timestamp": "2026-04-02T05:21:25.851Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-02T05:21:30.462Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 8,
-        "shell": 50,
+        "shell": 51,
         "read_bash": 1
       },
-      "inputTokens": 1175295,
-      "outputTokens": 13982,
-      "cacheReadTokens": 1138157,
-      "cacheWriteTokens": 0
+      "inputTokens": 1221901,
+      "outputTokens": 14325,
+      "cacheReadTokens": 1184456,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "12f7ffa1d58f5e7836fbfa1d010e206b188f3f65"
     }
   ]
 }
