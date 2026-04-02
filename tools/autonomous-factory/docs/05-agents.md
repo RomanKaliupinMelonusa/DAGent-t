@@ -230,8 +230,8 @@ flowchart TD
 | `schemaDevPrompt()` | schema-dev | Zod v4 schemas, @branded/schemas, validate:schemas |
 | `infraArchitectPrompt()` | infra-architect | IaC validate + plan, infra-interfaces.md (identity from APM instructions) |
 | `infraHandoffPrompt()` | infra-handoff | Capture `terraform output -json`, write infra-interfaces.md |
-| `backendDevPrompt()` | backend-dev | Backend + infra dev, TypeScript (identity from APM instructions) |
-| `frontendDevPrompt()` | frontend-dev | Next.js 16, React 19, Playwright E2E mandate |
+| `backendDevPrompt()` | backend-dev | Backend + infra dev, TypeScript (identity from APM instructions). **Dual-scope commits:** app changes via `backend` scope, `.github/workflows/` changes via `cicd` scope |
+| `frontendDevPrompt()` | frontend-dev | Next.js 16, React 19, Playwright E2E mandate. **Dual-scope commits:** app changes via `frontend` scope, `.github/workflows/` changes via `cicd` scope |
 | `backendTestPrompt()` | backend-unit-test, integration-test | Jest unit tests (pre-deploy) OR integration tests (post-deploy) |
 | `frontendUiTestPrompt()` | frontend-unit-test, live-ui | Jest (pre-deploy) OR AST-driven Playwright E2E with deep diagnostic interception (post-deploy) |
 | `deployManagerPrompt()` | push-infra, push-app | Deterministic push via `agent-commit.sh` (no LLM fallback) |

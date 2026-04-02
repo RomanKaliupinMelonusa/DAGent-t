@@ -7,7 +7,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError } from "../triage.js";
+import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError, validateFaultDomain, detectKeywordDomains } from "../triage.js";
+import type { ValidationResult } from "../triage.js";
+import { normalizeDiagnosticTrace } from "../session-runner.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -843,6 +845,218 @@ describe("triageFailure (deployment-stale)", () => {
     const keys = triageFailure("live-ui", msg, NO_NA, undefined, patterns);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateFaultDomain — Defense-in-Depth override (Fix A)
+// ---------------------------------------------------------------------------
+
+describe("validateFaultDomain", () => {
+  it("augments backend+infra with deploy items when trace mentions .github/workflows", () => {
+    const result = validateFaultDomain(
+      "backend+infra",
+      "deploy-backend.yml sets type: pkg.type but .github/workflows/deploy-backend.yml never committed the fix",
+    );
+    // Domain stays backend+infra (dev agent runs to fix workflow file)
+    assert.equal(result.domain, "backend+infra");
+    // Deploy items augmented so the cicd-scope commit gets pushed
+    assert.equal(result.augmentWithDeploy, true);
+  });
+
+  it("augments backend with deploy items when trace mentions workflow file", () => {
+    const result = validateFaultDomain(
+      "backend",
+      "Error in workflow file .github/workflows/deploy-backend.yml — artifact step fails",
+    );
+    assert.equal(result.domain, "backend");
+    assert.equal(result.augmentWithDeploy, true);
+  });
+
+  it("does NOT augment backend when no cicd signals present", () => {
+    const result = validateFaultDomain(
+      "backend",
+      "error TS2591: Cannot find name 'crypto' in /backend/src/functions/fn-demo.ts",
+    );
+    assert.equal(result.domain, "backend");
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("does NOT augment cicd (already routes to deploy)", () => {
+    const result = validateFaultDomain(
+      "cicd",
+      ".github/workflows/deploy-backend.yml references bad artifact step",
+    );
+    assert.equal(result.domain, "cicd");
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("does NOT augment deployment-stale", () => {
+    const result = validateFaultDomain(
+      "deployment-stale",
+      "SWA deployment stale — .github/workflows/deploy-frontend.yml never re-triggered",
+    );
+    assert.equal(result.domain, "deployment-stale");
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("does NOT augment blocked", () => {
+    const result = validateFaultDomain(
+      "blocked",
+      "IAM error — .github/workflows access denied",
+    );
+    assert.equal(result.domain, "blocked");
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("does NOT augment environment", () => {
+    const result = validateFaultDomain(
+      "environment",
+      ".github/workflows secret not configured",
+    );
+    assert.equal(result.domain, "environment");
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("augments frontend with deploy items when 'working-tree fix' + workflow in trace", () => {
+    const result = validateFaultDomain(
+      "frontend",
+      "working-tree fix applied to .github/workflows/deploy-frontend.yml but never committed",
+    );
+    assert.equal(result.domain, "frontend");
+    assert.equal(result.augmentWithDeploy, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triageFailure integration — cicd augmentation end-to-end (Fix A routing)
+// ---------------------------------------------------------------------------
+
+describe("triageFailure with cicd augmentation", () => {
+  it("backend+infra with .github/workflows root cause → resets backend-dev AND push-app", () => {
+    // The exact Groundhog-Day scenario: agent classifies as backend+infra,
+    // but the root cause is a .github/workflows/ file. The dev agent must
+    // run to fix the workflow AND push-app must be reset to deploy it.
+    const msg = makeJsonMsg(
+      "backend+infra",
+      "deploy-backend.yml sets type: pkg.type but .github/workflows/deploy-backend.yml never committed the fix",
+    );
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    // Dev agent runs (can edit .github/ files with Fix C dual-commit instructions)
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    // Deploy items augmented so the cicd-scope commit gets pushed
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(keys.includes("poll-app-ci"), `Expected poll-app-ci in: ${keys}`);
+    // Failing item itself
+    assert.ok(keys.includes("integration-test"), `Expected integration-test in: ${keys}`);
+  });
+
+  it("backend without cicd root cause → does NOT get deploy augmentation", () => {
+    const msg = makeJsonMsg("backend", "API endpoint /api/hello returns 500");
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
+    assert.ok(!keys.includes("push-app"), `Unexpected push-app in: ${keys}`);
+  });
+
+  it("cicd domain → routes to push-app without augmentation (already correct)", () => {
+    const msg = makeJsonMsg("cicd", ".github/workflows/deploy-backend.yml artifact step mismatch");
+    const keys = triageFailure("poll-app-ci", msg, NO_NA);
+    assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
+    assert.ok(keys.includes("poll-app-ci"), `Expected poll-app-ci in: ${keys}`);
+    // cicd domain does NOT reset dev agents
+    assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectKeywordDomains — pure keyword signal detection
+// ---------------------------------------------------------------------------
+
+describe("detectKeywordDomains", () => {
+  it("detects backend signals", () => {
+    const result = detectKeywordDomains("error TS2591 in /backend/src/functions/fn-demo.ts");
+    assert.equal(result.hasBackend, true);
+    assert.equal(result.hasFrontend, false);
+  });
+
+  it("detects frontend signals", () => {
+    const result = detectKeywordDomains("Module not found in /frontend/src/components/Foo.tsx");
+    assert.equal(result.hasFrontend, true);
+    assert.equal(result.hasBackend, false);
+  });
+
+  it("detects cicd signals from .github/workflows", () => {
+    const result = detectKeywordDomains(".github/workflows/deploy-backend.yml artifact step mismatch");
+    assert.equal(result.hasCicd, true);
+  });
+
+  it("detects infra signals", () => {
+    const result = detectKeywordDomains("terraform plan failed: azurerm_resource_group missing");
+    assert.equal(result.hasInfra, true);
+  });
+
+  it("returns all-false for unrecognized message", () => {
+    const result = detectKeywordDomains("everything is fine");
+    assert.equal(result.hasBackend, false);
+    assert.equal(result.hasFrontend, false);
+    assert.equal(result.hasCicd, false);
+    assert.equal(result.hasInfra, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeDiagnosticTrace — semantic circuit breaker normalization (Fix B)
+// ---------------------------------------------------------------------------
+
+describe("normalizeDiagnosticTrace", () => {
+  it("strips 7-char git SHAs", () => {
+    const result = normalizeDiagnosticTrace("commit 3b96258 broke deploy");
+    assert.ok(!result.includes("3b96258"), `SHA not stripped: ${result}`);
+    assert.ok(result.includes("<SHA>"));
+  });
+
+  it("strips 40-char full SHAs", () => {
+    const sha = "a".repeat(40);
+    const result = normalizeDiagnosticTrace(`merge ${sha} into main`);
+    assert.ok(!result.includes(sha), "Full SHA not stripped");
+    assert.ok(result.includes("<SHA>"));
+  });
+
+  it("strips ISO timestamps", () => {
+    const result = normalizeDiagnosticTrace("Failed at 2025-01-15T09:30:45Z — retrying");
+    assert.ok(!result.includes("2025-01-15T09:30:45Z"), "Timestamp not stripped");
+    assert.ok(result.includes("<TS>"));
+  });
+
+  it("normalizes HEAD (sha) references", () => {
+    const result = normalizeDiagnosticTrace("HEAD (abc1234) is behind remote");
+    assert.ok(result.includes("HEAD (<SHA>)"), `Expected HEAD (<SHA>): ${result}`);
+  });
+
+  it("normalizes 'run NNN' identifiers", () => {
+    const result = normalizeDiagnosticTrace("GitHub Actions run 12345678 failed");
+    assert.ok(result.includes("run <ID>"), `Expected run <ID>: ${result}`);
+  });
+
+  it("collapses whitespace", () => {
+    const result = normalizeDiagnosticTrace("error   in    file   path");
+    assert.ok(!result.includes("  "), `Whitespace not collapsed: ${result}`);
+  });
+
+  it("makes genuinely different traces compare as different", () => {
+    const a = normalizeDiagnosticTrace("error TS2591 in fn-demo.ts at 2025-01-15T09:30:45Z commit abc1234");
+    const b = normalizeDiagnosticTrace("CORS 403 Forbidden on /api/hello at 2025-01-15T10:00:00Z commit def5678");
+    assert.notEqual(a, b);
+  });
+
+  it("makes same-root-cause traces with different metadata compare as equal", () => {
+    const a = normalizeDiagnosticTrace(
+      "deploy-backend.yml sets type: pkg.type — commit 3b96258 at 2025-01-15T09:30:45Z run 111",
+    );
+    const b = normalizeDiagnosticTrace(
+      "deploy-backend.yml sets type: pkg.type — commit f1a2b3c at 2025-01-15T10:00:00Z run 222",
+    );
+    assert.equal(a, b);
   });
 });
 

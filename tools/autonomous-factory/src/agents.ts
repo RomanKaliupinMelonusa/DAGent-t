@@ -195,7 +195,9 @@ ${apmContext.agents["backend-dev"].rules}
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
 9. **Local Quality Gate (MANDATORY):** Run \`${resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`}\` AND \`cd ${ctx.appRoot}/backend && npx tsc --noEmit && npm run lint\`. All tests, type-checking, and linting MUST pass with zero errors before committing. If any fail, fix the issues before proceeding. This mirrors CI exactly and catches errors in seconds rather than waiting minutes for GitHub Actions.
 9b. **Integration Test Mandate (MANDATORY):** If you created or modified any HTTP-triggered backend endpoint, you MUST add corresponding test blocks to the existing \`.integration.test.ts\` suite. See your coding rules for coverage requirements. Unit tests alone are insufficient — the post-deploy \`integration-test\` agent will fail the pipeline if coverage is missing.
-10. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
+10. Commit your changes:
+    - Backend/infra/packages changes: \`bash tools/autonomous-factory/agent-commit.sh backend "feat(<scope>): <description>"${ctx.commitScopes?.backend ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
+    - **If you also modified \`.github/workflows/\` files:** \`bash tools/autonomous-factory/agent-commit.sh cicd "fix(ci): <description>"\` (the \`backend\` scope does NOT cover \`.github/\` — you MUST use a separate \`cicd\` commit or the change will be lost)
 11. If tests fail and you cannot fix after 2 attempts, record the failure.
 
 ## Infrastructure Rollback (Wave 1 Reset)
@@ -419,7 +421,9 @@ ${apmContext.agents["frontend-dev"].rules}
    - **ARCH** (architecture) violations are advisory — fix if straightforward, otherwise note in your doc-note.
    - If \`roam_check_rules\` is unavailable, skip and note the limitation in your completion message.
 13. Verify lockfile is in sync: \`cd ${ctx.repoRoot} && npm ci --ignore-scripts 2>&1 | tail -5\`. If it fails, run \`npm install --ignore-scripts\`.
-14. Commit your changes: \`bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"${ctx.commitScopes?.frontend ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
+14. Commit your changes:
+    - Frontend/e2e/packages changes: \`bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"${ctx.commitScopes?.frontend ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ") : ""}\`
+    - **If you also modified \`.github/workflows/\` files:** \`bash tools/autonomous-factory/agent-commit.sh cicd "fix(ci): <description>"\` (the \`frontend\` scope does NOT cover \`.github/\` — you MUST use a separate \`cicd\` commit or the change will be lost)
 15. If tests fail and you cannot fix after 2 attempts, record the failure.
 
 ## Infrastructure Rollback (Wave 1 Reset)

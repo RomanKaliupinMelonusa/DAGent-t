@@ -427,7 +427,7 @@ flowchart LR
 | Tier | Signal Source | Example | Action |
 |:---:|---|---|---|
 | **0** | Unfixable patterns | `authorization_requestdenied`, `error acquiring state lock`, `resource already exists` | Return `[]` — halt pipeline, salvage Draft PR |
-| **1** | Agent-emitted JSON | `{"fault_domain":"backend","diagnostic_trace":"..."}` | Deterministic routing by `fault_domain` |
+| **1** | Agent-emitted JSON + Validation | `{"fault_domain":"backend","diagnostic_trace":"..."}` | Deterministic routing by `fault_domain`. Runs `validateFaultDomain()` as Defense-in-Depth: if `CICD_ROOT_CAUSE_INDICATORS` prove the fix is in `.github/workflows/`, augments the reset list with deploy items (`push-app`, `poll-app-ci`) while keeping the original domain so the dev agent can fix the workflow file |
 | **2** | CI metadata header | `DOMAIN: backend,frontend` (from `poll-ci.sh`) | Job-name-based routing; schemas cascade to all |
 | **3** | Legacy keywords | `api`, `500`, `cors`, `/backend/`, `/frontend/` | Fallback for SDK crashes; no-match → itemKey only |
 

@@ -127,7 +127,7 @@ Key architectural decisions:
 1. **Agents are stateless** — each gets a fresh `CopilotClient` session with no memory of prior sessions
 2. **The watchdog is a `while(true)` loop** (`watchdog.ts` L288–380) that terminates on `complete`, `blocked`, or `halt`
 3. **State commits are centralized** — `commitAndPushState()` (`watchdog.ts` L218–290) runs **after** each parallel batch, eliminating git contention between parallel agents. A **push guard** inspects `git diff --name-only origin/<branch>..HEAD` — if any files outside `in-progress/` or `archive/` are unpushed, the push is deferred to the deterministic `push-app`/`push-infra` step, preventing premature deploy-workflow triggers from stale code pushes
-4. **Deterministic bypasses** — `push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci` skip the SDK entirely and run shell scripts directly (`session-runner.ts` L487–560)
+4. **Deterministic bypasses** — `push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci` skip the SDK entirely and run shell scripts directly (`session-runner.ts` L660, L728). A `DEPLOY_ITEMS` guard at L485 with a `throw new Error()` safety net ensures no deploy item ever falls through to an LLM session. Note: `create-draft-pr` is *not* in `DEPLOY_ITEMS` — it requires an LLM agent session for PR creation.
 
 ## 4. Agent Prompt Assembly: What Each Agent Receives
 
@@ -216,7 +216,7 @@ For `infra-architect`, the completion block also includes a mandatory Terraform 
 
 Context injection is the mechanism that makes the pipeline **self-healing** rather than retry-and-hope. It works by appending structured context fragments to the `taskPrompt` string **before** it is sent to the SDK session — so the LLM agent receives the injected context as part of its user message on the very first turn.
 
-All injection logic lives in `tools/autonomous-factory/src/context-injection.ts` — pure string builders with zero SDK coupling. The orchestration point is in `runAgentSession()` at `session-runner.ts` L820–880, where injections are evaluated in sequence and appended to `taskPrompt`.
+All injection logic lives in `tools/autonomous-factory/src/context-injection.ts` — pure string builders with zero SDK coupling. The orchestration point is in `runAgentSession()` at `session-runner.ts` L965–1100, where injections are evaluated in sequence and appended to `taskPrompt`.
 
 ##### When does injection happen?
 
@@ -304,7 +304,7 @@ wipe the codebase clean back to the main branch. Then, re-explore the codebase a
 this feature using a completely different architectural approach.
 ```
 
-This is the nuclear option — it tells the agent to `git reset --hard` to the base branch and start over. It works alongside the circuit breaker: `shouldSkipRetry()` detects identical errors without code changes and normally halts the pipeline, but for DEV items it grants **one bypass** (`circuitBreakerBypassed` set in `session-runner.ts` L302–306) so the revert warning gets a chance to fire.
+This is the nuclear option — it tells the agent to `git reset --hard` to the base branch and start over. It works alongside the circuit breaker: `shouldSkipRetry()` (using normalized traces via `normalizeDiagnosticTrace()`) detects identical errors without code changes and normally halts the pipeline, but for DEV items it grants **one bypass** (`circuitBreakerBypassed` set in `session-runner.ts` L376–378) so the revert warning gets a chance to fire.
 
 **4. Infra Rollback Context** — `buildInfraRollbackContext()` (`context-injection.ts` L119–134)
 
@@ -364,7 +364,7 @@ Step by step:
 
 ##### The Cognitive Circuit Breaker — Runtime Injection
 
-There are **two more injection types** that don't happen at prompt assembly time — they happen **during** the session via SDK event hooks. The first is the cognitive circuit breaker in `wireToolLogging()` at `session-runner.ts` L1078–1175:
+There are **two more injection types** that don't happen at prompt assembly time — they happen **during** the session via SDK event hooks. The first is the cognitive circuit breaker in `wireToolLogging()` at `session-runner.ts` L1345–1440:
 
 ```mermaid
 sequenceDiagram
@@ -467,7 +467,7 @@ The `docNote` values come from dev agents calling `npm run pipeline:doc-note` be
 | 6 | Pre-timeout wrap-up | `session-runner.ts` | 80% of session timeout elapsed | Any agent in-session | Mutate `tool.execution_complete` result |
 | 7 | Change manifest | `context-injection.ts` | Before `docs-archived` session | `docs-archived` only | Write `_CHANGES.json` file |
 
-Session creation happens at `session-runner.ts` L800–810:
+Session creation happens at `session-runner.ts` L997–1005:
 
 ```typescript
 const session = await client.createSession({
@@ -479,7 +479,7 @@ const session = await client.createSession({
 });
 ```
 
-The `ITEM_ROUTING` map (`agents.ts` L1614–1700) binds each pipeline item key to its prompt builder + MCP server resolution.
+The `ITEM_ROUTING` map (`agents.ts` L1679–1770) binds each pipeline item key to its prompt builder + MCP server resolution.
 
 ## 5. The Self-Healing Feedback Loop
 
@@ -516,9 +516,9 @@ stateDiagram-v2
 The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4-tier evaluation:
 
 1. **Unfixable signals** — halt immediately (Azure AD errors, state locks, permission denied)
-2. **Structured JSON** — agent emits `{"fault_domain":"backend","diagnostic_trace":"..."}`, deterministic routing by `fault_domain`
+2. **Structured JSON** — agent emits `{"fault_domain":"backend","diagnostic_trace":"..."}`, routed by `fault_domain`. A **Defense-in-Depth validation layer** (`validateFaultDomain()` at L407) then checks keyword signals against `CICD_ROOT_CAUSE_INDICATORS` (L382) — if deterministic keywords prove the root cause involves `.github/workflows/` files, the original domain is *kept* (so the dev agent runs and can fix the workflow) but deploy items (`push-app`, `poll-app-ci`) are *augmented* into the reset list. Returns `ValidationResult { domain, augmentWithDeploy }`, not a domain override. Uses `detectKeywordDomains()` (L338) — a pure function shared with Tier 3.
 3. **CI `DOMAIN:` header** — job-based routing from `poll-ci.sh` metadata
-4. **Keyword fallback** — legacy pattern matching for SDK crashes / malformed output
+4. **Keyword fallback** — uses `detectKeywordDomains()` for consistent signal detection; legacy pattern matching for SDK crashes / malformed output
 
 ### Fault Domain Routing
 
@@ -530,15 +530,17 @@ The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4
 | `backend+infra` | `backend-dev` + `backend-unit-test` + failing item |
 | `frontend+infra` | `frontend-dev` + `frontend-unit-test` + failing item |
 | `deployment-stale` | `push-app` + `poll-app-ci` + failing item (code is correct — only re-deploy needed) |
-| `cicd` | `push-app` + `poll-app-ci` + failing item (workflow file issue) |
+| `cicd` | `push-app` + `poll-app-ci` + failing item (workflow file issue — only used when agent itself classifies as cicd) |
+
+> **CI/CD Augmentation:** When validation detects CI/CD root-cause indicators in an error classified as another domain (e.g., `backend+infra`), the original domain's reset keys are kept *and* `push-app` + `poll-app-ci` are added. This ensures the dev agent runs to fix the `.github/workflows/` file (using dual-scope commit instructions from Fix C) and the deploy pipeline re-runs to verify. See `validateFaultDomain()` at `triage.ts` L407.
 | `infra` | `infra-architect` + failing item |
 | `environment` | Failing item only (not a code bug — retry may resolve) |
 | `blocked` | Empty — pipeline halts, triggers Graceful Degradation to Draft PR |
 
 ### Safety Rails
 
-- **Circuit breaker** (`session-runner.ts` L195–238) — skips retry if identical error + no code changed since last attempt. For DEV items stuck in **timeout loops**, triggers `salvageForDraft()` instead of halting — opens a Draft PR for human review rather than losing all work
-- **Cognitive circuit breaker** (`session-runner.ts` L1088–1175) — soft limit injects frustration prompt into tool results; hard limit force-disconnects. **Pre-timeout wrap-up** fires at 80% of session timeout to give the agent a chance to commit and report status
+- **Circuit breaker** (`session-runner.ts` L229–310) — `normalizeDiagnosticTrace()` (L229) strips dynamic metadata (git SHAs, timestamps, run IDs, line numbers) from diagnostic traces before comparison, preventing false negatives where semantically identical errors differ only in build-specific entropy. `shouldSkipRetry()` (L260) then compares normalized traces + checks if only pipeline state files changed since last attempt. For DEV items stuck in **timeout loops**, triggers `salvageForDraft()` instead of halting — opens a Draft PR for human review rather than losing all work
+- **Cognitive circuit breaker** (`session-runner.ts` L1345–1440) — soft limit injects frustration prompt into tool results; hard limit force-disconnects. **Pre-timeout wrap-up** fires at 80% of session timeout to give the agent a chance to commit and report status
 - **Self-mutating validation hooks** — the orchestrator delegates deployment verification to **self-mutating bash scripts** that agents dynamically extend as they provision new infrastructure or endpoints:
   - `runValidateApp()` (`session-runner.ts`) — runs after `poll-app-ci` succeeds. Delegates to `hooks.validateApp` (`.apm/hooks/validate-app.sh`). If the hook exits `1`, the item fails with `deployment-stale` fault domain and triggers triage reroute — blocking expensive post-deploy agents from booting up. `@backend-dev` and `@frontend-dev` append endpoint checks to this hook as they create new routes
   - `runValidateInfra()` (`session-runner.ts`) — runs after `infra-handoff` agent session completes. Delegates to `hooks.validateInfra` (`.apm/hooks/validate-infra.sh`). If the hook exits `1`, the item fails with `infra` fault domain → triage resets `["infra-architect", "infra-handoff"]`. `@infra-architect` appends resource reachability checks to this hook as it provisions new data-plane resources
@@ -591,7 +593,7 @@ Defined in `types.ts` L96–137, `ItemSummary` captures everything about one att
 | `intents` | `string[]` | `wireIntentLogging()` — `assistant.intent` events |
 | `messages` | `string[]` | `wireMessageCapture()` — `assistant.message` events |
 | `filesRead` | `string[]` | `wireToolLogging()` — `read_file`/`view` tool calls |
-| `filesChanged` | `string[]` | `wireToolLogging()` — `write_file`/`edit_file`/`create_file` tool calls + `extractShellWrittenFiles()` |
+| `filesChanged` | `string[]` | `wireToolLogging()` — `write_file`/`edit_file`/`create_file` tool calls + `extractShellWrittenFiles()`. **Git-diff fallback:** after session disconnect, if `filesChanged` is empty, `getAgentDirectoryPrefixes()` (L110) scopes a `git diff --name-only <preStepRef>..HEAD` to the agent's directories to catch files written by tools the SDK didn't instrument |
 | `shellCommands` | `ShellEntry[]` | `wireToolLogging()` — `bash`/`write_bash` tool calls (first line, ≤200 chars) |
 | `toolCounts` | `Record<string, number>` | `wireToolLogging()` — per-category counter (file-read, file-write, shell, search, intent) |
 | `errorMessage` | `string?` | Set on failure, SDK exception, or hard circuit breaker |
@@ -602,7 +604,7 @@ Supporting types: `ShellEntry` (L139–144) has `{ command, timestamp, isPipelin
 
 ### The 5 Event Listeners
 
-All 5 are wired in `runAgentSession()` at `session-runner.ts` L822–826, immediately after `client.createSession()`:
+All 5 are wired in `runAgentSession()` at `session-runner.ts` L1016–1020, immediately after `client.createSession()`:
 
 ```typescript
 wireToolLogging(session, itemSummary, repoRoot, agentToolLimits);
@@ -612,11 +614,11 @@ wireMessageCapture(session, itemSummary);
 wireUsageTracking(session, itemSummary);
 ```
 
-#### 1. `wireToolLogging()` — `session-runner.ts` L1082–1177
+#### 1. `wireToolLogging()` — `session-runner.ts` L1345–1440
 
 Subscribes to **two** events:
 
-- **`tool.execution_start`** (L1089): On every tool call:
+- **`tool.execution_start`** (L1351): On every tool call:
   1. Logs a human-readable line to console using `TOOL_LABELS` (e.g., `📄 Read → backend/src/functions/fn-hello.ts`)
   2. Categorizes the tool via `TOOL_CATEGORIES` map (e.g., `read_file` → `"file-read"`, `bash` → `"shell"`), increments `itemSummary.toolCounts[category]`
   3. File tracking: `write_file`/`edit_file`/`create_file` → pushes to `filesChanged`; `read_file`/`view` → pushes to `filesRead` (both deduped)
@@ -624,26 +626,26 @@ Subscribes to **two** events:
   5. Shell file write detection: calls `extractShellWrittenFiles()` (L82–95) which matches against 7 `SHELL_WRITE_PATTERNS` (L66–74) — `sed -i`, `tee`, `cat >`, `echo >`, `printf >`, `cp`, `mv` — and captures target file paths, resolved relative to repo root, excluding `_STATE.json` and `_TRANS.md`
   6. **Cognitive circuit breaker (hard)**: if `totalCalls >= hardLimit` (default 40), sets `outcome = "error"`, records error message, calls `session.disconnect()` to force-terminate
 
-- **`tool.execution_complete`** (L1140): Soft circuit breaker — if `totalCalls >= softLimit` (default 30) and not yet fired, mutates `event.data.result.content` to append the frustration prompt. This is the only listener that **modifies** SDK data rather than just reading it.
+- **`tool.execution_complete`** (L1408): Soft circuit breaker — if `totalCalls >= softLimit` (default 30) and not yet fired, mutates `event.data.result.content` to append the frustration prompt. This is the only listener that **modifies** SDK data rather than just reading it.
 
-#### 2. `wirePlaywrightLogging()` — `session-runner.ts` L1179–1220
+#### 2. `wirePlaywrightLogging()` — `session-runner.ts` L1477–1520
 
 Only active when `itemKey === "live-ui"`. Returns a local `PlaywrightLogEntry[]` array (not written into `ItemSummary`).
 
-- **`tool.execution_start`** (L1183): Filters for tools starting with `"playwright-"`, creates entry with `{ timestamp, tool, args }`, logs with 🎭 prefix
-- **`tool.execution_complete`** (L1199): Finds the open entry (no `success` yet), sets `success` and `result` (truncated to 500 chars)
+- **`tool.execution_start`** (L1483): Filters for tools starting with `"playwright-"`, creates entry with `{ timestamp, tool, args }`, logs with 🎭 prefix
+- **`tool.execution_complete`** (L1499): Finds the open entry (no `success` yet), sets `success` and `result` (truncated to 500 chars)
 
 The array is consumed after the session by `writePlaywrightLog()` in `reporting.ts` L143–177, which writes `<slug>_PLAYWRIGHT-LOG.md` with per-action sections showing ✅/❌ status, arguments, and results.
 
-#### 3. `wireIntentLogging()` — `session-runner.ts` L1222–1226
+#### 3. `wireIntentLogging()` — `session-runner.ts` L1524–1528
 
 - **`assistant.intent`**: Pushes `event.data.intent` to `itemSummary.intents`. These are high-level agent self-reports like "Implementing the /generate endpoint".
 
-#### 4. `wireMessageCapture()` — `session-runner.ts` L1228–1234
+#### 4. `wireMessageCapture()` — `session-runner.ts` L1531–1537
 
 - **`assistant.message`**: Pushes whitespace-normalized `event.data.content` to `itemSummary.messages`. Captures the full text of every assistant turn.
 
-#### 5. `wireUsageTracking()` — `session-runner.ts` L1236–1249
+#### 5. `wireUsageTracking()` — `session-runner.ts` L1540–1555
 
 - **`assistant.usage`**: Accumulates `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` via `+=`. Skips zero-usage events.
 
@@ -690,7 +692,7 @@ After every session (success, failure, circuit-break, auto-skip, deterministic b
 
 1. `itemSummary.headAfterAttempt = git rev-parse HEAD` — snapshot for circuit breaker dedup
 2. `pipelineSummaries.push(itemSummary)` — append to the in-memory `PipelineRunState` array
-3. `flushReports(config, state)` (`session-runner.ts` L1255–1260) — calls two report writers:
+3. `flushReports(config, state)` (`session-runner.ts` L1564–1570) — calls two report writers:
 
 #### `writePipelineSummary()` — `reporting.ts` L252–412
 

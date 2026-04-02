@@ -178,7 +178,8 @@ poll-infra-plan item?
 | **Infra dev items** (schema-dev, infra-architect) | 20 min | Complex implementation, Terraform planning |
 | **App dev items** (backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
 | **Test items** (backend-unit-test, frontend-unit-test) | 10 min | Scoped to test writing, fewer files |
-| **Infra deploy items** (push-infra, poll-infra-plan, create-draft-pr) | 15 min | Deterministic shell bypasses (no LLM). `poll-infra-plan` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
+| **Infra push/poll** (push-infra, poll-infra-plan) | 15 min | Deterministic shell bypasses (no LLM). `poll-infra-plan` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
+| **Draft PR** (create-draft-pr) | 15 min | LLM agent session — creates Draft PR (requires agentic reasoning, not a shell bypass) |
 | **Approval gate** (await-infra-approval) | ∞ | Human gate — pipeline pauses until `/dagent approve-infra` |
 | **Infra handoff** (infra-handoff) | 15 min | Capture Terraform outputs, write infra-interfaces.md |
 | **App deploy items** (push-app, poll-app-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-app-ci` captures CI failure logs and routes to triage |
@@ -276,7 +277,9 @@ classDiagram
 | `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After publish-pr |
 | `commitAndPushState()` | watchdog.ts | Commit state files + conditional push (push guard: skips push if unpushed code files exist outside `in-progress/` or `archive/`) | Main loop |
 | `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
-| `shouldSkipRetry()` | session-runner.ts | Circuit breaker — identical error with no code changes | `runItemSession()` |
+| `shouldSkipRetry()` | session-runner.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` before comparing. Strips git SHAs, timestamps, run IDs, and line numbers to detect semantically identical errors across retries | `runItemSession()` |
+| `normalizeDiagnosticTrace()` | session-runner.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces for semantic circuit breaker comparison | `shouldSkipRetry()` |
+| `getAgentDirectoryPrefixes()` | session-runner.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution (prevents cross-agent pollution in parallel runs) | Post-session `filesChanged` fallback |
 | `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
 | `runValidateApp()` | session-runner.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
 | `runValidateInfra()` | session-runner.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
@@ -298,7 +301,9 @@ classDiagram
 | `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
 | `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
 | `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | `runAgentSession()` |
-| `triageFailure()` | triage.ts | Keyword/structured routing of post-deploy failures to dev items | `handleFailureReroute()` |
+| `triageFailure()` | triage.ts | Multi-tier routing of post-deploy failures to dev items. Tier 1 runs `validateFaultDomain()` to detect CI/CD root causes and augment reset keys with deploy items | `handleFailureReroute()` |
+| `validateFaultDomain()` | triage.ts | Defense-in-Depth: detect CI/CD root-cause indicators in agent-classified errors and augment reset list with deploy items (keeps original domain so dev agent can fix `.github/` files) | `triageFailure()` Tier 1 |
+| `detectKeywordDomains()` | triage.ts | Pure keyword signal detection shared by Tier 1 validation and Tier 3 keyword fallback | `validateFaultDomain()`, `triageByKeywords()` |
 
 ---
 

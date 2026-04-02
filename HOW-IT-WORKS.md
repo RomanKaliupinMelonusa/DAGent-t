@@ -222,9 +222,9 @@ sequenceDiagram
 `triageFailure()` uses a 4-tier evaluation:
 
 1. **Unfixable signals** (Azure AD, permission denied) → pipeline halts, opens a Draft PR for human remediation
-2. **Structured JSON** with `fault_domain` → deterministic routing by domain
+2. **Structured JSON** with `fault_domain` → deterministic routing by domain. A **validation layer** (`validateFaultDomain()`) checks keyword signals against `CICD_ROOT_CAUSE_INDICATORS` — if the root cause proves to involve `.github/workflows/` files, the original domain is kept (dev agent runs to fix the workflow) and deploy items are *augmented* into the reset list. Uses `detectKeywordDomains()` — shared with Tier 3.
 3. **CI `DOMAIN:` header** → job-based routing from poll-ci metadata
-4. **Keyword fallback** → pattern matching ("terraform" → infra, "build" → app)
+4. **Keyword fallback** → pattern matching via `detectKeywordDomains()` ("terraform" → infra, "build" → app)
 
 | `fault_domain` | Items reset |
 |---|---|
@@ -234,7 +234,9 @@ sequenceDiagram
 | `backend+infra` | backend-dev + backend-unit-test + failing item |
 | `frontend+infra` | frontend-dev + frontend-unit-test + failing item |
 | `deployment-stale` | push-app + poll-app-ci + failing item (code correct — re-deploy only) |
-| `cicd` | push-app + poll-app-ci + failing item |
+| `cicd` | push-app + poll-app-ci + failing item (only when agent itself classifies as cicd) |
+
+> **CI/CD Augmentation:** When the validation layer detects CI/CD root-cause indicators in an error classified as another domain (e.g., `backend+infra` with `.github/workflows` in the trace), the original domain's items stay in the reset list *and* `push-app` + `poll-app-ci` are added. The dev agent runs to fix the workflow file using dual-scope commit instructions (`backend` + `cicd` scopes), and the deploy pipeline re-runs.
 | `infra` | infra-architect + failing item |
 | `environment` | Failing item only (retry may resolve) |
 | `blocked` | Empty — pipeline halts, opens Draft PR |
@@ -245,7 +247,7 @@ Multiple safety mechanisms protect against loops and waste:
 
 ```mermaid
 graph TD
-    FAIL["Agent session fails"] --> CHECK{"Same error +<br/>same git HEAD<br/>as last attempt?"}
+    FAIL["Agent session fails"] --> CHECK{"Same normalized error +<br/>same git HEAD<br/>as last attempt?"}
     CHECK -->|No| RETRY["Normal retry"]
     CHECK -->|Yes| DEV{"DEV item?"}
     DEV -->|No| HALT["Halt pipeline"]
@@ -260,7 +262,7 @@ graph TD
     HARD["Tool calls ≥ hard limit<br/>(default 40)"] --> KILL["Force disconnect session"]
 ```
 
-**Identical-error circuit breaker** (top): If an agent fails with the exact same error *and* the same git HEAD (meaning it changed nothing), retrying is pointless. For dev items, one bypass is granted so the revert warning can fire and the agent gets a chance to wipe-and-rebuild. If a DEV item is stuck in a **timeout loop** (error is "Timeout" and circuit breaker fires), the pipeline calls `salvageForDraft()` instead of halting — this opens a Draft PR for human review rather than losing all progress.
+**Identical-error circuit breaker** (top): `normalizeDiagnosticTrace()` strips dynamic metadata (git SHAs, timestamps, run IDs, line numbers) before comparison, preventing false negatives where semantically identical errors differ only in build-specific entropy. If the normalized error matches *and* the git HEAD is unchanged (agent changed nothing), retrying is pointless. For dev items, one bypass is granted so the revert warning can fire and the agent gets a chance to wipe-and-rebuild. If a DEV item is stuck in a **timeout loop** (error is "Timeout" and circuit breaker fires), the pipeline calls `salvageForDraft()` instead of halting — this opens a Draft PR for human review rather than losing all progress.
 
 **Cognitive circuit breaker** (bottom): Counts tool calls during a live session. At the soft limit, a frustration prompt is injected *into the tool result* (not console — the LLM actually reads it). At the hard limit, the session is force-disconnected. At **80% of session timeout**, a pre-timeout wrap-up signal is injected telling the agent to commit, test, and report status before the hard kill.
 
@@ -277,17 +279,19 @@ Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-depl
 >   - `computeEffectiveDevAttempts()` — [L137](tools/autonomous-factory/src/context-injection.ts#L137) — merges in-memory + persisted cycle counts
 >   - `writeChangeManifest()` — [L155](tools/autonomous-factory/src/context-injection.ts#L155) — writes `_CHANGES.json` for docs-expert
 > - Triage — all in [triage.ts](tools/autonomous-factory/src/triage.ts):
->   - `triageFailure()` — [L69](tools/autonomous-factory/src/triage.ts#L69) — 4-tier evaluation
->   - `applyFaultDomain()` — [L209](tools/autonomous-factory/src/triage.ts#L209) — maps domain → item keys
+>   - `triageFailure()` — [L69](tools/autonomous-factory/src/triage.ts#L69) — 4-tier evaluation with validation layer
+>   - `validateFaultDomain()` — [L407](tools/autonomous-factory/src/triage.ts#L407) — Defense-in-Depth cicd augmentation
+>   - `detectKeywordDomains()` — [L338](tools/autonomous-factory/src/triage.ts#L338) — shared keyword detection (Tier 1 + Tier 3)
+>   - `applyFaultDomain()` — [L226](tools/autonomous-factory/src/triage.ts#L226) — maps domain → item keys
 >   - `UNFIXABLE_SIGNALS` — [L23](tools/autonomous-factory/src/triage.ts#L23) — Azure AD, permission denied, etc.
->   - `parseTriageDiagnostic()` — [L112](tools/autonomous-factory/src/triage.ts#L112) — extracts structured JSON from error strings
-> - Failure rerouting: `handleFailureReroute()` — [session-runner.ts#L980](tools/autonomous-factory/src/session-runner.ts#L980)
+>   - `parseTriageDiagnostic()` — [L129](tools/autonomous-factory/src/triage.ts#L129) — extracts structured JSON from error strings
+> - Failure rerouting: `handleFailureReroute()` — [session-runner.ts#L1246](tools/autonomous-factory/src/session-runner.ts#L1246)
 > - State mutations:
 >   - `resetForDev()` — [pipeline-state.mjs#L627](tools/autonomous-factory/pipeline-state.mjs#L627) — resets items for redevelopment
 >   - `salvageForDraft()` — [pipeline-state.mjs#L358](tools/autonomous-factory/pipeline-state.mjs#L358) — graceful degradation to Draft PR
 > - Circuit breakers:
->   - Identical-error: `shouldSkipRetry()` — [session-runner.ts#L195](tools/autonomous-factory/src/session-runner.ts#L195)
->   - Cognitive (soft+hard): `wireToolLogging()` — [session-runner.ts#L1078](tools/autonomous-factory/src/session-runner.ts#L1078)
+>   - Identical-error: `shouldSkipRetry()` — [session-runner.ts#L260](tools/autonomous-factory/src/session-runner.ts#L260), `normalizeDiagnosticTrace()` — [session-runner.ts#L229](tools/autonomous-factory/src/session-runner.ts#L229)
+>   - Cognitive (soft+hard): `wireToolLogging()` — [session-runner.ts#L1345](tools/autonomous-factory/src/session-runner.ts#L1345)
 
 ---
 
@@ -315,7 +319,7 @@ Where each field is read and written:
 | `pipelineSummaries` | `.push()` after every session | `shouldSkipRetry` (compare errors), `buildRetryContext` (prev attempt), `buildDownstreamFailureContext` (prod failures), `writeChangeManifest` (docs input) | Append-only telemetry log |
 | `attemptCounts` | `++` on every `runItemSession` entry | Circuit breaker (> 2), retry injection (> 1), revert warning (≥ 3) | In-memory retry counter |
 | `circuitBreakerBypassed` | `.add()` on first DEV bypass | Circuit breaker — skip if already used | Ensures revert warning fires exactly once |
-| `preStepRefs` | `= git HEAD` before each step | `tryAutoSkip` (diff against current HEAD) | Skip test/deploy items if no relevant code changed |
+| `preStepRefs` | `= git HEAD` before each step | `tryAutoSkip` (diff against current HEAD), git-diff fallback for `filesChanged` (Fix E) | Per-item snapshot for change detection and file attribution |
 | `baseTelemetry` | Once at boot | `flushReports` (add to current totals) | Monotonic metric accumulation across restarts |
 | `lastPushedShas` | `runPushCode()` after `git push` | `runPollCi()` for SHA-pinned polling | Track exact commit per push-item to prevent cross-contamination |
 
@@ -325,9 +329,9 @@ Where each field is read and written:
 
 `runItemSession` is the entry point. It runs three gates before delegating:
 
-1. **Circuit breaker gate**: If `attemptCounts > 2` and `shouldSkipRetry` detects same error + same HEAD → halt (or grant one bypass for dev items)
+1. **Circuit breaker gate**: If `attemptCounts > 2` and `shouldSkipRetry` detects same normalized error + same HEAD → halt (or grant one bypass for dev items)
 2. **Auto-skip gate**: `tryAutoSkip` diffs `preStepRefs[key]..HEAD` — if no relevant files changed, skip re-running tests
-3. **Deterministic bypass**: `push-*` and `poll-*` items run shell scripts directly, no SDK session
+3. **Deterministic bypass**: `push-*` and `poll-*` items (in `DEPLOY_ITEMS`) run shell scripts directly, no SDK session. A `throw new Error()` safety net catches any new deploy item without a handler. Note: `create-draft-pr` is *not* deterministic — it routes to an LLM agent session.
 
 Everything else enters `runAgentSession`, which:
 1. Builds `AgentContext` from config + APM manifest (environment dict, test commands, commit scopes)
@@ -335,18 +339,18 @@ Everything else enters `runAgentSession`, which:
 3. Creates an SDK session + wires event listeners (tool logging, circuit breaker, intent capture)
 4. Assembles the task prompt + all applicable context injections
 5. Calls `sendAndWait()` (agent works for 5–60+ minutes)
-6. Pushes `itemSummary` to `pipelineSummaries`, flushes reports
+6. Pushes `itemSummary` to `pipelineSummaries`, flushes reports. **Git-diff fallback:** if `filesChanged` is empty, `getAgentDirectoryPrefixes()` scopes a `git diff` against the pre-step HEAD to catch files written by tools the SDK didn't instrument
 7. Re-reads `_STATE.json` to check if the agent called `pipeline:complete` or `pipeline:fail`
 8. If failed + post-deploy/test item → `handleFailureReroute()` triggers triage and redevelopment
 
 > **Key code at this level:**
-> - `PipelineRunState` interface — [session-runner.ts#L245](tools/autonomous-factory/src/session-runner.ts#L245)
-> - `PipelineRunConfig` interface — [session-runner.ts#L263](tools/autonomous-factory/src/session-runner.ts#L263)
-> - Entry point: `runItemSession()` — [session-runner.ts#L286](tools/autonomous-factory/src/session-runner.ts#L286) — gates + routing
-> - Agent engine: `runAgentSession()` — [session-runner.ts#L764](tools/autonomous-factory/src/session-runner.ts#L764) — SDK lifecycle
-> - Auto-skip: `tryAutoSkip()` — [session-runner.ts#L403](tools/autonomous-factory/src/session-runner.ts#L403)
-> - Deterministic bypasses: `runPushCode()` — [session-runner.ts#L485](tools/autonomous-factory/src/session-runner.ts#L485), `runPollCi()` — [session-runner.ts#L553](tools/autonomous-factory/src/session-runner.ts#L553)
-> - Report flush: `flushReports()` — [session-runner.ts#L1262](tools/autonomous-factory/src/session-runner.ts#L1262)
+> - `PipelineRunState` interface — [session-runner.ts#L308](tools/autonomous-factory/src/session-runner.ts#L308)
+> - `PipelineRunConfig` interface — [session-runner.ts#L336](tools/autonomous-factory/src/session-runner.ts#L336)
+> - Entry point: `runItemSession()` — [session-runner.ts#L360](tools/autonomous-factory/src/session-runner.ts#L360) — gates + routing
+> - Agent engine: `runAgentSession()` — [session-runner.ts#L965](tools/autonomous-factory/src/session-runner.ts#L965) — SDK lifecycle
+> - Auto-skip: `tryAutoSkip()` — [session-runner.ts#L511](tools/autonomous-factory/src/session-runner.ts#L511)
+> - Deterministic bypasses: `runPushCode()` — [session-runner.ts#L660](tools/autonomous-factory/src/session-runner.ts#L660), `runPollCi()` — [session-runner.ts#L728](tools/autonomous-factory/src/session-runner.ts#L728)
+> - Report flush: `flushReports()` — [session-runner.ts#L1564](tools/autonomous-factory/src/session-runner.ts#L1564)
 > - Report writer: `writePipelineSummary()` — [reporting.ts#L247](tools/autonomous-factory/src/reporting.ts#L247)
 > - Telemetry type: `PreviousSummaryTotals` — [reporting.ts#L185](tools/autonomous-factory/src/reporting.ts#L185)
 > - Auto-skip helpers: [auto-skip.ts](tools/autonomous-factory/src/auto-skip.ts) — `getMergeBase()` [L12](tools/autonomous-factory/src/auto-skip.ts#L12), `getAutoSkipBaseRef()` [L26](tools/autonomous-factory/src/auto-skip.ts#L26), `getGitChangedFiles()` [L46](tools/autonomous-factory/src/auto-skip.ts#L46)
@@ -365,7 +369,7 @@ Every agent session has 5 SDK event listeners that scrape tool calls, file chang
 
 ### What gets captured
 
-5 listeners are wired immediately after SDK session creation (`session-runner.ts` L822–826):
+5 listeners are wired immediately after SDK session creation (`session-runner.ts` L1016–1020):
 
 | Listener | SDK Event | What it captures | `ItemSummary` field |
 |---|---|---|---|
@@ -383,7 +387,7 @@ Shell file write detection deserves a note: when an agent runs `echo "data" > fi
 After every session (success, failure, skip, deterministic bypass), this sequence runs:
 
 1. `pipelineSummaries.push(itemSummary)` — append to in-memory array
-2. `flushReports()` (`session-runner.ts` L1255) — writes two files:
+2. `flushReports()` (`session-runner.ts` L1564) — writes two files:
 
 | Output file | Content |
 |---|---|
@@ -406,14 +410,14 @@ The same `pipelineSummaries[]` array that produces reports also drives the self-
 > **Key code at this level:**
 > - `ItemSummary` interface — [types.ts#L96](tools/autonomous-factory/src/types.ts#L96), `ShellEntry` — [types.ts#L139](tools/autonomous-factory/src/types.ts#L139), `PlaywrightLogEntry` — [types.ts#L147](tools/autonomous-factory/src/types.ts#L147)
 > - Event listeners — all in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts):
->   - `wireToolLogging()` — [L1082](tools/autonomous-factory/src/session-runner.ts#L1082) (tool calls, files, shell, circuit breaker)
->   - `wirePlaywrightLogging()` — [L1179](tools/autonomous-factory/src/session-runner.ts#L1179) (Playwright actions)
->   - `wireIntentLogging()` — [L1222](tools/autonomous-factory/src/session-runner.ts#L1222) (agent intents)
->   - `wireMessageCapture()` — [L1228](tools/autonomous-factory/src/session-runner.ts#L1228) (assistant messages)
->   - `wireUsageTracking()` — [L1236](tools/autonomous-factory/src/session-runner.ts#L1236) (token counts)
+>   - `wireToolLogging()` — [L1345](tools/autonomous-factory/src/session-runner.ts#L1345) (tool calls, files, shell, circuit breaker)
+>   - `wirePlaywrightLogging()` — [L1477](tools/autonomous-factory/src/session-runner.ts#L1477) (Playwright actions)
+>   - `wireIntentLogging()` — [L1524](tools/autonomous-factory/src/session-runner.ts#L1524) (agent intents)
+>   - `wireMessageCapture()` — [L1531](tools/autonomous-factory/src/session-runner.ts#L1531) (assistant messages)
+>   - `wireUsageTracking()` — [L1540](tools/autonomous-factory/src/session-runner.ts#L1540) (token counts)
 > - Shell write detection: `SHELL_WRITE_PATTERNS` — [session-runner.ts#L66](tools/autonomous-factory/src/session-runner.ts#L66), `extractShellWrittenFiles()` — [session-runner.ts#L82](tools/autonomous-factory/src/session-runner.ts#L82)
 > - Tool categories: `TOOL_CATEGORIES` — [session-runner.ts#L139](tools/autonomous-factory/src/session-runner.ts#L139), `TOOL_LABELS` — [session-runner.ts#L126](tools/autonomous-factory/src/session-runner.ts#L126)
-> - Report flushing: `flushReports()` — [session-runner.ts#L1255](tools/autonomous-factory/src/session-runner.ts#L1255)
+> - Report flushing: `flushReports()` — [session-runner.ts#L1564](tools/autonomous-factory/src/session-runner.ts#L1564)
 > - Report writers — all in [reporting.ts](tools/autonomous-factory/src/reporting.ts):
 >   - `writePipelineSummary()` — [L252](tools/autonomous-factory/src/reporting.ts#L252) → `_SUMMARY.md`
 >   - `writeTerminalLog()` — [L418](tools/autonomous-factory/src/reporting.ts#L418) → `_TERMINAL-LOG.md`
