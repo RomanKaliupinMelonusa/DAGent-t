@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added GET /api/health endpoint (fn-health.ts, authLevel: anonymous) returning {status,mode} with STRICT_HEALTH_MODE env var. Added integration test and validate-app.sh hook for /api/health reachability."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No frontend changes required for health-check-ci. The feature is a backend-only health endpoint (GET /api/health) with CI/CD env var injection. Verified existing frontend builds, tests (14/14), and lint pass cleanly."
     },
     {
       "key": "backend-unit-test",
