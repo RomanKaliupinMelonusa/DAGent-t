@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T05:08:42.784Z",
+  "generatedAt": "2026-04-02T05:08:46.034Z",
   "featureSlug": "health-check-ci",
   "items": [
     {
@@ -439,7 +439,7 @@
       "startedAt": "2026-04-02T05:05:41.078Z",
       "finishedAt": "2026-04-02T05:08:42.773Z",
       "durationMs": 181695,
-      "outcome": "completed",
+      "outcome": "failed",
       "intents": [],
       "messages": [
         "Good, I have the function key. Now let me first verify the health endpoint is reachable directly, then run the full integration test suite.",
@@ -542,7 +542,31 @@
       "outputTokens": 5088,
       "cacheReadTokens": 252940,
       "cacheWriteTokens": 0,
-      "headAfterAttempt": "fb9899909e5dc1cce86fbd951dfc8bb2c20eb04f"
+      "headAfterAttempt": "fb9899909e5dc1cce86fbd951dfc8bb2c20eb04f",
+      "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"GET /api/health returns HTTP 404. fn-health is NOT in the deployed Azure Function list (only fn-audit, fn-demo-login, fn-hello are deployed). The function exists locally in backend/src/functions/fn-health.ts, builds to dist/src/functions/fn-health.js, and package.json main glob includes it. Integration test failures: (1) returns 200 with status ok and mode from STRICT_HEALTH_MODE — Expected 200, Received 404 at health.integration.test.ts:37. (2) returns valid JSON with expected shape — Expected 200, Received 404 at health.integration.test.ts:57. All 7 pre-existing smoke tests pass (fn-hello: 3/3, fn-demo-login: 4/4). The deploy-backend.yml workflow appears correct but the artifact was not deployed with fn-health included. Needs redeployment.\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-02T05:08:45.146Z",
+      "finishedAt": "2026-04-02T05:08:46.033Z",
+      "durationMs": 887,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
