@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No dead code found in audit-dashboard feature scope. All roam-flagged candidates verified as actively used: mapApiErrorCode (called by parseErrorResponse), ApiErrorCode type (used by ApiError class), ApiErrorCodeSchema (used by ApiErrorResponseSchema + 6 tests). packages/schemas/ symbols skipped per safety rules. All 102 tests pass (50 schema + 18 frontend + 34 backend)."
     },
     {
       "key": "docs-archived",

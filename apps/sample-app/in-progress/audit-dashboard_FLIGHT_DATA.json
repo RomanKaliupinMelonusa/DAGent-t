@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T00:17:05.967Z",
+  "generatedAt": "2026-04-02T00:17:15.576Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -1094,9 +1094,9 @@
       "phase": "finalize",
       "attempt": 1,
       "startedAt": "2026-04-02T00:14:02.129Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-02T00:17:15.573Z",
+      "durationMs": 193444,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now let me run the specific dead code detection tools scoped to the sample app:",
@@ -1110,7 +1110,8 @@
         "All tests pass. Now let me examine the actual source code for the dead code candidates:",
         "Let me examine the newly created audit feature files for any dead code:",
         "Intent: All flagged candidates are either actively used internally or in the protected `packages/schemas/` directory. Let me do one final check for any orphan files before concluding.",
-        "The analysis is complete. Here's my assessment:  **Dead Code Analysis Summary:** - `mapApiErrorCode` (frontend/apiClient.ts:127) — NOT dead; called by `parseErrorResponse` on line 106 - `ApiErrorCode` type (frontend/apiClient.ts:35) — NOT dead; used by `ApiError` class and `mapApiErrorCode` return type - `ApiErrorCodeSchema` (packages/schemas/errors.ts:12) — Protected (packages/schemas); also used internally by `ApiErrorResponseSchema` and has 6 passing tests - `ApiErrorCode` type (packages/schemas/errors.ts:19) — Protected (packages/schemas) - All audit-dashboard feature files (fn-audit.ts, page.tsx, audit.ts, test files, e2e specs) are actively used  **No dead code to remove.** All tests pass (50 schema + 18 frontend + 34 backend). Let me complete the phase."
+        "The analysis is complete. Here's my assessment:  **Dead Code Analysis Summary:** - `mapApiErrorCode` (frontend/apiClient.ts:127) — NOT dead; called by `parseErrorResponse` on line 106 - `ApiErrorCode` type (frontend/apiClient.ts:35) — NOT dead; used by `ApiError` class and `mapApiErrorCode` return type - `ApiErrorCodeSchema` (packages/schemas/errors.ts:12) — Protected (packages/schemas); also used internally by `ApiErrorResponseSchema` and has 6 passing tests - `ApiErrorCode` type (packages/schemas/errors.ts:19) — Protected (packages/schemas) - All audit-dashboard feature files (fn-audit.ts, page.tsx, audit.ts, test files, e2e specs) are actively used  **No dead code to remove.** All tests pass (50 schema + 18 frontend + 34 backend). Let me complete the phase.",
+        "The **Dead Code Eliminated** phase is complete. Here's a summary:  ## Code Cleanup Results  **Finding: No dead code to remove** ✅  ### Analysis Performed 1. **Roam `dead_code` scan** — Scoped to `/workspaces/DAGent-t/apps/sample-app` 2. **Roam `batch_search`** — Targeted dead/unused symbols within app boundary 3. **Roam `uses` checks** — Verified reference counts for each candidate 4. **Roam `preflight`** — Blast radius check on flagged symbols 5. **Manual source review** — Confirmed internal usage patterns  ### Candidates Investigated & Cleared | Symbol | File | Verdict | |--------|------|---------| | `mapApiErrorCode` | frontend/src/lib/apiClient.ts:127 | ✅ Called by `parseErrorResponse` (line 106) | | `ApiErrorCode` type | frontend/src/lib/apiClient.ts:35 | ✅ Used by `ApiError` class + `mapApiErrorCode` | | `ApiErrorCodeSchema` | packages/schemas/src/errors.ts:12 | ⛔ Protected (packages/schemas) + used internally | | `ApiErrorCode` type | packages/schemas/src/errors.ts:19 | ⛔ Protected (packages/schemas) |  ### Test Verification All **102 tests** pass across all packages: - **Schema:** 50 tests ✅ - **Frontend:** 18 tests ✅   - **Backend:** 34 tests ✅"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1174,13 +1175,18 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete audit-dashboard code-cleanup",
           "timestamp": "2026-04-02T00:17:00.926Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Dead Code Eliminated\"",
+          "timestamp": "2026-04-02T00:17:05.969Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 6,
         "file-read": 23,
         "roam-code-roam_dead_code": 1,
-        "shell": 12,
+        "shell": 13,
         "roam-code-roam_understand": 1,
         "stop_bash": 2,
         "roam-code-roam_batch_search": 1,
@@ -1189,10 +1195,11 @@
         "roam-code-roam_uses": 3,
         "read_agent": 3
       },
-      "inputTokens": 632689,
-      "outputTokens": 8780,
-      "cacheReadTokens": 545238,
-      "cacheWriteTokens": 0
+      "inputTokens": 673233,
+      "outputTokens": 9170,
+      "cacheReadTokens": 585434,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "373fcc1790fb59570c835225aad5bdd0c0c33269"
     }
   ]
 }
