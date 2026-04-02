@@ -7,11 +7,25 @@ Azure Functions backend with shared Zod schema validation and dual-mode auth.
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests (20 passing)
+npm test                       # run unit tests (26 passing)
 npm start                      # start Functions host on :7071
 ```
 
 ## Endpoints
+
+### `GET /api/health`
+
+Deployment health probe. Uses `authLevel: "anonymous"` — reachable by CI pipelines and infrastructure probes without function keys or APIM. Does not go through APIM.
+
+**Success (200):**
+```json
+{ "status": "ok", "mode": "true" }
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Always `"ok"` |
+| `mode` | string | Value of `STRICT_HEALTH_MODE` env var, or `"disabled"` if unset |
 
 ### `GET /api/hello`
 
@@ -70,6 +84,7 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | `DEMO_USER` | — | Demo username |
 | `DEMO_PASS` | — | Demo password |
 | `DEMO_TOKEN` | — | Token returned on successful login |
+| `STRICT_HEALTH_MODE` | `"disabled"` | Health probe mode flag, injected by CI/CD (`deploy-backend.yml`) |
 
 ## Tests
 
@@ -78,6 +93,8 @@ Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
 | File | Tests | Coverage |
 |------|-------|----------|
 | `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
+| `fn-health.test.ts` | fn-health endpoint logic | Status response, STRICT_HEALTH_MODE env var |
+| `health.integration.test.ts` | Live health endpoint | Deployed response shape, STRICT_HEALTH_MODE injection |
 | `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
 
 ## Adding Your Own Functions
