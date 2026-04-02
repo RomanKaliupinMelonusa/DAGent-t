@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T00:28:42.888Z",
+  "generatedAt": "2026-04-02T00:29:00.353Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -1389,9 +1389,9 @@
       "phase": "finalize",
       "attempt": 1,
       "startedAt": "2026-04-02T00:25:31.592Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-02T00:29:00.315Z",
+      "durationMs": 208723,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good, I have the PR number (#31) and repo name (RomanKaliupinMelonusa/DAGent-t). Now let me fetch the existing PR body and gather all Wave 2 context.",
@@ -1401,7 +1401,9 @@
         "PR body updated. Now promote to ready-for-review:",
         "PR promoted. Now update pipeline state and commit:",
         "Let me verify there are no uncommitted files remaining:",
-        "There are remaining uncommitted files from prior agent steps. Let me commit them (agent-commit.sh auto-excludes `_STATE.json` and `_TRANS.md`):"
+        "There are remaining uncommitted files from prior agent steps. Let me commit them (agent-commit.sh auto-excludes `_STATE.json` and `_TRANS.md`):",
+        "The only remaining uncommitted files are `_STATE.json` and `_TRANS.md`, which are correctly left for the orchestrator to handle. Let me clean up temp files:",
+        "✅ **PR #31 published and ready for review.** Here's a summary of what was done:  ### Completed Steps  1. **Found existing Draft PR #31** — created by the `create-draft-pr` step 2. **Fetched existing PR body** — preserved the Wave 1 content (infrastructure plan, approval context) 3. **Gathered Wave 2 context** — read spec, transition log, pipeline summary, Playwright results, architecture report, and risk assessment 4. **Generated Wave 2 appendix** with:    - Feature summary and key architectural decisions (fire-and-forget writes, RBAC-only Cosmos DB, defence-in-depth validation)    - Complete change inventory across backend, frontend, infrastructure, and tests    - E2E test results: **9/11 passed** (3/3 audit-specific tests ✅, 2 pre-existing login.spec.ts failures documented)    - 3 UI screenshots with links to future `archive/` paths    - Risk assessment with ADRs, blast radius analysis (49/100 moderate), and technical debt items    - Architecture report with C4 context diagram    - Pipeline metrics ($242.19 cost, 95m 47s duration, 4 redevelopment cycles) 5. **Appended** Wave 2 to existing PR body (never overwrote) 6. **Promoted** Draft PR to ready-for-review 7. **Updated pipeline state** via `pipeline:complete` and `pipeline:set-note` 8. **Committed** all changes (excluding orchestrator-managed `_STATE.json` and `_TRANS.md`)"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1520,16 +1522,27 @@
           "command": "cd /workspaces/DAGent-t && git status --porcelain",
           "timestamp": "2026-04-02T00:28:32.426Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git add apps/sample-app/in-progress/audit-dashboard_FLIGHT_DATA.json && bash tools/autonomous-factory/agent-commit.sh pr \"chore(audit-dashboard): commit flight data\" 2>&1",
+          "timestamp": "2026-04-02T00:28:42.889Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "rm -f /tmp/EXISTING_BODY.md /tmp/WAVE2_APPENDIX.md /tmp/COMBINED_BODY.md && echo \"Cleanup done\"",
+          "timestamp": "2026-04-02T00:28:47.787Z",
+          "isPipelineOp": false
         }
       ],
       "toolCounts": {
         "intent": 2,
-        "shell": 24
+        "shell": 26
       },
-      "inputTokens": 482805,
-      "outputTokens": 7335,
-      "cacheReadTokens": 438898,
-      "cacheWriteTokens": 0
+      "inputTokens": 557916,
+      "outputTokens": 7892,
+      "cacheReadTokens": 513150,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "2043731b75f29994c3306f4fc33e285ff38a6546"
     }
   ]
 }
