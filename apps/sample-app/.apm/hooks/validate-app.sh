@@ -45,4 +45,22 @@ fi
 
 # ─── @backend-dev / @frontend-dev append endpoint checks below this line ──
 
+# --- GET /api/audit reachability (audit-dashboard feature) ---
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${BACKEND_URL}/api/audit" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" || "$STATUS" == "502" || "$STATUS" == "503" ]]; then
+    echo "Endpoint /api/audit unreachable (HTTP $STATUS)"
+    exit 1
+  fi
+fi
+
+# --- POST /api/audit reachability (audit-dashboard feature) ---
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST -H "Content-Type: application/json" -d '{}' "${BACKEND_URL}/api/audit" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" || "$STATUS" == "502" || "$STATUS" == "503" ]]; then
+    echo "Endpoint POST /api/audit unreachable (HTTP $STATUS)"
+    exit 1
+  fi
+fi
+
 exit 0

@@ -24,6 +24,7 @@ npx playwright test --ui           # interactive mode
 |------|-------|-------------|
 | `login.spec.ts` | 4 | Demo login flow — form rendering, credential validation, session persistence |
 | `authenticated-hello.spec.ts` | 4 | Post-login API call — /hello response display, navigation while authenticated, sign-out |
+| `audit.spec.ts` | 3 | Audit dashboard — navigate to /audit, verify table renders with data, verify row content |
 
 ## Environment Variables
 

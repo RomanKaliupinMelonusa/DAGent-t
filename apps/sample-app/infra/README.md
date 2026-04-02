@@ -87,12 +87,21 @@ All resources below are tracked in remote state. `terraform plan` with no config
 
 | Resource | Purpose |
 |----------|---------||
-| `azurerm_api_management_api.sample` | `/hello` sample API |
+| `azurerm_api_management_api.sample` | `/hello` + `/audit` sample API |
 | `azurerm_api_management_api.demo_auth[0]` | Demo login API (demo mode only) |
 | `azurerm_api_management_backend.func` | Function App backend proxy |
 | `azurerm_api_management_named_value.*` | Function host key + demo token refs |
 | `azurerm_api_management_logger.appinsights` | App Insights logger |
 | `azurerm_api_management_diagnostic.appinsights` | Request/response diagnostics |
+
+### Data Stores
+
+| Resource | Name | Purpose |
+|----------|------|---------||
+| `azurerm_cosmosdb_account.audit` | `cosmos-sampleapp-<suffix>` | Serverless SQL API account for audit events |
+| `azurerm_cosmosdb_sql_database.audit` | `AuditDB` | Audit log database |
+| `azurerm_cosmosdb_sql_container.audit_logs` | `AuditLogs` | Audit events container (partition key: `/userId`) |
+| `azurerm_cosmosdb_sql_role_assignment.func_audit_contributor` | — | Grants Function App MI `Cosmos DB Built-in Data Contributor` role |
 
 ### Identity & Access
 
@@ -113,7 +122,15 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 
 ## Sample Protected API
 
-The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the full dual-mode auth pattern end-to-end. APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key.
+The API spec (`api-specs/api-sample.openapi.yaml`) defines the following endpoints, all protected by APIM's dual-mode auth policy:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/hello` | Sample greeting endpoint |
+| `GET` | `/audit` | Latest 50 audit events |
+| `POST` | `/audit` | Record a new audit event |
+
+APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key.
 
 ## Adding Your Own APIs
 

@@ -16,6 +16,8 @@ npm test         # run schema unit tests
 | `HelloResponseSchema` | `src/hello.ts` | `GET /hello` | `{ message: string, timestamp: ISO-8601 }` |
 | `DemoLoginRequestSchema` | `src/auth.ts` | `POST /auth/login` | `{ username: string, password: string }` |
 | `DemoLoginResponseSchema` | `src/auth.ts` | `POST /auth/login` | `{ token: string, displayName: string }` |
+| `AuditLogSchema` | `src/audit.ts` | `GET /audit`, `POST /audit` | `{ id: UUID, userId: string, action: string, timestamp: ISO-8601 }` |
+| `AuditLogCreateSchema` | `src/audit.ts` | `POST /audit` | `{ userId: string, action: string }` (server generates id + timestamp) |
 | `ApiErrorCodeSchema` | `src/errors.ts` | All endpoints | `"INVALID_INPUT" \| "UNAUTHORIZED" \| "NOT_FOUND" \| "SERVER_ERROR"` |
 | `ApiErrorResponseSchema` | `src/errors.ts` | All endpoints | `{ error: ApiErrorCode, message: string }` |
 

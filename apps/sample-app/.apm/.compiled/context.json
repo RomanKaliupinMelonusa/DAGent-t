@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-01T21:57:21.779Z",
+  "compiledAt": "2026-04-01T23:17:53.766Z",
   "tokenBudget": 6000,
   "agents": {
     "schema-dev": {
@@ -421,6 +421,7 @@
       "infraPlanFile": "deploy-infra.yml"
     },
     "hooks": {
+      "resolveEnvironment": "bash .apm/hooks/resolve-env.sh",
       "validateInfra": "bash .apm/hooks/validate-infra.sh",
       "validateApp": "bash .apm/hooks/validate-app.sh",
       "preflightAuth": "bash .apm/hooks/preflight-auth.sh"

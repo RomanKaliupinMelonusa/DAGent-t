@@ -7,7 +7,7 @@ Azure Functions backend with shared Zod schema validation and dual-mode auth.
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests (20 passing)
+npm test                       # run unit tests (34 passing)
 npm start                      # start Functions host on :7071
 ```
 
@@ -44,15 +44,52 @@ Demo-mode credential validation. Returns 404 when `AUTH_MODE=entra`.
 
 **Errors:** 400 (invalid input), 401 (wrong credentials), 404 (demo mode disabled)
 
+### `POST /api/audit`
+
+Records an audit event to Cosmos DB. Server generates `id` (UUID) and `timestamp` (ISO-8601). Auth is enforced at the APIM gateway.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `userId` | string | yes | User identifier (max 256 chars) |
+| `action` | string | yes | Action name, e.g. `USER_LOGIN` (max 256 chars) |
+
+**Success (201):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "demo",
+  "action": "USER_LOGIN",
+  "timestamp": "2026-04-01T12:00:00.000Z"
+}
+```
+
+**Errors:** 400 (invalid/missing fields, exceeds length limits), 500 (Cosmos DB failure)
+
+### `GET /api/audit`
+
+Returns the latest 50 audit events ordered by timestamp descending. Auth is enforced at the APIM gateway.
+
+**Success (200):**
+```json
+[
+  { "id": "...", "userId": "demo", "action": "USER_LOGIN", "timestamp": "2026-04-01T12:00:00.000Z" }
+]
+```
+
+**Errors:** 500 (Cosmos DB failure)
+
 ## Shared Schemas
 
-Both endpoints use Zod schemas from `@branded/schemas` for request validation and response typing. See [`packages/schemas/README.md`](../packages/schemas/README.md).
+All endpoints use Zod schemas from `@branded/schemas` for request validation and response typing. See [`packages/schemas/README.md`](../packages/schemas/README.md).
 
 | Endpoint | Schema |
 |----------|--------|
 | `GET /hello` response | `HelloResponseSchema` |
 | `POST /auth/login` request | `DemoLoginRequestSchema` |
 | `POST /auth/login` response | `DemoLoginResponseSchema` |
+| `POST /audit` request | `AuditLogCreateSchema` |
+| `POST /audit` response | `AuditLogSchema` |
+| `GET /audit` response items | `AuditLogSchema` |
 | All error responses | `ApiErrorResponseSchema` |
 
 ## AUTH_MODE Feature Flag
@@ -70,6 +107,7 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | `DEMO_USER` | — | Demo username |
 | `DEMO_PASS` | — | Demo password |
 | `DEMO_TOKEN` | — | Token returned on successful login |
+| `COSMOS_ENDPOINT` | — | Azure Cosmos DB account endpoint for audit log storage |
 
 ## Tests
 
@@ -78,7 +116,10 @@ Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
 | File | Tests | Coverage |
 |------|-------|----------|
 | `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
+| `fn-audit.test.ts` | fn-audit endpoint logic | POST valid→201, POST invalid→400, POST Cosmos error→500, GET items→200, GET empty→200, GET error→500, input length limits |
 | `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
+
+**Total: 34 unit tests passing** (integration tests run separately against live environment).
 
 ## Adding Your Own Functions
 
