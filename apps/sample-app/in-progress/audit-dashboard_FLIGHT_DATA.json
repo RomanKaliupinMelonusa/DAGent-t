@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-02T00:13:49.966Z",
+  "generatedAt": "2026-04-02T00:17:05.967Z",
   "featureSlug": "audit-dashboard",
   "items": [
     {
@@ -808,9 +808,9 @@
       "phase": "post-deploy",
       "attempt": 2,
       "startedAt": "2026-04-02T00:02:00.615Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-02T00:14:01.979Z",
+      "durationMs": 721364,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good, the deployment is progressing. Let me prepare the E2E tests while waiting.",
@@ -826,7 +826,8 @@
         "All 3 audit E2E tests pass. Now let me save the output to the Playwright log and run the full test suite:",
         "All 3 audit-specific tests pass (9/11 total pass). The 2 failing tests are pre-existing login.spec.ts tests related to the SWA's `NEXT_PUBLIC_AUTH_API_PATH` configuration — the deployed frontend's login form POSTs to `/sample/auth/login` (APIM 404) instead of `/demo-auth/auth/login`. This is NOT an audit-dashboard issue.  Let me verify screenshots and complete Phase 5:",
         "Let me view the audit page screenshot to confirm it renders correctly:",
-        "The audit dashboard is rendering perfectly — data table with 6 rows, proper column headers (User ID, Action, Timestamp), NavBar with Audit link, Demo User authenticated, no error banners. Let me finalize the Playwright log and complete the pipeline."
+        "The audit dashboard is rendering perfectly — data table with 6 rows, proper column headers (User ID, Action, Timestamp), NavBar with Audit link, Demo User authenticated, no error banners. Let me finalize the Playwright log and complete the pipeline.",
+        "The **Live UI Validated** phase for `audit-dashboard` is complete. Here's the summary:  ## Validation Results  ### Phase 1: HTTP Smoke Tests ✅ - Homepage: **200 OK**, HTML shell loads - `/audit` page: **200 OK** (previously 404 — stale deployment fixed via `gh workflow run`) - Deployed JS chunks contain `audit` references  ### Phase 2: API Network Validation ✅ - CORS preflight for GET/POST `/sample/audit`: **200** - `POST /demo-auth/auth/login`: **200** with valid token - `GET /sample/audit`: **200** with 6 audit events - `POST /sample/audit`: **201** with server-generated id/timestamp - `Access-Control-Allow-Origin` header correctly matches SWA origin  ### Phase 3: E2E Test Coverage ✅ - 3 audit-specific tests: table renders with data, column headers visible (fixed `getByText` → `getByRole(\"columnheader\")`), authenticated user shown, no error banners, rows contain meaningful non-empty data  ### Phase 4: Playwright E2E Results ✅ - **9/11 tests pass** (full regression) - **3/3 audit tests pass** - 2 pre-existing `login.spec.ts` failures: deployed SWA login form POST targets `/sample/auth/login` (APIM 404) — `NEXT_PUBLIC_AUTH_API_PATH` env var not set in SWA deployment. **Not an audit-dashboard issue.**  ### Phase 5: Visual Verification ✅ - Screenshot confirms: Audit Log table with 6 data rows, proper columns (User ID, Action, Timestamp), Audit link in NavBar, \"Demo User\" authenticated, no error banners  ### Key Fix Applied - Triggered frontend redeployment via `gh workflow run deploy-frontend.yml` — the previous deployment was stale because `[skip ci]` batch commits suppressed the workflow after the audit code was merged."
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1065,19 +1066,132 @@
           "command": "# Mark pipeline step complete",
           "timestamp": "2026-04-02T00:13:44.672Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "# Commit pipeline state",
+          "timestamp": "2026-04-02T00:13:49.992Z",
+          "isPipelineOp": false
         }
       ],
       "toolCounts": {
         "intent": 7,
-        "shell": 48,
+        "shell": 49,
         "read_bash": 2,
         "stop_bash": 1,
         "edit": 2,
         "file-read": 2
       },
-      "inputTokens": 2290664,
-      "outputTokens": 19658,
-      "cacheReadTokens": 2210498,
+      "inputTokens": 2367370,
+      "outputTokens": 20142,
+      "cacheReadTokens": 2286871,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "d9704bfe63c53de09d29e8f24fd11d7e8156e744"
+    },
+    {
+      "key": "code-cleanup",
+      "label": "Dead Code Eliminated",
+      "agent": "@code-cleanup",
+      "phase": "finalize",
+      "attempt": 1,
+      "startedAt": "2026-04-02T00:14:02.129Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now let me run the specific dead code detection tools scoped to the sample app:",
+        "Now let me run targeted dead code analysis for the app scope and verify tests pass first:",
+        "Let me view the full output:",
+        "✅ **All schema tests PASS** — 50 tests passed, 1 test suite passed  The tests completed successfully in 2.485 seconds. All test cases for the schema validation passed: - **HelloResponseSchema**: 6 tests ✓ - **DemoLoginRequestSchema**: 7 tests ✓ - **DemoLoginResponseSchema**: 5 tests ✓ - **ApiErrorCodeSchema**: 6 tests ✓ - **ApiErrorResponseSchema**: 6 tests ✓ - **AuditLogSchema**: 12 tests ✓ - **AuditLogCreateSchema**: 8 tests ✓  There are some TypeScript configuration warnings (ts-jest) about `isolatedModules`, but these don't affect the test execution or results.",
+        "Let me use bash to view the output more efficiently:",
+        "**All tests passed! ✅**  **Test Results Summary:** - **Test Suites:** 3 passed, 3 total - **Tests:** 18 passed, 18 total - **Snapshots:** 0 total - **Time:** 1.487 seconds  **Test Files:** 1. `src/components/__tests__/DemoLoginForm.test.tsx` - 5 tests passed 2. `src/app/audit/__tests__/page.test.tsx` - 4 tests passed 3. `src/lib/__tests__/apiClient.test.ts` - 9 tests passed  All tests executed successfully with no failures. There are some console warnings about React state updates not being wrapped in `act()` calls, but these are warnings from the React testing library and do not cause test failures.",
+        "Let me examine the flagged dead code candidates more closely:",
+        "**✅ Backend tests passed!**  **Summary:** - **Test Suites:** 3 passed, 1 skipped (4 total) - **Tests:** 34 passed, 11 skipped (45 total) - **Snapshots:** 0 - **Time:** 1.527 seconds  **Tests executed:** - ✓ `fn-hello.test.ts` - passed - ✓ `fn-audit.test.ts` - passed (all 3 GET /audit tests) - ✓ `fn-demo-login.test.ts` - passed (all login validation tests including password checks, body validation, error handling, field stripping) - ⊘ `smoke.integration.test.ts` - skipped  All tests that ran passed successfully with no failures.",
+        "All tests pass. Now let me examine the actual source code for the dead code candidates:",
+        "Let me examine the newly created audit feature files for any dead code:",
+        "Intent: All flagged candidates are either actively used internally or in the protected `packages/schemas/` directory. Let me do one final check for any orphan files before concluding.",
+        "The analysis is complete. Here's my assessment:  **Dead Code Analysis Summary:** - `mapApiErrorCode` (frontend/apiClient.ts:127) — NOT dead; called by `parseErrorResponse` on line 106 - `ApiErrorCode` type (frontend/apiClient.ts:35) — NOT dead; used by `ApiError` class and `mapApiErrorCode` return type - `ApiErrorCodeSchema` (packages/schemas/errors.ts:12) — Protected (packages/schemas); also used internally by `ApiErrorResponseSchema` and has 6 passing tests - `ApiErrorCode` type (packages/schemas/errors.ts:19) — Protected (packages/schemas) - All audit-dashboard feature files (fn-audit.ts, page.tsx, audit.ts, test files, e2e specs) are actively used  **No dead code to remove.** All tests pass (50 schema + 18 frontend + 34 backend). Let me complete the phase."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && ls in-progress/",
+          "timestamp": "2026-04-02T00:14:17.651Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git log --oneline -20 -- apps/sample-app/",
+          "timestamp": "2026-04-02T00:14:25.375Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git diff --name-only HEAD~5 HEAD -- apps/sample-app/ 2>/dev/null || echo \"Not enough commits\"",
+          "timestamp": "2026-04-02T00:14:25.375Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && git diff --name-only HEAD~5 HEAD -- apps/sample-app/ 2>/dev/null | head -30",
+          "timestamp": "2026-04-02T00:15:04.744Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --verbose",
+          "timestamp": "2026-04-02T00:15:33.265Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/packages/schemas && npx jest --verbose",
+          "timestamp": "2026-04-02T00:15:33.354Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && npx jest --verbose",
+          "timestamp": "2026-04-02T00:15:34.409Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /tmp/copilot-tool-output-1775088935916-r1rzfk.txt",
+          "timestamp": "2026-04-02T00:15:38.143Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "head -100 /tmp/copilot-tool-output-1775088938458-ierdzp.txt",
+          "timestamp": "2026-04-02T00:15:40.559Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "tail -100 /tmp/copilot-tool-output-1775088938458-ierdzp.txt",
+          "timestamp": "2026-04-02T00:15:43.049Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:doc-note audit-dashboard code-cleanup \"No dead code found in audit-dashboard feature scope. All roam-flagged candidates verified as actively used: mapApiErr",
+          "timestamp": "2026-04-02T00:16:56.355Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:complete audit-dashboard code-cleanup",
+          "timestamp": "2026-04-02T00:17:00.926Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 6,
+        "file-read": 23,
+        "roam-code-roam_dead_code": 1,
+        "shell": 12,
+        "roam-code-roam_understand": 1,
+        "stop_bash": 2,
+        "roam-code-roam_batch_search": 1,
+        "task": 3,
+        "roam-code-roam_preflight": 1,
+        "roam-code-roam_uses": 3,
+        "read_agent": 3
+      },
+      "inputTokens": 632689,
+      "outputTokens": 8780,
+      "cacheReadTokens": 545238,
       "cacheWriteTokens": 0
     }
   ]
