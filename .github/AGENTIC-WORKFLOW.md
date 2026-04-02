@@ -261,11 +261,14 @@ All paths are relative to `APP_ROOT` (defaults to repo root if unset). When the 
 | `backend` | `backend/`, `packages/`, `infra/`, `in-progress/` |
 | `frontend` | `frontend/`, `packages/`, `e2e/`, `in-progress/` |
 | `infra` | `infra/`, `in-progress/` |
+| `cicd` | `.github/`, `in-progress/` |
 | `docs` | `docs/`, `archive/`, `in-progress/`, `README.md`, `frontend/README.md`, `.github/` |
 | `pipeline` | `in-progress/` |
 | `pr` | `archive/`, `in-progress/`, `PR_BODY.md` |
 | `e2e` | `e2e/`, `in-progress/` |
 | `all` | All directories (backend, frontend, infra, packages, e2e, in-progress, docs, archive) |
+
+> **Cross-Scope Commits:** CI/CD files (`.github/workflows/`) are NOT covered by `backend` or `frontend` scopes. If an agent modifies a workflow file, it MUST use a separate `cicd` scope commit or the change will remain uncommitted and cause repeated deployment failures. See [git-operations.md](../apps/sample-app/.apm/instructions/always/git-operations.md) for the full scoping reference.
 
 Usage: `bash tools/autonomous-factory/agent-commit.sh <scope> "<message>" [explicit-paths...]`
 
