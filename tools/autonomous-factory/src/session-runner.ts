@@ -49,7 +49,7 @@ const TIMEOUT_DEFAULT  = 900_000;   // 15 min (fallback)
 const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now deterministic; fallback agent gets 15 min)
 const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
 
-const DEPLOY_ITEMS = new Set(["push-infra", "create-draft-pr", "poll-infra-plan", "push-app", "poll-app-ci"]);
+const DEPLOY_ITEMS = new Set(["push-infra", "poll-infra-plan", "push-app", "poll-app-ci"]);
 const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
@@ -100,6 +100,42 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
  * deployment artifacts and produce false 404s.
  */
 const POST_DEPLOY_PROPAGATION_DELAY_MS = 60_000;
+
+/**
+ * Map agent item keys to their owned directory prefixes for scoped git-diff
+ * attribution. Prevents cross-agent pollution when backend-dev and frontend-dev
+ * run in parallel. Returns empty array for agents without a clear directory scope
+ * (e.g. code-cleanup, docs-archived), which falls back to "all non-state files".
+ */
+function getAgentDirectoryPrefixes(
+  itemKey: string,
+  appRel: string,
+  directories?: Record<string, string | null>,
+): string[] {
+  const prefix = appRel ? `${appRel}/` : "";
+  const backendDir = directories?.backend ?? "backend";
+  const frontendDir = directories?.frontend ?? "frontend";
+  const infraDir = directories?.infra ?? "infra";
+  const e2eDir = directories?.e2e ?? "e2e";
+  const packagesDir = "packages";
+
+  switch (itemKey) {
+    case "backend-dev":
+    case "backend-unit-test":
+    case "integration-test":
+      return [`${prefix}${backendDir}/`, `${prefix}${packagesDir}/`, `${prefix}${infraDir}/`, ".github/"];
+    case "frontend-dev":
+    case "frontend-unit-test":
+    case "live-ui":
+      return [`${prefix}${frontendDir}/`, `${prefix}${packagesDir}/`, `${prefix}${e2eDir}/`, ".github/"];
+    case "schema-dev":
+      return [`${prefix}${packagesDir}/`];
+    case "infra-architect":
+      return [`${prefix}${infraDir}/`];
+    default:
+      return []; // No scope restriction — use all non-state files
+  }
+}
 
 /**
  * Cognitive Circuit Breaker — absolute last-resort fallback.
@@ -183,14 +219,43 @@ function toolSummary(
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalize a diagnostic trace for semantic comparison across retry cycles.
+ * Strips dynamic metadata (git SHAs, timestamps, line numbers) that LLMs and
+ * build systems inject, which would cause exact-match dedup to fail on
+ * semantically identical errors.
+ *
+ * Based on standard enterprise log-aggregation normalization patterns.
+ */
+export function normalizeDiagnosticTrace(trace: string): string {
+  return trace
+    // ── Specific patterns first (before general SHA regex eats their targets) ──
+    // Run IDs and numeric identifiers that change between CI runs
+    // (must precede SHA regex — pure-digit run IDs like 12345678 are valid hex)
+    .replace(/run\s+\d+/gi, "run <ID>")
+    // "commit abc123" references (must precede general SHA regex)
+    .replace(/commit\s+[0-9a-f]{7,40}/gi, "commit <SHA>")
+    // HEAD (abc123) references (must precede general SHA regex)
+    .replace(/HEAD\s*\([0-9a-f]+\)/gi, "HEAD (<SHA>)")
+    // ── General patterns ──
+    // Git SHAs (7-40 hex chars at word boundaries) — catches remaining bare SHAs
+    .replace(/\b[0-9a-f]{7,40}\b/g, "<SHA>")
+    // ISO timestamps (2026-03-24T01:22:42.123Z)
+    .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, "<TS>")
+    // Variable line numbers in error messages
+    .replace(/line\s*~?\d+/gi, "line <N>")
+    // Collapse whitespace
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Circuit breaker: skip retrying an item if the root cause is identical to the
  * previous attempt AND no meaningful code was committed in between.
  *
- * Compares structured diagnostic_trace (not the full error JSON) and checks
- * whether git changes since the last attempt are limited to pipeline state
- * files (in-progress/). This prevents groundhog-day loops where the triage
- * correctly identifies the fix but the dev agent can't persist it (e.g.,
- * commit scope mismatch).
+ * Compares normalized diagnostic_trace (not the full error JSON) to handle
+ * dynamic metadata (SHAs, timestamps, line numbers) that LLMs inject. This
+ * prevents groundhog-day loops where the triage correctly identifies the fix
+ * but the dev agent can't persist it (e.g., commit scope mismatch).
  */
 export function shouldSkipRetry(
   repoRoot: string,
@@ -213,7 +278,9 @@ export function shouldSkipRetry(
   const lastTrace = lastDiag?.diagnostic_trace ?? last.errorMessage;
   const prevTrace = prevDiag?.diagnostic_trace ?? prev.errorMessage;
 
-  if (lastTrace !== prevTrace) return false;
+  // Normalize traces to strip dynamic metadata (SHAs, timestamps, line numbers)
+  // before comparison. LLMs inject build-specific entropy that defeats exact-match.
+  if (normalizeDiagnosticTrace(lastTrace) !== normalizeDiagnosticTrace(prevTrace)) return false;
 
   // Check if only pipeline state files changed between attempts
   if (last.headAfterAttempt && prev.headAfterAttempt &&
@@ -413,11 +480,21 @@ export async function runItemSession(
   }
 
   // ── Deterministic bypasses (no agent session) ─────────────────────────
-  if (next.key === "push-infra" || next.key === "push-app") {
-    return runPushCode(next.key, config, state, itemSummary, stepStart);
-  }
-  if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
-    return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
+  // DEPLOY_ITEMS must NEVER create an LLM session. push-* and poll-* are
+  // handled by shell scripts — zero tokens, deterministic, no hallucination.
+  if (DEPLOY_ITEMS.has(next.key)) {
+    if (next.key === "push-infra" || next.key === "push-app") {
+      return runPushCode(next.key, config, state, itemSummary, stepStart);
+    }
+    if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
+      return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
+    }
+    // Safety: if a new deploy item is added to DEPLOY_ITEMS but not handled
+    // above, fail loudly rather than falling through to an LLM session.
+    throw new Error(
+      `BUG: Deploy item "${next.key}" is in DEPLOY_ITEMS but has no deterministic handler. ` +
+      `Never route deploy items to LLM sessions. Either add a handler or remove it from DEPLOY_ITEMS.`,
+    );
   }
 
   // ── Agent session ─────────────────────────────────────────────────────
@@ -1071,10 +1148,39 @@ async function runAgentSession(
   // Record HEAD for circuit breaker (identical-error dedup)
   try { itemSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
 
-  // NOTE: git diff augmentation removed — it caused cross-agent attribution
-  // pollution when backend-dev and frontend-dev run in parallel. File tracking
-  // now relies solely on SDK tool.execution_start events (write_file, edit_file,
-  // create_file) plus shell write pattern detection in wireToolLogging().
+  // Git-diff fallback for filesChanged tracking.
+  // SDK tool.execution_start events (write_file, edit_file, create_file) are
+  // the primary source, but they can miss files written by shell commands that
+  // don't match SHELL_WRITE_PATTERNS (e.g. tool-generated code, npm scripts).
+  //
+  // To avoid cross-agent attribution pollution in parallel runs, the diff is
+  // scoped to the agent's directories (from APM config.directories).
+  if (itemSummary.filesChanged.length === 0 && preStepRefs[next.key]) {
+    try {
+      const diffOutput = execSync(
+        `git diff --name-only ${preStepRefs[next.key]}..HEAD`,
+        { cwd: repoRoot, encoding: "utf-8", timeout: 10_000 },
+      ).trim();
+      if (diffOutput) {
+        const appRel = path.relative(repoRoot, appRoot);
+        const dirs = apmContext.config?.directories as Record<string, string | null> | undefined;
+        // Build allowed directory prefixes for this agent to prevent cross-attribution
+        const allowedPrefixes = getAgentDirectoryPrefixes(next.key, appRel, dirs);
+        const diffFiles = diffOutput.split("\n").filter(Boolean);
+        const scopedFiles = allowedPrefixes.length > 0
+          ? diffFiles.filter((f) => allowedPrefixes.some((p) => f.startsWith(p)))
+          : diffFiles.filter((f) => !f.includes("in-progress/"));
+        for (const f of scopedFiles) {
+          if (!itemSummary.filesChanged.includes(f)) {
+            itemSummary.filesChanged.push(f);
+          }
+        }
+        if (scopedFiles.length > 0) {
+          console.log(`  📂 Git-diff fallback: attributed ${scopedFiles.length} file(s) to ${next.key}`);
+        }
+      }
+    } catch { /* non-fatal — SDK tracking is the primary source */ }
+  }
 
   pipelineSummaries.push(itemSummary);
   flushReports(config, state);

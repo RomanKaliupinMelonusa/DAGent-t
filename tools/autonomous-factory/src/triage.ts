@@ -81,10 +81,26 @@ export function triageFailure(
   }
 
   // --- Tier 1: structured JSON contract (agent-emitted) ---
+  // After parsing, run validateFaultDomain() as a Defense-in-Depth sanity check.
+  // If keyword signals prove the root cause involves CI/CD (.github/workflows/),
+  // augment the reset list with deploy items so the fix actually gets pushed.
+  // The dev agent keeps running (it can edit .github/ files) with Fix C's
+  // dual-commit instructions telling it to use `agent-commit.sh cicd`.
   const diagnostic = parseTriageDiagnostic(errorMessage);
   if (diagnostic) {
-    console.log(`  🎯 Structured triage: fault_domain=${diagnostic.fault_domain}`);
-    return applyFaultDomain(diagnostic.fault_domain, itemKey, naItems);
+    const { domain: validated, augmentWithDeploy } = validateFaultDomain(
+      diagnostic.fault_domain, errorMessage, directories, ciWorkflowFilePatterns,
+    );
+    console.log(`  🎯 Structured triage: fault_domain=${validated}${augmentWithDeploy ? " (+cicd deploy augmentation)" : ""}`);
+    const keys = applyFaultDomain(validated, itemKey, naItems);
+    // When cicd root cause is detected, ensure deploy items are in the reset
+    // list so the agent's cicd-scope commit gets pushed and verified by CI.
+    if (augmentWithDeploy) {
+      for (const k of ["push-app", "poll-app-ci"]) {
+        if (!naItems.has(k) && !keys.includes(k)) keys.push(k);
+      }
+    }
+    return keys;
   }
 
   // --- Tier 2: CI metadata DOMAIN: header (from poll-ci.sh) ---
@@ -252,6 +268,172 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
   return resetKeys.filter((k) => !naItems.has(k));
 }
 
+// ---------------------------------------------------------------------------
+// Keyword domain detection — shared between Tier 1 validation and Tier 3
+// ---------------------------------------------------------------------------
+
+/** Keyword signals grouped by domain */
+const BACKEND_SIGNALS = [
+  "api", "endpoint", "500", "502", "503", "504", "function",
+  "timeout", "backend",
+  "cosmos", "storage", "queue", "apim", "gateway",
+  "empty response", "response format", "data mapping", "404",
+];
+const FRONTEND_SIGNALS = [
+  "ui", "frontend", "component", "page", "render", "selector",
+  "testid", "element", "visible", "screenshot", "html", "css",
+  "navigation", "route", "display", "button", "form", "modal",
+  "handler", "event binding", "javascript error", "console error",
+  "click", "data mapping",
+];
+const INFRA_SIGNALS = [
+  "terraform", "tfstate", "state lock", "provider registry",
+  ".tf", "resource already exists", "azurerm_", "azapi_",
+  "terraform plan", "terraform apply", "terraform init",
+  "hcl", "provider configuration",
+  "cors", "access-control-allow-origin",
+];
+const SCHEMA_SIGNALS = [
+  "packages/schemas", "@branded/schemas", "schema-dev",
+  "schema validation", "schema build",
+];
+
+/** Build the CI/CD keyword signal list (includes dynamic workflow patterns) */
+function buildCicdSignals(ciWorkflowFilePatterns?: string[]): string[] {
+  return [
+    ...(ciWorkflowFilePatterns ?? []),
+    ".github/workflows", "workflow file",
+    "ci failed", "ci timeout",
+    "deploy artifact", "package.json type", "type:module",
+    "never committed", "working-tree fix",
+  ];
+}
+
+/** Result of fault domain validation — keeps the original domain but may signal
+ *  that deploy items should be added to the reset list for cicd root causes. */
+export interface ValidationResult {
+  /** The (possibly unchanged) fault domain to route through applyFaultDomain. */
+  domain: FaultDomain;
+  /** True when cicd root-cause indicators were detected — caller should add
+   *  push-app + poll-app-ci to the reset list so the workflow fix gets deployed. */
+  augmentWithDeploy: boolean;
+}
+
+/** Result of keyword-based domain detection */
+export interface KeywordDomainResult {
+  hasBackend: boolean;
+  hasFrontend: boolean;
+  hasCicd: boolean;
+  hasInfra: boolean;
+  hasSchema: boolean;
+  hasEnv: boolean;
+  hasDeploymentStale: boolean;
+}
+
+/**
+ * Detect which fault domains are signalled by keywords in the error message.
+ * Pure function — no side effects. Used by both `validateFaultDomain()`
+ * (Tier 1 sanity check) and `triageByKeywords()` (Tier 3 fallback).
+ */
+export function detectKeywordDomains(
+  errorMessage: string,
+  directories?: Record<string, string | null>,
+  ciWorkflowFilePatterns?: string[],
+): KeywordDomainResult {
+  const msg = errorMessage.toLowerCase();
+  const directoryPathSignals = buildDirectoryPathSignals(directories);
+  const cicdSignals = buildCicdSignals(ciWorkflowFilePatterns);
+
+  const envSignals = [
+    "az login", "credentials", "auth not available", "not authenticated",
+    "no credentials", "login required", "identity not found",
+    "managed identity", "devcontainer", "defaultazurecredential",
+    "interactive login", "device code",
+    "access is denied",
+    "exiting poll to prevent",
+  ];
+
+  const deploymentStaleSignals = [
+    "deployment stale", "not in deployed build", "never re-triggered",
+    "deployed build contains", "swa deployment stale",
+    "function not deployed", "not deployed to azure",
+    ...(ciWorkflowFilePatterns ?? []).map((f) => `${f} never`),
+  ];
+
+  return {
+    hasBackend: BACKEND_SIGNALS.some((s) => msg.includes(s))
+      || directoryPathSignals.backend.some((s) => msg.includes(s)),
+    hasFrontend: FRONTEND_SIGNALS.some((s) => msg.includes(s))
+      || directoryPathSignals.frontend.some((s) => msg.includes(s)),
+    hasCicd: cicdSignals.some((s) => msg.includes(s)),
+    hasInfra: INFRA_SIGNALS.some((s) => msg.includes(s)),
+    hasSchema: SCHEMA_SIGNALS.some((s) => msg.includes(s)),
+    hasEnv: envSignals.some((s) => msg.includes(s)),
+    hasDeploymentStale: deploymentStaleSignals.some((s) => msg.includes(s)),
+  };
+}
+
+/**
+ * CI/CD root-cause indicators — phrases in the diagnostic trace that prove
+ * the fix is in `.github/workflows/`, not in application code.
+ * When these appear AND keyword detection finds cicd signals, the orchestrator
+ * overrides the agent's fault_domain to `cicd`.
+ */
+const CICD_ROOT_CAUSE_INDICATORS = [
+  ".github/workflows",
+  "never committed",
+  "working-tree fix",
+  "workflow file",
+  "deploy artifact step",
+  "deploy package.json",
+];
+
+/**
+ * Validate an agent-emitted fault_domain against deterministic keyword signals.
+ * This is a Defense-in-Depth mechanism: the LLM classifies by symptoms, but the
+ * orchestrator detects when CI/CD root-cause indicators prove the fix involves
+ * `.github/workflows/` files.
+ *
+ * IMPORTANT: Does NOT override the domain to "cicd". The "cicd" domain in
+ * applyFaultDomain only resets push-app + poll-app-ci (shell scripts that can't
+ * edit files). Instead, the function keeps the original domain (so the dev agent
+ * runs and can fix the workflow file using Fix C's dual-commit instructions)
+ * and signals `augmentWithDeploy: true` so the caller adds deploy items to
+ * the reset list.
+ *
+ * Never augments "cicd" (already routes to deploy), "deployment-stale" (code
+ * is correct), "blocked" (unfixable), or "environment" (not a code bug).
+ */
+export function validateFaultDomain(
+  agentDomain: FaultDomain,
+  errorMessage: string,
+  directories?: Record<string, string | null>,
+  ciWorkflowFilePatterns?: string[],
+): ValidationResult {
+  // Domains that should never be augmented
+  const NO_AUGMENT: Set<FaultDomain> = new Set(["cicd", "deployment-stale", "blocked", "environment"]);
+  if (NO_AUGMENT.has(agentDomain)) return { domain: agentDomain, augmentWithDeploy: false };
+
+  const keywords = detectKeywordDomains(errorMessage, directories, ciWorkflowFilePatterns);
+
+  // Signal deploy augmentation when BOTH conditions are met:
+  // 1. Keyword detection finds cicd signals in the error message
+  // 2. The raw error message contains root-cause indicators proving the fix
+  //    involves .github/workflows/ (not just a symptom mention)
+  // The dev agent keeps its original domain so it can edit the workflow file,
+  // and the caller adds push-app + poll-app-ci to ensure the fix gets deployed.
+  if (keywords.hasCicd) {
+    const msgLower = errorMessage.toLowerCase();
+    const hasCicdRootCause = CICD_ROOT_CAUSE_INDICATORS.some((s) => msgLower.includes(s));
+    if (hasCicdRootCause) {
+      console.log(`  ⚠ Triage validation: cicd root cause detected in ${agentDomain} error — augmenting with deploy items`);
+      return { domain: agentDomain, augmentWithDeploy: true };
+    }
+  }
+
+  return { domain: agentDomain, augmentWithDeploy: false };
+}
+
 /**
  * Legacy keyword-based triage preserved as a fallback for unstructured error
  * messages (e.g. SDK session crashes the agent cannot instrument).
@@ -263,120 +445,48 @@ function triageByKeywords(
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
 ): string[] {
-  const msg = errorMessage.toLowerCase();
   const resetKeys: string[] = [];
 
-  // Environment / auth signals — NOT code bugs, redevelopment won't help.
-  // NOTE: Hard IAM blocks (authorization_requestdenied, insufficient privileges,
-  // does not have authorization) are intercepted earlier by Tier 0 (isUnfixableError)
-  // and never reach this function. The signals below are soft auth failures that
-  // can resolve on retry (e.g., token expiry, credential refresh).
-  const envSignals = [
-    "az login", "credentials", "auth not available", "not authenticated",
-    "no credentials", "login required", "identity not found",
-    "managed identity", "devcontainer", "defaultazurecredential",
-    "interactive login", "device code",
-    "access is denied",
-    // CI poll timeout — defense-in-depth safety net. Exit codes 2/3 are
-    // intercepted at the session-runner boundary before triage runs, but
-    // if it leaks through, this prevents misrouting as a code bug.
-    // NOTE: "ci is still running" was removed — it contaminated triage
-    // when poll-ci stdout mixed polling status with real CI error logs.
-    "exiting poll to prevent",
-  ];
+  const keywords = detectKeywordDomains(errorMessage, directories, ciWorkflowFilePatterns);
 
-  if (envSignals.some((s) => msg.includes(s))) {
+  // Environment / auth signals — NOT code bugs, redevelopment won't help.
+  if (keywords.hasEnv) {
     console.log(`  ⚠ Environment/auth issue detected — skipping ${itemKey} (not a code bug)`);
     return [itemKey].filter((k) => !naItems.has(k));
   }
 
   // Deployment-stale signals — deployed artifact is outdated, code is correct.
   // Must be checked BEFORE backend/frontend signals to avoid misrouting.
-  const deploymentStaleSignals = [
-    "deployment stale", "not in deployed build", "never re-triggered",
-    "deployed build contains", "swa deployment stale",
-    "function not deployed", "not deployed to azure",
-    // Dynamic: "<workflow>.yml never" patterns from config
-    ...(ciWorkflowFilePatterns ?? []).map((f) => `${f} never`),
-  ];
-  if (deploymentStaleSignals.some((s) => msg.includes(s))) {
+  if (keywords.hasDeploymentStale) {
     console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
     return ["push-app", "poll-app-ci", itemKey].filter((k) => !naItems.has(k));
   }
 
-  const backendSignals = [
-    "api", "endpoint", "500", "502", "503", "504", "function",
-    "timeout", "backend",
-    "cosmos", "storage", "queue", "apim", "gateway",
-    "empty response", "response format", "data mapping", "404",
-  ];
-  const frontendSignals = [
-    "ui", "frontend", "component", "page", "render", "selector",
-    "testid", "element", "visible", "screenshot", "html", "css",
-    "navigation", "route", "display", "button", "form", "modal",
-    "handler", "event binding", "javascript error", "console error",
-    "click", "data mapping",
-  ];
-  const cicdSignals = [
-    // Dynamic: workflow file patterns from config
-    ...(ciWorkflowFilePatterns ?? []),
-    ".github/workflows", "workflow file",
-    "ci failed", "ci timeout",
-    "deploy artifact", "package.json type", "type:module",
-    "never committed", "working-tree fix",
-  ];
-  const infraSignals = [
-    "terraform", "tfstate", "state lock", "provider registry",
-    ".tf", "resource already exists", "azurerm_", "azapi_",
-    "terraform plan", "terraform apply", "terraform init",
-    "hcl", "provider configuration",
-    "cors", "access-control-allow-origin",
-  ];
-  const schemaSignals = [
-    "packages/schemas", "@branded/schemas", "schema-dev",
-    "schema validation", "schema build",
-  ];
-
-  // Directory-path signals — CI-provider agnostic. Compilers, linters, and
-  // test runners universally include file paths in error output. These catch
-  // CI build errors that runtime keywords ("500", "CORS") miss.
-  // Dynamically built from APM config.directories when available; falls back
-  // to hardcoded defaults for apps without APM manifests.
-  const directoryPathSignals = buildDirectoryPathSignals(directories);
-
-  const hasBackend = backendSignals.some((s) => msg.includes(s))
-    || directoryPathSignals.backend.some((s) => msg.includes(s));
-  const hasFrontend = frontendSignals.some((s) => msg.includes(s))
-    || directoryPathSignals.frontend.some((s) => msg.includes(s));
-  const hasCicd = cicdSignals.some((s) => msg.includes(s));
-  const hasInfra = infraSignals.some((s) => msg.includes(s));
-  const hasSchema = schemaSignals.some((s) => msg.includes(s));
-
   // Infrastructure issues route to infra-architect (never to app dev agents)
-  if (hasInfra && !hasBackend && !hasFrontend && !hasSchema && !hasCicd) {
+  if (keywords.hasInfra && !keywords.hasBackend && !keywords.hasFrontend && !keywords.hasSchema && !keywords.hasCicd) {
     resetKeys.push("infra-architect");
   }
   // CI/CD workflow issues take priority — dev agents can't fix .github/ files
-  else if (hasCicd && !hasBackend && !hasFrontend && !hasSchema) {
+  else if (keywords.hasCicd && !keywords.hasBackend && !keywords.hasFrontend && !keywords.hasSchema) {
     resetKeys.push("push-app", "poll-app-ci");
   } else {
-    if (hasSchema) {
+    if (keywords.hasSchema) {
       // Schema failures cascade to both backend and frontend
       resetKeys.push("schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
     } else {
-      if (hasBackend) {
+      if (keywords.hasBackend) {
         resetKeys.push("backend-dev", "backend-unit-test");
       }
-      if (hasFrontend) {
+      if (keywords.hasFrontend) {
         resetKeys.push("frontend-dev", "frontend-unit-test");
       }
     }
     // If CI/CD signals co-occur with backend/frontend, also reset deploy items
-    if (hasCicd) {
+    if (keywords.hasCicd) {
       resetKeys.push("push-app", "poll-app-ci");
     }
     // If infra signals co-occur with app signals, also reset infra
-    if (hasInfra) {
+    if (keywords.hasInfra) {
       resetKeys.push("infra-architect");
     }
   }
