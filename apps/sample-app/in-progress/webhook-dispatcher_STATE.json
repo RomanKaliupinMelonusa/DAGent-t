@@ -85,7 +85,7 @@
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -93,7 +93,7 @@
       "label": "Unit Tests Passed — Frontend",
       "agent": "@frontend-ui-test",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {

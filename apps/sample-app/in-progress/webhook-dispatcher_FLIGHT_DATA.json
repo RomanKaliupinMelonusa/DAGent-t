@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:31:01.071Z",
+  "generatedAt": "2026-04-03T05:31:10.952Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -382,20 +382,78 @@
       "headAfterAttempt": "171e3e0a8045168f5b144f4b7fb399bc8caf1779"
     },
     {
+      "key": "frontend-unit-test",
+      "label": "Unit Tests Passed — Frontend",
+      "agent": "@frontend-ui-test",
+      "phase": "pre-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:30:05.252Z",
+      "finishedAt": "2026-04-03T05:31:02.649Z",
+      "durationMs": 57397,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Tests passed (2 suites, 14 tests). Now let me check if webhook-specific tests exist and verify E2E tests compile.",
+        "Good. The webhooks page exists and E2E tests exist. Let me now check the webhooks page code and verify E2E tests compile.",
+        "All checks pass: - ✅ **Unit tests**: 2 suites, 14 tests passed (0 failures) - ✅ **E2E tests compile**: 12 tests in 3 files listed successfully (including 4 webhook-specific tests)  Let me mark the pipeline stage as complete and commit.",
+        "All tasks completed successfully:  **Summary:** - **Jest unit tests**: 2 suites, 14 tests — all passed ✅ - **E2E test compilation**: 12 tests in 3 files (including 4 webhook-dispatcher tests) — all listed successfully ✅ - **Pipeline stage**: `frontend-unit-test` marked complete - **Commit**: Pipeline state committed via `agent-commit.sh`  The frontend webhook feature (`/webhooks` page with registration form, webhook list, NavBar link) is properly implemented and all existing unit tests pass. The E2E tests for the webhook dispatcher feature compile correctly and cover form rendering, webhook registration, list persistence, and NavBar navigation."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && npx jest --verbose 2>&1 | tail -80",
+          "timestamp": "2026-04-03T05:30:17.380Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/frontend/src -name \"*.test.*\" -o -name \"*.spec.*\" 2>/dev/null; echo \"---\"; find /workspaces/DAGent-t/apps/sample-app/e2e -name \"*.spec.*\" 2>/dev/null; echo \"-",
+          "timestamp": "2026-04-03T05:30:29.979Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npx playwright test --config playwright.config.ts --list 2>&1 | tail -30",
+          "timestamp": "2026-04-03T05:30:37.660Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher frontend-unit-test 2>&1",
+          "timestamp": "2026-04-03T05:30:51.282Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Unit Tests Passed — Frontend\" 2>&1",
+          "timestamp": "2026-04-03T05:30:56.166Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 3,
+        "file-read": 3,
+        "shell": 5
+      },
+      "inputTokens": 141761,
+      "outputTokens": 2010,
+      "cacheReadTokens": 125307,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "aecd07c92411e62130607dacfd14df83831cb997"
+    },
+    {
       "key": "backend-unit-test",
       "label": "Unit Tests Passed — Backend",
       "agent": "@backend-test",
       "phase": "pre-deploy",
       "attempt": 1,
       "startedAt": "2026-04-03T05:30:05.241Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T05:31:10.943Z",
+      "durationMs": 65702,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now let me look at the schemas package and jest config, then run the tests.",
         "All unit tests passed (3 suites, 34 tests, 2 integration suites properly skipped). Now let me run schema validation.",
-        "All tests pass: - **Unit tests**: 3 suites passed, 34 tests passed (2 integration suites properly skipped) - **Schema validation**: 1 suite passed, 53 tests passed (including all webhook schema tests)  Now let me mark the pipeline stage complete and commit."
+        "All tests pass: - **Unit tests**: 3 suites passed, 34 tests passed (2 integration suites properly skipped) - **Schema validation**: 1 suite passed, 53 tests passed (including all webhook schema tests)  Now let me mark the pipeline stage complete and commit.",
+        "All done. Here's a summary of the results:  ## ✅ Backend Unit Tests & Schema Validation — Complete  ### Unit Tests (`npx jest --verbose`) | Suite | Tests | Status | |---|---|---| | `fn-webhooks.test.ts` | 13 (7 POST + 6 GET) | ✅ Passed | | `fn-hello.test.ts` | 9 | ✅ Passed | | `fn-demo-login.test.ts` | 12 | ✅ Passed | | Integration suites (2) | 13 skipped | ⏭️ Correctly skipped (require `RUN_INTEGRATION=true`) | | **Total** | **34 passed, 13 skipped** | **✅** |  ### Schema Validation (`npm run validate:schemas`) | Suite | Tests | Status | |---|---|---| | `schemas.test.ts` | 53 (Hello, Auth, Errors, Webhook, CreateWebhookRequest, WebhookListResponse) | ✅ Passed |  ### Key webhook test coverage: - **POST handler**: 201 valid body, 400 invalid JSON, 400 missing url, 400 missing workspaceId, 400 invalid url, 400 empty body, 500 Cosmos failure, logging - **GET handler**: 200 empty array, 200 with data, workspaceId filter, unfiltered query, 500 Cosmos failure, logging - **Schemas**: All Zod schemas validated for acceptance/rejection of valid/invalid inputs"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -419,17 +477,23 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher backend-unit-test 2>&1",
           "timestamp": "2026-04-03T05:30:56.085Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Unit Tests Passed — Backend\" 2>&1",
+          "timestamp": "2026-04-03T05:31:01.072Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 5,
         "file-read": 9,
-        "shell": 4
+        "shell": 5
       },
-      "inputTokens": 209158,
-      "outputTokens": 1712,
-      "cacheReadTokens": 186103,
-      "cacheWriteTokens": 0
+      "inputTokens": 240101,
+      "outputTokens": 2094,
+      "cacheReadTokens": 216745,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "aecd07c92411e62130607dacfd14df83831cb997"
     }
   ]
 }
