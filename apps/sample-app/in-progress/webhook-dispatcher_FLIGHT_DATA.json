@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "generatedAt": "2026-04-03T05:04:37.174Z",
+  "featureSlug": "webhook-dispatcher",
+  "items": [
+    {
+      "key": "schema-dev",
+      "label": "Development Complete — Schemas",
+      "agent": "@schema-dev",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:04:36.432Z",
+      "finishedAt": "2026-04-03T05:04:37.164Z",
+      "durationMs": 732,
+      "outcome": "error",
+      "intents": [],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "errorMessage": "Execution failed: Error: Session was not created with authentication info or custom provider"
+    }
+  ]
+}
