@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:31:12.545Z",
+  "generatedAt": "2026-04-03T05:31:27.053Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -507,6 +507,29 @@
       "outcome": "completed",
       "intents": [
         "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:31:13.730Z",
+      "finishedAt": "2026-04-03T05:31:27.052Z",
+      "durationMs": 13322,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
       ],
       "messages": [],
       "filesRead": [],
