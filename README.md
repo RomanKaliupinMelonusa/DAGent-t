@@ -1,6 +1,6 @@
 # Autonomous Factory — Deterministic Agentic Coding Pipeline
 
-**TL;DR:** A headless, DAG-scheduled AI coding pipeline that takes a feature spec and delivers a tested Pull Request — 12 specialist agents, self-healing recovery, real browser testing, zero human interaction until code review. I independently converged on the same architectural pattern as [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). I believe this pattern — **deterministic orchestration with project-specific agent configuration** — is where enterprise agentic coding is headed. The repo is open. I want your feedback.
+**TL;DR:** A headless, DAG-scheduled AI coding pipeline that takes a feature spec and delivers a tested Pull Request — 14 specialist AI agents, self-healing recovery, real browser testing, zero human interaction until code review. I independently converged on the same architectural pattern as [Stripe's Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2). I believe this pattern — **deterministic orchestration with project-specific agent configuration** — is where enterprise agentic coding is headed. The repo is open. I want your feedback.
 
 **Built for Azure serverless web + microservices** — the sample app deploys Azure Functions (backend), Static Web Apps (frontend), APIM (API gateway), and Terraform (infra). But the engine itself is tech-agnostic: the orchestrator doesn't know what language your code is in or where it deploys. Each app provides its own `.apm/apm.yml` manifest declaring agents, rules, deploy targets, and test commands. Swap Azure Functions for AWS Lambda, Next.js for SvelteKit, TypeScript for Go — the pipeline runs the same.
 
@@ -129,7 +129,7 @@ Human writes SPEC
 │       ↓              ↑                                   │
 │       ↓         fail → triage → resetForDev (max 5x)     │
 │       ↓                                                  │
-│  Finalize ───── code-cleanup → docs → create-pr          │
+│  Finalize ───── code-cleanup → docs → doc-architect → publish-pr  │
 └──────────────────────────────────────────────────────────┘
        ↓
 Pull Request ready for human review
@@ -153,7 +153,7 @@ When post-deploy verification fails, the pipeline doesn't stop — it triages th
 
 ## Key Capabilities
 
-1. **DAG-Scheduled Parallel Execution** — 18 pipeline items across 6 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification runs sequentially (`integration-test` before `live-ui`) to avoid wasting Playwright time against a failing backend. Deploy-phase items (`push-code`, `poll-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Four workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) prune irrelevant items at init.
+1. **DAG-Scheduled Parallel Execution** — 20 pipeline items across 6 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification items (`integration-test` and `live-ui`) run in parallel after `poll-app-ci` completes. Deploy-phase items (`push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Six workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) prune irrelevant items at init.
    → *Deep dive: [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md)*
 
 2. **APM: Agent Package Manager** — Each agent receives *only* the rules relevant to its domain from modular `.md` instruction fragments. Token budget enforcement (`6,000 tokens`) prevents context degradation as rules grow. Built on [Microsoft's APM](https://github.com/microsoft/apm) standard.
@@ -188,7 +188,7 @@ Stripe's Minions produce **1,300+ PRs per week** with zero human-written code. T
 | Design Decision | This Pipeline | Stripe Minions |
 |-----------------|:-----------:|:--------------:|
 | **Orchestration** | Deterministic TypeScript loop with DAG state machine | "Blueprints" — state machines with interwoven deterministic and agentic nodes |
-| **Agent specialization** | 12 domain-specific agents with per-agent prompts | Task-specific agents with curated tool subsets |
+| **Agent specialization** | 14 LLM-driven specialist agents with per-agent prompts | Task-specific agents with curated tool subsets |
 | **Context management** | APM compiler with token budgets + modular rules | Scoped rules (Cursor format) + MCP tools via "Toolshed" (~500 tools) |
 | **CI integration** | Deterministic deploy bypasses (no LLM) → poll CI → auto-fix → re-push (bounded cycles) | Push → CI run → autofix → agent fix → second CI run (bounded to 2 iterations) |
 | **Failure recovery** | Structured triage → compound fault domains → targeted reroute + dedup circuit breakers | CI failures route back to agent nodes for local remediation |

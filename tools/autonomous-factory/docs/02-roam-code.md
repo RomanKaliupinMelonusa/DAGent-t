@@ -198,7 +198,7 @@ flowchart LR
 
 ### 6. PR Risk Scoring — Quantified Risk Before Merge
 
-When the `create-pr` agent assembles the Pull Request, roam provides a structural risk assessment:
+When the `publish-pr` agent assembles the Pull Request, roam provides a structural risk assessment:
 
 ```mermaid
 flowchart LR

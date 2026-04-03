@@ -55,8 +55,8 @@ flowchart TB
 
         subgraph P4["Finalize Phase"]
             A10["code-cleanup"]:::purple
-            A11["docs-expert"]:::purple
-            A12["create-pr"]:::purple
+            A11["docs-archived"]:::purple
+            A12["publish-pr"]:::purple
             A10 --> A11 --> A12
         end
 
@@ -81,7 +81,7 @@ flowchart TB
 
 Both flows follow the same fundamental progression: **Design → Develop → Test → Deploy → Verify**. The agentic pipeline preserves this structure but adds parallelism, automated recovery, and mandatory finalization.
 
-> **Go deeper:** For the full system architecture with MCP servers and state management, see [00-overview.md](00-overview.md). For the DAG dependency graph with parallel scheduling details, see [04-state-machine.md](04-state-machine.md). For the 12 specialist agents and their capabilities, see [05-agents.md](05-agents.md).
+> **Go deeper:** For the full system architecture with MCP servers and state management, see [00-overview.md](00-overview.md). For the DAG dependency graph with parallel scheduling details, see [04-state-machine.md](04-state-machine.md). For the 14 LLM specialist agents and their capabilities, see [05-agents.md](05-agents.md).
 
 ---
 
@@ -97,7 +97,7 @@ Both flows follow the same fundamental progression: **Design → Develop → Tes
 | 6 | **Run Unit & Integration Tests** | `poll-ci` (captures CI results) | `poll-ci.sh` polls GitHub Actions, `triage.ts` classifies failures | CI failures are **automatically triaged** by fault domain and routed back to the responsible dev agent |
 | 7 | **Automation Tests (E2E)** | `live-ui` | Specialist agent with Playwright MCP + roam | Real browser against real deployment. AST-driven E2E with deep diagnostic interception (console, network, localStorage) |
 | — | *(does not exist)* | **Self-healing recovery loop** | `triageFailure()` → `resetForDev()` | Up to 5 redevelopment cycles. Post-deploy failures route back to the correct dev agent with injected failure context |
-| — | *(manual / often skipped)* | **Finalize**: `code-cleanup`, `docs-expert`, `create-pr` | 3 specialist agents | Dead code removal, doc updates, and PR with risk assessment are **mandatory automated stages**, not afterthoughts |
+| — | *(manual / often skipped)* | **Finalize**: `code-cleanup`, `docs-archived`, `doc-architect`, `publish-pr` | 4 specialist agents | Dead code removal, doc updates, architecture & risk assessment, and PR creation are **mandatory automated stages**, not afterthoughts |
 
 ---
 
@@ -230,7 +230,7 @@ The agentic pipeline is faster not because agents code faster than humans, but b
 | **CI interaction** | Manual push, manual monitoring | Deterministic push, automated polling + log capture |
 | **Post-deploy verification** | Manual QA or scheduled test suite | Live integration + Playwright E2E as mandatory pipeline stages |
 | **Code cleanup** | Optional, often skipped | Mandatory pipeline stage (roam-powered dead-code analysis) |
-| **Documentation** | Often skipped or deferred | Mandatory pipeline stage (`docs-expert` reads all change manifests) |
+| **Documentation** | Often skipped or deferred | Mandatory pipeline stage (`docs-archived` reads all change manifests) |
 | **PR creation** | Manual with copy-paste description | Automated with risk assessment, change manifest, and reviewer suggestions |
 | **Recovery from failure** | Ad-hoc human debugging (no limit) | Structured: triage → classify → reset → retry (max 5 cycles, dedup circuit breaker) |
 

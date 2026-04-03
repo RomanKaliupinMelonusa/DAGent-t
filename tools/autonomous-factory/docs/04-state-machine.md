@@ -1,12 +1,12 @@
 # Pipeline State Machine — DAG & Lifecycle
 
-> 18 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
+> 20 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
 > Source: `tools/autonomous-factory/pipeline-state.mjs` (~468 lines) · `tools/autonomous-factory/src/state.ts` (~110 lines)
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
 
-## Full DAG — 18 Pipeline Items (Two-Wave Architecture)
+## Full DAG — 20 Pipeline Items (Two-Wave Architecture)
 
 > This is the **dependency-level** view — which items depend on which and what can run in parallel. For the system-level architecture showing how the orchestrator, MCP servers, and state management connect, see [00-overview.md](00-overview.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
 
@@ -46,12 +46,13 @@ flowchart LR
 
     subgraph POST["Post-Deploy"]
         IT["integration-test"]
-        IT --> LU["live-ui"]
+        LU["live-ui"]
     end
 
     subgraph FINAL["Finalize"]
         CC["code-cleanup"]
         DA["docs-archived"]
+        DARC["doc-architect"]
         PPR["publish-pr"]
     end
 
@@ -60,9 +61,11 @@ flowchart LR
     BD --> BUT
     FD --> FUT
     BUT & FUT --> PA --> PAC
-    PAC --> IT
+    PAC --> IT & LU
     IT & LU --> CC
-    CC --> DA --> PPR
+    CC --> DA
+    DA --> DARC
+    DARC --> PPR
 
     style INFRA fill:#e8f5e9
     style APPROVAL fill:#fff9c4,stroke:#f9a825,stroke-width:2px
@@ -89,11 +92,12 @@ flowchart LR
 | `frontend-unit-test` | pre-deploy | frontend-dev | backend-unit-test |
 | `push-app` | deploy | backend-unit-test, frontend-unit-test | — |
 | `poll-app-ci` | deploy | push-app | — |
-| `integration-test` | post-deploy | poll-app-ci | — |
-| `live-ui` | post-deploy | poll-app-ci, integration-test | — |
+| `integration-test` | post-deploy | poll-app-ci | live-ui |
+| `live-ui` | post-deploy | poll-app-ci | integration-test |
 | `code-cleanup` | finalize | integration-test, live-ui | — |
 | `docs-archived` | finalize | code-cleanup | — |
-| `publish-pr` | finalize | docs-archived | — |
+| `doc-architect` | finalize | code-cleanup, docs-archived | — |
+| `publish-pr` | finalize | doc-architect | — |
 
 ---
 
@@ -103,15 +107,15 @@ Each workflow type prunes irrelevant items at `pipeline:init`. All types run Wav
 
 ```mermaid
 flowchart TB
-    subgraph FS["Full-Stack (all 18 items)"]
+    subgraph FS["Full-Stack (all 20 items)"]
         direction LR
         FS1["schema-dev"] --> FS_IA["infra-architect"] --> FS_PI["push-infra"] --> FS_DPR["create-draft-pr"] --> FS_PIP["poll-infra-plan"] --> FS_AIA["⏸ approval"] --> FS_IH["infra-handoff"]
         FS1 & FS_IH --> FS2["backend-dev"] & FS3["frontend-dev"]
         FS2 --> FS4["backend-unit-test"]
         FS3 --> FS5["frontend-unit-test"]
         FS4 & FS5 --> FS6["push-app"] --> FS7["poll-app-ci"]
-        FS7 --> FS8["integration-test"] --> FS9["live-ui"]
-        FS8 & FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS12["publish-pr"]
+        FS7 --> FS8["integration-test"] & FS9["live-ui"]
+        FS8 & FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS_DARC["doc-architect"] --> FS12["publish-pr"]
     end
 
     subgraph BE["Backend (N/A: frontend-dev, frontend-unit-test, live-ui)"]
@@ -121,7 +125,7 @@ flowchart TB
         BE2 --> BE4["backend-unit-test"]
         BE4 --> BE6["push-app"] --> BE7["poll-app-ci"]
         BE7 --> BE8["integration-test"]
-        BE8 --> BE10["code-cleanup"] --> BE11["docs-archived"] --> BE12["publish-pr"]
+        BE8 --> BE10["code-cleanup"] --> BE11["docs-archived"] --> BE_DARC["doc-architect"] --> BE12["publish-pr"]
     end
 
     subgraph FE["Frontend (N/A: schema-dev, backend-dev, backend-unit-test, integration-test)"]
@@ -131,31 +135,56 @@ flowchart TB
         FE3 --> FE5["frontend-unit-test"]
         FE5 --> FE6["push-app"] --> FE7["poll-app-ci"]
         FE7 --> FE9["live-ui"]
-        FE9 --> FE10["code-cleanup"] --> FE11["docs-archived"] --> FE12["publish-pr"]
+        FE9 --> FE10["code-cleanup"] --> FE11["docs-archived"] --> FE_DARC["doc-architect"] --> FE12["publish-pr"]
     end
 
-    subgraph INF["Infra (N/A: all Wave 2 app items)"]
+    subgraph INF["Infra (N/A: all Wave 2 app items + doc-architect)"]
         direction LR
         INF1["schema-dev"] --> INF_IA["infra-architect"] --> INF_PI["push-infra"] --> INF_DPR["create-draft-pr"] --> INF_PIP["poll-infra-plan"] --> INF_AIA["⏸ approval"] --> INF_IH["infra-handoff"]
         INF_IH --> INF11["docs-archived"] --> INF12["publish-pr"]
+    end
+
+    subgraph AO["App-Only (N/A: schema-dev, infra-architect, push-infra, poll-infra-plan, await-infra-approval, infra-handoff)"]
+        direction LR
+        AO_DPR["create-draft-pr"]
+        AO2["backend-dev"] & AO3["frontend-dev"]
+        AO2 --> AO4["backend-unit-test"]
+        AO3 --> AO5["frontend-unit-test"]
+        AO4 & AO5 --> AO6["push-app"] --> AO7["poll-app-ci"]
+        AO7 --> AO8["integration-test"] & AO9["live-ui"]
+        AO8 & AO9 --> AO10["code-cleanup"] --> AO11["docs-archived"] --> AO_DARC["doc-architect"] --> AO12["publish-pr"]
+    end
+
+    subgraph BON["Backend-Only (N/A: infra items + frontend-dev, frontend-unit-test, live-ui)"]
+        direction LR
+        BON_DPR["create-draft-pr"]
+        BON2["backend-dev"]
+        BON2 --> BON4["backend-unit-test"]
+        BON4 --> BON6["push-app"] --> BON7["poll-app-ci"]
+        BON7 --> BON8["integration-test"]
+        BON8 --> BON10["code-cleanup"] --> BON11["docs-archived"] --> BON_DARC["doc-architect"] --> BON12["publish-pr"]
     end
 
     style FS fill:#e8f5e9
     style BE fill:#e3f2fd
     style FE fill:#fff3e0
     style INF fill:#f3e5f5
+    style AO fill:#e0f2f1
+    style BON fill:#fce4ec
 ```
 
 ### N/A Items Per Workflow Type
 
 | Workflow | Skipped Items (auto-N/A) | Active Count |
 |----------|-------------------------|:---:|
-| **Full-Stack** | (none) | 18 |
-| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 15 |
-| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 14 |
-| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `schema-dev`, `code-cleanup`, `push-app`, `poll-app-ci` | 8 |
+| **Full-Stack** | (none) | 20 |
+| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 17 |
+| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 16 |
+| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `schema-dev`, `code-cleanup`, `push-app`, `poll-app-ci`, `doc-architect` | 9 |
+| **App-Only** | `schema-dev`, `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff` | 14 |
+| **Backend-Only** | `schema-dev`, `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `frontend-dev`, `frontend-unit-test`, `live-ui` | 11 |
 
-> **Note:** Wave 1 infra items (`infra-architect` through `infra-handoff`), `docs-archived`, and `publish-pr` are always active for **all** workflow types. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run.
+> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for **all** workflow types. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items.
 
 ---
 

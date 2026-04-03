@@ -31,7 +31,7 @@ That's the whole system. Everything below zooms deeper into each part.
 
 You already know the system has 3 parts. Now: what does the DAG actually look like?
 
-19 items across 6 phases, organized as a **Two-Wave model** — infrastructure deploys first, then application code builds on top of it.
+20 items across 6 phases, organized as a **Two-Wave model** — infrastructure deploys first, then application code builds on top of it.
 
 ```mermaid
 graph TD
@@ -62,14 +62,14 @@ graph TD
         PA --> PAC["poll-app-ci"]
         PAC --> IT["integration-test"]
         PAC --> LU["live-ui"]
-        IT --> LU
     end
 
     subgraph FN["Finalize"]
         IT --> CC["code-cleanup"]
         LU --> CC
         CC --> DA["docs-archived"]
-        DA --> PPR["publish-pr"]
+        DA --> DARC["doc-architect"]
+        DARC --> PPR["publish-pr"]
     end
 
     style SD fill:#2ecc71,color:#fff
@@ -84,6 +84,7 @@ graph TD
     style DA fill:#2ecc71,color:#fff
     style DPR fill:#2ecc71,color:#fff
     style IH fill:#2ecc71,color:#fff
+    style DARC fill:#2ecc71,color:#fff
     style PPR fill:#2ecc71,color:#fff
     style PI fill:#8e44ad,color:#fff
     style PA fill:#8e44ad,color:#fff
@@ -277,7 +278,7 @@ Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-depl
 >   - `buildRevertWarning()` — [L99](tools/autonomous-factory/src/context-injection.ts#L99)
 >   - `buildInfraRollbackContext()` — [L115](tools/autonomous-factory/src/context-injection.ts#L115)
 >   - `computeEffectiveDevAttempts()` — [L137](tools/autonomous-factory/src/context-injection.ts#L137) — merges in-memory + persisted cycle counts
->   - `writeChangeManifest()` — [L155](tools/autonomous-factory/src/context-injection.ts#L155) — writes `_CHANGES.json` for docs-expert
+>   - `writeChangeManifest()` — [L155](tools/autonomous-factory/src/context-injection.ts#L155) — writes `_CHANGES.json` for docs-archived
 > - Triage — all in [triage.ts](tools/autonomous-factory/src/triage.ts):
 >   - `triageFailure()` — [L69](tools/autonomous-factory/src/triage.ts#L69) — 4-tier evaluation with validation layer
 >   - `validateFaultDomain()` — [L407](tools/autonomous-factory/src/triage.ts#L407) — Defense-in-Depth cicd augmentation
@@ -405,7 +406,7 @@ The same `pipelineSummaries[]` array that produces reports also drives the self-
 - **`shouldSkipRetry()`** reads `errorMessage` + `headAfterAttempt` from the last attempt for the same key → circuit breaker
 - **`buildRetryContext()`** reads the last summary for the retrying item → injects previous error, files changed, intents into the retry prompt
 - **`buildDownstreamFailureContext()`** filters for failed post-deploy summaries → injects production error into dev agent prompt
-- **`writeChangeManifest()`** reads all completed summaries + `docNote` from `_STATE.json` → builds `_CHANGES.json` for docs-expert
+- **`writeChangeManifest()`** reads all completed summaries + `docNote` from `_STATE.json` → builds `_CHANGES.json` for docs-archived
 
 > **Key code at this level:**
 > - `ItemSummary` interface — [types.ts#L96](tools/autonomous-factory/src/types.ts#L96), `ShellEntry` — [types.ts#L139](tools/autonomous-factory/src/types.ts#L139), `PlaywrightLogEntry` — [types.ts#L147](tools/autonomous-factory/src/types.ts#L147)

@@ -2,7 +2,7 @@
 
 ## 1. The DAG: Structure and Purpose
 
-The pipeline is a **Directed Acyclic Graph** of 19 items defined in `tools/autonomous-factory/pipeline-state.mjs` (L52–75), organized into a **Two-Wave model** (infra first, app second) with 6 phases.
+The pipeline is a **Directed Acyclic Graph** of 20 items defined in `tools/autonomous-factory/pipeline-state.mjs` (L52–75), organized into a **Two-Wave model** (infra first, app second) with 6 phases.
 
 ```mermaid
 graph TD
@@ -39,6 +39,7 @@ graph TD
     subgraph FN["Finalize"]
         CC["code-cleanup"]
         DA["docs-archived"]
+        DARC["doc-architect"]
         PPR["publish-pr"]
     end
 
@@ -59,16 +60,16 @@ graph TD
     PA --> PAC
     PAC --> IT
     PAC --> LU
-    IT --> LU
     IT --> CC
     LU --> CC
     CC --> DA
-    DA --> PPR
+    DA --> DARC
+    DARC --> PPR
 ```
 
 The DAG dependency map lives in `ITEM_DEPENDENCIES` at `pipeline-state.mjs` L94–118. The key insight: `backend-dev` and `frontend-dev` **run in parallel** because they share the same dependency set (`schema-dev` + `infra-handoff`). Similarly, `backend-unit-test` and `frontend-unit-test` are parallelizable.
 
-Workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`) control which items are marked `N/A` at init via `NA_ITEMS_BY_TYPE` at `pipeline-state.mjs` L81–90 — e.g., a `Backend` workflow skips `frontend-dev`, `frontend-unit-test`, and `live-ui`.
+Workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) control which items are marked `N/A` at init via `NA_ITEMS_BY_TYPE` at `pipeline-state.mjs` L81–90 — e.g., a `Backend` workflow skips `frontend-dev`, `frontend-unit-test`, and `live-ui`.
 
 ## 2. State: the Single Source of Truth
 
@@ -197,7 +198,7 @@ This means `backend-dev` gets: all files from `instructions/always/` + all files
 
 #### Layer 4: Workflow (HIGH importance for agent behavior)
 
-The step-by-step numbered workflow unique per agent type (`agents.ts` L220–264). Includes: read spec, use roam tools for codebase orientation, implement, run security audit, run local quality gate, commit with proper scope, leave doc-note for docs-expert.
+The step-by-step numbered workflow unique per agent type (`agents.ts` L220–264). Includes: read spec, use roam tools for codebase orientation, implement, run security audit, run local quality gate, commit with proper scope, leave doc-note for docs-archived.
 
 #### Layer 5: Completion Block (CRITICAL for DAG communication)
 
@@ -435,7 +436,7 @@ This gives the LLM a window to gracefully commit and report status before the ha
 
 ##### The Change Manifest — Docs-Expert Injection
 
-One final injection mechanism: `writeChangeManifest()` (`context-injection.ts` L161–198) runs **before** the `docs-archived` session. Instead of appending to the task prompt, it writes a `_CHANGES.json` file that the docs-expert agent reads during its workflow. This file contains:
+One final injection mechanism: `writeChangeManifest()` (`context-injection.ts` L161–198) runs **before** the `docs-archived` session. Instead of appending to the task prompt, it writes a `_CHANGES.json` file that the docs-archived agent reads during its workflow. This file contains:
 
 ```json
 {
@@ -738,7 +739,7 @@ The `pipelineSummaries[]` array and the flushed files serve **4 downstream purpo
 | `shouldSkipRetry()` | `errorMessage` + `headAfterAttempt` from last attempt for same key | Circuit breaker — detect identical error loops |
 | `buildRetryContext()` | Last `ItemSummary` for same key (reverse scan) — `errorMessage`, `filesChanged`, `intents`, `shellCommands` | Tell retrying agent what was already tried |
 | `buildDownstreamFailureContext()` | All summaries where `POST_DEPLOY_ITEMS.has(key)` and `outcome !== "completed"` | Tell dev agent what broke in production |
-| `writeChangeManifest()` | All completed summaries — `filesChanged`, plus `docNote` from `_STATE.json` | Build `_CHANGES.json` for docs-expert agent |
+| `writeChangeManifest()` | All completed summaries — `filesChanged`, plus `docNote` from `_STATE.json` | Build `_CHANGES.json` for docs-archived agent |
 
 ### Doc-Notes: Agent → State → Manifest
 
