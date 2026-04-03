@@ -128,6 +128,9 @@ test.describe("Webhook Dispatcher", () => {
   }) => {
     const page = authenticatedPage;
 
+    // Use a unique URL per test run to avoid collisions with prior data
+    const uniqueUrl = `https://example.com/persist-${Date.now()}`;
+
     // --- Deep Diagnostic Interception ---
     const consoleLogs: string[] = [];
     page.on("console", (msg) => {
@@ -152,15 +155,15 @@ test.describe("Webhook Dispatcher", () => {
       // Register a webhook
       const urlInput = page.getByTestId("webhook-url-input");
       await expect(urlInput).toBeVisible({ timeout: 15_000 });
-      await urlInput.fill("https://example.com/persist-test");
+      await urlInput.fill(uniqueUrl);
       await page.getByTestId("webhook-submit").click();
 
-      // Wait for it to appear
+      // Wait for the list to load and the new entry to appear
       const webhookList = page.getByTestId("webhook-list");
       await expect(webhookList).toBeVisible({ timeout: 15_000 });
       await expect(
-        page.getByTestId("webhook-row").first(),
-      ).toContainText("https://example.com/persist-test");
+        page.getByText(uniqueUrl).first(),
+      ).toBeVisible({ timeout: 15_000 });
 
       // Reload the page
       await page.reload({ waitUntil: "domcontentloaded" });
@@ -169,7 +172,7 @@ test.describe("Webhook Dispatcher", () => {
       await expect(page.getByTestId("webhook-list")).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText("https://example.com/persist-test")).toBeVisible();
+      await expect(page.getByText(uniqueUrl).first()).toBeVisible();
     } catch (error) {
       const diagnostics = [
         consoleLogs.length

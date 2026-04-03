@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T06:02:51.965Z",
+  "generatedAt": "2026-04-03T06:14:33.796Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1157,6 +1157,228 @@
       "cacheReadTokens": 319605,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "c14c0ba7d01ff4a253ff0d1bae1356bd04c11974"
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-03T06:02:53.331Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "The workflow was triggered. Let me monitor it until completion.",
+        "Good, I have the spec. Now let me wait for the deployment to complete.",
+        "Good, E2E tests exist with proper diagnostic instrumentation. Let me check the deployment status.",
+        "Deployment succeeded! Now let me run the full validation phases.",
+        "Phase 1 passed. The webhooks page is now deployed and returning 200. Let me proceed to Phase 2.",
+        "Phase 2 passed! CORS is working, both GET (200) and POST (201) succeed through APIM. Now let me move to Phase 3 & 4 — verify E2E tests and run them.",
+        "Good, all 12 tests listed including 4 webhook tests. Now let me run the feature-scoped tests:",
+        "3 of 4 tests passed. The \"persist after reload\" test fails because it expects the newly-registered webhook to be the first row, but pre-existing webhooks in Cosmos DB appear first. This is a **test-only** issue — the list is sorted by insertion order and the new entry is appended at the end. Let me fix the test.",
+        "The issue is duplicate entries from prior test runs causing strict mode violation. Let me use a unique URL per test run and fix the `first()` selector:",
+        "Now let me run all 4 webhook tests together to confirm they all pass:",
+        "All 4 tests passed. Now let me add the manual QA audit to the Playwright log and check screenshots:",
+        "The UI looks great — clean layout, NavBar with Webhooks link active, registration form visible, authenticated as Demo User. Let me check the list populated screenshot:",
+        "The list screenshot shows webhooks loading correctly from the API — each row displays URL, creation timestamp, and workspace ID. No error banners visible. Now let me write the QA summary and complete:"
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && git log --oneline -10",
+          "timestamp": "2026-04-03T06:06:04.847Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -s -o /dev/null -w \"%{http_code}\" --max-time 20 \"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net\"",
+          "timestamp": "2026-04-03T06:06:04.848Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "curl -s -o /dev/null -w \"%{http_code}\" --max-time 20 \"https://wonderful-grass-0ef9b920f.4.azurestaticapps.net/webhooks\"",
+          "timestamp": "2026-04-03T06:06:04.848Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && git log --oneline -30 | head -30",
+          "timestamp": "2026-04-03T06:06:44.668Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if webhooks page exists in the codebase",
+          "timestamp": "2026-04-03T06:06:44.668Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if there's a staticwebapp.config.json with routing rules",
+          "timestamp": "2026-04-03T06:07:01.895Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if the deploy workflow exists and what triggers it",
+          "timestamp": "2026-04-03T06:07:01.895Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check deployed JS chunks for any webhooks-related code",
+          "timestamp": "2026-04-03T06:07:01.895Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if webhooks string exists in any deployed JS chunks",
+          "timestamp": "2026-04-03T06:07:07.839Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if gh CLI is available and authenticated",
+          "timestamp": "2026-04-03T06:07:25.089Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Try to trigger the deploy-frontend workflow via workflow_dispatch on the feature branch",
+          "timestamp": "2026-04-03T06:07:35.388Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run view 23936113948 --json status,conclusion 2>&1",
+          "timestamp": "2026-04-03T06:07:42.421Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && gh run watch 23936113948 --exit-status 2>&1",
+          "timestamp": "2026-04-03T06:08:27.070Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# While waiting, check existing E2E tests",
+          "timestamp": "2026-04-03T06:08:31.477Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Phase 1: HTTP Smoke Tests",
+          "timestamp": "2026-04-03T06:09:38.647Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Phase 2: API Network Validation",
+          "timestamp": "2026-04-03T06:09:59.463Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check demo token",
+          "timestamp": "2026-04-03T06:10:13.369Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM OpenAPI spec for webhooks paths",
+          "timestamp": "2026-04-03T06:10:21.560Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM direct without /api prefix since APIM may have its own base path",
+          "timestamp": "2026-04-03T06:10:34.761Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check how APIM is configured for routing in Terraform ",
+          "timestamp": "2026-04-03T06:10:41.847Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM terraform for path/api_path configuration",
+          "timestamp": "2026-04-03T06:10:46.959Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the apiClient for the base URL and how it constructs paths",
+          "timestamp": "2026-04-03T06:10:56.502Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-03T06:11:09.639Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# The demo token isn't in dev.tfvars, let me find it",
+          "timestamp": "2026-04-03T06:11:22.700Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get the demo token from the plan output",
+          "timestamp": "2026-04-03T06:11:41.228Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the demo-auth fixture to understand how auth works in tests",
+          "timestamp": "2026-04-03T06:11:50.680Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check playwright config for the env vars it uses",
+          "timestamp": "2026-04-03T06:11:55.142Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Find the FUNCTION_APP_URL / login URL that the fixture uses",
+          "timestamp": "2026-04-03T06:12:03.868Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Install playwright browsers",
+          "timestamp": "2026-04-03T06:12:13.579Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# First, verify tests compile/list",
+          "timestamp": "2026-04-03T06:12:20.958Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Run feature-scoped Playwright tests",
+          "timestamp": "2026-04-03T06:12:28.227Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Re-run the failing test",
+          "timestamp": "2026-04-03T06:13:03.658Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Re-run the test",
+          "timestamp": "2026-04-03T06:13:30.895Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Run all webhook E2E tests and save to Playwright log",
+          "timestamp": "2026-04-03T06:13:41.668Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check for screenshots",
+          "timestamp": "2026-04-03T06:13:54.162Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat << 'EOF' >> /workspaces/DAGent-t/apps/sample-app/in-progress/webhook-dispatcher_PLAYWRIGHT-LOG.md",
+          "timestamp": "2026-04-03T06:14:25.685Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 10,
+        "shell": 38,
+        "file-read": 4,
+        "read_bash": 1,
+        "edit": 2
+      },
+      "inputTokens": 1758630,
+      "outputTokens": 16332,
+      "cacheReadTokens": 1689479,
+      "cacheWriteTokens": 0
     }
   ]
 }
