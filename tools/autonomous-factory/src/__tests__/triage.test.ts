@@ -1060,3 +1060,66 @@ describe("normalizeDiagnosticTrace", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// triageFailure — deployment-stale-backend / deployment-stale-frontend
+// ---------------------------------------------------------------------------
+
+describe("triageFailure (domain-specific deployment-stale)", () => {
+  it("deployment-stale-backend → resets push-app + poll-app-ci + itemKey", () => {
+    const msg = makeJsonMsg("deployment-stale-backend", "fn-webhooks not in deployed artifact list");
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci", "integration-test"]);
+  });
+
+  it("deployment-stale-frontend → resets push-app + poll-app-ci + itemKey", () => {
+    const msg = makeJsonMsg("deployment-stale-frontend", "SWA serving stale build — /webhooks returns 404");
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci", "live-ui"]);
+  });
+
+  it("deployment-stale-backend does NOT reset frontend items", () => {
+    const msg = makeJsonMsg("deployment-stale-backend", "Backend artifact stale");
+    const keys = triageFailure("integration-test", msg, NO_NA);
+    assert.ok(!keys.includes("frontend-dev"));
+    assert.ok(!keys.includes("frontend-unit-test"));
+    assert.ok(!keys.includes("live-ui"));
+  });
+
+  it("deployment-stale-frontend does NOT reset backend items", () => {
+    const msg = makeJsonMsg("deployment-stale-frontend", "Frontend build stale");
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.ok(!keys.includes("backend-dev"));
+    assert.ok(!keys.includes("backend-unit-test"));
+    assert.ok(!keys.includes("integration-test"));
+  });
+
+  it("deployment-stale-backend filters out N/A items", () => {
+    const msg = makeJsonMsg("deployment-stale-backend", "Backend stale");
+    const na = new Set(["poll-app-ci"]);
+    const keys = triageFailure("integration-test", msg, na);
+    assert.deepStrictEqual(keys, ["push-app", "integration-test"]);
+  });
+
+  it("generic deployment-stale still works as fallback", () => {
+    const msg = makeJsonMsg("deployment-stale", "Generic stale deployment");
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci", "live-ui"]);
+  });
+
+  it("deployment-stale-backend is not augmented with deploy items by validateFaultDomain", () => {
+    const result: ValidationResult = validateFaultDomain(
+      "deployment-stale-backend",
+      "fn-webhooks missing from deployed artifact, .github/workflows/deploy-backend.yml",
+    );
+    assert.equal(result.augmentWithDeploy, false);
+  });
+
+  it("deployment-stale-frontend is not augmented with deploy items by validateFaultDomain", () => {
+    const result: ValidationResult = validateFaultDomain(
+      "deployment-stale-frontend",
+      "SWA stale, .github/workflows/deploy-frontend.yml never triggered",
+    );
+    assert.equal(result.augmentWithDeploy, false);
+  });
+});
+

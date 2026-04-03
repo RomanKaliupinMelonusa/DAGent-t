@@ -146,9 +146,8 @@ flowchart LR
     end
 
     subgraph POST["Post-Deploy"]
-        direction TB
         IT["integration-test"]
-        IT --> LU["live-ui"]
+        LU["live-ui"]
     end
 
     subgraph FIN["Finalize"]
@@ -158,7 +157,7 @@ flowchart LR
     PIP --> AIA
     SD & IH --> BD & FD
     BUT & FUT --> PA
-    PAC --> IT
+    PAC --> IT & LU
     IT & LU --> CC
 
     style INFRA fill:#e8f5e9

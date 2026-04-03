@@ -24,3 +24,12 @@ export INTEGRATION_FUNCTION_KEY="$FUNC_KEY"
 - Azure CLI must be authenticated (`az login`) — the Devcontainer has Azure CLI pre-installed
 - Integration tests use `DefaultAzureCredential` for SDK-level authentication within test code
 - The `FUNC_APP_NAME` and `RESOURCE_GROUP` values are provided in the pipeline environment context
+
+## APIM Gateway Routing (Mandatory)
+
+Every new backend HTTP endpoint intended for frontend or external consumption **MUST** have its path declared in `infra/api-specs/api-sample.openapi.yaml`. The frontend talks to APIM, NOT the Function App directly. Failing to register the path in the OpenAPI spec will result in 404 errors at the APIM gateway.
+
+Before marking development complete:
+1. Verify your new paths exist in the OpenAPI spec with correct HTTP methods
+2. Ensure operationIds are unique and descriptive
+3. Confirm the APIM import policy picks up the spec changes via the `azurerm_api_management_api` resource in `infra/apim.tf`

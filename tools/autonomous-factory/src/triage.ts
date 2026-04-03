@@ -252,6 +252,14 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       // Only re-deploy — do NOT reset dev items (code doesn't need fixing).
       resetKeys.push("push-app", "poll-app-ci");
       break;
+    case "deployment-stale-backend":
+      // Backend deployment stale — only re-deploy and re-run backend post-deploy test.
+      resetKeys.push("push-app", "poll-app-ci");
+      break;
+    case "deployment-stale-frontend":
+      // Frontend deployment stale — only re-deploy and re-run frontend post-deploy test.
+      resetKeys.push("push-app", "poll-app-ci");
+      break;
     case "infra":
       // Infrastructure error — route to infra-architect (Wave 1 redevelopment)
       resetKeys.push("infra-architect");
@@ -401,8 +409,9 @@ const CICD_ROOT_CAUSE_INDICATORS = [
  * and signals `augmentWithDeploy: true` so the caller adds deploy items to
  * the reset list.
  *
- * Never augments "cicd" (already routes to deploy), "deployment-stale" (code
- * is correct), "blocked" (unfixable), or "environment" (not a code bug).
+ * Never augments "cicd" (already routes to deploy), "deployment-stale",
+ * "deployment-stale-backend", "deployment-stale-frontend" (code is correct),
+ * "blocked" (unfixable), or "environment" (not a code bug).
  */
 export function validateFaultDomain(
   agentDomain: FaultDomain,
@@ -411,7 +420,7 @@ export function validateFaultDomain(
   ciWorkflowFilePatterns?: string[],
 ): ValidationResult {
   // Domains that should never be augmented
-  const NO_AUGMENT: Set<FaultDomain> = new Set(["cicd", "deployment-stale", "blocked", "environment"]);
+  const NO_AUGMENT: Set<FaultDomain> = new Set(["cicd", "deployment-stale", "deployment-stale-backend", "deployment-stale-frontend", "blocked", "environment"]);
   if (NO_AUGMENT.has(agentDomain)) return { domain: agentDomain, augmentWithDeploy: false };
 
   const keywords = detectKeywordDomains(errorMessage, directories, ciWorkflowFilePatterns);
