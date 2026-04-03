@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:49:04.423Z",
+  "generatedAt": "2026-04-03T05:49:13.255Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -698,9 +698,9 @@
       "phase": "post-deploy",
       "attempt": 2,
       "startedAt": "2026-04-03T05:37:45.399Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T05:49:13.238Z",
+      "durationMs": 687839,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good. The pipeline was reset for redeployment after the previous failure. Let me check if the redeployment has happened by verifying the deployed functions and retrieving the function key.",
@@ -715,7 +715,8 @@
         "Good - comprehensive test coverage exists. Now let me run the full integration test suite.",
         "All 13 integration tests passed (2 test suites, 0 failures). Now let me run the APIM gateway validation.",
         "APIM operations exist for webhooks. The path prefix is \"sample\". Let me retry with the correct path and token.",
-        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **WEBHOOK_TIMEOUT_MS**: Set to 5000 in deployed environment  Now let me mark the pipeline complete and commit."
+        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **WEBHOOK_TIMEOUT_MS**: Set to 5000 in deployed environment  Now let me mark the pipeline complete and commit.",
+        "All done. Here's a summary of what was accomplished:  ## Integration Test Results — webhook-dispatcher ✅  **Root cause of previous failure:** The deploy-backend workflow never ran for `feature/webhook-dispatcher` because all recent commits had `[skip ci]` in their messages. The code was correct but never deployed.  **Resolution:** Triggered `deploy-backend.yml` via `workflow_dispatch` for the `feature/webhook-dispatcher` branch (run #23935549031), which completed successfully.  **Verification:** | Check | Result | |-------|--------| | Deployed functions | fn-demo-login, fn-hello, fn-webhooks-get, fn-webhooks-post ✅ | | WEBHOOK_TIMEOUT_MS app setting | 5000 ✅ | | Integration tests (13/13) | All passed ✅ | | APIM GET /sample/webhooks | HTTP 200 ✅ | | APIM POST /sample/webhooks | HTTP 201 ✅ |"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -904,16 +905,22 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher integration-test 2>&1",
           "timestamp": "2026-04-03T05:48:59.656Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-03T05:49:04.425Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 8,
-        "shell": 40
+        "shell": 41
       },
-      "inputTokens": 812351,
-      "outputTokens": 10857,
-      "cacheReadTokens": 782360,
-      "cacheWriteTokens": 0
+      "inputTokens": 852282,
+      "outputTokens": 11102,
+      "cacheReadTokens": 821992,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "a0b0726c094f737e7e30d857548f229833b9d245"
     }
   ]
 }
