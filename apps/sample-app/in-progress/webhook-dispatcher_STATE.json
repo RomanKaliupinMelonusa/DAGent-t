@@ -158,7 +158,7 @@
       "label": "PR Published & Ready for Review",
       "agent": "@pr-creator",
       "phase": "finalize",
-      "status": "pending",
+      "status": "done",
       "error": null
     }
   ],

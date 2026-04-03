@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T06:25:04.936Z",
+  "generatedAt": "2026-04-03T06:25:08.953Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1650,6 +1650,29 @@
       "cacheReadTokens": 298122,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "d51420c7908e19a55f2d06f0c30680309c4cafd3"
+    },
+    {
+      "key": "publish-pr",
+      "label": "PR Published & Ready for Review",
+      "agent": "@pr-creator",
+      "phase": "finalize",
+      "attempt": 1,
+      "startedAt": "2026-04-03T06:25:05.047Z",
+      "finishedAt": "2026-04-03T06:25:08.952Z",
+      "durationMs": 3905,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic PR publish — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
