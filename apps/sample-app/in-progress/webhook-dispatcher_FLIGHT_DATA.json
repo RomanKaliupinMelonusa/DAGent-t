@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:57:08.525Z",
+  "generatedAt": "2026-04-03T05:57:10.696Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -931,7 +931,7 @@
       "startedAt": "2026-04-03T05:49:14.603Z",
       "finishedAt": "2026-04-03T05:57:08.493Z",
       "durationMs": 473890,
-      "outcome": "completed",
+      "outcome": "failed",
       "intents": [],
       "messages": [
         "Intent: The evidence is conclusive. This is a deployment-stale issue. The `/webhooks` page code exists on the branch (committed in `f9e3177`), but the deployed Azure Static Web App is serving an older build. The deployed JS chunks contain zero references to \"webhook\", and `/webhooks.html` returns 404 from SWA's default 404 page, while pre-existing routes like `/about` work fine.  Let me now report this failure properly.",
@@ -1001,7 +1001,31 @@
       "outputTokens": 7447,
       "cacheReadTokens": 453472,
       "cacheWriteTokens": 0,
-      "headAfterAttempt": "f1de052cb85268f63919b9daa791b9cc6084d06a"
+      "headAfterAttempt": "f1de052cb85268f63919b9daa791b9cc6084d06a",
+      "errorMessage": "{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"Phase 1 HTTP smoke: root / returns 200, /about returns 200, but /webhooks returns 404 (Azure SWA default 404 page). /webhooks.html also returns 404. Searched all 11 deployed JS chunks for string webhook \\u2014 zero matches found. Feature code exists on branch: commit f9e3177 (2026-04-03T05:28:58Z) added apps/sample-app/frontend/src/app/webhooks/page.tsx and modified NavBar.tsx. deploy-frontend.yml triggers on apps/*/frontend/** paths on feature/** branches, so f9e3177 should have triggered a deployment. However, the deployed SWA at https://wonderful-grass-0ef9b920f.4.azurestaticapps.net does not contain the webhooks page. Pre-existing routes (/about) work correctly, confirming SWA is healthy but serving a stale build. All 12 commits after f9e3177 are either pipeline state updates with [skip ci] or backend-only changes that would not retrigger the frontend deploy workflow. The frontend deploy workflow either failed, was cancelled by concurrency, or never completed. Resolution: manually trigger deploy-frontend.yml via workflow_dispatch or push a no-op change to apps/sample-app/frontend/ without [skip ci].\"}"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-03T05:57:10.015Z",
+      "finishedAt": "2026-04-03T05:57:10.695Z",
+      "durationMs": 680,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
