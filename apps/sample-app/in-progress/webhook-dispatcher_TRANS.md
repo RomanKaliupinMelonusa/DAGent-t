@@ -30,7 +30,7 @@ Draft PR #35 created — awaiting Terraform plan
 - [x] Integration Tests Passed (@backend-test)
 - [x] Live UI Validated (@frontend-ui-test)
 ### Finalize
-- [ ] Dead Code Eliminated (@code-cleanup)
+- [x] Dead Code Eliminated (@code-cleanup)
 - [ ] Docs Updated & Archived (@docs-expert)
 - [ ] Architecture & Risk Documented (@doc-architect)
 - [ ] PR Published & Ready for Review (@pr-creator)

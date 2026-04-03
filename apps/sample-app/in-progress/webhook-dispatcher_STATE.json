@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Dead code scan complete. Roam structural analysis (roam_dead_code, roam_uses, roam_batch_get, roam_deps) found NO dead code within the webhook-dispatcher feature scope (apps/sample-app). All symbols are actively referenced: fn-webhooks.ts (5 symbols), webhooks/page.tsx (2 symbols), packages/schemas/src/webhooks.ts (6 symbols). CreateWebhookRequest type has 0 external consumers but is a public API type in the protected packages/schemas barrel export — retained per safety rules. All existing app utilities (apiClient, authConfig, demoAuthContext, NavBar, ThemeToggle) have active consumers. No orphaned files or unreachable routes detected. Backend tests: 34 passed. Frontend tests: 14 passed."
     },
     {
       "key": "docs-archived",
