@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:57:10.696Z",
+  "generatedAt": "2026-04-03T06:02:43.769Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1025,6 +1025,130 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-03T05:57:11.793Z",
+      "finishedAt": "2026-04-03T05:57:24.349Z",
+      "durationMs": 12556,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 3,
+      "startedAt": "2026-04-03T05:57:25.582Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good - integration-test is pending and needs to be run. The previous failures were due to stale deployments. Let me check if the webhooks function is now deployed and retrieve the function key.",
+        "The webhooks endpoint is now deployed and returning data. Let me now read the spec and integration test file, then run the test suite.",
+        "Good - tests are well-structured. Let me check the deployed app settings for WEBHOOK_TIMEOUT_MS and the test script.",
+        "WEBHOOK_TIMEOUT_MS is set to 5000 on the deployed function app. Now let me run the integration tests.",
+        "All 13 tests passed (2 suites, 0 failures). Now let me run the APIM gateway validation.",
+        "APIM returns 404. Let me check if the demo token is empty and check the APIM path configuration.",
+        "The APIM API path is `sample`, so the correct URL is `/sample/webhooks`. Let me also check the unified API.",
+        "The APIM path is `/sample/webhooks` and it requires a demo token. Let me get the token and validate.",
+        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **APIM OPTIONS preflight**: HTTP 200 (CORS working)  Now let me mark the pipeline complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status webhook-dispatcher 2>&1 | tail -30",
+          "timestamp": "2026-04-03T06:00:31.891Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/webhook-dispatcher_STATE.json | python3 -c \"import json,sys; d=json.load(sys.stdin); print(json.dumps({k:v for k,v in d.items() if k in ['cur",
+          "timestamp": "2026-04-03T06:00:37.886Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_APP_NAME=\"func-sample-app-001\"",
+          "timestamp": "2026-04-03T06:00:50.382Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/webhook-dispatcher_SPEC.md | head -100",
+          "timestamp": "2026-04-03T06:00:59.983Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/backend -name \"*.integration.test.ts\" 2>/dev/null",
+          "timestamp": "2026-04-03T06:00:59.983Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-03T06:01:19.656Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend",
+          "timestamp": "2026-04-03T06:01:29.823Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-03T06:01:44.456Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check demo token",
+          "timestamp": "2026-04-03T06:01:56.870Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM path prefix and the actual URL structure",
+          "timestamp": "2026-04-03T06:02:05.283Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-03T06:02:16.277Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-03T06:02:28.945Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher integration-test 2>&1",
+          "timestamp": "2026-04-03T06:02:38.942Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "shell": 13,
+        "file-read": 1
+      },
+      "inputTokens": 320299,
+      "outputTokens": 5718,
+      "cacheReadTokens": 288717,
       "cacheWriteTokens": 0
     }
   ]
