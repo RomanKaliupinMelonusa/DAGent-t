@@ -50,6 +50,9 @@ function NavBarShell({ authSlot }: { authSlot: React.ReactNode }) {
             <Link href="/about" className={navLinkClass("/about", pathname)}>
               About
             </Link>
+            <Link href="/webhooks" className={navLinkClass("/webhooks", pathname)}>
+              Webhooks
+            </Link>
           </nav>
 
           <ThemeToggle />
