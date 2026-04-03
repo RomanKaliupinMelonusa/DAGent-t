@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:31:10.952Z",
+  "generatedAt": "2026-04-03T05:31:12.545Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -494,6 +494,29 @@
       "cacheReadTokens": 216745,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "aecd07c92411e62130607dacfd14df83831cb997"
+    },
+    {
+      "key": "push-app",
+      "label": "App Code Pushed to Origin",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:31:11.027Z",
+      "finishedAt": "2026-04-03T05:31:12.544Z",
+      "durationMs": 1517,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
