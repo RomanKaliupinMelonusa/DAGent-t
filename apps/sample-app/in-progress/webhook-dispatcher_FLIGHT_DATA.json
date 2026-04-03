@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:19:02.695Z",
+  "generatedAt": "2026-04-03T05:19:16.328Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -270,6 +270,29 @@
       "cacheReadTokens": 119836,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "2e16c2986a8ccccce454505843ef74eb738ce602"
+    },
+    {
+      "key": "poll-infra-plan",
+      "label": "Infra Plan CI Passed",
+      "agent": "@deploy-manager",
+      "phase": "infra",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:19:04.372Z",
+      "finishedAt": "2026-04-03T05:19:16.327Z",
+      "durationMs": 11955,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
     }
   ]
 }
