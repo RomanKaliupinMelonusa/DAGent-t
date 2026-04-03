@@ -45,4 +45,13 @@ fi
 
 # ─── @backend-dev / @frontend-dev append endpoint checks below this line ──
 
+# ─── Webhook endpoint reachability ────────────────────────────────────────
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${BACKEND_URL}/webhooks" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" || "$STATUS" == "502" || "$STATUS" == "503" ]]; then
+    echo "Webhook endpoint at ${BACKEND_URL}/webhooks unreachable (HTTP $STATUS)"
+    exit 1
+  fi
+fi
+
 exit 0
