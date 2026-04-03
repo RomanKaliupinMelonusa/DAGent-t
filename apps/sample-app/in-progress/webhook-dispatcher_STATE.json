@@ -51,7 +51,7 @@
       "label": "Infra Approval Received",
       "agent": null,
       "phase": "approval",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -164,6 +164,12 @@
       "timestamp": "2026-04-03T05:04:37.163Z",
       "itemKey": "schema-dev",
       "message": "Execution failed: Error: Session was not created with authentication info or custom provider"
+    },
+    {
+      "timestamp": "2026-04-03T05:24:15.262Z",
+      "itemKey": "resume-elevated",
+      "message": "Elevated apply resume cycle 1/5. Reset 2 items to pending for standard CI re-verification."
     }
-  ]
+  ],
+  "elevatedApply": true
 }
