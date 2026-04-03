@@ -107,6 +107,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Inject WEBHOOK_TIMEOUT_MS app setting
+        run: |
+          az functionapp config appsettings set \
+            --name "${{ vars.AZURE_FUNCTION_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP || 'rg-sample-app-dev' }}" \
+            --settings WEBHOOK_TIMEOUT_MS=5000 \
+            --output none
+
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         with:
