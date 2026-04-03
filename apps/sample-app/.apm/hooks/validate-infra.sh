@@ -28,4 +28,23 @@ set -uo pipefail
 
 # ─── @infra-architect appends resource validation checks below this line ──
 
+# --- Cosmos DB reachability (Tasks container) ---
+# Resolve COSMOSDB_ENDPOINT from Terraform output or environment variable
+if [[ -z "${COSMOSDB_ENDPOINT:-}" && -n "${FUNC_APP_NAME:-}" && -n "${RESOURCE_GROUP:-}" ]]; then
+  COSMOSDB_ENDPOINT=$(az functionapp config appsettings list \
+    --name "$FUNC_APP_NAME" --resource-group "$RESOURCE_GROUP" \
+    --query "[?name=='COSMOSDB_ENDPOINT'].value | [0]" -o tsv 2>/dev/null || true)
+fi
+
+if [[ -n "${COSMOSDB_ENDPOINT:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$COSMOSDB_ENDPOINT" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" ]]; then
+    echo "❌ Cosmos DB unreachable at $COSMOSDB_ENDPOINT"
+    exit 1
+  fi
+  echo "✅ Cosmos DB reachable at $COSMOSDB_ENDPOINT (HTTP $STATUS)"
+else
+  echo "⚠️  COSMOSDB_ENDPOINT not set — skipping Cosmos DB reachability check"
+fi
+
 exit 0
