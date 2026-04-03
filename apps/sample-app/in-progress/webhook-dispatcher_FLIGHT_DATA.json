@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:31:27.053Z",
+  "generatedAt": "2026-04-03T05:37:28.430Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -540,6 +540,109 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:31:28.342Z",
+      "finishedAt": "2026-04-03T05:37:28.415Z",
+      "durationMs": 360073,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Good — both integration test files exist and Azure CLI is authenticated. Let me verify the test coverage and retrieve the function key.",
+        "Integration test coverage verified — all endpoints covered with happy path, auth rejection, and validation errors. Function key retrieved. Let me now verify the deployed WEBHOOK_TIMEOUT_MS setting and run the tests.",
+        "The workflow has the WEBHOOK_TIMEOUT_MS step, but the deployed function doesn't have the setting. Let me now run the integration tests to see the full picture.",
+        "Clear diagnosis: `fn-webhooks` is NOT in the deployed artifact (only fn-demo-login, fn-health, fn-hello are deployed). All webhook endpoints return 404. Additionally, `WEBHOOK_TIMEOUT_MS` app setting is not present on the deployed function app.  This is a **deployment-stale** issue — the code exists locally and passes unit tests, but the deployed artifact doesn't include the new function.",
+        "Failure recorded successfully. Let me summarize what happened:  ## Integration Test Results Summary  **Test Suite:** `webhooks.integration.test.ts` — **FAILED** (6 failures, 7 passes)  ### Root Cause: `deployment-stale` The `fn-webhooks` Azure Function is **not deployed**. The deployed artifact only contains: - ✅ fn-demo-login - ✅ fn-health   - ✅ fn-hello - ❌ fn-webhooks ← **MISSING**  ### Failures | # | Test | Expected | Actual | Cause | |---|------|----------|--------|-------| | 1 | GET /api/webhooks → 200 | 200 | **404** | Function not deployed | | 2 | GET /api/webhooks → 401 (no key) | 401 | **404** | Function not deployed | | 3 | POST /api/webhooks → 201 | 201 | **404** | Function not deployed | | 4 | POST /api/webhooks → 400 (missing url) | 400 | **404** | Function not deployed | | 5 | POST /api/webhooks → 400 (invalid url) | 400 | **404** | Function not deployed | | 6 | WEBHOOK_TIMEOUT_MS === \"5000\" | \"5000\" | undefined | App setting not on deployed function |  ### Passes   All `smoke.integration.test.ts` tests pass (fn-hello: 3/3, fn-demo-login: 4/4), confirming connectivity and auth are fine.  ### Next Steps The orchestrator will route this `deployment-stale` failure to trigger a redeployment of the backend artifact that includes `fn-webhooks`."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status webhook-dispatcher 2>&1",
+          "timestamp": "2026-04-03T05:34:37.694Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls -la /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/*.integration.test.ts 2>&1",
+          "timestamp": "2026-04-03T05:34:45.876Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az account show -o json 2>&1 | head -20",
+          "timestamp": "2026-04-03T05:34:45.876Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_KEY=$(az functionapp keys list --name func-sample-app-001 --resource-group rg-sample-app-dev --query 'functionKeys.default' -o tsv 2>/dev/null)",
+          "timestamp": "2026-04-03T05:34:54.320Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if WEBHOOK_TIMEOUT_MS is set on the deployed function app",
+          "timestamp": "2026-04-03T05:35:17.728Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the test:integration script definition",
+          "timestamp": "2026-04-03T05:35:17.728Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# List all app settings to check for WEBHOOK_TIMEOUT_MS",
+          "timestamp": "2026-04-03T05:35:41.821Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -n \"WEBHOOK_TIMEOUT\" /workspaces/DAGent-t/apps/sample-app/.github/workflows/deploy-backend.yml 2>&1",
+          "timestamp": "2026-04-03T05:35:49.368Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t -name \"deploy-backend.yml\" -type f 2>&1",
+          "timestamp": "2026-04-03T05:35:54.704Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -n \"WEBHOOK_TIMEOUT\" /workspaces/DAGent-t/.github/workflows/deploy-backend.yml 2>&1",
+          "timestamp": "2026-04-03T05:36:00.020Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-03T05:36:27.867Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if the webhooks function is actually deployed",
+          "timestamp": "2026-04-03T05:36:47.228Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Also try a direct curl to verify the 404",
+          "timestamp": "2026-04-03T05:36:47.228Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:fail webhook-dispatcher integration-test '{\"fault_domain\":\"deployment-stale\",\"diagnostic_trace\":\"fn-webhooks is NOT in the deployed artifact",
+          "timestamp": "2026-04-03T05:37:17.723Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 3,
+        "shell": 14
+      },
+      "inputTokens": 317186,
+      "outputTokens": 7912,
+      "cacheReadTokens": 282692,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "a2ce10b3e99f08e9f4337b3b97bcbd1ac64b9427"
     }
   ]
 }
