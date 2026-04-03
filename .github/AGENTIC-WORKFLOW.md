@@ -146,19 +146,18 @@ flowchart LR
     end
 
     subgraph POST["Post-Deploy"]
-        direction TB
         IT["integration-test"]
-        IT --> LU["live-ui"]
+        LU["live-ui"]
     end
 
     subgraph FIN["Finalize"]
-        CC["code-cleanup"] --> DA["docs-archived"] --> PPR["publish-pr"]
+        CC["code-cleanup"] --> DA["docs-archived"] --> DARC["doc-architect"] --> PPR["publish-pr"]
     end
 
     PIP --> AIA
     SD & IH --> BD & FD
     BUT & FUT --> PA
-    PAC --> IT
+    PAC --> IT & LU
     IT & LU --> CC
 
     style INFRA fill:#e8f5e9
@@ -169,7 +168,7 @@ flowchart LR
     style FIN fill:#f3e5f5
 ```
 
-**18 pipeline items · 6 phases · Two-wave DAG with infra-first approval gate · 4 workflow types (Backend, Frontend, Full-Stack, Infra)**
+**20 pipeline items · 6 phases · Two-wave DAG with infra-first approval gate · 6 workflow types (Backend, Frontend, Full-Stack, Infra, App-Only, Backend-Only)**
 
 ### Session Timeouts
 
@@ -183,34 +182,35 @@ flowchart LR
 | Infra Handoff | 15 min | infra-handoff |
 | App Deploy | 15 min | push-app, poll-app-ci |
 | Post-Deploy | 15 min | integration-test, live-ui |
-| Finalization | 15 min | code-cleanup, docs-archived, publish-pr |
+| Finalization | 20 min | code-cleanup, docs-archived, doc-architect, publish-pr |
 
 ### Workflow Type Filtering
 
-Not all 18 items run for every workflow type. Items marked **skip** are set to `na` at init:
+Not all 20 items run for every workflow type. Items marked **skip** are set to `na` at init:
 
-| Item | Full-Stack | Backend | Frontend | Infra |
-|------|:----------:|:-------:|:--------:|:-----:|
-| schema-dev | run | run | **skip** | **skip** |
-| infra-architect | run | run | run | run |
-| push-infra | run | run | run | run |
-| create-draft-pr | run | run | run | run |
-| poll-infra-plan | run | run | run | run |
-| await-infra-approval | run | run | run | run |
-| infra-handoff | run | run | run | run |
-| backend-dev | run | run | **skip** | **skip** |
-| frontend-dev | run | **skip** | run | **skip** |
-| backend-unit-test | run | run | **skip** | **skip** |
-| frontend-unit-test | run | **skip** | run | **skip** |
-| push-app | run | run | run | **skip** |
-| poll-app-ci | run | run | run | **skip** |
-| integration-test | run | run | **skip** | **skip** |
-| live-ui | run | **skip** | run | **skip** |
-| code-cleanup | run | run | run | **skip** |
-| docs-archived | run | run | run | run |
-| publish-pr | run | run | run | run |
+| Item | Full-Stack | Backend | Frontend | Infra | App-Only | Backend-Only |
+|------|:----------:|:-------:|:--------:|:-----:|:--------:|:------------:|
+| schema-dev | run | run | **skip** | **skip** | **skip** | **skip** |
+| infra-architect | run | run | run | run | **skip** | **skip** |
+| push-infra | run | run | run | run | **skip** | **skip** |
+| create-draft-pr | run | run | run | run | run | run |
+| poll-infra-plan | run | run | run | run | **skip** | **skip** |
+| await-infra-approval | run | run | run | run | **skip** | **skip** |
+| infra-handoff | run | run | run | run | **skip** | **skip** |
+| backend-dev | run | run | **skip** | **skip** | run | run |
+| frontend-dev | run | **skip** | run | **skip** | run | **skip** |
+| backend-unit-test | run | run | **skip** | **skip** | run | run |
+| frontend-unit-test | run | **skip** | run | **skip** | run | **skip** |
+| push-app | run | run | run | **skip** | run | run |
+| poll-app-ci | run | run | run | **skip** | run | run |
+| integration-test | run | run | **skip** | **skip** | run | run |
+| live-ui | run | **skip** | run | **skip** | run | **skip** |
+| code-cleanup | run | run | run | **skip** | run | run |
+| docs-archived | run | run | run | run | run | run |
+| doc-architect | run | run | run | **skip** | run | run |
+| publish-pr | run | run | run | run | run | run |
 
-> **Note:** Wave 1 infra items, `docs-archived`, and `publish-pr` are always active for all workflow types. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run.
+> **Note:** Wave 1 infra items (`schema-dev` through `infra-handoff`), `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for all workflow types that include them. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items.
 
 ### Auto-Skip Optimization
 
@@ -226,7 +226,7 @@ Exposed as npm scripts in the root `package.json`, delegating to `tools/autonomo
 
 | Command | Syntax | Effect |
 |---|---|---|
-| `pipeline:init` | `npm run pipeline:init <slug> <type>` | Creates `_STATE.json` + `_TRANS.md` with correct N/A items. Types: `Backend`, `Frontend`, `Full-Stack`, `Infra` |
+| `pipeline:init` | `npm run pipeline:init <slug> <type>` | Creates `_STATE.json` + `_TRANS.md` with correct N/A items. Types: `Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only` |
 | `pipeline:complete` | `npm run pipeline:complete <slug> <item-key>` | Marks item `done`. Phase-gated — rejects if prior phase has incomplete items |
 | `pipeline:fail` | `npm run pipeline:fail <slug> <item-key> <msg>` | Marks item `failed`, appends to error log. **Exit code 2** if ≥10 failures for same item (halts pipeline) |
 | `pipeline:reset-ci` | `npm run pipeline:reset-ci <slug>` | Resets `push-app` + `poll-app-ci` to `pending`. Logs reset in error log. **Exit code 2** if ≥10 cycles for the same feature |
@@ -239,12 +239,12 @@ Exposed as npm scripts in the root `package.json`, delegating to `tools/autonomo
 | `pipeline:next` | `npm run pipeline:next <slug>` | Returns first incomplete item in earliest incomplete phase, or `"status": "complete"` |
 | `pipeline:next-available` | *(programmatic only — used by watchdog)* | Returns all items whose DAG dependencies are satisfied — enables parallel batch execution |
 | `pipeline:set-note` | `npm run pipeline:set-note <slug> <note>` | Appends text to `implementationNotes` |
-| `pipeline:doc-note` | `npm run pipeline:doc-note <slug> <item-key> <note>` | Sets a per-item documentation note on a pipeline item. Dev agents use this to pass architectural context to `docs-expert` ("Pass the Baton" pattern) |
+| `pipeline:doc-note` | `npm run pipeline:doc-note <slug> <item-key> <note>` | Sets a per-item documentation note on a pipeline item. Dev agents use this to pass architectural context to `docs-archived` ("Pass the Baton" pattern) |
 | `pipeline:set-url` | `npm run pipeline:set-url <slug> <url>` | Sets `deployedUrl` in state |
 
 The programmatic API (used by the orchestrator) exposes these same operations as importable functions in `pipeline-state.mjs` that throw errors instead of calling `process.exit()`. It also exports `getNextAvailable(slug)` for DAG-aware parallel scheduling and `ITEM_DEPENDENCIES` for the dependency graph.
 
-**Valid item keys:** `schema-dev`, `infra-architect`, `push-infra`, `create-draft-pr`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `backend-dev`, `frontend-dev`, `backend-unit-test`, `frontend-unit-test`, `push-app`, `poll-app-ci`, `integration-test`, `live-ui`, `code-cleanup`, `docs-archived`, `publish-pr`
+**Valid item keys:** `schema-dev`, `infra-architect`, `push-infra`, `create-draft-pr`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `backend-dev`, `frontend-dev`, `backend-unit-test`, `frontend-unit-test`, `push-app`, `poll-app-ci`, `integration-test`, `live-ui`, `code-cleanup`, `docs-archived`, `doc-architect`, `publish-pr`
 
 ---
 
@@ -669,7 +669,7 @@ export BASE_BRANCH=release/v2
 npm run agent:run -- --app apps/sample-app my-feature
 ```
 
-`BASE_BRANCH` is consumed by `watchdog.ts`, `session-runner.ts`, `agent-branch.sh`, and the `create-pr` agent.
+`BASE_BRANCH` is consumed by `watchdog.ts`, `session-runner.ts`, `agent-branch.sh`, and the `publish-pr` agent.
 
 ### In CI (GitHub Actions)
 

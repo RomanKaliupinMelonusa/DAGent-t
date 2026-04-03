@@ -45,6 +45,7 @@ flowchart TB
         S8["live-ui"]
         S9["code-cleanup"]
         S10["docs-archived"]
+        S10B["doc-architect"]
         S11["publish-pr"]
     end
 
@@ -119,13 +120,13 @@ flowchart LR
         AC["agent-commit.sh\nGit Wrapper"]
         AB["agent-branch.sh\nBranch Manager"]
         PC["poll-ci.sh\nCI Poller"]
-        SR["setup-roam.sh\nRoam Installer"]
+        SROAM["setup-roam.sh\nRoam Installer"]
         BI["apm compile\n.instructions.md Generator"]
     end
 
     subgraph RULES["Rule Fragments"]
         MF["apm.yml"]
-        RF["26 .md files\n5 categories"]
+        RF["17 .md files\n5 categories"]
     end
 
     subgraph EXT["External Dependencies"]
@@ -249,12 +250,13 @@ flowchart LR
 
     subgraph POST["Post-Deploy"]
         PD1["integration-test"]
-        PD1 --> PD2["live-ui"]
+        PD2["live-ui"]
     end
 
     subgraph FIN["Finalize"]
         F1["code-cleanup"]
         F2["docs-archived"]
+        F2B["doc-architect"]
         F3["publish-pr"]
     end
 
@@ -340,7 +342,7 @@ flowchart LR
 | **02** | [02-roam-code.md](02-roam-code.md) | Developer | Roam-code: 6 killer capabilities, integration, agent rules, adoption roadmap |
 | **03** | [03-apm-context.md](03-apm-context.md) | Developer | Rule resolution pipeline, persona mapping, token budgets |
 | **04** | [04-state-machine.md](04-state-machine.md) | Architect | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
-| **05** | [05-agents.md](05-agents.md) | Architect | 12 specialist agents, MCP assignments, prompt anatomy, auto-skip |
+| **05** | [05-agents.md](05-agents.md) | Architect | 14 LLM specialist agents, MCP assignments, prompt anatomy, auto-skip |
 | **06** | [06-roadmap/](06-roadmap/) | All | Standing feature deep-dives with implementation plans |
 
 **Operational hub:** [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) — project structure, configuration, commands, safety guardrails, and how to run. *(Developer audience)*

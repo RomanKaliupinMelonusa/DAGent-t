@@ -12,9 +12,9 @@
 flowchart TD
     subgraph COMPILE["Compile Phase (one-time, eager)"]
         direction TB
-        M["Read .apm/apm.yml\n· 18 pipeline items\n· token budget: 6000"]
-        R["Read all .md files\nfrom .apm/instructions/\n(28 files, 5 categories)"]
-        MCP["Read .apm/mcp/*.mcp.yml\n(2 MCP declarations)"]
+        M["Read .apm/apm.yml\n· 20 pipeline items\n· token budget: 6000"]
+        R["Read all .md files\nfrom .apm/instructions/\n(17 files, 5 categories)"]
+        MCP["Read .apm/mcp/*.mcp.yml\n(3 MCP declarations)"]
         SK["Read .apm/skills/*.skill.md\n(5 skill declarations)"]
         M --> FOR
 
@@ -81,7 +81,7 @@ agents:
     instructions: [always, backend, infra, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-backend-unit, test-schema-validation]
-    # toolLimits omitted → uses defaults (soft: 30, hard: 40)
+    # toolLimits omitted → uses config.defaultToolLimits (soft: 60, hard: 80)
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
@@ -466,7 +466,7 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **Skill declarations separate from instructions** | Skills are capabilities (commands + descriptions), not governance rules |
 | **App-agnostic manifest** | Any app provides `.apm/apm.yml` — orchestrator doesn't know language or framework |
 | **Lifecycle hooks** | `config.hooks` delegates cloud-specific operations (auth, smoke checks, deployment verification) to app-provided scripts in `.apm/hooks/` — engine stays stack-agnostic |
-| **Per-agent tool limits** | `toolLimits: { soft, hard }` — optional per-agent circuit breaker overrides, defaults to 30/40 if omitted |
+| **Per-agent tool limits** | `toolLimits: { soft, hard }` — optional per-agent circuit breaker overrides. Resolution: per-agent → `config.defaultToolLimits` (currently 60/80) → code fallback (30/40) |
 
 ---
 

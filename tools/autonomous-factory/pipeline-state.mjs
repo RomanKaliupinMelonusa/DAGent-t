@@ -116,7 +116,7 @@ export const ITEM_DEPENDENCIES = {
   "push-app":             ["backend-unit-test", "frontend-unit-test"],
   "poll-app-ci":          ["push-app"],
   "integration-test":     ["poll-app-ci"],
-  "live-ui":              ["poll-app-ci", "integration-test"],
+  "live-ui":              ["poll-app-ci"],
   "code-cleanup":         ["integration-test", "live-ui"],
   "docs-archived":        ["code-cleanup"],
   // ── Wave 3: Architecture Analysis (frozen AST) ────────────────────────
@@ -651,10 +651,17 @@ export function resetForRedeploy(slug, itemKeys, reason) {
 
   const keysToReset = new Set(itemKeys);
 
-  // Cascade: also reset any "done" post-deploy items that depend on deploy items.
+  // Cascade: also reset "done" post-deploy items that depend on deploy items.
+  // SURGICAL: if the caller already specified specific post-deploy items (e.g.,
+  // triage routed deployment-stale-frontend → live-ui only), do NOT blanket-reset
+  // all post-deploy items. Only cascade when no post-deploy item was explicitly
+  // included — this preserves already-passed tests in the unaffected domain.
+  const POST_DEPLOY_KEYS = new Set(["integration-test", "live-ui"]);
+  const callerSpecifiedPostDeploy = [...keysToReset].some(k => POST_DEPLOY_KEYS.has(k));
   const deployItemSet = new Set(["push-app", "poll-app-ci", "push-infra", "poll-infra-plan"]);
   const hasDeployReset = [...keysToReset].some(k => deployItemSet.has(k));
-  if (hasDeployReset) {
+  if (hasDeployReset && !callerSpecifiedPostDeploy) {
+    // No specific post-deploy item targeted — cascade to all done post-deploy items
     for (const item of state.items) {
       if (item.phase === "post-deploy" && item.status === "done") {
         keysToReset.add(item.key);

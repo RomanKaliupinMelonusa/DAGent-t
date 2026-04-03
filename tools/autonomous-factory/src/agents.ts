@@ -314,9 +314,12 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 |---|---|
 | \`backend\` | Wrong response shape, logic errors, missing fields, 500 errors, test assertion failures |
 | \`backend+infra\` | Backend works directly but fails through APIM — missing APIM routes, gateway config, Function App env vars |
-| \`deployment-stale\` | Function exists locally and builds correctly, but the deployed artifact list shows it's missing. The code is correct — just not deployed. Use when the deployed artifact is outdated, not when the code is wrong |
+| \`deployment-stale-backend\` | Function exists locally and builds correctly, but the deployed artifact list shows it's missing. The code is correct — just not deployed. Use when the deployed backend artifact is outdated, not when the code is wrong |
 | \`cicd\` | CI/CD workflow file issue — deploy artifact misconfigured, wrong package.json fields in deploy step, workflow YAML errors. Use when the fix is in \`.github/workflows/\` |
 | \`environment\` | Auth failures, CLI login required, cannot retrieve API keys, managed identity errors, IAM permission denied |
+
+**CI/CD Provider Abstraction (Mandatory):**
+Do NOT recommend or execute CI/CD provider-specific commands (e.g., \`gh workflow run\`, \`gitlab pipeline trigger\`, \`jenkins build\`). If a deployment is missing, report \`fault_domain: deployment-stale-backend\` with evidence. The orchestrator handles all CI provider integration.
 
 **\`diagnostic_trace\` must include:**
 - Test names that failed and their assertion errors
@@ -327,6 +330,7 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 \`\`\`bash
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"API endpoint /api/bulk/jobs returns 500 — backend handler throws on missing field priority. Test: should create bulk job"}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"APIM gateway validation failed: PATCH /api/bulk/copies returned 0 (CORS blocked). Preflight OPTIONS request missing allowed-methods in apim.tf"}'
+npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"deployment-stale-backend","diagnostic_trace":"Deployed artifact list missing bulkCopy function — code exists locally at src/functions/bulkCopy.ts and npm run build succeeds. Deploy workflow did not retrigger."}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"Cloud auth not available — cannot retrieve API key. CLI returned empty for function keys."}'
 \`\`\`
 
@@ -675,8 +679,8 @@ EOF
 | Page loads but API returns 404 via APIM (direct Function URL works) | APIM route mismatch | \`backend+infra\` |
 | Both API errors AND UI rendering bugs | Mixed root cause | \`both\` |
 | Auth/credential/managed-identity errors | Environment, not a code bug | \`environment\` |
-| Feature code on branch but not in deployed build; searching deployed JS chunks for feature strings yields zero matches | Deployment pipeline didn't trigger after last code push | \`deployment-stale\` |
-| Deployed artifact list missing expected function; code builds locally | Deploy workflow ran before commit or didn't retrigger | \`deployment-stale\` |
+| Feature code on branch but not in deployed build; searching deployed JS chunks for feature strings yields zero matches | Deployment pipeline didn't trigger after last code push | \`deployment-stale-frontend\` |
+| Deployed artifact list missing expected function; code builds locally | Deploy workflow ran before commit or didn't retrigger | \`deployment-stale-backend\` |
 
 **Important:** Log everything you observe at each step — page content, visible errors, console messages, network responses — so the failure message is maximally useful for the developer agent that will fix it.
 
@@ -740,9 +744,13 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 | \`frontend\` | Element not found, wrong text/rendering, broken navigation, UI assertion failures, client-side JS errors |
 | \`frontend+infra\` | UI works locally but fails deployed — APIM URL mismatch, CORS policy blocking, SWA routing misconfigured |
 | \`backend+infra\` | Backend works directly but fails through APIM — gateway errors, missing APIM operations, Function App env vars |
-| \`deployment-stale\` | Feature code exists on the branch and builds correctly, but the deployed application is serving an older build. The code is correct — just not deployed. Evidence: searching deployed JS chunks for feature strings yields zero matches, or the deployed artifact list is missing expected functions. Use this instead of \`frontend+infra\` or \`backend+infra\` when the root cause is stale deployment, not code/config bugs |
+| \`deployment-stale-frontend\` | Feature code exists on the branch and builds correctly, but the deployed application is serving an older build. The code is correct — just not deployed. Evidence: searching deployed JS chunks for feature strings yields zero matches. Use this instead of \`frontend+infra\` when the root cause is stale deployment, not code/config bugs |
+| \`deployment-stale-backend\` | The deployed backend artifact list is missing expected functions, but the code exists locally and builds. Use instead of \`backend+infra\` when the root cause is stale deployment |
 | \`both\` | Both API errors AND UI rendering bugs in the same session |
 | \`environment\` | Auth/credential failures, Azure CLI not authenticated, managed identity issues, IAM permission denied |
+
+**CI/CD Provider Abstraction (Mandatory):**
+Do NOT recommend or execute CI/CD provider-specific commands (e.g., \`gh workflow run\`, \`gitlab pipeline trigger\`, \`jenkins build\`). If a deployment is stale, report the appropriate \`deployment-stale-frontend\` or \`deployment-stale-backend\` fault domain with evidence. The orchestrator handles all CI provider integration.
 
 **\`diagnostic_trace\` must include:**
 - Exact error details (status codes, response bodies, element selectors that failed)
@@ -754,6 +762,8 @@ When recording a failure via \`pipeline:fail\`, you MUST output a **valid JSON o
 \`\`\`bash
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"backend","diagnostic_trace":"API endpoint GET https://apim-tb-dev.azure-api.net/api/generation/generations returned 500 — response body: {\\"error\\":\\"Internal Server Error\\",\\"details\\":\\"Cannot read property id of undefined\\"}"}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"frontend","diagnostic_trace":"UI page /copies does not render CopyDetailModal component — data-testid=copy-detail-modal not found after 10s wait"}'
+npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"deployment-stale-frontend","diagnostic_trace":"Feature code exists on branch and builds locally but deployed JS chunks do not contain feature strings — searching for BulkActionsPanel in deployed chunks yields zero matches"}'
+npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"deployment-stale-backend","diagnostic_trace":"Deployed artifact list missing bulkCopy function but code exists locally at src/functions/bulkCopy.ts and builds successfully"}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"both","diagnostic_trace":"CORS error on PATCH /api/bulk/copies — preflight returns 403. Also, UI error-banner appears with text Something went wrong"}'
 npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} '{"fault_domain":"environment","diagnostic_trace":"az login required — DefaultAzureCredential failed, cannot retrieve function key"}'
 \`\`\`
@@ -817,7 +827,7 @@ ${completionBlock(ctx.featureSlug, ctx.itemKey, "pipeline")}`;
 function deployManagerPrompt(ctx: AgentContext, apmContext: ApmCompiledOutput): string {
   return `# Deploy Manager
 
-You push the feature branch to origin and wait for GitHub Actions CI workflows to complete. **You do NOT create PRs or merge anything.** PR creation is handled by a separate step as the final pipeline action.
+You push the feature branch to origin and wait for CI workflows to complete. **You do NOT create PRs or merge anything.** PR creation is handled by a separate step as the final pipeline action.
 
 # Context
 
@@ -890,7 +900,7 @@ npm run pipeline:complete ${ctx.featureSlug} ${ctx.itemKey}
 
 ### Step 5. Poll CI
 
-Run the polling script to wait for GitHub Actions:
+Run the polling script to wait for CI:
 \`\`\`bash
 bash tools/autonomous-factory/poll-ci.sh
 \`\`\`
@@ -903,11 +913,11 @@ bash tools/autonomous-factory/poll-ci.sh
   \`\`\`
 
 - **Exit 1 (Failure):** One or more CI workflows failed.
-  1. Read the failed logs: \`gh run list --branch $(git branch --show-current) --status failure --limit 3 --json databaseId,name,conclusion -q '.[]'\`
-  2. For each failed run, read logs: \`gh run view <RUN_ID> --log-failed | tail -50\`
+  1. Read the CI failure log written by the orchestrator: \`cat ${ctx.appRoot}/in-progress/${ctx.featureSlug}_CI-FAILURE.log\`
+  2. The log contains a \`DOMAIN:\` header and truncated failure output per workflow.
   3. Record failure:
      \`\`\`bash
-     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "<failure summary>"
+     npm run pipeline:fail ${ctx.featureSlug} ${ctx.itemKey} "<failure summary from CI log>"
      \`\`\`
 
 - **Exit 2 (Timeout):** CI is still running after the polling window.

@@ -16,7 +16,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | State Machine | DAG scheduler · `pipeline-state.mjs` · JSON state files |
 | APM Compiler | `apm-compiler.ts` · per-agent token budgets · modular `.md` instruction fragments |
 | Structural Intelligence | roam-code v11.2 · Python 3.11 · AST semantic graph · MCP server |
-| CI/CD | GitHub Actions · OIDC federated credentials · 6 parameterized workflows |
+| CI/CD | GitHub Actions · OIDC federated credentials · 9 workflows |
 | Testing | Playwright (live browser) · Jest (unit) · integration tests against live endpoints |
 | Infra (sample) | Terraform (azurerm + azapi) · Azure Functions · Azure Static Web Apps |
 
@@ -60,6 +60,8 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
 | CI/CD: Infra plan/apply | `.github/workflows/deploy-infra.yml` |
 | CI/CD: Regression tests | `.github/workflows/regression-tests.yml` |
+| CI/CD: Schema drift check | `.github/workflows/schema-drift.yml` |
+| CI/CD: Agentic feature pipeline | `.github/workflows/agentic-feature.yml` |
 | ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
 | ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
 | Pipeline state script | `tools/autonomous-factory/pipeline-state.mjs` |
@@ -107,10 +109,10 @@ The orchestrator is a deterministic `while` loop that:
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
 5. Maps each item to a specialist agent config via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules
 6. Spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
-7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes) before the `docs-expert` session
+7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes) before the `docs-archived` session
 8. Waits for agents to complete or fail
 9. Advances to the next batch of ready items
-10. After `create-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
+10. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
 11. Injects downstream failure context into dev agents during redevelopment cycles (post-deploy error details)
 
 ### Hard Rules
@@ -121,5 +123,5 @@ The orchestrator is a deterministic `while` loop that:
 - **Prompt rules:** Coding rules live in `apps/<your-app>/.apm/instructions/` (single source of truth), declared in `.apm/apm.yml`. The APM compiler resolves per-agent instruction sets and validates token budgets.
 - **Post-deploy failure rerouting:** When `live-ui` or `integration-test` fails, the orchestrator triages the error and resets the appropriate dev items for redevelopment. Max 5 redevelopment cycles.
 - **Clean-slate revert:** When a dev agent fails ≥ 3 times (in-memory attempts or persisted redevelopment cycles), the orchestrator injects a warning advising `agent-branch.sh revert` to wipe the feature branch and rebuild from scratch. The circuit breaker grants one bypass to allow this.
-- **Cognitive circuit breaker:** Per-agent tool call limits (`toolLimits` in `.apm/apm.yml`). Soft limit injects a frustration prompt into the tool result via `tool.execution_complete`; hard limit force-disconnects. Defaults: soft=30, hard=40.
+- **Cognitive circuit breaker:** Per-agent tool call limits (`toolLimits` in `.apm/apm.yml`). Soft limit injects a frustration prompt into the tool result via `tool.execution_complete`; hard limit force-disconnects. Resolution: per-agent `toolLimits` → `config.defaultToolLimits` (currently 60/80) → code fallback (30/40).
 - **Hard limits:** 10 retry attempts per failing item, 10 re-deploy cycles, 5 redevelopment cycles per feature.

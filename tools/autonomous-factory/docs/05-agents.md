@@ -1,6 +1,6 @@
 # Specialist Agents — Catalog & Configuration
 
-> 18 pipeline items across 6 phases (two-wave architecture). LLM-driven agents, deterministic script bypasses, and one human gate. Each agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
+> 20 pipeline items across 6 phases (two-wave architecture). 14 LLM-driven agents, 4 deterministic script bypasses, one human gate, and one deterministic handler. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
 > Source: `tools/autonomous-factory/src/agents.ts` (~1600 lines)
 
 ---
@@ -48,6 +48,7 @@ flowchart TB
         direction LR
         A16["🧹 code-cleanup\nDead code removal"]
         A17["📝 docs-archived\nArchitecture docs\nupdate"]
+        A17B["📐 doc-architect\nArchitecture &\nRisk Assessment"]
         A18["📦 publish-pr\nPromote Draft PR\n+ risk assessment"]
     end
 
@@ -84,7 +85,8 @@ flowchart TB
 | 15 | `live-ui` | post-deploy | LLM | playwright, roam | 15 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
 | 16 | `code-cleanup` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
 | 17 | `docs-archived` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
-| 18 | `publish-pr` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
+| 18 | `doc-architect` | finalize | LLM | roam, mermaid | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 19 | `publish-pr` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
 
 > **Script** items execute deterministic shell commands — zero LLM tokens consumed. **Human gate** pauses the orchestrator and logs a message prompting for `/dagent approve-infra` on the Draft PR.
 
@@ -111,9 +113,16 @@ flowchart LR
     R --> A15["live-ui"]
     R --> A16["code-cleanup"]
     R --> A17["docs-archived"]
+    R --> A17B["doc-architect"]
     R --> A18["publish-pr"]
 
     P --> A15
+
+    subgraph MERMAID_SERVER["📊 mermaid-mcp\n(diagram rendering)"]
+        MM["mermaid-mcp"]
+    end
+
+    MM --> A17B
 
     subgraph NO_MCP["No MCP (scripts or minimal agents)"]
         A3["push-infra"]
@@ -128,6 +137,7 @@ flowchart LR
 
     style ROAM_SERVER fill:#e8f5e9,stroke:#2e7d32
     style PW_SERVER fill:#e3f2fd,stroke:#1565c0
+    style MERMAID_SERVER fill:#fff3e0,stroke:#e65100
     style NO_MCP fill:#f5f5f5,stroke:#9e9e9e
 ```
 
@@ -170,7 +180,7 @@ flowchart TD
 | 7 | Write/update tests |
 | 8 | `roam_check_rules` — SEC/PERF/COR/ARCH gate |
 | 9 | `agent-commit.sh` — scoped commit |
-| 10 | `pipeline:doc-note` — architectural summary for docs-expert |
+| 10 | `pipeline:doc-note` — architectural summary for docs-archived |
 
 ---
 
@@ -239,6 +249,7 @@ flowchart TD
 | `prCreatorPrompt()` | create-draft-pr, publish-pr | Draft PR creation (Wave 1) or promote to ready-for-review + risk assessment (finalize) |
 | `codeCleanupPrompt()` | code-cleanup | roam_flag_dead, roam_orphan_routes, roam_dark_matter |
 | `docsExpertPrompt()` | docs-archived | _CHANGES.json, doc-notes, architecture docs |
+| `docArchitectPrompt()` | doc-architect | Executive Architect — _ARCHITECTURE.md + _RISK-ASSESSMENT.md (Mermaid diagrams) |
 
 ---
 

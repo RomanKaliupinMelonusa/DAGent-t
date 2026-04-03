@@ -91,7 +91,15 @@ done
 # Exclude pipeline state files from in-progress/ — committed exclusively by the
 # orchestrator (mutex).  Only reset files under in-progress/, NOT archive/ where
 # they belong after archiveFeatureFiles() moves them.
-git reset HEAD -- "${AR}/in-progress/*_STATE.json" "${AR}/in-progress/*_TRANS.md" 2>/dev/null || true
+# State-aware: only unstage if the file still exists on disk (agent mutation case).
+# When files have been physically moved to archive/, their deletions must commit.
+for _pattern in "${AR}/in-progress/*_STATE.json" "${AR}/in-progress/*_TRANS.md"; do
+  for _staged in $(git diff --cached --name-only -- "$_pattern" 2>/dev/null); do
+    if [ -f "$_staged" ]; then
+      git reset HEAD -- "$_staged" 2>/dev/null || true
+    fi
+  done
+done
 
 # Auto-include package-lock.json when package.json is in the staged changeset.
 # Prevents lockfile desync that causes CI `npm ci` failures.

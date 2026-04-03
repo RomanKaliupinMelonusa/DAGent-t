@@ -27,7 +27,7 @@ import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
-import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
+import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog, writeFlightData } from "./reporting.js";
 import {
   buildRetryContext,
@@ -108,15 +108,48 @@ const READINESS_OK_CODES = new Set([200, 401, 403]);
 
 /**
  * Deterministic readiness probe — replaces the fixed-duration sleep.
- * Parses `infra-interfaces.md` for base URLs and polls them with exponential
- * backoff until the data plane responds, or the timeout is exhausted.
  *
- * Stack-agnostic: only needs HTTP endpoints, not CI-provider commands.
+ * Primary: delegates to the `validateApp` hook from apm.yml, looping with
+ * exponential backoff until the hook returns success (exit 0). This lets each
+ * app define what "ready" means (e.g., feature routes propagated, not just
+ * the root URL returning 200).
+ *
+ * Fallback: when no validateApp hook is configured, parses `infra-interfaces.md`
+ * for base URLs and polls them with curl (backward compat).
+ *
+ * Stack-agnostic: only needs bash hooks or HTTP endpoints, not CI-provider commands.
  */
 async function pollReadiness(config: PipelineRunConfig): Promise<void> {
+  const hookCmd = config.apmContext.config?.hooks?.validateApp;
+
+  // ── Primary path: hook-based readiness ──────────────────────────────────
+  if (hookCmd) {
+    console.log("  🔍 Readiness probe: polling via validateApp hook...");
+    const start = Date.now();
+    let delay = 2_000;
+    const maxDelay = 30_000;
+
+    while (Date.now() - start < READINESS_PROBE_TIMEOUT_MS) {
+      const failure = runValidateApp(config);
+      if (failure === null) {
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        console.log(`  ✅ App ready (validateApp hook passed) after ${elapsed}s`);
+        return;
+      }
+      console.log(`  🔍 validateApp: ${failure.slice(0, 120)} (retrying in ${delay / 1000}s)`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(delay * 2, maxDelay);
+    }
+
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    console.warn(`  ⚠ Readiness probe timed out after ${elapsed}s — proceeding anyway`);
+    return;
+  }
+
+  // ── Fallback: URL-based polling from infra-interfaces.md ────────────────
   const interfacesPath = path.join(config.appRoot, "in-progress", "infra-interfaces.md");
   if (!fs.existsSync(interfacesPath)) {
-    console.log("  ⏳ No infra-interfaces.md found — falling back to 60s propagation delay");
+    console.log("  ⏳ No validateApp hook and no infra-interfaces.md — falling back to 60s propagation delay");
     await new Promise((resolve) => setTimeout(resolve, 60_000));
     return;
   }
@@ -777,6 +810,60 @@ async function runPushCode(
         cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
       }).trim();
     } catch { /* non-fatal */ }
+
+    // ── State-aware force-deploy sentinel ────────────────────────────────
+    // Pipeline state commits use [skip ci], which can bury real code commits
+    // and prevent path-based CI triggers from firing. To guarantee deployments,
+    // touch a `.deploy-trigger` sentinel file in each directory that actually
+    // changed, then commit+push WITHOUT [skip ci]. This is pure Git math —
+    // $0.00, fully CI-provider-agnostic.
+    if (itemKey === "push-app") {
+      try {
+        const dirs = apmContext.config?.directories as Record<string, string | null> | undefined;
+        const mergeBase = getMergeBase(repoRoot, baseBranch);
+        if (mergeBase && dirs) {
+          const appRel = path.relative(repoRoot, appRoot);
+          const dirPrefixes = getDirectoryPrefixes(appRel, dirs);
+          const changedFiles = getGitChangedFiles(repoRoot, mergeBase);
+
+          const sentinelsTouched: string[] = [];
+          for (const [domain, prefixes] of Object.entries(dirPrefixes)) {
+            const hasChanges = changedFiles.some((f) => prefixes.some((p) => f.startsWith(p)));
+            if (hasChanges) {
+              const dirPath = dirs[domain];
+              if (dirPath) {
+                const sentinelPath = path.join(appRoot, dirPath, ".deploy-trigger");
+                fs.writeFileSync(sentinelPath, new Date().toISOString() + "\n", "utf-8");
+                sentinelsTouched.push(`${appRel}/${dirPath}/.deploy-trigger`);
+              }
+            }
+          }
+
+          if (sentinelsTouched.length > 0) {
+            console.log(`  🚀 Deploy sentinel: touching ${sentinelsTouched.length} trigger(s): ${sentinelsTouched.join(", ")}`);
+            try {
+              execSync(`bash "${commitScript}" all "ci(${slug}): trigger deployment"`, {
+                cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+                env: { ...process.env, APP_ROOT: appRoot },
+              });
+            } catch { /* no changes — sentinel already up to date */ }
+            execSync(`bash "${branchScript}" push`, {
+              cwd: repoRoot, stdio: "inherit", timeout: 60_000,
+              env: { ...process.env, BASE_BRANCH: baseBranch },
+            });
+            // Update SHA to the sentinel commit for CI polling
+            try {
+              state.lastPushedShas[itemKey] = execSync("git rev-parse HEAD", {
+                cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
+              }).trim();
+            } catch { /* non-fatal */ }
+          }
+        }
+      } catch (sentinelErr) {
+        // Non-fatal — the initial push already went through
+        console.warn(`  ⚠ Deploy sentinel failed: ${sentinelErr instanceof Error ? sentinelErr.message : String(sentinelErr)}`);
+      }
+    }
 
     // Mark complete
     await completeItem(slug, itemKey);
