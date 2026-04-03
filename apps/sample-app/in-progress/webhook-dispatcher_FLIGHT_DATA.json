@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:37:30.629Z",
+  "generatedAt": "2026-04-03T05:49:04.423Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -666,6 +666,253 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-03T05:37:31.867Z",
+      "finishedAt": "2026-04-03T05:37:44.151Z",
+      "durationMs": 12284,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-03T05:37:45.399Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good. The pipeline was reset for redeployment after the previous failure. Let me check if the redeployment has happened by verifying the deployed functions and retrieving the function key.",
+        "The redeployment still hasn't happened — fn-webhooks is still not in the deployed artifact and WEBHOOK_TIMEOUT_MS is still missing. Let me check the pipeline state to see where the redeployment cycle is.",
+        "Push-app and poll-app-ci show \"done\" but fn-webhooks is still not deployed. Let me verify by directly hitting the endpoints.",
+        "No deploy-backend workflow has run for the webhook-dispatcher branch! Let me check more carefully.",
+        "Found the root cause! All recent commits have `[skip ci]` which prevented the deploy-backend workflow from ever running. Let me try to trigger the deployment manually via workflow_dispatch.",
+        "The deployment was triggered. Let me wait for it to complete.",
+        "Deployment succeeded! Now let me verify the functions are deployed and retrieve the function key.",
+        "fn-webhooks-get and fn-webhooks-post are now deployed, and WEBHOOK_TIMEOUT_MS=5000 is set. Let me now get the function key and verify the endpoints work.",
+        "Endpoints are working. Now let me read the spec and verify integration test coverage, then run the full test suite.",
+        "Good - comprehensive test coverage exists. Now let me run the full integration test suite.",
+        "All 13 integration tests passed (2 test suites, 0 failures). Now let me run the APIM gateway validation.",
+        "APIM operations exist for webhooks. The path prefix is \"sample\". Let me retry with the correct path and token.",
+        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **WEBHOOK_TIMEOUT_MS**: Set to 5000 in deployed environment  Now let me mark the pipeline complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status webhook-dispatcher 2>&1 | tail -20",
+          "timestamp": "2026-04-03T05:40:52.430Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && git log --oneline -10",
+          "timestamp": "2026-04-03T05:40:52.430Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if fn-webhooks is now deployed",
+          "timestamp": "2026-04-03T05:41:36.250Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check WEBHOOK_TIMEOUT_MS app setting",
+          "timestamp": "2026-04-03T05:41:36.250Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/webhook-dispatcher_STATE.json | python3 -m json.tool 2>&1 | head -80",
+          "timestamp": "2026-04-03T05:41:44.694Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/webhook-dispatcher_STATE.json | python3 -c \"",
+          "timestamp": "2026-04-03T05:41:49.553Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get function key first",
+          "timestamp": "2026-04-03T05:42:01.802Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the backend build output to verify fn-webhooks compiles",
+          "timestamp": "2026-04-03T05:42:13.687Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the dist output for fn-webhooks",
+          "timestamp": "2026-04-03T05:42:13.688Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check recent deployment history for the function app",
+          "timestamp": "2026-04-03T05:42:25.448Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the deploy-backend.yml to understand the deployment process",
+          "timestamp": "2026-04-03T05:42:25.448Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Find the deploy workflow",
+          "timestamp": "2026-04-03T05:42:30.482Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Find GitHub workflows in the repo (not node_modules)",
+          "timestamp": "2026-04-03T05:42:36.885Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/.github/workflows/deploy-backend.yml 2>&1",
+          "timestamp": "2026-04-03T05:42:41.019Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if gh CLI is available and check recent workflow runs",
+          "timestamp": "2026-04-03T05:42:49.106Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check all workflow runs for the webhook-dispatcher branch",
+          "timestamp": "2026-04-03T05:43:29.427Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if push to origin actually happened - compare local vs remote",
+          "timestamp": "2026-04-03T05:43:38.555Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check if deploy-backend workflow triggered - look at ci-integration instead",
+          "timestamp": "2026-04-03T05:43:38.555Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Trigger deploy-backend workflow manually for the webhook-dispatcher branch",
+          "timestamp": "2026-04-03T05:43:58.239Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Wait and poll for the workflow run to complete",
+          "timestamp": "2026-04-03T05:44:05.677Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Wait a bit more and check status",
+          "timestamp": "2026-04-03T05:44:41.716Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the job steps more granularly",
+          "timestamp": "2026-04-03T05:45:19.232Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Wait more and check again",
+          "timestamp": "2026-04-03T05:46:12.274Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Verify fn-webhooks is now deployed",
+          "timestamp": "2026-04-03T05:47:05.341Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check WEBHOOK_TIMEOUT_MS is now set",
+          "timestamp": "2026-04-03T05:47:05.341Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get function key",
+          "timestamp": "2026-04-03T05:47:20.471Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Read the spec to identify endpoints",
+          "timestamp": "2026-04-03T05:47:30.915Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check integration test file",
+          "timestamp": "2026-04-03T05:47:30.915Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check for webhook integration test file",
+          "timestamp": "2026-04-03T05:47:36.144Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/webhooks.integration.test.ts 2>&1",
+          "timestamp": "2026-04-03T05:47:40.279Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get function key",
+          "timestamp": "2026-04-03T05:48:02.152Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# APIM-through API validation",
+          "timestamp": "2026-04-03T05:48:20.454Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check the APIM API configuration - what path prefix is configured?",
+          "timestamp": "2026-04-03T05:48:35.419Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Find the demo token",
+          "timestamp": "2026-04-03T05:48:35.419Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM operations for api-sample",
+          "timestamp": "2026-04-03T05:48:42.191Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-03T05:48:50.687Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher integration-test 2>&1",
+          "timestamp": "2026-04-03T05:48:59.656Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 8,
+        "shell": 40
+      },
+      "inputTokens": 812351,
+      "outputTokens": 10857,
+      "cacheReadTokens": 782360,
       "cacheWriteTokens": 0
     }
   ]
