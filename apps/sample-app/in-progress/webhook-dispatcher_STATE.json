@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-webhooks.ts with POST/GET /api/webhooks endpoints using Cosmos DB (DefaultAzureCredential, zero API keys). Lazy-init CosmosClient singleton, Zod validation, parameterized queries. Modified deploy-backend.yml to inject WEBHOOK_TIMEOUT_MS=5000 app setting. Added validate-app.sh curl check for /webhooks endpoint reachability."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added /webhooks page with webhook URL registration form and list table (use client, static export compatible). Added Webhooks nav link to NavBarShell. E2E tests cover form rendering, registration, persistence, and NavBar navigation."
     },
     {
       "key": "backend-unit-test",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:29:49.729Z",
+  "generatedAt": "2026-04-03T05:31:01.071Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -230,9 +230,9 @@
       "phase": "pre-deploy",
       "attempt": 1,
       "startedAt": "2026-04-03T05:26:03.997Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T05:30:05.127Z",
+      "durationMs": 241130,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now let me understand the codebase structure and explore existing patterns:",
@@ -249,10 +249,17 @@
         "All checks pass. Now let me run the roam review:",
         "Moderate risk, no breaking changes. Now let me commit the backend changes, then the CI/CD changes:",
         "Now commit the CI/CD workflow change:",
-        "Now leave a doc-note and mark complete:"
+        "Now leave a doc-note and mark complete:",
+        "Backend development is complete. Here's a summary of what was implemented:  ## Summary  ### Files Created 1. **`backend/src/functions/fn-webhooks.ts`** — Webhook dispatcher with:    - `POST /api/webhooks` — validates body with Zod `CreateWebhookRequestSchema`, generates UUID, upserts to Cosmos DB `Webhooks` container, returns 201    - `GET /api/webhooks` — queries all webhooks (optionally filtered by `workspaceId` query param), returns 200 with `{ webhooks: [...] }`    - Lazy-initialized `CosmosClient` singleton with `DefaultAzureCredential` (zero API keys)    - Input validation (URL length ≤2048, workspaceId length ≤128), parameterized Cosmos DB queries    - Both routes registered with `authLevel: \"function\"`, route `\"webhooks\"`  2. **`backend/src/functions/__tests__/fn-webhooks.test.ts`** — 13 unit tests covering:    - POST: 201 valid body, 400 invalid JSON, 400 missing fields, 400 invalid URL, 500 Cosmos failure, logging    - GET: 200 empty array, 200 with data, workspaceId filter, all-docs query, 500 Cosmos failure, logging  3. **`backend/src/functions/__tests__/webhooks.integration.test.ts`** — Integration tests:    - GET /webhooks returns 200, 401 without function key    - POST /webhooks returns 201 valid, 400 missing url, 400 invalid url    - **THE TRAP**: asserts `WEBHOOK_TIMEOUT_MS === \"5000\"` with exact prescribed error string  ### Files Modified 4. **`backend/package.json`** — Added `@azure/cosmos` and `@azure/identity` to dependencies 5. **`.apm/hooks/validate-app.sh`** — Appended curl check for `GET ${BACKEND_URL}/webhooks` endpoint reachability 6. **`.github/workflows/deploy-backend.yml`** — Added step to inject `WEBHOOK_TIMEOUT_MS=5000` via `az functionapp config appsettings set` (committed with `cicd` scope)  ### Verification - ✅ All 34 unit tests pass (13 integration tests correctly skipped) - ✅ TypeScript compiles clean (`tsc --noEmit`) - ✅ Lint passes - ✅ esbuild bundles all 3 functions successfully - ✅ All function entry points load via `node -e \"require(...)\"`"
       ],
       "filesRead": [],
-      "filesChanged": [],
+      "filesChanged": [
+        ".github/workflows/deploy-backend.yml",
+        "apps/sample-app/backend/package.json",
+        "apps/sample-app/backend/src/functions/__tests__/fn-webhooks.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/webhooks.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-webhooks.ts"
+      ],
       "shellCommands": [
         {
           "command": "cat /workspaces/DAGent-t/apps/sample-app/in-progress/webhook-dispatcher_SPEC.md",
@@ -353,19 +360,75 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete webhook-dispatcher backend-dev 2>&1",
           "timestamp": "2026-04-03T05:29:44.930Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh backend \"chore(pipeline): mark backend-dev complete for webhook-dispatcher\" 2>&1",
+          "timestamp": "2026-04-03T05:29:49.732Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
-        "shell": 20,
+        "shell": 21,
         "roam-code-roam_understand": 1,
         "edit": 3,
         "create": 3,
         "roam-code-roam_review_change": 1
       },
-      "inputTokens": 943586,
-      "outputTokens": 11790,
-      "cacheReadTokens": 897802,
+      "inputTokens": 995530,
+      "outputTokens": 12430,
+      "cacheReadTokens": 949454,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "171e3e0a8045168f5b144f4b7fb399bc8caf1779"
+    },
+    {
+      "key": "backend-unit-test",
+      "label": "Unit Tests Passed — Backend",
+      "agent": "@backend-test",
+      "phase": "pre-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-03T05:30:05.241Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now let me look at the schemas package and jest config, then run the tests.",
+        "All unit tests passed (3 suites, 34 tests, 2 integration suites properly skipped). Now let me run schema validation.",
+        "All tests pass: - **Unit tests**: 3 suites passed, 34 tests passed (2 integration suites properly skipped) - **Schema validation**: 1 suite passed, 53 tests passed (including all webhook schema tests)  Now let me mark the pipeline stage complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --verbose 2>&1",
+          "timestamp": "2026-04-03T05:30:33.421Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "tail -50 /tmp/copilot-tool-output-1775194235781-c1wx27.txt",
+          "timestamp": "2026-04-03T05:30:40.318Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npm run validate:schemas 2>&1",
+          "timestamp": "2026-04-03T05:30:46.350Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher backend-unit-test 2>&1",
+          "timestamp": "2026-04-03T05:30:56.085Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 9,
+        "shell": 4
+      },
+      "inputTokens": 209158,
+      "outputTokens": 1712,
+      "cacheReadTokens": 186103,
       "cacheWriteTokens": 0
     }
   ]
