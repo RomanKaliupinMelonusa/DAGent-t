@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-tasks.ts with 3 HTTP triggers (GET/POST/PATCH) backed by Cosmos DB Tasks container using DefaultAzureCredential. POST enforces MAX_TASKS_PER_WORKSPACE (env, default 500) via count query. Added validate-app.sh hook for GET /tasks reachability. CI/CD updated with app setting injection step. Schemas and infra already provisioned by prior agents."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added Kanban task board page at /tasks with 3 columns (To Do, In Progress, Done), optimistic status transitions via buttons, and new task creation form. Added Task Board nav link to NavBar. E2E test covers create→move→reload→persist flow."
     },
     {
       "key": "backend-unit-test",
