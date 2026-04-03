@@ -10,8 +10,8 @@
       "label": "Development Complete — Schemas",
       "agent": "@schema-dev",
       "phase": "infra",
-      "status": "failed",
-      "error": "Execution failed: Error: Session was not created with authentication info or custom provider"
+      "status": "done",
+      "error": null
     },
     {
       "key": "infra-architect",
