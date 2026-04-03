@@ -142,7 +142,7 @@
       "label": "Docs Updated & Archived",
       "agent": "@docs-expert",
       "phase": "finalize",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
