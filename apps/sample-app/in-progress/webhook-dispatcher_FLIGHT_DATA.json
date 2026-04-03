@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T06:02:43.769Z",
+  "generatedAt": "2026-04-03T06:02:51.965Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1057,9 +1057,9 @@
       "phase": "post-deploy",
       "attempt": 3,
       "startedAt": "2026-04-03T05:57:25.582Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T06:02:51.949Z",
+      "durationMs": 326367,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good - integration-test is pending and needs to be run. The previous failures were due to stale deployments. Let me check if the webhooks function is now deployed and retrieve the function key.",
@@ -1070,7 +1070,8 @@
         "APIM returns 404. Let me check if the demo token is empty and check the APIM path configuration.",
         "The APIM API path is `sample`, so the correct URL is `/sample/webhooks`. Let me also check the unified API.",
         "The APIM path is `/sample/webhooks` and it requires a demo token. Let me get the token and validate.",
-        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **APIM OPTIONS preflight**: HTTP 200 (CORS working)  Now let me mark the pipeline complete and commit."
+        "All validations pass: - ✅ **Integration tests**: 13/13 passed (2 test suites, exit code 0) - ✅ **APIM GET /sample/webhooks**: HTTP 200 with webhooks array - ✅ **APIM POST /sample/webhooks**: HTTP 201 with created webhook - ✅ **APIM OPTIONS preflight**: HTTP 200 (CORS working)  Now let me mark the pipeline complete and commit.",
+        "All done. Here's the summary:  ## Integration Test Results ✅  **Direct Function App Tests (13/13 passed):** - `fn-webhooks GET (live)` — 200 with webhooks array ✓, 401 without key ✓ - `fn-webhooks POST (live)` — 201 valid payload ✓, 400 missing url ✓, 400 invalid url ✓ - `WEBHOOK_TIMEOUT_MS` — set to 5000 ✓ - `fn-hello (live)` — 3 tests ✓ - `fn-demo-login (live)` — 4 tests ✓  **APIM Gateway Validation (all passed):** - `GET /sample/webhooks` → HTTP 200 ✓ - `POST /sample/webhooks` → HTTP 201 ✓ - `OPTIONS /sample/webhooks` → HTTP 200 (CORS preflight) ✓"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1139,17 +1140,23 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher integration-test 2>&1",
           "timestamp": "2026-04-03T06:02:38.942Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-03T06:02:43.771Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 5,
-        "shell": 13,
+        "shell": 14,
         "file-read": 1
       },
-      "inputTokens": 320299,
-      "outputTokens": 5718,
-      "cacheReadTokens": 288717,
-      "cacheWriteTokens": 0
+      "inputTokens": 351486,
+      "outputTokens": 5954,
+      "cacheReadTokens": 319605,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "c14c0ba7d01ff4a253ff0d1bae1356bd04c11974"
     }
   ]
 }
