@@ -19,3 +19,17 @@ export type { DemoLoginRequest, DemoLoginResponse } from "./auth.js";
 // Error envelope
 export { ApiErrorCodeSchema, ApiErrorResponseSchema } from "./errors.js";
 export type { ApiErrorCode, ApiErrorResponse } from "./errors.js";
+
+// Task board
+export {
+  TaskStatusSchema,
+  TaskSchema,
+  CreateTaskSchema,
+  UpdateTaskStatusSchema,
+} from "./tasks.js";
+export type {
+  TaskStatus,
+  Task,
+  CreateTask,
+  UpdateTaskStatus,
+} from "./tasks.js";
