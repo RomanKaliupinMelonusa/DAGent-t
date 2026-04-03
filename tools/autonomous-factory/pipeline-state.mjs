@@ -90,7 +90,7 @@ export const NA_ITEMS_BY_TYPE = {
                    "await-infra-approval", "infra-handoff",
                    "frontend-dev", "frontend-unit-test", "live-ui"],
 };
-// NOTE: infra wave items, docs-archived, and publish-pr are always active for all types.
+// NOTE: create-draft-pr, docs-archived, and publish-pr are always active for all types.
 // The Infra workflow type skips Wave 2 app items entirely — only infra wave + docs + PR.
 
 /**
@@ -957,7 +957,7 @@ export function setUrl(slug, url) {
 function cmdInit(slug, workflowType) {
   if (!slug || !workflowType) {
     console.error("Usage: pipeline-state.mjs init <slug> <workflow-type>");
-    console.error("  workflow-type: Backend | Frontend | Full-Stack | Infra");
+    console.error("  workflow-type: Backend | Frontend | Full-Stack | Infra | App-Only | Backend-Only");
     process.exit(1);
   }
 

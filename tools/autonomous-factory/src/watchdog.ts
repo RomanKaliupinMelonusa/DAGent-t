@@ -503,7 +503,7 @@ async function main(): Promise<void> {
                 break;
               } catch (pushErr) {
                 if (attempt < maxPushRetries) {
-                  const backoff = attempt * 5_000;
+                  const backoff = 2_000 * Math.pow(2, attempt - 1);
                   console.warn(`  ⚠ Push attempt ${attempt}/${maxPushRetries} failed, retrying in ${backoff / 1000}s...`);
                   await new Promise((r) => setTimeout(r, backoff));
                 } else {

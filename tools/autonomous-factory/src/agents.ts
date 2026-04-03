@@ -1056,7 +1056,7 @@ ${apmContext.agents["create-draft-pr"]?.rules ?? ""}
 - **No testing:** Do not run tests or deployment scripts.
 - **Use \`--body-file\`:** Never use the inline \`--body\` argument. Always write the description to a markdown file first.
 - **Use \`gh pr create\` via shell command** — do NOT use any MCP server for PR creation.
-- **Always create as --draft:** This PR starts as a draft and will be promoted to ready-for-review later by the publish-pr agent.
+- **Always create as --draft:** This PR starts as a draft and will be promoted to ready-for-review later by the publish-pr step.
 
 ## Workflow
 

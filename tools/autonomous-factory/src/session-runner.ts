@@ -1066,6 +1066,7 @@ async function runPublishPr(
   const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
 
   console.log(`  📋 publish-pr: Running deterministic PR publish (no agent session)`);
+  let tmpDir: string | null = null;
   try {
     // 1. Get existing PR number
     const prNumber = execSync(`gh pr view --json number -q '.number'`, {
@@ -1075,7 +1076,7 @@ async function runPublishPr(
     console.log(`     Found existing PR #${prNumber}`);
 
     // 2. Fetch existing body
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "publish-pr-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "publish-pr-"));
     const existingBodyFile = path.join(tmpDir, "existing.md");
     const existingBody = execSync(`gh pr view ${prNumber} --json body -q '.body'`, {
       cwd: repoRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30_000,
@@ -1150,9 +1151,6 @@ async function runPublishPr(
       });
     } catch { /* no changes to commit — OK */ }
 
-    // Cleanup temp files
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-
     console.log(`  ✅ publish-pr complete (deterministic)`);
     itemSummary.outcome = "completed";
     itemSummary.finishedAt = new Date().toISOString();
@@ -1174,6 +1172,10 @@ async function runPublishPr(
     pipelineSummaries.push(itemSummary);
     flushReports(config, state);
     return { summary: itemSummary, halt: false, createPr: false };
+  } finally {
+    if (tmpDir) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    }
   }
 }
 
@@ -1526,13 +1528,15 @@ async function handleFailureReroute(
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
 
-  // Branch: if triage targets only deploy/post-deploy items (no dev code changes
-  // needed), use the separate re-deploy budget instead of burning a full
+  // Branch: if triage targets only deploy/post-deploy items (no dev or test code
+  // changes needed), use the separate re-deploy budget instead of burning a full
   // redevelopment cycle. This handles "deployment-stale" faults deterministically.
-  const hasDevItems = resetKeys.some((k) => DEV_ITEMS.has(k));
+  // TEST_ITEMS also imply code changes (test failures need dev fixes), so they
+  // route to the full redevelopment path alongside DEV_ITEMS.
+  const hasDevOrTestItems = resetKeys.some((k) => DEV_ITEMS.has(k) || TEST_ITEMS.has(k));
 
   try {
-    if (hasDevItems) {
+    if (hasDevOrTestItems) {
       const result = await resetForDev(slug, resetKeys, errorMsg);
       if (result.halted) {
         console.error(
