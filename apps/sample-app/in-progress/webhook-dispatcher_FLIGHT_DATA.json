@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:14:30.992Z",
+  "generatedAt": "2026-04-03T05:14:47.311Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -83,9 +83,9 @@
       "phase": "infra",
       "attempt": 1,
       "startedAt": "2026-04-03T05:11:42.941Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T05:14:47.304Z",
+      "durationMs": 184363,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now let me check the existing hooks to understand their patterns:",
@@ -98,7 +98,8 @@
         "Terraform validate passes. Now let me run the full plan:",
         "Terraform plan succeeds: **4 to add, 4 to change, 0 to destroy**. The new Cosmos DB resources and outputs are planned correctly.  Let me verify the resources being added:",
         "All 4 new resources are being created as expected: - `azurerm_cosmosdb_account.main`  - `azurerm_cosmosdb_sql_database.main` - `azurerm_cosmosdb_sql_container.webhooks` - `azurerm_cosmosdb_sql_role_assignment.func_data_contributor`  And 4 updates: - `azurerm_api_management_api.sample` — updated OpenAPI spec with webhook paths - `azurerm_function_app_flex_consumption.main` — new COSMOSDB_ENDPOINT app setting - Two drift-related in-place updates (key vault secret, SWA)  Now let me commit and complete:",
-        "Now let me leave a doc-note and mark complete:"
+        "Now let me leave a doc-note and mark complete:",
+        "All infrastructure work is complete. Here's a summary of what was implemented:  ## Infrastructure Changes Summary  ### New File: `infra/cosmos.tf` - **`azurerm_cosmosdb_account.main`** — Serverless Cosmos DB SQL API account (`cosmos-sample-app-{suffix}`) with Session consistency - **`azurerm_cosmosdb_sql_database.main`** — Database `sample-app-db` - **`azurerm_cosmosdb_sql_container.webhooks`** — Container `Webhooks` with partition key `/workspaceId` - **`azurerm_cosmosdb_sql_role_assignment.func_data_contributor`** — Function App managed identity → Cosmos DB Built-in Data Contributor (zero-key auth via `DefaultAzureCredential`)  ### Modified: `infra/main.tf` - Added `COSMOSDB_ENDPOINT` app setting to `azurerm_function_app_flex_consumption.main`, referencing `azurerm_cosmosdb_account.main.endpoint`  ### Modified: `infra/outputs.tf` - Added `cosmosdb_endpoint` output (account endpoint URL) - Added `cosmosdb_account_name` output  ### Modified: `infra/api-specs/api-sample.openapi.yaml` - Added `GET /webhooks` (`listWebhooks`) with optional `workspaceId` query param - Added `POST /webhooks` (`createWebhook`) with `url` + `workspaceId` request body - Added `Webhook` component schema with `id`, `workspaceId`, `url`, `createdAt`  ### Modified: `.apm/hooks/validate-infra.sh` - Added Cosmos DB reachability check reading `COSMOSDB_ENDPOINT` env var  ### Validation - ✅ `terraform validate` — passed - ✅ `terraform plan` — **4 to add, 4 to change, 0 to destroy**"
       ],
       "filesRead": [],
       "filesChanged": [
@@ -139,6 +140,11 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete webhook-dispatcher infra-architect",
           "timestamp": "2026-04-03T05:14:26.276Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh infra \"chore(pipeline): mark infra-architect complete for webhook-dispatcher\"",
+          "timestamp": "2026-04-03T05:14:30.995Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
@@ -146,12 +152,13 @@
         "file-read": 11,
         "create": 1,
         "edit": 4,
-        "shell": 7
+        "shell": 8
       },
-      "inputTokens": 539505,
-      "outputTokens": 5944,
-      "cacheReadTokens": 508909,
-      "cacheWriteTokens": 0
+      "inputTokens": 577622,
+      "outputTokens": 6424,
+      "cacheReadTokens": 546752,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "22b474d6822c68f574b3dd1b145849224a4135ed"
     }
   ]
 }

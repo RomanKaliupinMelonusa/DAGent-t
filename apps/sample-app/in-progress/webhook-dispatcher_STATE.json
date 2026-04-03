@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "## Terraform Resources Created\n\n### New Resources (cosmos.tf)\n- `azurerm_cosmosdb_account.main` — Serverless SQL API account: `cosmos-sample-app-{suffix}`\n- `azurerm_cosmosdb_sql_database.main` — Database: `sample-app-db`\n- `azurerm_cosmosdb_sql_container.webhooks` — Container: `Webhooks` (partition key: `/workspaceId`)\n- `azurerm_cosmosdb_sql_role_assignment.func_data_contributor` — Function App MI → Cosmos DB Built-in Data Contributor (zero-key auth)\n\n### Modified Resources\n- `azurerm_function_app_flex_consumption.main` — Added `COSMOSDB_ENDPOINT` app setting (references `azurerm_cosmosdb_account.main.endpoint`)\n- `azurerm_api_management_api.sample` — OpenAPI spec updated with `GET /webhooks` (listWebhooks) and `POST /webhooks` (createWebhook)\n\n### New Outputs (outputs.tf)\n- `cosmosdb_endpoint` — Cosmos DB account endpoint URL\n- `cosmosdb_account_name` — Cosmos DB account name\n\n### Hooks Updated\n- `.apm/hooks/validate-infra.sh` — Added Cosmos DB reachability check (reads `COSMOSDB_ENDPOINT` env var)\n\n### Terraform Plan\nPlan: 4 to add, 4 to change, 0 to destroy. Validated successfully."
     },
     {
       "key": "push-infra",
