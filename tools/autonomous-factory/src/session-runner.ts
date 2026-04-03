@@ -19,7 +19,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
 import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
-import { getStatus, failItem, resetForDev, completeItem, salvageForDraft } from "./state.js";
+import { getStatus, failItem, resetForDev, resetForRedeploy, completeItem, salvageForDraft } from "./state.js";
 import { getAgentConfig, buildTaskPrompt } from "./agents.js";
 import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput, ApmConfig } from "./apm-types.js";
@@ -94,12 +94,91 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[
 }
 
 /**
- * Delay (ms) after CI deployment completes before running post-deploy tests.
- * Azure Functions and SWA can take 30-90s to propagate after a deployment
- * workflow reports success. Without this delay, integration tests hit stale
- * deployment artifacts and produce false 404s.
+ * Maximum total time (ms) to wait for data-plane readiness before proceeding.
+ * If all probes time out, the agent session starts anyway — the agent will
+ * produce a structured diagnostic that triage can route.
  */
-const POST_DEPLOY_PROPAGATION_DELAY_MS = 60_000;
+const READINESS_PROBE_TIMEOUT_MS = 180_000;
+
+/**
+ * HTTP status codes that indicate the data plane is live.
+ * 200 = healthy, 401/403 = endpoint exists but auth required.
+ */
+const READINESS_OK_CODES = new Set([200, 401, 403]);
+
+/**
+ * Deterministic readiness probe — replaces the fixed-duration sleep.
+ * Parses `infra-interfaces.md` for base URLs and polls them with exponential
+ * backoff until the data plane responds, or the timeout is exhausted.
+ *
+ * Stack-agnostic: only needs HTTP endpoints, not CI-provider commands.
+ */
+async function pollReadiness(config: PipelineRunConfig): Promise<void> {
+  const interfacesPath = path.join(config.appRoot, "in-progress", "infra-interfaces.md");
+  if (!fs.existsSync(interfacesPath)) {
+    console.log("  ⏳ No infra-interfaces.md found — falling back to 60s propagation delay");
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+    return;
+  }
+
+  // Parse base URLs from the ## Endpoints section
+  const content = fs.readFileSync(interfacesPath, "utf-8");
+  const urls: string[] = [];
+  let inEndpoints = false;
+  for (const line of content.split("\n")) {
+    if (/^##\s+Endpoints/i.test(line)) { inEndpoints = true; continue; }
+    if (inEndpoints && /^##\s/.test(line)) break; // Next section
+    if (inEndpoints) {
+      const match = line.match(/https?:\/\/[^\s)>]+/);
+      if (match) urls.push(match[0].replace(/\/+$/, ""));
+    }
+  }
+
+  if (urls.length === 0) {
+    console.log("  ⏳ No endpoint URLs found in infra-interfaces.md — falling back to 60s delay");
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+    return;
+  }
+
+  console.log(`  🔍 Readiness probe: checking ${urls.length} endpoint(s)...`);
+
+  const start = Date.now();
+  let delay = 2_000; // Start at 2s, exponential backoff
+  const maxDelay = 30_000;
+
+  while (Date.now() - start < READINESS_PROBE_TIMEOUT_MS) {
+    let allReady = true;
+    for (const url of urls) {
+      try {
+        const result = execSync(
+          `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${url}"`,
+          { encoding: "utf-8", timeout: 15_000 },
+        ).trim();
+        const code = parseInt(result, 10);
+        if (READINESS_OK_CODES.has(code)) {
+          continue; // This URL is ready
+        }
+        allReady = false;
+        console.log(`  🔍 ${url} → HTTP ${code} (not ready, retrying in ${delay / 1000}s)`);
+      } catch {
+        allReady = false;
+        console.log(`  🔍 ${url} → connection failed (retrying in ${delay / 1000}s)`);
+      }
+    }
+
+    if (allReady) {
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      console.log(`  ✅ All endpoints ready after ${elapsed}s`);
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay = Math.min(delay * 2, maxDelay);
+  }
+
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.warn(`  ⚠ Readiness probe timed out after ${elapsed}s — proceeding anyway`);
+}
 
 /**
  * Map agent item keys to their owned directory prefixes for scoped git-diff
@@ -471,12 +550,12 @@ export async function runItemSession(
   const autoSkipResult = await tryAutoSkip(next, config, state, itemSummary, stepStart);
   if (autoSkipResult) return autoSkipResult;
 
-  // ── Post-deploy propagation delay ─────────────────────────────────────
-  // Applied on ALL attempts (not just the first) because Azure Functions and
-  // SWA can take up to 90s to propagate after a deployment workflow succeeds.
+  // ── Post-deploy readiness probe ────────────────────────────────────────
+  // Replaces the fixed-duration sleep with a stack-agnostic readiness probe.
+  // Parses infra-interfaces.md for endpoint URLs and polls with exponential
+  // backoff until the data plane responds (HTTP 200/401/403) or timeout.
   if (LONG_ITEMS.has(next.key)) {
-    console.log(`  ⏳ Waiting ${POST_DEPLOY_PROPAGATION_DELAY_MS / 1000}s for deployment propagation before ${next.key}...`);
-    await new Promise((resolve) => setTimeout(resolve, POST_DEPLOY_PROPAGATION_DELAY_MS));
+    await pollReadiness(config);
   }
 
   // ── Deterministic bypasses (no agent session) ─────────────────────────
@@ -495,6 +574,12 @@ export async function runItemSession(
       `BUG: Deploy item "${next.key}" is in DEPLOY_ITEMS but has no deterministic handler. ` +
       `Never route deploy items to LLM sessions. Either add a handler or remove it from DEPLOY_ITEMS.`,
     );
+  }
+
+  // publish-pr is deterministic — reads artifacts, updates PR body, promotes
+  // draft to ready. Zero LLM tokens.
+  if (next.key === "publish-pr") {
+    return runPublishPr(config, state, itemSummary, stepStart);
   }
 
   // ── Agent session ─────────────────────────────────────────────────────
@@ -959,6 +1044,142 @@ async function runPollCi(
 }
 
 // ---------------------------------------------------------------------------
+// Deterministic publish-pr handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Replaces the former LLM-based publish-pr agent. Deterministically:
+ * 1. Reads existing Draft PR body
+ * 2. Appends Wave 2 artifacts (_SUMMARY.md, _RISK-ASSESSMENT.md, _ARCHITECTURE.md)
+ * 3. Promotes Draft → Ready for Review
+ * 4. Commits state changes and returns createPr: true to trigger archiving
+ */
+async function runPublishPr(
+  config: PipelineRunConfig,
+  state: PipelineRunState,
+  itemSummary: ItemSummary,
+  stepStart: number,
+): Promise<SessionResult> {
+  const { slug, appRoot, repoRoot } = config;
+  const { pipelineSummaries } = state;
+  const inProgressDir = path.join(appRoot, "in-progress");
+  const commitScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
+
+  console.log(`  📋 publish-pr: Running deterministic PR publish (no agent session)`);
+  let tmpDir: string | null = null;
+  try {
+    // 1. Get existing PR number
+    const prNumber = execSync(`gh pr view --json number -q '.number'`, {
+      cwd: repoRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30_000,
+    }).trim();
+    if (!prNumber) throw new Error("No existing Draft PR found");
+    console.log(`     Found existing PR #${prNumber}`);
+
+    // 2. Fetch existing body
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "publish-pr-"));
+    const existingBodyFile = path.join(tmpDir, "existing.md");
+    const existingBody = execSync(`gh pr view ${prNumber} --json body -q '.body'`, {
+      cwd: repoRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30_000,
+    });
+    fs.writeFileSync(existingBodyFile, existingBody, "utf-8");
+
+    // 3. Build Wave 2 appendix from pipeline artifacts
+    const appendixParts: string[] = [
+      "",
+      "---",
+      "",
+      "## Wave 2 — Application Development Results",
+      "",
+    ];
+
+    // Summary
+    const summaryPath = path.join(inProgressDir, `${slug}_SUMMARY.md`);
+    if (fs.existsSync(summaryPath)) {
+      const summary = fs.readFileSync(summaryPath, "utf-8").trim();
+      appendixParts.push("### Pipeline Summary", "", summary, "");
+    }
+
+    // Risk Assessment
+    const riskPath = path.join(inProgressDir, `${slug}_RISK-ASSESSMENT.md`);
+    if (fs.existsSync(riskPath)) {
+      const risk = fs.readFileSync(riskPath, "utf-8").trim();
+      appendixParts.push("### Risk Assessment", "", risk, "");
+    }
+
+    // Architecture
+    const archPath = path.join(inProgressDir, `${slug}_ARCHITECTURE.md`);
+    if (fs.existsSync(archPath)) {
+      const arch = fs.readFileSync(archPath, "utf-8").trim();
+      appendixParts.push("### Architecture", "", arch, "");
+    }
+
+    // Playwright Log
+    const playwrightPath = path.join(inProgressDir, `${slug}_PLAYWRIGHT-LOG.md`);
+    if (fs.existsSync(playwrightPath)) {
+      const playwright = fs.readFileSync(playwrightPath, "utf-8").trim();
+      appendixParts.push("### E2E Test Results", "", playwright, "");
+    }
+
+    // 4. Combine and update PR body (never overwrite — always append)
+    const combinedFile = path.join(tmpDir, "combined.md");
+    const combinedBody = existingBody + appendixParts.join("\n");
+    fs.writeFileSync(combinedFile, combinedBody, "utf-8");
+    execSync(`gh pr edit ${prNumber} --body-file "${combinedFile}"`, {
+      cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+    });
+    console.log(`     Updated PR #${prNumber} body with Wave 2 appendix`);
+
+    // 5. Promote Draft → Ready for Review
+    try {
+      execSync(`gh pr ready ${prNumber}`, {
+        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+      });
+      console.log(`     Promoted PR #${prNumber} to ready-for-review`);
+    } catch {
+      // PR may already be ready (not a draft) — non-fatal
+      console.warn(`     ⚠ Could not promote PR (may already be ready)`);
+    }
+
+    // 6. Complete pipeline item
+    await completeItem(slug, "publish-pr");
+
+    // 7. Commit state changes
+    try {
+      execSync(`bash "${commitScript}" all "chore(${slug}): publish PR #${prNumber}"`, {
+        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+        env: { ...process.env, APP_ROOT: appRoot },
+      });
+    } catch { /* no changes to commit — OK */ }
+
+    console.log(`  ✅ publish-pr complete (deterministic)`);
+    itemSummary.outcome = "completed";
+    itemSummary.finishedAt = new Date().toISOString();
+    itemSummary.durationMs = Date.now() - stepStart;
+    itemSummary.intents.push("Deterministic PR publish — no agent session");
+    pipelineSummaries.push(itemSummary);
+    flushReports(config, state);
+    return { summary: itemSummary, halt: false, createPr: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`  ✖ Deterministic PR publish failed: ${message}`);
+    try {
+      await failItem(slug, "publish-pr", `Deterministic PR publish failed: ${message}`);
+    } catch { /* best-effort */ }
+    itemSummary.outcome = "failed";
+    itemSummary.errorMessage = `Deterministic PR publish failed: ${message}`;
+    itemSummary.finishedAt = new Date().toISOString();
+    itemSummary.durationMs = Date.now() - stepStart;
+    pipelineSummaries.push(itemSummary);
+    flushReports(config, state);
+    return { summary: itemSummary, halt: false, createPr: false };
+  } finally {
+    if (tmpDir) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent session
 // ---------------------------------------------------------------------------
 
@@ -1307,24 +1528,45 @@ async function handleFailureReroute(
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
   console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
 
-  try {
-    const result = await resetForDev(slug, resetKeys, errorMsg);
-    if (result.halted) {
-      console.error(
-        `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
-      );
-      return { summary: itemSummary, halt: true, createPr: false };
-    }
-    console.log(
-      `     Redevelopment cycle ${result.cycleCount}/5 — pipeline will restart from dev`,
-    );
+  // Branch: if triage targets only deploy/post-deploy items (no dev or test code
+  // changes needed), use the separate re-deploy budget instead of burning a full
+  // redevelopment cycle. This handles "deployment-stale" faults deterministically.
+  // TEST_ITEMS also imply code changes (test failures need dev fixes), so they
+  // route to the full redevelopment path alongside DEV_ITEMS.
+  const hasDevOrTestItems = resetKeys.some((k) => DEV_ITEMS.has(k) || TEST_ITEMS.has(k));
 
-    // Re-index semantic graph after redevelopment reroute
-    if (roamAvailable) {
-      console.log("  🧠 Re-indexing semantic graph after redevelopment reroute...");
-      try {
-        execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
-      } catch { /* non-fatal */ }
+  try {
+    if (hasDevOrTestItems) {
+      const result = await resetForDev(slug, resetKeys, errorMsg);
+      if (result.halted) {
+        console.error(
+          `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
+        );
+        return { summary: itemSummary, halt: true, createPr: false };
+      }
+      console.log(
+        `     Redevelopment cycle ${result.cycleCount}/5 — pipeline will restart from dev`,
+      );
+
+      // Re-index semantic graph after redevelopment reroute
+      if (roamAvailable) {
+        console.log("  🧠 Re-indexing semantic graph after redevelopment reroute...");
+        try {
+          execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
+        } catch { /* non-fatal */ }
+      }
+    } else {
+      const result = await resetForRedeploy(slug, resetKeys, errorMsg);
+      if (result.halted) {
+        console.error(
+          `  ✖ HALTED: ${result.cycleCount} re-deploy cycles exhausted. Exiting.`,
+        );
+        return { summary: itemSummary, halt: true, createPr: false };
+      }
+      console.log(
+        `     Re-deploy cycle ${result.cycleCount}/3 — pipeline will restart from deploy`,
+      );
+      // No roam re-indexing needed — no code changes, just re-push and re-poll
     }
   } catch {
     console.error("  ✖ Could not trigger redevelopment reroute. Exiting.");
