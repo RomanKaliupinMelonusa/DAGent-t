@@ -45,13 +45,13 @@ if [ $# -gt 0 ]; then
 else
   case "$SCOPE" in
     backend)
-      PATHS=("${AR}/backend/" "${AR}/packages/" "${AR}/infra/" "${AR}/in-progress/")
+      PATHS=("${AR}/backend/" "${AR}/packages/" "${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/in-progress/")
       ;;
     frontend)
       PATHS=("${AR}/frontend/" "${AR}/packages/" "${AR}/e2e/" "${AR}/in-progress/")
       ;;
     infra)
-      PATHS=("${AR}/infra/" "${AR}/in-progress/")
+      PATHS=("${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/in-progress/")
       ;;
     cicd)
       PATHS=(".github/" "${AR}/in-progress/")
@@ -69,7 +69,7 @@ else
       PATHS=("${AR}/e2e/" "${AR}/in-progress/")
       ;;
     all)
-      PATHS=("${AR}/backend/" "${AR}/frontend/" "${AR}/packages/" "${AR}/infra/" "${AR}/e2e/" "${AR}/in-progress/" ".github/")
+      PATHS=("${AR}/backend/" "${AR}/frontend/" "${AR}/packages/" "${AR}/infra/" "${AR}/e2e/" "${AR}/.apm/hooks/" "${AR}/in-progress/" ".github/")
       ;;
     *)
       echo "ERROR: Unknown scope '${SCOPE}'. Use: backend, frontend, infra, cicd, docs, pipeline, pr, e2e, all" >&2

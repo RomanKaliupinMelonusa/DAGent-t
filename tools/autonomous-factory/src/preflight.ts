@@ -98,6 +98,44 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
 }
 
 /**
+ * Validate that the Azure CLI (`az`) is logged in.
+ * Non-fatal — logs ✔ or ✖ and returns the result.
+ */
+export function checkAzureLogin(): boolean {
+  try {
+    const out = execSync("az account show --query name -o tsv", {
+      encoding: "utf-8",
+      timeout: 15_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    console.log(`  ✔ Azure CLI logged in (${out})`);
+    return true;
+  } catch {
+    console.log("  ✖ Azure CLI not logged in — run 'az login' to authenticate");
+    return false;
+  }
+}
+
+/**
+ * Validate that the GitHub CLI (`gh`) is logged in.
+ * Non-fatal — logs ✔ or ✖ and returns the result.
+ */
+export function checkGitHubLogin(): boolean {
+  try {
+    execSync("gh auth status", {
+      encoding: "utf-8",
+      timeout: 15_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    console.log("  ✔ GitHub CLI authenticated");
+    return true;
+  } catch {
+    console.log("  ✖ GitHub CLI not authenticated — run 'gh auth login' to authenticate");
+    return false;
+  }
+}
+
+/**
  * Run the pre-flight auth check hook to verify cloud CLI authentication.
  * Warns early so the user can fix it before the pipeline reaches post-deploy.
  *

@@ -28,6 +28,7 @@ interface PipelineStateMod {
   resetInfraPlan: (slug: string) => ResetResult;
   redevelopInfra: (slug: string, reason: string) => ResetResult;
   resetForDev: (slug: string, itemKeys: string[], reason: string) => ResetResult;
+  resetForRedeploy: (slug: string, itemKeys: string[], reason: string) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
   resumeAfterElevated: (slug: string) => ResetResult;
   recoverElevated: (slug: string, errorMessage: string) => ResetResult;
@@ -84,6 +85,11 @@ export async function redevelopInfra(slug: string, reason: string): Promise<Rese
 export async function resetForDev(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
   const mod = await getMod();
   return mod.resetForDev(slug, itemKeys, reason);
+}
+
+export async function resetForRedeploy(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
+  const mod = await getMod();
+  return mod.resetForRedeploy(slug, itemKeys, reason);
 }
 
 export async function salvageForDraft(slug: string, failedItemKey: string): Promise<PipelineState> {

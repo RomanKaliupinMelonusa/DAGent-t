@@ -84,6 +84,11 @@ export const NA_ITEMS_BY_TYPE = {
   Infra:       ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
                 "integration-test", "live-ui", "schema-dev", "code-cleanup",
                 "push-app", "poll-app-ci", "doc-architect"],
+  "App-Only":  ["schema-dev", "infra-architect", "push-infra", "poll-infra-plan",
+                "await-infra-approval", "infra-handoff"],
+  "Backend-Only": ["schema-dev", "infra-architect", "push-infra", "poll-infra-plan",
+                   "await-infra-approval", "infra-handoff",
+                   "frontend-dev", "frontend-unit-test", "live-ui"],
 };
 // NOTE: infra wave items, docs-archived, and publish-pr are always active for all types.
 // The Infra workflow type skips Wave 2 app items entirely — only infra wave + docs + PR.
@@ -609,6 +614,67 @@ export function resetInfraPlan(slug) {
     timestamp: new Date().toISOString(),
     itemKey: "reset-infra-plan",
     message: `Infra re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
+  });
+
+  writeState(slug, state);
+  return { state, cycleCount: cycleCount + 1, halted: false };
+  }); // end withLock
+}
+
+/**
+ * Reset deploy + post-deploy items for a re-deployment cycle.
+ * Called when triage classifies the failure as `deployment-stale` — the code
+ * on the branch is correct but the deployed artifact is outdated.
+ *
+ * Unlike `resetForDev()`, this does NOT increment the redevelopment cycle
+ * counter. It tracks its own budget via `reset-for-redeploy` error log entries
+ * (max 3 cycles).
+ *
+ * @param {string} slug - Feature slug
+ * @param {string[]} itemKeys - Item keys to reset (deploy + post-deploy items)
+ * @param {string} reason - Human-readable reason for the re-deploy
+ * @returns {{ state: object, cycleCount: number, halted: boolean }}
+ * @throws {Error} if slug missing or no itemKeys provided
+ */
+export function resetForRedeploy(slug, itemKeys, reason) {
+  if (!slug || !itemKeys?.length) {
+    throw new Error("resetForRedeploy requires slug and at least one itemKey");
+  }
+
+  return withLock(slug, () => {
+  const state = readStateOrThrow(slug);
+
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-redeploy").length;
+  if (cycleCount >= 3) {
+    return { state, cycleCount, halted: true };
+  }
+
+  const keysToReset = new Set(itemKeys);
+
+  // Cascade: also reset any "done" post-deploy items that depend on deploy items.
+  const deployItemSet = new Set(["push-app", "poll-app-ci", "push-infra", "poll-infra-plan"]);
+  const hasDeployReset = [...keysToReset].some(k => deployItemSet.has(k));
+  if (hasDeployReset) {
+    for (const item of state.items) {
+      if (item.phase === "post-deploy" && item.status === "done") {
+        keysToReset.add(item.key);
+      }
+    }
+  }
+
+  let resetCount = 0;
+  for (const item of state.items) {
+    if (keysToReset.has(item.key) && item.status !== "na") {
+      item.status = "pending";
+      item.error = null;
+      resetCount++;
+    }
+  }
+
+  state.errorLog.push({
+    timestamp: new Date().toISOString(),
+    itemKey: "reset-for-redeploy",
+    message: `Re-deployment cycle ${cycleCount + 1}/3: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
   });
 
   writeState(slug, state);

@@ -26,7 +26,7 @@ import { loadApmContext } from "./apm-context-loader.js";
 import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
-import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkPreflightAuth, buildRoamIndex } from "./preflight.js";
+import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkPreflightAuth, checkAzureLogin, checkGitHubLogin, buildRoamIndex } from "./preflight.js";
 import { writePipelineSummary, writeTerminalLog, parsePreviousSummary } from "./reporting.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
@@ -346,6 +346,11 @@ async function main(): Promise<void> {
   }
 
   // --- Pre-flight checks ---
+  console.log("\n  🔐 CLI Authentication Status:");
+  checkAzureLogin();
+  checkGitHubLogin();
+  console.log("");
+
   checkJunkFiles(repoRoot);
 
   let apmContext: ApmCompiledOutput;
@@ -480,6 +485,33 @@ async function main(): Promise<void> {
           if (result.value.halt) shouldHalt = true;
           if (result.value.createPr) {
             archiveFeatureFiles(slug, appRoot, repoRoot);
+
+            // Push archive commit to origin — retries with backoff to handle
+            // transient network issues. Without this, the archive commit is
+            // stranded locally and never reaches the remote.
+            const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
+            const maxPushRetries = 3;
+            for (let attempt = 1; attempt <= maxPushRetries; attempt++) {
+              try {
+                execSync(`bash "${branchScript}" push`, {
+                  cwd: repoRoot,
+                  stdio: "inherit",
+                  timeout: 60_000,
+                  env: { ...process.env, BASE_BRANCH: baseBranch },
+                });
+                console.log("  📤 Archive commit pushed to origin");
+                break;
+              } catch (pushErr) {
+                if (attempt < maxPushRetries) {
+                  const backoff = attempt * 5_000;
+                  console.warn(`  ⚠ Push attempt ${attempt}/${maxPushRetries} failed, retrying in ${backoff / 1000}s...`);
+                  await new Promise((r) => setTimeout(r, backoff));
+                } else {
+                  console.error(`  ✖ Failed to push archive commit after ${maxPushRetries} attempts: ${pushErr instanceof Error ? pushErr.message : String(pushErr)}`);
+                }
+              }
+            }
+
             console.log("  ✅ publish-pr complete — pipeline finished");
             pipelineDone = true;
           }
