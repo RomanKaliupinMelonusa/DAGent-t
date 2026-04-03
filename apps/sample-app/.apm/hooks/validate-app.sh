@@ -45,4 +45,21 @@ fi
 
 # ─── @backend-dev / @frontend-dev append endpoint checks below this line ──
 
+# ─── GET /api/tasks reachability (Kanban Task Board) ──────────────────────
+if [[ -n "${BACKEND_URL:-}" ]]; then
+  # Retrieve function key if not already set
+  if [[ -z "${FUNC_KEY:-}" ]] && [[ -n "${FUNC_APP_NAME:-}" ]] && [[ -n "${RESOURCE_GROUP:-}" ]]; then
+    FUNC_KEY=$(az functionapp keys list --name "$FUNC_APP_NAME" --resource-group "$RESOURCE_GROUP" --query 'functionKeys.default' -o tsv 2>/dev/null || true)
+  fi
+
+  TASKS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+    "${BACKEND_URL}/tasks" \
+    ${FUNC_KEY:+-H "x-functions-key: $FUNC_KEY"} \
+    2>/dev/null || echo "000")
+  if [[ "$TASKS_STATUS" == "000" || "$TASKS_STATUS" == "502" || "$TASKS_STATUS" == "503" ]]; then
+    echo "Endpoint GET /api/tasks unreachable (HTTP $TASKS_STATUS)"
+    exit 1
+  fi
+fi
+
 exit 0
