@@ -46,16 +46,24 @@ const data = await apiFetch("/hello", {}, HelloResponseSchema);
 
 Error responses are always parsed against `ApiErrorResponseSchema` for structured error handling.
 
+## Pages
+
+| Route | Component | Description |
+|-------|-----------|-------------|
+| `/` | `src/app/page.tsx` | Home page with greeting endpoint demo |
+| `/webhooks` | `src/app/webhooks/page.tsx` | Webhook URL registration form and list table. Fetches via `GET /webhooks`, registers via `POST /webhooks`. Uses `WebhookListResponseSchema` for runtime validation. |
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/app/providers.tsx` | Dual-mode auth provider (DemoProviders / EntraProviders) |
+| `src/app/webhooks/page.tsx` | Webhook management page — register and list webhook URLs |
 | `src/lib/demoAuthContext.tsx` | React context for demo auth state (validates with `DemoLoginResponseSchema`) |
 | `src/lib/authConfig.ts` | MSAL configuration for Entra ID |
 | `src/lib/apiClient.ts` | Authenticated fetch wrapper with optional Zod validation |
 | `src/components/DemoLoginForm.tsx` | Login form UI |
-| `src/components/NavBar.tsx` | Dual-mode navigation bar |
+| `src/components/NavBar.tsx` | Dual-mode navigation bar (Home, About, Webhooks) |
 | `src/components/ui/primitives.tsx` | Shared UI primitives (Button, Input, Card) |
 
 ## Tests

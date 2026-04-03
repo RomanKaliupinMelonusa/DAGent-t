@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T06:19:00.225Z",
+  "generatedAt": "2026-04-03T06:22:02.323Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1509,6 +1509,56 @@
       "cacheReadTokens": 842856,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "920da29818e84b5695d01094dcbef02b445ed15d"
+    },
+    {
+      "key": "docs-archived",
+      "label": "Docs Updated & Archived",
+      "agent": "@docs-expert",
+      "phase": "finalize",
+      "attempt": 1,
+      "startedAt": "2026-04-03T06:19:00.324Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now let me read the existing documentation files that may need updating, along with key source files mentioned in the manifest.",
+        "Now let me check the README for sample-app-specific sections and the OpenAPI spec:",
+        "Now I have a complete picture. Let me plan and execute the documentation updates.  **Discovery Summary:** - **Feature:** Webhook dispatcher — POST/GET /api/webhooks with Cosmos DB backend - **Backend:** New `fn-webhooks.ts`, Zod validation, `DefaultAzureCredential` for Cosmos DB, new env vars (`COSMOSDB_ENDPOINT`, `WEBHOOK_TIMEOUT_MS`) - **Frontend:** New `/webhooks` page, NavBar link added - **Tests:** Backend 34 tests, Frontend 14 tests (per cleanup agent) - **APIM:** OpenAPI spec already updated with webhook paths - **Files to update:** `backend/README.md`, `frontend/README.md` - **Files to create:** `docs/architecture/system-overview.md`, `docs/specs/api-contracts.md`  Let me execute Phase 2 now.",
+        "Now update the frontend README:",
+        "Now create the docs directory structure and the system overview:",
+        "Now let me do the self-check: read back all edited files to verify completeness."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "ls -la /workspaces/DAGent-t/apps/sample-app/.github/instructions/ 2>/dev/null; echo \"---\"; ls -la /workspaces/DAGent-t/.github/instructions/ 2>/dev/null",
+          "timestamp": "2026-04-03T06:19:43.533Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/docs -type f 2>/dev/null; echo \"---DONE---\"",
+          "timestamp": "2026-04-03T06:19:48.713Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "mkdir -p /workspaces/DAGent-t/apps/sample-app/docs/architecture /workspaces/DAGent-t/apps/sample-app/docs/specs",
+          "timestamp": "2026-04-03T06:20:55.928Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 24,
+        "shell": 3,
+        "edit": 2,
+        "create": 2
+      },
+      "inputTokens": 619301,
+      "outputTokens": 10053,
+      "cacheReadTokens": 577958,
+      "cacheWriteTokens": 0
     }
   ]
 }
