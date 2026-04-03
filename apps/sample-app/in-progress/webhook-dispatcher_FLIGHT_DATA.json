@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T05:25:53.829Z",
+  "generatedAt": "2026-04-03T05:26:02.745Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -10,14 +10,15 @@
       "phase": "approval",
       "attempt": 1,
       "startedAt": "2026-04-03T05:24:47.957Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-03T05:26:02.734Z",
+      "durationMs": 74777,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now I have the complete Terraform outputs. Let me check for CORS origins and the APIM OpenAPI spec to include all relevant interface details.",
         "I have all the information. Let me create the infra-interfaces.md file now.",
-        "Now let me commit and complete the pipeline step."
+        "Now let me commit and complete the pipeline step.",
+        "The infra-handoff phase is complete. Here's a summary of what was done:  **Infra-Handoff Summary:**  1. **Read Terraform outputs** — All 14 outputs captured from `terraform output -json`, including the new Cosmos DB outputs (`cosmosdb_endpoint`, `cosmosdb_account_name`) provisioned for the webhook-dispatcher feature.  2. **Created `/apps/sample-app/in-progress/infra-interfaces.md`** with structured sections:    - **Endpoints** — Function App, APIM Gateway, SWA, Cosmos DB URLs    - **Resource Names** — All Azure resource names for reference    - **Auth Config** — Entra ID client/tenant IDs, dual-mode auth details    - **Cosmos DB** — Database, container, partition key, capacity mode, auth method    - **APIM Gateway Routes** — `/hello`, `GET /webhooks`, `POST /webhooks` operations    - **App Settings** — `COSMOSDB_ENDPOINT` and `WEBHOOK_TIMEOUT_MS` with their sources    - **Terraform Outputs** — Full table with sensitivity flags; `application_insights_connection_string` masked as `<HIDDEN>`    - **Downstream Agent Reference** — Specific guidance for backend-dev, frontend-dev, and integration testing  3. **Committed and marked pipeline step complete.**"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -56,18 +57,24 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete webhook-dispatcher infra-handoff",
           "timestamp": "2026-04-03T05:25:49.170Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Infra Outputs Captured — Interfaces Written\"",
+          "timestamp": "2026-04-03T05:25:53.830Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
         "file-read": 1,
-        "shell": 7,
+        "shell": 8,
         "create": 1
       },
-      "inputTokens": 142737,
-      "outputTokens": 3188,
-      "cacheReadTokens": 117815,
-      "cacheWriteTokens": 0
+      "inputTokens": 166650,
+      "outputTokens": 3512,
+      "cacheReadTokens": 141374,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "aaee807ee91d1d999b454faefa1a1c4746f7cdf4"
     }
   ]
 }
