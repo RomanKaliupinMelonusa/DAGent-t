@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "## Infrastructure Resources Created\n\n### Cosmos DB (cosmos.tf)\n- **azurerm_cosmosdb_account.main** — Serverless Cosmos DB account (cosmos-sample-app-{suffix})\n- **azurerm_cosmosdb_sql_database.main** — SQL database (sample-app-db)\n- **azurerm_cosmosdb_sql_container.tasks** — Tasks container, partition key: /workspaceId\n- **azurerm_cosmosdb_sql_role_assignment.func_data_contributor** — Function App MI → Cosmos DB Built-in Data Contributor\n\n### APIM OpenAPI (api-specs/api-sample.openapi.yaml)\n- GET /tasks — listTasks — returns Task[]\n- POST /tasks — createTask — accepts CreateTask, returns Task (201), ErrorResponse (400/429)\n- PATCH /tasks/{id}/status — updateTaskStatus — accepts UpdateTaskStatus, returns Task (200), ErrorResponse (400/404)\n- OpenAPI schemas: Task, TaskStatus, CreateTask, UpdateTaskStatus, ErrorResponse\n\n### Validation Hook (.apm/hooks/validate-infra.sh)\n- Cosmos DB reachability check via curl against COSMOSDB_ENDPOINT\n\n### NOTE: Cosmos DB prereqs from webhook-dispatcher (PR #35)\nAccount, database, and RBAC were included in cosmos.tf since PR #35 is not yet merged to main. When that branch merges first, resolve the merge conflict in cosmos.tf by keeping both containers (Webhooks + Tasks). The COSMOSDB_ENDPOINT app setting and Cosmos outputs will be added by the webhook-dispatcher merge."
     },
     {
       "key": "push-infra",
