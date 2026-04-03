@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-03T06:22:02.323Z",
+  "generatedAt": "2026-04-03T06:22:11.703Z",
   "featureSlug": "webhook-dispatcher",
   "items": [
     {
@@ -1527,7 +1527,8 @@
         "Now I have a complete picture. Let me plan and execute the documentation updates.  **Discovery Summary:** - **Feature:** Webhook dispatcher — POST/GET /api/webhooks with Cosmos DB backend - **Backend:** New `fn-webhooks.ts`, Zod validation, `DefaultAzureCredential` for Cosmos DB, new env vars (`COSMOSDB_ENDPOINT`, `WEBHOOK_TIMEOUT_MS`) - **Frontend:** New `/webhooks` page, NavBar link added - **Tests:** Backend 34 tests, Frontend 14 tests (per cleanup agent) - **APIM:** OpenAPI spec already updated with webhook paths - **Files to update:** `backend/README.md`, `frontend/README.md` - **Files to create:** `docs/architecture/system-overview.md`, `docs/specs/api-contracts.md`  Let me execute Phase 2 now.",
         "Now update the frontend README:",
         "Now create the docs directory structure and the system overview:",
-        "Now let me do the self-check: read back all edited files to verify completeness."
+        "Now let me do the self-check: read back all edited files to verify completeness.",
+        "All documentation looks correct. Let me verify my self-check:  1. **Comprehensive?** ✅ Covered: new endpoints (POST/GET webhooks), new env vars (COSMOSDB_ENDPOINT, WEBHOOK_TIMEOUT_MS), new schemas (Webhook*, CreateWebhookRequest*), new tests (fn-webhooks.test.ts, webhooks.integration.test.ts), new frontend page (/webhooks), NavBar update, Cosmos DB data store, APIM OpenAPI routes, CI/CD workflow change, test counts (34 backend, 14 frontend). 2. **Redundant?** ✅ No code copy-paste — high-level summaries with example payloads. 3. **Executive-ready?** ✅ Factual, concise, well-structured with tables and Mermaid diagrams.  Now let me commit and mark complete:"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -1546,18 +1547,28 @@
           "command": "mkdir -p /workspaces/DAGent-t/apps/sample-app/docs/architecture /workspaces/DAGent-t/apps/sample-app/docs/specs",
           "timestamp": "2026-04-03T06:20:55.928Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh docs \"docs(webhook-dispatcher): add system overview, API contracts, update backend/frontend READMEs\"",
+          "timestamp": "2026-04-03T06:22:02.324Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:complete webhook-dispatcher docs-archived",
+          "timestamp": "2026-04-03T06:22:07.121Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
-        "intent": 5,
+        "intent": 6,
         "file-read": 24,
-        "shell": 3,
+        "shell": 5,
         "edit": 2,
         "create": 2
       },
-      "inputTokens": 619301,
-      "outputTokens": 10053,
-      "cacheReadTokens": 577958,
+      "inputTokens": 718138,
+      "outputTokens": 10294,
+      "cacheReadTokens": 675948,
       "cacheWriteTokens": 0
     }
   ]
