@@ -62,3 +62,17 @@ output "elevated_cicd_client_id" {
   description = "Elevated CI/CD OIDC client ID — set as AZURE_ELEVATED_CLIENT_ID GitHub secret."
   value       = azuread_application.elevated_cicd.client_id
 }
+
+# =============================================================================
+# Cosmos DB Outputs
+# =============================================================================
+
+output "cosmosdb_endpoint" {
+  description = "Cosmos DB account endpoint URL — set as COSMOSDB_ENDPOINT app setting."
+  value       = azurerm_cosmosdb_account.main.endpoint
+}
+
+output "cosmosdb_account_name" {
+  description = "Cosmos DB account name."
+  value       = azurerm_cosmosdb_account.main.name
+}

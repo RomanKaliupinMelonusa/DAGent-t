@@ -169,6 +169,7 @@ resource "azurerm_function_app_flex_consumption" "main" {
 
   app_settings = merge({
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+    COSMOSDB_ENDPOINT                     = azurerm_cosmosdb_account.main.endpoint
     }, var.auth_mode == "demo" ? {
     AUTH_MODE  = "demo"
     DEMO_USER  = var.demo_credentials.username
