@@ -89,3 +89,44 @@ export function getDirectoryPrefixes(
     infra: [pfx("infra")].filter(Boolean) as string[],
   };
 }
+
+/**
+ * Count the number of line deletions on the current branch compared to the
+ * base branch, using `git diff --shortstat`.
+ *
+ * Returns 0 when: no deletions, empty diff, shallow clone, or parse failure.
+ */
+export function getGitDeletions(repoRoot: string, baseBranch: string): number {
+  try {
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --shortstat`, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+    if (!output) return 0;
+    // e.g. "5 files changed, 100 insertions(+), 23 deletions(-)"
+    const match = output.match(/(\d+)\s+deletion/);
+    return match ? parseInt(match[1], 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Check whether the current branch has any entirely deleted files compared to
+ * the base branch (git diff --diff-filter=D).
+ *
+ * Returns `true` if at least one file was deleted.
+ */
+export function hasDeletedFiles(repoRoot: string, baseBranch: string): boolean {
+  try {
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --diff-filter=D --name-only`, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+    return output.length > 0;
+  } catch {
+    return false;
+  }
+}

@@ -61,7 +61,7 @@ To prevent flaky tests, race conditions, and excessive agent debugging loops, yo
 **✅ DO THIS (Explicit Promise Setup):**
 ```typescript
 // 1. Setup the wait promise BEFORE the action
-const patchPromise = page.waitForResponse(res => 
+const patchPromise = page.waitForResponse(res =>
   res.url().includes('/api/') && res.status() === 200
 );
 // 2. Perform the action

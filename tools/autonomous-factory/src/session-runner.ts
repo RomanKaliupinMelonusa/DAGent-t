@@ -27,7 +27,7 @@ import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
-import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
+import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog, writeFlightData } from "./reporting.js";
 import {
   buildRetryContext,
@@ -704,6 +704,17 @@ async function tryAutoSkip(
       if (hasInfraChanges && !hasFrontendChanges) {
         console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
       }
+    }
+  }
+
+  if (next.key === "code-cleanup") {
+    const deletions = getGitDeletions(repoRoot, baseBranch);
+    const deleted = hasDeletedFiles(repoRoot, baseBranch);
+    if (deletions === 0 && !deleted) {
+      console.log(`  ⏭ Auto-skipping ${next.key} — feature is purely additive (0 deletions, 0 deleted files)`);
+      return completeSkip(
+        "Auto-skipped: Feature is purely additive (0 deletions detected in git diff). No architectural dead code possible.",
+      );
     }
   }
 
