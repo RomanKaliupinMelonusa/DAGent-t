@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T20:20:41.515Z",
+  "generatedAt": "2026-04-04T20:23:45.809Z",
   "featureSlug": "kanban-task-board-enhanced",
   "items": [
     {
@@ -699,6 +699,115 @@
       "outputTokens": 0,
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-04T20:20:42.752Z",
+      "finishedAt": "2026-04-04T20:23:45.794Z",
+      "durationMs": 183042,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Good — the integration test file covers all required endpoints with proper test blocks. Now let me authenticate and retrieve the function key.",
+        "The task endpoints are returning 500. Let me investigate using App Insights and a direct curl to get the error details.",
+        "Now I have a clear diagnosis. The Cosmos DB infrastructure is provisioned (account, database, Tasks container, RBAC), but the `COSMOSDB_ENDPOINT` and `COSMOSDB_DATABASE_NAME` environment variables are **not set** as app settings on the Function App. The `infra/main.tf` `app_settings` block doesn't reference the Cosmos DB outputs, and `cosmos.tf` only defines outputs but never wires them to the Function App.  This causes all task endpoints to throw `\"Missing COSMOSDB_ENDPOINT or COSMOSDB_DATABASE_NAME environment variables\"` → 500.",
+        "The failure has been recorded. Here's a summary of the integration test results:  ## Integration Test Results  ### ✅ Passing Tests (14/19) - **Smoke tests** (7/7): `fn-hello` and `fn-demo-login` all pass - **Task validation tests** (6/6): All 400-level validation errors work correctly (missing title, empty title, long title, invalid status, nonexistent task 404, unauthenticated 401) - **MAX_TASKS_PER_WORKSPACE** (1/1): App setting confirmed as `\"500\"` via `az CLI`  ### ❌ Failing Tests (5/19) All 5 task CRUD tests fail with **HTTP 500** (expected 200/201): 1. `GET /tasks` → 500 (expected 200) 2. `POST /tasks` → 500 (expected 201) 3. `GET /tasks` includes created task → 500 4. `PATCH /tasks/{id}/status` → IN_PROGRESS → 500 5. `PATCH /tasks/{id}/status` → DONE → 500  ### Root Cause **Missing Cosmos DB app settings on the Function App.** The Terraform in `cosmos.tf` provisions the Cosmos DB account, database, Tasks container, and RBAC role assignment, and defines `cosmosdb_endpoint` as an output — but **never wires** `COSMOSDB_ENDPOINT` and `COSMOSDB_DATABASE_NAME` into the Function App's `app_settings` block in `infra/main.tf`. The `fn-tasks.ts` code throws at `getContainer()` because `process.env.COSMOSDB_ENDPOINT` is undefined.  **Fix:** Add `COSMOSDB_ENDPOINT = azurerm_cosmosdb_account.main.endpoint` and `COSMOSDB_DATABASE_NAME = azurerm_cosmosdb_sql_database.main.name` to the `app_settings` merge block in `infra/main.tf` (~line 170), then re-apply Terraform and redeploy."
+      ],
+      "filesRead": [
+        "apps/sample-app/in-progress/kanban-task-board-enhanced_SPEC.md",
+        "apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-tasks.ts",
+        "apps/sample-app/infra/main.tf",
+        "apps/sample-app/infra/cosmos.tf"
+      ],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status kanban-task-board-enhanced 2>&1",
+          "timestamp": "2026-04-04T20:20:51.045Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat backend/package.json | grep -A5 '\"test:integration\"'",
+          "timestamp": "2026-04-04T20:20:59.931Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az account show --query '{subscription: name, user: user.name}' -o json 2>&1",
+          "timestamp": "2026-04-04T20:21:08.471Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_APP_NAME=\"func-sample-app-001\"",
+          "timestamp": "2026-04-04T20:21:14.240Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-04T20:21:21.392Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Direct curl to see response body",
+          "timestamp": "2026-04-04T20:21:40.342Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az extension add --name application-insights --yes 2>/dev/null",
+          "timestamp": "2026-04-04T20:21:40.342Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az monitor app-insights query \\",
+          "timestamp": "2026-04-04T20:21:56.536Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check deployed function list",
+          "timestamp": "2026-04-04T20:22:35.247Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check app settings for Cosmos DB config",
+          "timestamp": "2026-04-04T20:22:35.247Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check ALL app settings to confirm COSMOSDB ones are missing",
+          "timestamp": "2026-04-04T20:22:44.907Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -rn \"COSMOSDB\" infra/ --include=\"*.tf\" 2>&1",
+          "timestamp": "2026-04-04T20:22:59.608Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -rn \"COSMOSDB\\|app_settings\\|site_config\" infra/main.tf | head -30 2>&1",
+          "timestamp": "2026-04-04T20:23:03.973Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:fail kanban-task-board-enhanced integration-test '{\"fault_domain\":\"backend+infra\",\"diagnostic_trace\":\"All 5 task endpoint tests fail with HT",
+          "timestamp": "2026-04-04T20:23:33.922Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 6,
+        "file-read": 6,
+        "shell": 14
+      },
+      "inputTokens": 468483,
+      "outputTokens": 6094,
+      "cacheReadTokens": 425001,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "1661e62a0b53e2a2d189193354782bdaebe028a0"
     }
   ]
 }
