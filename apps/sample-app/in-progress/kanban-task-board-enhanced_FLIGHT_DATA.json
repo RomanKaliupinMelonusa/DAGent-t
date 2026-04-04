@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T20:07:49.262Z",
+  "generatedAt": "2026-04-04T20:07:56.609Z",
   "featureSlug": "kanban-task-board-enhanced",
   "items": [
     {
@@ -10,11 +10,13 @@
       "phase": "approval",
       "attempt": 1,
       "startedAt": "2026-04-04T20:07:00.909Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-04T20:07:56.598Z",
+      "durationMs": 55689,
+      "outcome": "completed",
       "intents": [],
-      "messages": [],
+      "messages": [
+        "Infra handoff is complete. Here's a summary of what was done:  **Created `/apps/sample-app/in-progress/infra-interfaces.md`** containing:  | Section | Contents | |---|---| | **Endpoints** | Function App, APIM Gateway, Static Web App, Cosmos DB URLs | | **Resource Names** | Resource group, Function App, APIM, SWA, Cosmos DB account, Key Vault | | **Auth Config** | Entra Tenant/Client IDs, CI/CD client IDs, CORS origins | | **Cosmos DB (Kanban)** | Account, endpoint, database (`sample-app-db`), new container (`Tasks`), partition key (`/workspaceId`), auth method | | **Terraform Outputs** | All 14 outputs with `application_insights_connection_string` masked as `<HIDDEN>` (sensitive) | | **Env Vars for Downstream** | Backend, Frontend, E2E, and Integration test environment variables |  **Security:** The `application_insights_connection_string` (marked `sensitive: true` by Terraform) was replaced with `<HIDDEN>`. All other outputs are non-sensitive resource names/URLs."
+      ],
       "filesRead": [],
       "filesChanged": [],
       "shellCommands": [
@@ -37,17 +39,23 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced infra-handoff",
           "timestamp": "2026-04-04T20:07:44.974Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark infra-handoff complete\"",
+          "timestamp": "2026-04-04T20:07:49.263Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
-        "shell": 4,
+        "shell": 5,
         "create": 1
       },
-      "inputTokens": 97959,
-      "outputTokens": 2482,
-      "cacheReadTokens": 75351,
-      "cacheWriteTokens": 0
+      "inputTokens": 120398,
+      "outputTokens": 2771,
+      "cacheReadTokens": 97375,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "9926f967a997d7fe0b2cf3289ad0c65bf44d7125"
     }
   ]
 }
