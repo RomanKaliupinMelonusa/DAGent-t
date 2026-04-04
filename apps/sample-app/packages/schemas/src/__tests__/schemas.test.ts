@@ -10,6 +10,10 @@ import {
   DemoLoginResponseSchema,
   ApiErrorCodeSchema,
   ApiErrorResponseSchema,
+  TaskStatusSchema,
+  TaskSchema,
+  CreateTaskSchema,
+  UpdateTaskStatusSchema,
 } from "../index.js";
 
 // ---------------------------------------------------------------------------
@@ -215,6 +219,242 @@ describe("ApiErrorResponseSchema", () => {
 
   it("rejects empty object", () => {
     const result = ApiErrorResponseSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TaskStatusSchema
+// ---------------------------------------------------------------------------
+
+describe("TaskStatusSchema", () => {
+  it.each(["TODO", "IN_PROGRESS", "DONE"])(
+    "accepts valid status: %s",
+    (status) => {
+      expect(TaskStatusSchema.parse(status)).toBe(status);
+    },
+  );
+
+  it("rejects unknown status", () => {
+    const result = TaskStatusSchema.safeParse("CANCELLED");
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    const result = TaskStatusSchema.safeParse("");
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects lowercase variant", () => {
+    const result = TaskStatusSchema.safeParse("todo");
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TaskSchema
+// ---------------------------------------------------------------------------
+
+const validTask = {
+  id: "550e8400-e29b-41d4-a716-446655440000",
+  workspaceId: "default",
+  title: "Implement login page",
+  status: "TODO",
+  createdAt: "2026-04-01T12:00:00.000Z",
+  updatedAt: "2026-04-01T12:00:00.000Z",
+};
+
+describe("TaskSchema", () => {
+  it("parses a valid task", () => {
+    const result = TaskSchema.parse(validTask);
+    expect(result).toEqual(validTask);
+  });
+
+  it("accepts all status values", () => {
+    for (const status of ["TODO", "IN_PROGRESS", "DONE"] as const) {
+      const input = { ...validTask, status };
+      expect(TaskSchema.parse(input)).toEqual(input);
+    }
+  });
+
+  it("accepts timestamp without milliseconds", () => {
+    const input = {
+      ...validTask,
+      createdAt: "2026-04-01T12:00:00Z",
+      updatedAt: "2026-04-01T12:00:00Z",
+    };
+    expect(TaskSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects missing id", () => {
+    const { id, ...rest } = validTask;
+    const result = TaskSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid UUID for id", () => {
+    const input = { ...validTask, id: "not-a-uuid" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing workspaceId", () => {
+    const { workspaceId, ...rest } = validTask;
+    const result = TaskSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty workspaceId", () => {
+    const input = { ...validTask, workspaceId: "" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing title", () => {
+    const { title, ...rest } = validTask;
+    const result = TaskSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty title", () => {
+    const input = { ...validTask, title: "" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects title exceeding 200 characters", () => {
+    const input = { ...validTask, title: "a".repeat(201) };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts title at exactly 200 characters", () => {
+    const input = { ...validTask, title: "a".repeat(200) };
+    expect(TaskSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects invalid status", () => {
+    const input = { ...validTask, status: "INVALID" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-ISO createdAt", () => {
+    const input = { ...validTask, createdAt: "not-a-date" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-ISO updatedAt", () => {
+    const input = { ...validTask, updatedAt: "not-a-date" };
+    const result = TaskSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty object", () => {
+    const result = TaskSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("strips extra fields", () => {
+    const input = { ...validTask, extra: "field" };
+    const result = TaskSchema.parse(input);
+    expect(result).toEqual(validTask);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CreateTaskSchema
+// ---------------------------------------------------------------------------
+
+describe("CreateTaskSchema", () => {
+  it("parses a valid create-task request", () => {
+    const input = { title: "Implement login page" };
+    const result = CreateTaskSchema.parse(input);
+    expect(result).toEqual(input);
+  });
+
+  it("rejects empty title", () => {
+    const result = CreateTaskSchema.safeParse({ title: "" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Title is required");
+    }
+  });
+
+  it("rejects title exceeding 200 characters", () => {
+    const result = CreateTaskSchema.safeParse({ title: "a".repeat(201) });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(
+        "Title must be 200 characters or fewer",
+      );
+    }
+  });
+
+  it("accepts title at exactly 200 characters", () => {
+    const input = { title: "a".repeat(200) };
+    expect(CreateTaskSchema.parse(input)).toEqual(input);
+  });
+
+  it("accepts title at exactly 1 character", () => {
+    const input = { title: "a" };
+    expect(CreateTaskSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects missing title", () => {
+    const result = CreateTaskSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("strips extra fields", () => {
+    const input = { title: "My task", workspaceId: "sneaky", extra: true };
+    const result = CreateTaskSchema.parse(input);
+    expect(result).toEqual({ title: "My task" });
+  });
+
+  it("rejects non-string title", () => {
+    const result = CreateTaskSchema.safeParse({ title: 123 });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UpdateTaskStatusSchema
+// ---------------------------------------------------------------------------
+
+describe("UpdateTaskStatusSchema", () => {
+  it.each(["TODO", "IN_PROGRESS", "DONE"])(
+    "accepts valid status update: %s",
+    (status) => {
+      const input = { status };
+      expect(UpdateTaskStatusSchema.parse(input)).toEqual(input);
+    },
+  );
+
+  it("rejects invalid status", () => {
+    const result = UpdateTaskStatusSchema.safeParse({ status: "INVALID" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty string status", () => {
+    const result = UpdateTaskStatusSchema.safeParse({ status: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing status", () => {
+    const result = UpdateTaskStatusSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("strips extra fields", () => {
+    const input = { status: "DONE", title: "sneaky" };
+    const result = UpdateTaskStatusSchema.parse(input);
+    expect(result).toEqual({ status: "DONE" });
+  });
+
+  it("rejects non-string status", () => {
+    const result = UpdateTaskStatusSchema.safeParse({ status: 42 });
     expect(result.success).toBe(false);
   });
 });
