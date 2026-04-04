@@ -58,6 +58,9 @@ interface SessionHooks {
 /** Max lines returned by file_read (and post-hook truncation) when no line range is specified. */
 export const FILE_READ_LINE_LIMIT = 500;
 
+/** Max file size (bytes) that file_read will load into memory. Prevents OOM on huge logs/dumps. */
+export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
 /** Max bytes returned from shell stdout to prevent context bloat. */
 const SHELL_OUTPUT_LIMIT = 64_000;
 
@@ -69,11 +72,14 @@ const SHELL_TIMEOUT_MS = 120_000;
 /** Matches standalone stateless commands that do nothing in a one-shot exec. */
 export const STATELESS_CMD_RE = /^(cd|source|export|alias)\s/;
 
-/** Matches unbounded recursive text searches. */
-export const RECURSIVE_SEARCH_RE = /(grep -[rR]|find \.|ag \.)/;
+/** Matches unbounded recursive text searches (grep -r, find, ag, rg). */
+export const RECURSIVE_SEARCH_RE = /(grep\s+.*-[a-zA-Z]*[rR]|find\s+(?:\.|src|apps|packages|lib|bin)|ag\s+|rg\s+)/;
 
 /** Source code file extensions that should not be raw-read via bash. */
 export const CODE_FILE_RE = /\.(ts|tsx|js|jsx|py|go|java|rs|tf)$/;
+
+/** Detects any shell compound/chaining operator (&&, ||, ;, newline). */
+export const SHELL_CHAIN_RE = /(&&|\|\||;|\n)/;
 
 /** Matches cat or grep commands (prefix check for code-read ban). */
 export const CODE_READ_CMD_RE = /(cat|grep) /;
@@ -86,7 +92,7 @@ export const ERR_STATELESS_CMD =
 
 export const ERR_RECURSIVE_SEARCH =
   "ERROR: Unbounded recursive text search is disabled to prevent token overflow. " +
-  "Target specific files using grep, or use `roam-code` to semantically search the codebase.";
+  "Target specific files using grep on individual paths, or use `roam-code` to semantically search the codebase.";
 
 export const ERR_CODE_READ =
   "ERROR: You are attempting to raw-read or text-search a source code file via bash. " +
@@ -108,8 +114,8 @@ export const FILE_TRUNCATION_WARNING =
 export function checkShellCommand(cmd: string): string | null {
   const trimmed = cmd.trim();
 
-  // Ban 1: Stateless commands (unless part of a compound command)
-  if (STATELESS_CMD_RE.test(trimmed) && !trimmed.includes("&&")) {
+  // Ban 1: Stateless commands (unless part of a compound/chained command)
+  if (STATELESS_CMD_RE.test(trimmed) && !SHELL_CHAIN_RE.test(trimmed)) {
     return ERR_STATELESS_CMD;
   }
 
@@ -134,7 +140,10 @@ export function checkShellCommand(cmd: string): string | null {
  * Build SDK session hooks that enforce shell safety and file-read truncation
  * on the built-in tools (`bash`, `write_bash`, `read_file`).
  */
-export function buildSessionHooks(repoRoot: string): SessionHooks {
+export function buildSessionHooks(
+  repoRoot: string,
+  onDenial?: (toolName: string) => void,
+): SessionHooks {
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
   ): PreToolUseHookOutput | void => {
@@ -146,6 +155,7 @@ export function buildSessionHooks(repoRoot: string): SessionHooks {
     const rejection = checkShellCommand(cmd);
 
     if (rejection) {
+      onDenial?.(input.toolName);
       return {
         permissionDecision: "deny",
         permissionDecisionReason: rejection,
@@ -214,6 +224,23 @@ export function buildCustomTools(repoRoot: string): Tool<any>[] {
       const resolved = path.resolve(filePath);
       if (resolved !== repoRoot && !resolved.startsWith(repoRoot + path.sep)) {
         return `ERROR: Path "${args.file_path}" resolves outside the repository root.`;
+      }
+
+      // Guard against OOM: check file size before reading into memory.
+      // Node.js will crash the entire process on multi-GB files.
+      let stats: fs.Stats;
+      try {
+        stats = fs.statSync(resolved);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `ERROR: Could not stat file: ${msg}`;
+      }
+      if (stats.size > MAX_FILE_SIZE) {
+        return (
+          `ERROR: File is too large (${(stats.size / 1024 / 1024).toFixed(2)} MB). ` +
+          `Maximum allowed size for file_read is ${MAX_FILE_SIZE / 1024 / 1024} MB. ` +
+          "Use shell tools like 'head', 'tail', or 'grep' to extract specific information from large files."
+        );
       }
 
       let content: string;

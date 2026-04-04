@@ -1317,7 +1317,13 @@ async function runAgentSession(
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
     tools: buildCustomTools(repoRoot),
-    hooks: buildSessionHooks(repoRoot),
+    hooks: buildSessionHooks(repoRoot, (toolName) => {
+      // Bridge denied tool calls into the circuit breaker counters.
+      // SDK hooks that deny a tool may not fire tool.execution_start,
+      // so we increment manually to prevent infinite denial loops.
+      const category = TOOL_CATEGORIES[toolName] ?? toolName;
+      itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
+    }),
     ...(agentConfig.mcpServers
       ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
       : {}),

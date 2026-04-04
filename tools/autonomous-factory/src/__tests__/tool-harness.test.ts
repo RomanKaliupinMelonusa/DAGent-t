@@ -15,8 +15,10 @@ import {
   buildSessionHooks,
   buildCustomTools,
   FILE_READ_LINE_LIMIT,
+  MAX_FILE_SIZE,
   STATELESS_CMD_RE,
   RECURSIVE_SEARCH_RE,
+  SHELL_CHAIN_RE,
   CODE_FILE_RE,
   CODE_READ_CMD_RE,
   ERR_STATELESS_CMD,
@@ -50,6 +52,25 @@ describe("bouncer regex constants", () => {
     assert.ok(RECURSIVE_SEARCH_RE.test("grep -R pattern ."));
     assert.ok(RECURSIVE_SEARCH_RE.test("find . -name '*.ts'"));
     assert.ok(RECURSIVE_SEARCH_RE.test("ag . -l pattern"));
+  });
+
+  it("RECURSIVE_SEARCH_RE matches broadened patterns (find src, rg, ag, mixed flags)", () => {
+    assert.ok(RECURSIVE_SEARCH_RE.test("find src -name '*.ts'"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("find apps -type f"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("find packages -name '*.json'"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("rg TODO"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("rg -l 'import' src/"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("ag 'pattern'"));
+    assert.ok(RECURSIVE_SEARCH_RE.test("grep -irl pattern ."));
+    assert.ok(RECURSIVE_SEARCH_RE.test("grep --include='*.ts' -rn TODO ."));
+  });
+
+  it("SHELL_CHAIN_RE matches shell compound operators", () => {
+    assert.ok(SHELL_CHAIN_RE.test("cd /tmp && ls"));
+    assert.ok(SHELL_CHAIN_RE.test("cd /tmp || exit 1"));
+    assert.ok(SHELL_CHAIN_RE.test("cd /tmp; npm test"));
+    assert.ok(SHELL_CHAIN_RE.test("cd /tmp\nnpm test"));
+    assert.ok(!SHELL_CHAIN_RE.test("cd /tmp"));
   });
 
   it("CODE_FILE_RE matches code extensions", () => {
@@ -89,6 +110,18 @@ describe("checkShellCommand", () => {
     assert.equal(checkShellCommand("cd /tmp && ls"), null);
   });
 
+  it("allows cd with semicolon chaining", () => {
+    assert.equal(checkShellCommand("cd backend; npm test"), null);
+  });
+
+  it("allows cd with OR operator", () => {
+    assert.equal(checkShellCommand("cd backend || exit 1"), null);
+  });
+
+  it("allows cd in multiline script", () => {
+    assert.equal(checkShellCommand("cd backend\nnpm test"), null);
+  });
+
   it("denies grep -r", () => {
     assert.equal(checkShellCommand("grep -r pattern ."), ERR_RECURSIVE_SEARCH);
   });
@@ -103,6 +136,26 @@ describe("checkShellCommand", () => {
 
   it("denies ag .", () => {
     assert.equal(checkShellCommand("ag . -l 'pattern'"), ERR_RECURSIVE_SEARCH);
+  });
+
+  it("denies find on common root directories", () => {
+    assert.equal(checkShellCommand("find src -name '*.ts'"), ERR_RECURSIVE_SEARCH);
+    assert.equal(checkShellCommand("find apps -type f"), ERR_RECURSIVE_SEARCH);
+    assert.equal(checkShellCommand("find packages -name '*.json'"), ERR_RECURSIVE_SEARCH);
+  });
+
+  it("denies ripgrep (rg)", () => {
+    assert.equal(checkShellCommand("rg TODO"), ERR_RECURSIVE_SEARCH);
+    assert.equal(checkShellCommand("rg -l 'import' src/"), ERR_RECURSIVE_SEARCH);
+  });
+
+  it("denies ag without dot", () => {
+    assert.equal(checkShellCommand("ag 'pattern'"), ERR_RECURSIVE_SEARCH);
+  });
+
+  it("denies grep with mixed flags including -r", () => {
+    assert.equal(checkShellCommand("grep -irl pattern ."), ERR_RECURSIVE_SEARCH);
+    assert.equal(checkShellCommand("grep --include='*.ts' -rn TODO ."), ERR_RECURSIVE_SEARCH);
   });
 
   it("denies cat on code file", () => {
@@ -371,6 +424,27 @@ describe("file_read tool handler", () => {
       try { fs.unlinkSync(tmpFile); } catch {}
     }
   });
+
+  it("rejects files exceeding MAX_FILE_SIZE (OOM guard)", () => {
+    // Create a file just over 5 MB
+    const tmpFile = path.join(REPO_ROOT, "__test-oom-guard.tmp");
+    try {
+      // Write 5 MB + 1 byte (fill with 'x')
+      const fd = fs.openSync(tmpFile, "w");
+      fs.ftruncateSync(fd, MAX_FILE_SIZE + 1);
+      fs.closeSync(fd);
+
+      const result = fileReadTool.handler(
+        { file_path: "__test-oom-guard.tmp" },
+        { sessionId: "test", toolCallId: "tc3e", toolName: "file_read", arguments: {} },
+      ) as string;
+
+      assert.ok(result.startsWith("ERROR: File is too large"));
+      assert.ok(result.includes("5 MB"));
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -477,5 +551,73 @@ describe("constants", () => {
   it("FILE_TRUNCATION_WARNING contains the expected text", () => {
     assert.ok(FILE_TRUNCATION_WARNING.includes("truncated at 500 lines"));
     assert.ok(FILE_TRUNCATION_WARNING.includes("roam-code"));
+  });
+
+  it("MAX_FILE_SIZE is 5 MB", () => {
+    assert.equal(MAX_FILE_SIZE, 5 * 1024 * 1024);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onDenial callback bridge (Issue 4: Circuit Breaker Evasion)
+// ---------------------------------------------------------------------------
+
+describe("buildSessionHooks onDenial callback", () => {
+  it("invokes onDenial when a bash command is denied", () => {
+    const denied: string[] = [];
+    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const preHook = hooks.onPreToolUse!;
+    const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
+
+    preHook(
+      { toolName: "bash", toolArgs: { command: "cd /tmp" }, ...baseInput },
+      { sessionId: "test" },
+    );
+
+    assert.equal(denied.length, 1);
+    assert.equal(denied[0], "bash");
+  });
+
+  it("invokes onDenial for write_bash denials", () => {
+    const denied: string[] = [];
+    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const preHook = hooks.onPreToolUse!;
+    const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
+
+    preHook(
+      { toolName: "write_bash", toolArgs: { command: "grep -r foo ." }, ...baseInput },
+      { sessionId: "test" },
+    );
+
+    assert.equal(denied.length, 1);
+    assert.equal(denied[0], "write_bash");
+  });
+
+  it("does NOT invoke onDenial for allowed commands", () => {
+    const denied: string[] = [];
+    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const preHook = hooks.onPreToolUse!;
+    const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
+
+    preHook(
+      { toolName: "bash", toolArgs: { command: "npm test" }, ...baseInput },
+      { sessionId: "test" },
+    );
+
+    assert.equal(denied.length, 0);
+  });
+
+  it("works without onDenial callback (backward compat)", () => {
+    const hooks = buildSessionHooks(REPO_ROOT);
+    const preHook = hooks.onPreToolUse!;
+    const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
+
+    // Should not throw even without callback
+    const result = preHook(
+      { toolName: "bash", toolArgs: { command: "cd /tmp" }, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.ok(result);
+    assert.equal((result as any).permissionDecision, "deny");
   });
 });
