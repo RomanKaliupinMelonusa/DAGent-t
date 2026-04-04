@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T03:12:59.777Z",
+  "generatedAt": "2026-04-04T03:13:09.472Z",
   "featureSlug": "kanban-task-board",
   "items": [
     {
@@ -615,9 +615,9 @@
       "phase": "post-deploy",
       "attempt": 1,
       "startedAt": "2026-04-04T03:10:21.933Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-04T03:13:09.461Z",
+      "durationMs": 167528,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good — the integration test file has comprehensive coverage. Now let me retrieve the function key and run the tests.",
@@ -626,7 +626,8 @@
         "The APIM returns 404 — likely the routes need a path prefix. Let me check the OpenAPI spec to understand the API base path.",
         "The APIM path prefix is `sample`. So endpoints should be at `$APIM_URL/sample/tasks`. Let me also find the demo token properly.",
         "All APIM gateway validations pass: - **GET /sample/tasks** → 200 ✅ - **POST /sample/tasks** → 201 ✅  - **PATCH /sample/tasks/{id}/status** → 404 (expected — test used a nonexistent ID, proving the route exists and the backend responds correctly through APIM) ✅  Let me also verify the PATCH actually works through APIM with a real task ID:",
-        "All validations pass: - **PATCH with real task** → 200 ✅ - **CORS preflight** → 200 with correct headers ✅  All tests passed. Let me mark the pipeline complete and commit."
+        "All validations pass: - **PATCH with real task** → 200 ✅ - **CORS preflight** → 200 with correct headers ✅  All tests passed. Let me mark the pipeline complete and commit.",
+        "All integration tests completed successfully. Here's a summary:  ## Integration Test Results ✅  ### Direct Function App Tests (15/15 passed) **Smoke tests (7 passed):** - `fn-hello` — greeting, custom name, validation - `fn-demo-login` — valid credentials, invalid credentials, missing fields, invalid JSON  **Task CRUD tests (7 passed):** - `POST /tasks` → 201 with created task ✅ - `GET /tasks` → 200 with array containing created task ✅ - `PATCH /tasks/{id}/status` → 200 with updated status ✅ - `GET /tasks` → 401 without function key ✅ - `POST /tasks` → 400 for empty title ✅ - `PATCH /tasks/{id}/status` → 400 for invalid status ✅ - `PATCH /tasks/{id}/status` → 404 for nonexistent task ✅  **Environment validation (1 passed):** - `MAX_TASKS_PER_WORKSPACE` = \"500\" confirmed via `az CLI` ✅  ### APIM Gateway Validation (all passed) - `GET /sample/tasks` → 200 ✅ - `POST /sample/tasks` → 201 ✅ - `PATCH /sample/tasks/{id}/status` → 200 ✅ - CORS preflight (OPTIONS) → 200 with correct headers ✅"
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -715,17 +716,23 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board integration-test 2>&1",
           "timestamp": "2026-04-04T03:12:54.969Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Integration Tests Passed\" 2>&1",
+          "timestamp": "2026-04-04T03:12:59.781Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 6,
-        "shell": 17,
+        "shell": 18,
         "file-read": 2
       },
-      "inputTokens": 384536,
-      "outputTokens": 5537,
-      "cacheReadTokens": 348379,
-      "cacheWriteTokens": 0
+      "inputTokens": 416092,
+      "outputTokens": 5889,
+      "cacheReadTokens": 379580,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "b57ef2995db858161071c84e46e31e13771b0ce5"
     }
   ]
 }
