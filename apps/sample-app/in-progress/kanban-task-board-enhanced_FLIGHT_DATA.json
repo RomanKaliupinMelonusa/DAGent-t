@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T20:18:21.505Z",
+  "generatedAt": "2026-04-04T20:20:41.515Z",
   "featureSlug": "kanban-task-board-enhanced",
   "items": [
     {
@@ -666,6 +666,29 @@
       "outcome": "completed",
       "intents": [
         "Deterministic push — no agent session"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-04T20:18:22.852Z",
+      "finishedAt": "2026-04-04T20:20:41.512Z",
+      "durationMs": 138660,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
       ],
       "messages": [],
       "filesRead": [],
