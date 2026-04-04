@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T03:07:57.338Z",
+  "generatedAt": "2026-04-04T03:12:59.777Z",
   "featureSlug": "kanban-task-board",
   "items": [
     {
@@ -583,6 +583,148 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-04T03:07:58.568Z",
+      "finishedAt": "2026-04-04T03:10:20.429Z",
+      "durationMs": 141861,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-04T03:10:21.933Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good — the integration test file has comprehensive coverage. Now let me retrieve the function key and run the tests.",
+        "Endpoint is reachable and returning 200. Now let me run the full integration test suite.",
+        "All 15 integration tests passed (exit code 0). Now let me run the APIM gateway validation.",
+        "The APIM returns 404 — likely the routes need a path prefix. Let me check the OpenAPI spec to understand the API base path.",
+        "The APIM path prefix is `sample`. So endpoints should be at `$APIM_URL/sample/tasks`. Let me also find the demo token properly.",
+        "All APIM gateway validations pass: - **GET /sample/tasks** → 200 ✅ - **POST /sample/tasks** → 201 ✅  - **PATCH /sample/tasks/{id}/status** → 404 (expected — test used a nonexistent ID, proving the route exists and the backend responds correctly through APIM) ✅  Let me also verify the PATCH actually works through APIM with a real task ID:",
+        "All validations pass: - **PATCH with real task** → 200 ✅ - **CORS preflight** → 200 with correct headers ✅  All tests passed. Let me mark the pipeline complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status kanban-task-board 2>&1 | tail -30",
+          "timestamp": "2026-04-04T03:10:34.160Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls -la /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts 2>&1",
+          "timestamp": "2026-04-04T03:10:43.034Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls -la /workspaces/DAGent-t/apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts 2>&1",
+          "timestamp": "2026-04-04T03:10:43.034Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat backend/package.json | grep -A5 '\"test:integration\"' 2>&1",
+          "timestamp": "2026-04-04T03:10:43.034Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "az account show --query '{subscription: name, user: user.name}' -o json 2>&1 | head -10",
+          "timestamp": "2026-04-04T03:10:54.146Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_APP_NAME=\"func-sample-app-001\"",
+          "timestamp": "2026-04-04T03:11:01.028Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Quick smoke test to verify the endpoint is reachable",
+          "timestamp": "2026-04-04T03:11:08.212Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "source /tmp/func_key.env",
+          "timestamp": "2026-04-04T03:11:15.787Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token",
+          "timestamp": "2026-04-04T03:11:32.973Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat /workspaces/DAGent-t/apps/sample-app/infra/api-specs/api-sample.openapi.yaml | head -30",
+          "timestamp": "2026-04-04T03:11:58.859Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -n 'tasks\\|/tasks\\|basePath\\|servers' /workspaces/DAGent-t/apps/sample-app/infra/api-specs/api-sample.openapi.yaml | head -20",
+          "timestamp": "2026-04-04T03:11:58.859Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -n 'path\\|api_path\\|path_prefix\\|service_url\\|api_management' /workspaces/DAGent-t/apps/sample-app/infra/apim.tf | head -20",
+          "timestamp": "2026-04-04T03:12:03.785Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -n 'api_management_api.*sample\\|path.*=\\|service_url' /workspaces/DAGent-t/apps/sample-app/infra/apim.tf | head -20",
+          "timestamp": "2026-04-04T03:12:08.440Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Find demo token - check terraform state or other sources",
+          "timestamp": "2026-04-04T03:12:14.020Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Retrieve demo token from the Function App environment",
+          "timestamp": "2026-04-04T03:12:24.262Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Use the task we just created via APIM POST",
+          "timestamp": "2026-04-04T03:12:42.965Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board integration-test 2>&1",
+          "timestamp": "2026-04-04T03:12:54.969Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 6,
+        "shell": 17,
+        "file-read": 2
+      },
+      "inputTokens": 384536,
+      "outputTokens": 5537,
+      "cacheReadTokens": 348379,
       "cacheWriteTokens": 0
     }
   ]
