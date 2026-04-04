@@ -1,14 +1,14 @@
 # =============================================================================
 # Sample API — OpenAPI 3.0.3
 # =============================================================================
-# Protected endpoint demonstrating dual-mode auth (demo + Entra ID).
+# Protected endpoints demonstrating dual-mode auth (demo + Entra ID).
 # APIM applies check-header or validate-jwt based on auth_mode.
 # =============================================================================
 openapi: "3.0.3"
 info:
   title: Sample API
-  version: "1.0.0"
-  description: Sample protected API endpoint.
+  version: "2.0.0"
+  description: Sample protected API — greeting and Kanban task board endpoints.
 paths:
   /hello:
     get:
@@ -37,3 +37,167 @@ paths:
                     format: date-time
         "401":
           description: Unauthorized — missing or invalid auth token
+
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: List all tasks
+      description: Returns all tasks for the default workspace. Protected by APIM auth policy.
+      responses:
+        "200":
+          description: Successful response — array of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "500":
+          description: Internal server error
+    post:
+      operationId: createTask
+      summary: Create a new task
+      description: Creates a task in the default workspace. Returns 429 if workspace task limit exceeded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTask"
+      responses:
+        "201":
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request body — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "429":
+          description: Too many tasks — workspace task limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+
+  /tasks/{id}/status:
+    patch:
+      operationId: updateTaskStatus
+      summary: Update task status
+      description: Transitions a task to a new status column. Returns 404 if task not found.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique task identifier (UUID)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskStatus"
+      responses:
+        "200":
+          description: Task status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request body — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+
+components:
+  schemas:
+    TaskStatus:
+      type: string
+      enum:
+        - TODO
+        - IN_PROGRESS
+        - DONE
+      description: Current status of a task on the Kanban board.
+
+    Task:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - title
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique task identifier.
+        workspaceId:
+          type: string
+          description: Workspace partition key (currently "default").
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Task title.
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the task was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the task was last updated.
+
+    CreateTask:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Title for the new task.
+
+    UpdateTaskStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message describing what went wrong.

@@ -28,4 +28,16 @@ set -uo pipefail
 
 # ─── @infra-architect appends resource validation checks below this line ──
 
+# --- Cosmos DB reachability ---
+if [[ -n "${COSMOSDB_ENDPOINT:-}" ]]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$COSMOSDB_ENDPOINT" 2>/dev/null || echo "000")
+  if [[ "$STATUS" == "000" ]]; then
+    echo "Cosmos DB unreachable at $COSMOSDB_ENDPOINT"
+    exit 1
+  fi
+  echo "✅ Cosmos DB reachable at $COSMOSDB_ENDPOINT (HTTP $STATUS)"
+else
+  echo "⚠️  COSMOSDB_ENDPOINT not set — skipping Cosmos DB reachability check"
+fi
+
 exit 0
