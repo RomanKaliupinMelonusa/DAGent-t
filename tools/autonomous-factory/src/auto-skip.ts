@@ -94,7 +94,8 @@ export function getDirectoryPrefixes(
  * Count the number of line deletions on the current branch compared to the
  * base branch, using `git diff --shortstat`.
  *
- * Returns 0 when: no deletions, empty diff, shallow clone, or parse failure.
+ * Returns 0 when: no deletions or empty diff.
+ * Returns -1 on git error (fail-closed: prevents false auto-skip).
  */
 export function getGitDeletions(repoRoot: string, baseBranch: string): number {
   try {
@@ -110,7 +111,9 @@ export function getGitDeletions(repoRoot: string, baseBranch: string): number {
     const match = output.match(/(\d+)\s+deletion/);
     return match ? parseInt(match[1], 10) : 0;
   } catch {
-    return 0;
+    // Fail-closed: -1 ensures `deletions === 0` never matches on error,
+    // so the cleanup phase runs rather than being accidentally skipped.
+    return -1;
   }
 }
 
@@ -129,6 +132,8 @@ export function hasDeletedFiles(repoRoot: string, baseBranch: string): boolean {
     }).trim();
     return output.length > 0;
   } catch {
-    return false;
+    // Fail-closed: assume deleted files exist on error so the cleanup
+    // phase runs rather than being accidentally skipped.
+    return true;
   }
 }

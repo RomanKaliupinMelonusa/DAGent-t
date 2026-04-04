@@ -33,14 +33,14 @@ describe("getGitDeletions", () => {
     assert.ok(result >= 0, `expected >= 0, got ${result}`);
   });
 
-  it("returns 0 for a non-existent branch (graceful failure)", () => {
+  it("returns -1 for a non-existent branch (fail-closed)", () => {
     const result = getGitDeletions(REPO_ROOT, "this-branch-does-not-exist-xyz-999");
-    assert.equal(result, 0);
+    assert.equal(result, -1);
   });
 
-  it("returns 0 for a non-existent repo path (graceful failure)", () => {
+  it("returns -1 for a non-existent repo path (fail-closed)", () => {
     const result = getGitDeletions("/tmp/not-a-repo", "main");
-    assert.equal(result, 0);
+    assert.equal(result, -1);
   });
 
   it("parses deletions from shortstat format correctly", () => {
@@ -62,14 +62,14 @@ describe("hasDeletedFiles", () => {
     assert.equal(typeof result, "boolean");
   });
 
-  it("returns false for a non-existent branch (graceful failure)", () => {
+  it("returns true for a non-existent branch (fail-closed)", () => {
     const result = hasDeletedFiles(REPO_ROOT, "this-branch-does-not-exist-xyz-999");
-    assert.equal(result, false);
+    assert.equal(result, true);
   });
 
-  it("returns false for a non-existent repo path (graceful failure)", () => {
+  it("returns true for a non-existent repo path (fail-closed)", () => {
     const result = hasDeletedFiles("/tmp/not-a-repo", "main");
-    assert.equal(result, false);
+    assert.equal(result, true);
   });
 });
 
