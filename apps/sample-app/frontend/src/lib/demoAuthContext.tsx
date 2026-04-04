@@ -50,7 +50,8 @@ const STORAGE_KEY = "demo_auth";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:7071/api";
-const AUTH_API_PATH = process.env.NEXT_PUBLIC_AUTH_API_PATH ?? "";
+const DEMO_AUTH_URL =
+  process.env.NEXT_PUBLIC_DEMO_AUTH_URL ?? BASE_URL;
 
 // ---------------------------------------------------------------------------
 // Context
@@ -101,7 +102,7 @@ export function DemoAuthProvider({ children }: DemoAuthProviderProps) {
         throw new Error("Username and password are required.");
       }
 
-      const response = await fetch(`${BASE_URL}${AUTH_API_PATH}/auth/login`, {
+      const response = await fetch(`${DEMO_AUTH_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: trimmedUser, password: trimmedPass }),
