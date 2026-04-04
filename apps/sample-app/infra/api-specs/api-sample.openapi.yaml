@@ -37,3 +37,160 @@ paths:
                     format: date-time
         "401":
           description: Unauthorized — missing or invalid auth token
+
+  # ─── Task Board Endpoints ─────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: List all tasks
+      description: Returns all tasks for the default workspace.
+      responses:
+        "200":
+          description: Successful response — array of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+    post:
+      operationId: createTask
+      summary: Create a new task
+      description: Creates a task in the default workspace with status TODO.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTask"
+      responses:
+        "201":
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "429":
+          description: Too many tasks — workspace limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks/{id}/status:
+    patch:
+      operationId: updateTaskStatus
+      summary: Update task status
+      description: Updates the status of an existing task (e.g., TODO → IN_PROGRESS → DONE).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The task ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskStatus"
+      responses:
+        "200":
+          description: Task status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — missing or invalid auth token
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    TaskStatus:
+      type: string
+      enum:
+        - TODO
+        - IN_PROGRESS
+        - DONE
+      description: Valid task statuses for Kanban board columns
+
+    Task:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - title
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique task identifier (UUID)
+        workspaceId:
+          type: string
+          description: Workspace partition key
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Task title
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 last update timestamp
+
+    CreateTask:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Task title (1-200 characters)
+
+    UpdateTaskStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
