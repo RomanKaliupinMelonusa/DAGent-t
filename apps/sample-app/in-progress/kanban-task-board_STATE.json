@@ -133,8 +133,9 @@
       "label": "Dead Code Eliminated",
       "agent": "@code-cleanup",
       "phase": "finalize",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "No dead code found. All kanban-task-board feature files verified clean:\n- packages/schemas/src/tasks.ts: All 4 schema exports + 4 type exports consumed by backend, frontend, and tests\n- backend/src/functions/fn-tasks.ts: All 3 handlers (listTasks, createTask, updateTaskStatus) registered as Azure Functions + exported for unit tests (30 passing tests)\n- frontend/src/app/tasks/page.tsx: All components (TaskCard, KanbanColumn, TasksPage) used internally, all imports live\n- packages/schemas/src/index.ts: All barrel exports consumed\n- No orphaned files, no commented-out code blocks, no unused imports\n- Pre-existing code (apiClient.ts mapApiErrorCode, ApiErrorCode, ApiErrorCodeSchema) all verified as actively consumed"
     },
     {
       "key": "docs-archived",
