@@ -88,9 +88,14 @@ describe("getGitChangedFiles", () => {
     assert.ok(Array.isArray(files));
   });
 
-  it("returns empty array for invalid ref", () => {
+  it("returns null for invalid ref (fail-closed)", () => {
     const files = getGitChangedFiles(REPO_ROOT, "0000000000000000000000000000000000000000");
-    assert.ok(Array.isArray(files));
+    assert.equal(files, null);
+  });
+
+  it("returns null for non-existent repo (fail-closed)", () => {
+    const files = getGitChangedFiles("/tmp/not-a-repo", "HEAD~1");
+    assert.equal(files, null);
   });
 });
 

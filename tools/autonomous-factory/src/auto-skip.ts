@@ -51,7 +51,7 @@ export function getAutoSkipBaseRef(
  * Get the list of files changed since a given git ref, using `git diff --name-only`.
  * Returns workspace-relative paths (e.g. "backend/src/functions/fn-list-generations.ts").
  */
-export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[] {
+export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[] | null {
   try {
     const output = execSync(`git diff --name-only ${sinceRef} HEAD`, {
       cwd: repoRoot,
@@ -60,7 +60,9 @@ export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[]
     }).trim();
     return output ? output.split("\n").filter(Boolean) : [];
   } catch {
-    return [];
+    // Fail-closed: signal that git diff failed so callers skip the
+    // optimisation rather than assuming no files changed.
+    return null;
   }
 }
 

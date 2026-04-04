@@ -668,6 +668,7 @@ async function tryAutoSkip(
     const backendRef = autoSkipRef("backend-dev");
     if (backendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, backendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasBackendChanges = gitChanged.some((f) => dirPrefixes.backend.some((p) => f.startsWith(p)));
       if (!hasBackendChanges) {
         console.log(`  ⏭ Auto-skipping ${next.key} — no backend/infra/packages file changes since ${backendRef.slice(0, 8)}`);
@@ -680,6 +681,7 @@ async function tryAutoSkip(
     const frontendRef = autoSkipRef("frontend-dev");
     if (frontendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
       if (!hasFrontendChanges) {
         console.log(`  ⏭ Auto-skipping ${next.key} — no frontend/e2e file changes since ${frontendRef.slice(0, 8)}`);
@@ -694,6 +696,7 @@ async function tryAutoSkip(
     const frontendRef = autoSkipRef("frontend-dev") ?? autoSkipRef("backend-dev");
     if (frontendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
       const hasInfraChanges = gitChanged.some((f) => dirPrefixes.infra.some((p) => f.startsWith(p)));
       liveUiInfraChanges = hasInfraChanges;
@@ -848,7 +851,9 @@ async function runPushCode(
 
           const sentinelsTouched: string[] = [];
           for (const [domain, prefixes] of Object.entries(dirPrefixes)) {
-            const hasChanges = changedFiles.some((f) => prefixes.some((p) => f.startsWith(p)));
+            // Fail-closed: if diff failed (null), assume changes happened
+            // to guarantee deployment sentinels are written.
+            const hasChanges = changedFiles === null || changedFiles.some((f) => prefixes.some((p) => f.startsWith(p)));
             if (hasChanges) {
               const dirPath = dirs[domain];
               if (dirPath) {
