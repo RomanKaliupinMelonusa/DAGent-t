@@ -51,7 +51,7 @@ export function getAutoSkipBaseRef(
  * Get the list of files changed since a given git ref, using `git diff --name-only`.
  * Returns workspace-relative paths (e.g. "backend/src/functions/fn-list-generations.ts").
  */
-export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[] {
+export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[] | null {
   try {
     const output = execSync(`git diff --name-only ${sinceRef} HEAD`, {
       cwd: repoRoot,
@@ -60,7 +60,9 @@ export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[]
     }).trim();
     return output ? output.split("\n").filter(Boolean) : [];
   } catch {
-    return [];
+    // Fail-closed: signal that git diff failed so callers skip the
+    // optimisation rather than assuming no files changed.
+    return null;
   }
 }
 
@@ -79,13 +81,64 @@ export function getDirectoryPrefixes(
     );
   }
   const d = dirs;
+  // Safely construct base prefix — when appRel is "" (root-level app),
+  // avoid a leading slash that would never match git diff output paths.
+  const basePrefix = appRel ? `${appRel}/` : "";
   const pfx = (key: string) => {
     const val = d[key];
-    return val ? `${appRel}/${val}/` : null;
+    return val ? `${basePrefix}${val}/` : null;
   };
   return {
     backend: [pfx("backend"), pfx("infra"), pfx("packages"), pfx("schemas")].filter(Boolean) as string[],
     frontend: [pfx("frontend"), pfx("e2e")].filter(Boolean) as string[],
     infra: [pfx("infra")].filter(Boolean) as string[],
   };
+}
+
+/**
+ * Count the number of line deletions on the current branch compared to the
+ * base branch, using `git diff --shortstat`.
+ *
+ * Returns 0 when: no deletions or empty diff.
+ * Returns -1 on git error (fail-closed: prevents false auto-skip).
+ */
+export function getGitDeletions(repoRoot: string, baseBranch: string): number {
+  try {
+    // Pathspec magic (':!**/in-progress/**') excludes pipeline state files
+    // so orchestrator mutations don't falsely trigger the dead-code scanner.
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --shortstat -- . ":!**/in-progress/**"`, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+    if (!output) return 0;
+    // e.g. "5 files changed, 100 insertions(+), 23 deletions(-)"
+    const match = output.match(/(\d+)\s+deletion/);
+    return match ? parseInt(match[1], 10) : 0;
+  } catch {
+    // Fail-closed: -1 ensures `deletions === 0` never matches on error,
+    // so the cleanup phase runs rather than being accidentally skipped.
+    return -1;
+  }
+}
+
+/**
+ * Check whether the current branch has any entirely deleted files compared to
+ * the base branch (git diff --diff-filter=D).
+ *
+ * Returns `true` if at least one file was deleted.
+ */
+export function hasDeletedFiles(repoRoot: string, baseBranch: string): boolean {
+  try {
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --diff-filter=D --name-only -- . ":!**/in-progress/**"`, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+    return output.length > 0;
+  } catch {
+    // Fail-closed: assume deleted files exist on error so the cleanup
+    // phase runs rather than being accidentally skipped.
+    return true;
+  }
 }

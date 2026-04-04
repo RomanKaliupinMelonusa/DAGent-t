@@ -27,7 +27,7 @@ import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
-import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "./auto-skip.js";
+import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog, writeFlightData } from "./reporting.js";
 import {
   buildRetryContext,
@@ -37,6 +37,7 @@ import {
   computeEffectiveDevAttempts,
   writeChangeManifest,
 } from "./context-injection.js";
+import { buildSessionHooks, buildCustomTools } from "./tool-harness.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -277,6 +278,8 @@ const TOOL_LABELS: Record<string, string> = {
   edit_file:    "✏️  Edit",
   bash:         "🖥  Shell",
   write_bash:   "🖥  Shell (write)",
+  shell:        "🖥  StructuredShell",
+  file_read:    "📄 SafeRead",
   view:         "👁  View",
   grep_search:  "🔍 Search",
   list_dir:     "📂 List",
@@ -286,11 +289,13 @@ const TOOL_LABELS: Record<string, string> = {
 /** Group tool names into summary categories */
 const TOOL_CATEGORIES: Record<string, string> = {
   read_file: "file-read",
+  file_read: "file-read",
   view: "file-read",
   write_file: "file-write",
   edit_file: "file-edit",
   bash: "shell",
   write_bash: "shell",
+  shell: "shell",
   grep_search: "search",
   list_dir: "search",
   report_intent: "intent",
@@ -311,10 +316,14 @@ function toolSummary(
     case "edit_file":
       return args.filePath ? ` → ${path.relative(repoRoot, String(args.filePath))}` : "";
     case "bash":
-    case "write_bash": {
+    case "write_bash":
+    case "shell": {
       const cmd = String(args.command ?? "").split("\n")[0].slice(0, 80);
-      return cmd ? ` → ${cmd}` : "";
+      const cwd = args.cwd ? ` (cwd: ${args.cwd})` : "";
+      return cmd ? ` → ${cmd}${cwd}` : "";
     }
+    case "file_read":
+      return args.file_path ? ` → ${path.relative(repoRoot, String(args.file_path))}` : "";
     case "grep_search":
       return args.query ? ` → "${args.query}"` : "";
     case "list_dir":
@@ -659,6 +668,7 @@ async function tryAutoSkip(
     const backendRef = autoSkipRef("backend-dev");
     if (backendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, backendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasBackendChanges = gitChanged.some((f) => dirPrefixes.backend.some((p) => f.startsWith(p)));
       if (!hasBackendChanges) {
         console.log(`  ⏭ Auto-skipping ${next.key} — no backend/infra/packages file changes since ${backendRef.slice(0, 8)}`);
@@ -671,6 +681,7 @@ async function tryAutoSkip(
     const frontendRef = autoSkipRef("frontend-dev");
     if (frontendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
       if (!hasFrontendChanges) {
         console.log(`  ⏭ Auto-skipping ${next.key} — no frontend/e2e file changes since ${frontendRef.slice(0, 8)}`);
@@ -685,6 +696,7 @@ async function tryAutoSkip(
     const frontendRef = autoSkipRef("frontend-dev") ?? autoSkipRef("backend-dev");
     if (frontendRef) {
       const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
+      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
       const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
       const hasInfraChanges = gitChanged.some((f) => dirPrefixes.infra.some((p) => f.startsWith(p)));
       liveUiInfraChanges = hasInfraChanges;
@@ -695,6 +707,17 @@ async function tryAutoSkip(
       if (hasInfraChanges && !hasFrontendChanges) {
         console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
       }
+    }
+  }
+
+  if (next.key === "code-cleanup") {
+    const deletions = getGitDeletions(repoRoot, baseBranch);
+    const deleted = hasDeletedFiles(repoRoot, baseBranch);
+    if (deletions === 0 && !deleted) {
+      console.log(`  ⏭ Auto-skipping ${next.key} — feature is purely additive (0 deletions, 0 deleted files)`);
+      return completeSkip(
+        "Auto-skipped: Feature is purely additive (0 deletions detected in git diff). No architectural dead code possible.",
+      );
     }
   }
 
@@ -828,7 +851,9 @@ async function runPushCode(
 
           const sentinelsTouched: string[] = [];
           for (const [domain, prefixes] of Object.entries(dirPrefixes)) {
-            const hasChanges = changedFiles.some((f) => prefixes.some((p) => f.startsWith(p)));
+            // Fail-closed: if diff failed (null), assume changes happened
+            // to guarantee deployment sentinels are written.
+            const hasChanges = changedFiles === null || changedFiles.some((f) => prefixes.some((p) => f.startsWith(p)));
             if (hasChanges) {
               const dirPath = dirs[domain];
               if (dirPath) {
@@ -1057,7 +1082,14 @@ async function runPollCi(
       const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
       const ciLogs = execErr.stdout?.toString() ?? "";
       const ciStderr = execErr.stderr?.toString() ?? "";
-      const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      // Grab only the tail of CI logs — the actual failure is almost always
+      // at the bottom. Unbounded logs would bloat _STATE.json and overflow
+      // LLM context when injected via buildDownstreamFailureContext.
+      const CI_LOG_CHAR_LIMIT = 15_000;
+      let capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      if (capturedOutput.length > CI_LOG_CHAR_LIMIT) {
+        capturedOutput = "[...TRUNCATED CI LOGS...]\n" + capturedOutput.slice(-CI_LOG_CHAR_LIMIT);
+      }
       const message = execErr.message ?? String(err);
 
       // ── Exit code 2: Transient network error — sleep and retry ────
@@ -1301,18 +1333,7 @@ async function runAgentSession(
   const agentConfig = getAgentConfig(next.key, agentContext, apmContext);
   const timeout = getTimeout(next.key);
 
-  // Create SDK session
-  const session = await client.createSession({
-    model: agentConfig.model,
-    workingDirectory: repoRoot,
-    onPermissionRequest: approveAll,
-    systemMessage: { mode: "replace", content: agentConfig.systemMessage },
-    ...(agentConfig.mcpServers
-      ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
-      : {}),
-  });
-
-  // Wire session event listeners
+  // Resolve tool limits early so the onDenial callback can reference them.
   const manifestDefaults = apmContext.config?.defaultToolLimits;
   const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
   // Resolution order: per-agent → manifest default → last-resort fallback
@@ -1320,6 +1341,45 @@ async function runAgentSession(
     soft: agentToolLimits?.soft ?? manifestDefaults?.soft ?? TOOL_LIMIT_FALLBACK_SOFT,
     hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
   };
+
+  // Shared flag: the onDenial callback and wireToolLogging both need to
+  // read/write this to prevent duplicate disconnect attempts.
+  // Wrapped in an object so both closures reference the same mutable value.
+  const hardLimitRef = { fired: false };
+
+  // Create SDK session
+  const session = await client.createSession({
+    model: agentConfig.model,
+    workingDirectory: repoRoot,
+    onPermissionRequest: approveAll,
+    systemMessage: { mode: "replace", content: agentConfig.systemMessage },
+    tools: buildCustomTools(repoRoot),
+    hooks: buildSessionHooks(repoRoot, (toolName) => {
+      // Bridge denied tool calls into the circuit breaker counters.
+      // SDK hooks that deny a tool may not fire tool.execution_start,
+      // so we increment manually to prevent infinite denial loops.
+      const category = TOOL_CATEGORIES[toolName] ?? toolName;
+      itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
+
+      // Evaluate the hard limit killswitch — denied calls must also trigger it.
+      const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
+      if (totalCalls >= resolvedToolLimits.hard && !hardLimitRef.fired) {
+        hardLimitRef.fired = true;
+        console.error(
+          `\n  ✖ HARD LIMIT: Agent exceeded ${resolvedToolLimits.hard} tool calls (via denied commands). ` +
+          `Force-disconnecting session to prevent runaway compute waste.\n`,
+        );
+        itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${resolvedToolLimits.hard} tool calls`;
+        itemSummary.outcome = "error";
+        session.disconnect().catch(() => { /* best-effort */ });
+      }
+    }),
+    ...(agentConfig.mcpServers
+      ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
+      : {}),
+  });
+
+  // Wire session event listeners
 
   // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
   // without calling the heavy Markdown/Git reporting functions.
@@ -1333,7 +1393,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat);
+  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat, hardLimitRef);
   const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -1410,8 +1470,15 @@ async function runAgentSession(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Session error: ${message}`);
-    itemSummary.outcome = "error";
-    itemSummary.errorMessage = message;
+
+    // Only overwrite if the circuit breaker hasn't already claimed the error.
+    // session.disconnect() causes the SDK to throw a generic "Session closed"
+    // error — without this guard, that overwrites the descriptive circuit
+    // breaker message and confuses downstream triage routing.
+    if (!itemSummary.errorMessage?.includes("Cognitive circuit breaker")) {
+      itemSummary.outcome = "error";
+      itemSummary.errorMessage = message;
+    }
 
     // Fast-fail for fatal SDK / authentication errors (non-retryable)
     const fatalPatterns = ["authentication info", "custom provider", "rate limit"];
@@ -1671,6 +1738,27 @@ async function handleFailureReroute(
 // and we only use the `.on()` method for event subscription.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * Safely append a system prompt to a tool result without destroying existing
+ * content. SDK tool results may carry string content, an array of blocks
+ * (multimodal / structured JSON), or nothing at all.
+ * Exported for unit testing.
+ */
+export function appendToToolResult(data: any, prompt: string): void {
+  if (!data.result) {
+    data.result = { content: prompt };
+  } else if (typeof data.result.content === "string") {
+    data.result.content += prompt;
+  } else if (Array.isArray(data.result.content)) {
+    // Append as a new text block — preserves existing multimodal blocks.
+    data.result.content.push({ type: "text", text: prompt });
+  } else {
+    // Fallback: stringify existing value and append.
+    const existing = JSON.stringify(data.result.content);
+    data.result.content = `${existing}\n\n${prompt}`;
+  }
+}
+
 function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
@@ -1678,18 +1766,21 @@ function wireToolLogging(
   toolLimits: { soft: number; hard: number },
   sessionTimeout: number,
   triggerHeartbeat?: () => void,
+  hardLimitRef?: { fired: boolean },
 ): void {
   const softLimit = toolLimits.soft;
   const hardLimit = toolLimits.hard;
   let softWarningFired = false;
-  let hardLimitFired = false;
+  // Use shared ref if provided (for synchronization with onDenial callback),
+  // otherwise create a local one for backward compatibility.
+  const hlRef = hardLimitRef ?? { fired: false };
   /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
   const preTimeoutThresholdMs = sessionTimeout * 0.8;
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
-    if (hardLimitFired) return;
+    if (hlRef.fired) return;
 
     const name = event.data.toolName;
     const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
@@ -1702,8 +1793,8 @@ function wireToolLogging(
 
     // Cognitive Circuit Breaker — hard kill (soft interception is on tool.execution_complete)
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-    if (totalCalls >= hardLimit) {
-      hardLimitFired = true;
+    if (totalCalls >= hardLimit && !hlRef.fired) {
+      hlRef.fired = true;
       console.error(
         `\n  ✖ HARD LIMIT: Agent exceeded ${hardLimit} tool calls. ` +
         `Force-disconnecting session to prevent runaway compute waste.\n`,
@@ -1723,7 +1814,7 @@ function wireToolLogging(
       }
     }
 
-    if (name === "bash" || name === "write_bash") {
+    if (name === "bash" || name === "write_bash" || name === "shell") {
       const cmd = String(args?.command ?? "").split("\n")[0].slice(0, 200);
       if (cmd) {
         const isPipelineOp = /pipeline:(complete|fail|set-note|set-url)|agent-commit\.sh/.test(cmd);
@@ -1742,13 +1833,21 @@ function wireToolLogging(
         }
       }
     }
+
+    // Track file_read file paths
+    if (name === "file_read") {
+      const fp = args?.file_path ? path.relative(repoRoot, String(args.file_path)) : null;
+      if (fp && !itemSummary.filesRead.includes(fp)) {
+        itemSummary.filesRead.push(fp);
+      }
+    }
   });
 
   // Soft interception: inject the Frustration Prompt into the tool result
   // so the LLM actually reads it on its next turn. console.warn is invisible
   // to the agent — this mutates the content the SDK sends back to the model.
   session.on("tool.execution_complete", (event: any) => {
-    if (hardLimitFired) return;
+    if (hlRef.fired) return;
 
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
 
@@ -1763,12 +1862,10 @@ function wireToolLogging(
         `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
         `cycle. DO NOT continue debugging — decide now.`;
 
-      // Mutate the result content that will be sent back to the LLM
-      if (event.data.result && typeof event.data.result.content === "string") {
-        event.data.result.content += frustrationPrompt;
-      } else {
-        event.data.result = { content: frustrationPrompt };
-      }
+      // Safely append to the result content — never destroy existing data.
+      // SDK tool results may have string content, array-of-blocks content,
+      // or no content at all.
+      appendToToolResult(event.data, frustrationPrompt);
 
       console.warn(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
@@ -1788,11 +1885,7 @@ function wireToolLogging(
         `or pipeline:fail with a diagnostic if it is not. ` +
         `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
 
-      if (event.data.result && typeof event.data.result.content === "string") {
-        event.data.result.content += wrapUpPrompt;
-      } else {
-        event.data.result = { content: wrapUpPrompt };
-      }
+      appendToToolResult(event.data, wrapUpPrompt);
 
       console.warn(
         `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,
