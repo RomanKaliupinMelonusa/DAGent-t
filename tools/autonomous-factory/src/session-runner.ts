@@ -1066,7 +1066,14 @@ async function runPollCi(
       const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
       const ciLogs = execErr.stdout?.toString() ?? "";
       const ciStderr = execErr.stderr?.toString() ?? "";
-      const capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      // Grab only the tail of CI logs — the actual failure is almost always
+      // at the bottom. Unbounded logs would bloat _STATE.json and overflow
+      // LLM context when injected via buildDownstreamFailureContext.
+      const CI_LOG_CHAR_LIMIT = 15_000;
+      let capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
+      if (capturedOutput.length > CI_LOG_CHAR_LIMIT) {
+        capturedOutput = "[...TRUNCATED CI LOGS...]\n" + capturedOutput.slice(-CI_LOG_CHAR_LIMIT);
+      }
       const message = execErr.message ?? String(err);
 
       // ── Exit code 2: Transient network error — sleep and retry ────
@@ -1447,8 +1454,15 @@ async function runAgentSession(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Session error: ${message}`);
-    itemSummary.outcome = "error";
-    itemSummary.errorMessage = message;
+
+    // Only overwrite if the circuit breaker hasn't already claimed the error.
+    // session.disconnect() causes the SDK to throw a generic "Session closed"
+    // error — without this guard, that overwrites the descriptive circuit
+    // breaker message and confuses downstream triage routing.
+    if (!itemSummary.errorMessage?.includes("Cognitive circuit breaker")) {
+      itemSummary.outcome = "error";
+      itemSummary.errorMessage = message;
+    }
 
     // Fast-fail for fatal SDK / authentication errors (non-retryable)
     const fatalPatterns = ["authentication info", "custom provider", "rate limit"];
@@ -1708,6 +1722,27 @@ async function handleFailureReroute(
 // and we only use the `.on()` method for event subscription.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * Safely append a system prompt to a tool result without destroying existing
+ * content. SDK tool results may carry string content, an array of blocks
+ * (multimodal / structured JSON), or nothing at all.
+ * Exported for unit testing.
+ */
+export function appendToToolResult(data: any, prompt: string): void {
+  if (!data.result) {
+    data.result = { content: prompt };
+  } else if (typeof data.result.content === "string") {
+    data.result.content += prompt;
+  } else if (Array.isArray(data.result.content)) {
+    // Append as a new text block — preserves existing multimodal blocks.
+    data.result.content.push({ type: "text", text: prompt });
+  } else {
+    // Fallback: stringify existing value and append.
+    const existing = JSON.stringify(data.result.content);
+    data.result.content = `${existing}\n\n${prompt}`;
+  }
+}
+
 function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
@@ -1811,12 +1846,10 @@ function wireToolLogging(
         `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
         `cycle. DO NOT continue debugging — decide now.`;
 
-      // Mutate the result content that will be sent back to the LLM
-      if (event.data.result && typeof event.data.result.content === "string") {
-        event.data.result.content += frustrationPrompt;
-      } else {
-        event.data.result = { content: frustrationPrompt };
-      }
+      // Safely append to the result content — never destroy existing data.
+      // SDK tool results may have string content, array-of-blocks content,
+      // or no content at all.
+      appendToToolResult(event.data, frustrationPrompt);
 
       console.warn(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
@@ -1836,11 +1869,7 @@ function wireToolLogging(
         `or pipeline:fail with a diagnostic if it is not. ` +
         `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
 
-      if (event.data.result && typeof event.data.result.content === "string") {
-        event.data.result.content += wrapUpPrompt;
-      } else {
-        event.data.result = { content: wrapUpPrompt };
-      }
+      appendToToolResult(event.data, wrapUpPrompt);
 
       console.warn(
         `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,

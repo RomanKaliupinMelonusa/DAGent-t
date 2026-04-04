@@ -753,7 +753,7 @@ describe("onPostToolUse truncation with line range", () => {
       {
         toolName: "read_file",
         toolArgs: { startLine: 1, endLine: 700 },
-        toolResult: { textResultForLlm: bigContent, resultType: "text" },
+        toolResult: { textResultForLlm: bigContent, resultType: "success" },
         timestamp: Date.now(),
         cwd: REPO_ROOT,
       },
@@ -777,7 +777,7 @@ describe("onPostToolUse truncation with line range", () => {
       {
         toolName: "read_file",
         toolArgs: { startLine: 1, endLine: 100 },
-        toolResult: { textResultForLlm: smallContent, resultType: "text" },
+        toolResult: { textResultForLlm: smallContent, resultType: "success" },
         timestamp: Date.now(),
         cwd: REPO_ROOT,
       },
@@ -796,7 +796,7 @@ describe("onPostToolUse truncation with line range", () => {
       {
         toolName: "bash",
         toolArgs: {},
-        toolResult: { textResultForLlm: "x".repeat(100000), resultType: "text" },
+        toolResult: { textResultForLlm: "x".repeat(100000), resultType: "success" },
         timestamp: Date.now(),
         cwd: REPO_ROOT,
       },
