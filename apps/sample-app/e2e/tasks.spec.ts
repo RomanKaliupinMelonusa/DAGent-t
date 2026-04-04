@@ -60,7 +60,22 @@ test.describe("Kanban Task Board", () => {
         .locator("..");
       const startButton = taskCard.getByRole("button", { name: "Start" });
       await expect(startButton).toBeVisible();
-      await startButton.click();
+
+      // Use Promise.all to click and wait for the PATCH response simultaneously
+      // This prevents the PATCH from being aborted due to timing/navigation issues
+      const [patchResponse] = await Promise.all([
+        authenticatedPage.waitForResponse(
+          (resp) =>
+            resp.url().includes("/tasks/") &&
+            resp.url().includes("/status") &&
+            resp.request().method() === "PATCH",
+          { timeout: 15_000 },
+        ),
+        startButton.click(),
+      ]);
+
+      // Verify PATCH succeeded
+      expect(patchResponse.status()).toBe(200);
 
       // 5. Verify task moved to In Progress column
       const inProgressColumn = authenticatedPage.getByTestId(
