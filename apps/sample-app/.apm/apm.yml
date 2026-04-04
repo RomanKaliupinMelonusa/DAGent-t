@@ -1,7 +1,7 @@
 name: sample-app
 version: 1.0.0
 description: "Azure Web App + microservices — sample template for agentic pipeline"
-tokenBudget: 6000
+tokenBudget: 8000
 
 agents:
   schema-dev:
