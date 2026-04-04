@@ -67,9 +67,9 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null,
-      "docNote": "Added 3 Azure Functions HTTP triggers in fn-tasks.ts (GET/POST/PATCH /api/tasks) with Cosmos DB via DefaultAzureCredential, Zod validation, and MAX_TASKS_PER_WORKSPACE rate limiting. Added @azure/cosmos and @azure/identity deps to backend/package.json. Added deploy-backend.yml step for MAX_TASKS_PER_WORKSPACE=500 app setting injection."
+      "docNote": "Fixed missing COSMOSDB_ENDPOINT and COSMOSDB_DATABASE_NAME app_settings in infra/main.tf — these Terraform references (azurerm_cosmosdb_account.main.endpoint, azurerm_cosmosdb_sql_database.main.name) were defined in cosmos.tf outputs but never wired to the Function App merge block."
     },
     {
       "key": "frontend-dev",

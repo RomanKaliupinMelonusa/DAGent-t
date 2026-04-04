@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-04T20:25:12.981Z",
+  "generatedAt": "2026-04-04T20:26:42.549Z",
   "featureSlug": "kanban-task-board-enhanced",
   "items": [
     {
@@ -817,9 +817,9 @@
       "phase": "pre-deploy",
       "attempt": 2,
       "startedAt": "2026-04-04T20:23:48.367Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-04T20:25:21.074Z",
+      "durationMs": 92707,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now I can see the exact issue. The `app_settings` block in `main.tf` line 170 is missing `COSMOSDB_ENDPOINT` and `COSMOSDB_DATABASE_NAME`. I need to add them.",
@@ -829,10 +829,20 @@
         "All quality gates pass. Now let me also validate that the Terraform change is syntactically valid:",
         "Terraform validates. Now let me check the validate-infra hook to make sure there's a Cosmos DB check there:",
         "Good, the validation hooks are already in place. Now let me commit the infrastructure fix and complete the pipeline:",
-        "Now let me leave a doc-note and mark the pipeline complete:"
+        "Now let me leave a doc-note and mark the pipeline complete:",
+        "Backend-dev is complete. Here's a summary of what was done:  ## Fix Summary  **Root cause:** The integration tests were failing with HTTP 500 because the Function App was missing `COSMOSDB_ENDPOINT` and `COSMOSDB_DATABASE_NAME` environment variables. The Cosmos DB account, database, and containers were properly provisioned in `infra/cosmos.tf`, and the Terraform outputs were defined, but these values were never wired into the Function App's `app_settings` block in `infra/main.tf`.  **Fix applied:** Added two lines to the `app_settings` merge block in `infra/main.tf` (line ~170): - `COSMOSDB_ENDPOINT = azurerm_cosmosdb_account.main.endpoint` - `COSMOSDB_DATABASE_NAME = azurerm_cosmosdb_sql_database.main.name`  **Verification:** - All 44 unit tests pass ✅ - Build succeeds and all 3 function entry points load correctly ✅ - TypeScript type-check passes ✅ - Terraform validates successfully ✅"
       ],
       "filesRead": [],
-      "filesChanged": [],
+      "filesChanged": [
+        ".github/workflows/deploy-backend.yml",
+        "apps/sample-app/backend/.deploy-trigger",
+        "apps/sample-app/backend/package.json",
+        "apps/sample-app/backend/src/functions/__tests__/fn-tasks.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-tasks.ts",
+        "apps/sample-app/infra/.deploy-trigger",
+        "apps/sample-app/infra/main.tf"
+      ],
       "shellCommands": [
         {
           "command": "cd /workspaces/DAGent-t/apps/sample-app && git status --short | head -20",
@@ -903,17 +913,91 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced backend-dev 2>&1",
           "timestamp": "2026-04-04T20:25:08.831Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh backend \"chore(pipeline): mark backend-dev complete\" 2>&1",
+          "timestamp": "2026-04-04T20:25:12.982Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 1,
-        "shell": 14,
+        "shell": 15,
         "file-read": 2,
         "edit": 1
       },
-      "inputTokens": 298237,
-      "outputTokens": 3008,
-      "cacheReadTokens": 270488,
+      "inputTokens": 324528,
+      "outputTokens": 3271,
+      "cacheReadTokens": 296435,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "edc2bfd18fa062d9a184cc9624be84fad2bc81ed"
+    },
+    {
+      "key": "backend-unit-test",
+      "label": "Unit Tests Passed — Backend",
+      "agent": "@backend-test",
+      "phase": "pre-deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-04T20:25:21.187Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "All 3 test suites passed (44 tests passed, 19 skipped, 0 failures). Now let me run schema validation.",
+        "All tests pass: - **Jest unit tests**: 3 suites passed, 44 tests passed (19 skipped from pre-existing suites) - **Schema validation**: 1 suite passed, 66 tests passed  Now let me mark the pipeline complete and commit."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && git log --oneline -5 2>&1",
+          "timestamp": "2026-04-04T20:25:31.203Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/kanban-task-board-enhanced_STATE.json 2>&1 | head -50",
+          "timestamp": "2026-04-04T20:25:31.203Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && cat in-progress/kanban-task-board-enhanced_STATE.json 2>&1 | python3 -c \"import sys,json; d=json.load(sys.stdin); items={i['key']:i['status'] for i in d['ite",
+          "timestamp": "2026-04-04T20:26:06.600Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --verbose 2>&1",
+          "timestamp": "2026-04-04T20:26:12.352Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "tail -50 /tmp/copilot-tool-output-1775334374737-dukn34.txt",
+          "timestamp": "2026-04-04T20:26:18.672Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "grep -E \"(PASS|FAIL|SKIP)\" /tmp/copilot-tool-output-1775334374737-dukn34.txt | head -20",
+          "timestamp": "2026-04-04T20:26:23.005Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npm run validate:schemas 2>&1",
+          "timestamp": "2026-04-04T20:26:28.812Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced backend-unit-test 2>&1",
+          "timestamp": "2026-04-04T20:26:37.406Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 4,
+        "shell": 9
+      },
+      "inputTokens": 129569,
+      "outputTokens": 1611,
+      "cacheReadTokens": 116380,
       "cacheWriteTokens": 0
     }
   ]
