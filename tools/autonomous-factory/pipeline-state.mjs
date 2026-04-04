@@ -116,7 +116,7 @@ export const ITEM_DEPENDENCIES = {
   "push-app":             ["backend-unit-test", "frontend-unit-test"],
   "poll-app-ci":          ["push-app"],
   "integration-test":     ["poll-app-ci"],
-  "live-ui":              ["poll-app-ci"],
+  "live-ui":              ["poll-app-ci", "integration-test"],
   "code-cleanup":         ["integration-test", "live-ui"],
   "docs-archived":        ["code-cleanup"],
   // ── Wave 3: Architecture Analysis (frozen AST) ────────────────────────

@@ -92,8 +92,8 @@ flowchart LR
 | `frontend-unit-test` | pre-deploy | frontend-dev | backend-unit-test |
 | `push-app` | deploy | backend-unit-test, frontend-unit-test | — |
 | `poll-app-ci` | deploy | push-app | — |
-| `integration-test` | post-deploy | poll-app-ci | live-ui |
-| `live-ui` | post-deploy | poll-app-ci | integration-test |
+| `integration-test` | post-deploy | poll-app-ci | — |
+| `live-ui` | post-deploy | poll-app-ci, integration-test | — |
 | `code-cleanup` | finalize | integration-test, live-ui | — |
 | `docs-archived` | finalize | code-cleanup | — |
 | `doc-architect` | finalize | code-cleanup, docs-archived | — |
@@ -114,8 +114,8 @@ flowchart TB
         FS2 --> FS4["backend-unit-test"]
         FS3 --> FS5["frontend-unit-test"]
         FS4 & FS5 --> FS6["push-app"] --> FS7["poll-app-ci"]
-        FS7 --> FS8["integration-test"] & FS9["live-ui"]
-        FS8 & FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS_DARC["doc-architect"] --> FS12["publish-pr"]
+        FS7 --> FS8["integration-test"] --> FS9["live-ui"]
+        FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS_DARC["doc-architect"] --> FS12["publish-pr"]
     end
 
     subgraph BE["Backend (N/A: frontend-dev, frontend-unit-test, live-ui)"]
@@ -151,8 +151,8 @@ flowchart TB
         AO2 --> AO4["backend-unit-test"]
         AO3 --> AO5["frontend-unit-test"]
         AO4 & AO5 --> AO6["push-app"] --> AO7["poll-app-ci"]
-        AO7 --> AO8["integration-test"] & AO9["live-ui"]
-        AO8 & AO9 --> AO10["code-cleanup"] --> AO11["docs-archived"] --> AO_DARC["doc-architect"] --> AO12["publish-pr"]
+        AO7 --> AO8["integration-test"] --> AO9["live-ui"]
+        AO9 --> AO10["code-cleanup"] --> AO11["docs-archived"] --> AO_DARC["doc-architect"] --> AO12["publish-pr"]
     end
 
     subgraph BON["Backend-Only (N/A: infra items + frontend-dev, frontend-unit-test, live-ui)"]
