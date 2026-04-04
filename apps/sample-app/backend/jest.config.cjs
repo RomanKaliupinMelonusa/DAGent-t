@@ -3,6 +3,7 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   roots: ["<rootDir>/src"],
+  modulePaths: ["<rootDir>/../../../node_modules"],
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "^@branded/schemas$": "<rootDir>/../packages/schemas/src/index.ts",
