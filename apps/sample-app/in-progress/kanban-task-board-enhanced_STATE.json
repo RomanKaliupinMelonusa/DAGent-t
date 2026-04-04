@@ -2,8 +2,8 @@
   "feature": "kanban-task-board-enhanced",
   "workflowType": "Full-Stack",
   "started": "2026-04-04T19:52:32.862Z",
-  "deployedUrl": null,
-  "implementationNotes": null,
+  "deployedUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/41",
+  "implementationNotes": "Draft PR #41 created — awaiting Terraform plan",
   "items": [
     {
       "key": "schema-dev",
@@ -27,7 +27,7 @@
       "label": "Infra Code Pushed to Origin",
       "agent": "@deploy-manager",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
@@ -35,7 +35,7 @@
       "label": "Draft PR Created",
       "agent": "@pr-creator",
       "phase": "infra",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
