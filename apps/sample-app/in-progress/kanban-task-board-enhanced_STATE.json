@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added 3 Azure Functions HTTP triggers in fn-tasks.ts (GET/POST/PATCH /api/tasks) with Cosmos DB via DefaultAzureCredential, Zod validation, and MAX_TASKS_PER_WORKSPACE rate limiting. Added @azure/cosmos and @azure/identity deps to backend/package.json. Added deploy-backend.yml step for MAX_TASKS_PER_WORKSPACE=500 app setting injection."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added Kanban task board page at /tasks with 3-column layout (To Do, In Progress, Done), HTML5 native drag-and-drop with optimistic UI + revert, fallback status transition buttons, and Task Board nav link in NavBar. E2E tests cover create, DnD move, button fallback, reload persistence, and same-column no-op."
     },
     {
       "key": "backend-unit-test",
