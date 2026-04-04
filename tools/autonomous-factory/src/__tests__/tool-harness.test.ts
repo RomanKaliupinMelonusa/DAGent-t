@@ -305,7 +305,7 @@ describe("buildSessionHooks.onPostToolUse", () => {
     assert.equal(result, undefined); // no modification
   });
 
-  it("does not truncate when startLine/endLine are provided", () => {
+  it("truncates even when startLine/endLine are provided (Review #3)", () => {
     const bigContent = Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join("\n");
     const result = postHook(
       {
@@ -316,7 +316,12 @@ describe("buildSessionHooks.onPostToolUse", () => {
       },
       { sessionId: "test" },
     );
-    assert.equal(result, undefined); // agent explicitly requested full range
+    // Review #3: onPostToolUse now enforces truncation unconditionally
+    assert.ok(result, "should return a modified result");
+    const modified = (result as any).modifiedResult.textResultForLlm as string;
+    assert.ok(modified.includes("[SYSTEM WARNING:"));
+    const lineCount = modified.split("\n").length;
+    assert.ok(lineCount <= FILE_READ_LINE_LIMIT + 5, `expected ≤${FILE_READ_LINE_LIMIT + 5} lines, got ${lineCount}`);
   });
 
   it("ignores non-read_file tools", () => {
@@ -619,5 +624,185 @@ describe("buildSessionHooks onDenial callback", () => {
     );
     assert.ok(result);
     assert.equal((result as any).permissionDecision, "deny");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review #3 Fix 2: Line range loophole (end_line: 999999)
+// ---------------------------------------------------------------------------
+
+describe("file_read line range cap", () => {
+  const tools = buildCustomTools(REPO_ROOT);
+  const fileReadTool = tools.find((t) => t.name === "file_read")!;
+
+  it("caps end_line at FILE_READ_LINE_LIMIT lines from start", () => {
+    const tmpFile = path.join(REPO_ROOT, "__test-line-cap.tmp");
+    try {
+      const content = Array.from({ length: 800 }, (_, i) => `line-${i + 1}`).join("\n");
+      fs.writeFileSync(tmpFile, content, "utf-8");
+
+      const result = fileReadTool.handler(
+        { file_path: "__test-line-cap.tmp", start_line: 1, end_line: 999999 },
+        { sessionId: "test", toolCallId: "tc-cap1", toolName: "file_read", arguments: {} },
+      ) as string;
+
+      // Should contain the first 500 lines
+      assert.ok(result.includes("line-1"));
+      assert.ok(result.includes("line-500"));
+      // Should NOT contain line 501
+      assert.ok(!result.includes("line-501\n"));
+      // Should include the system warning about capping
+      assert.ok(result.includes("[SYSTEM WARNING:"));
+      assert.ok(result.includes("capped at " + FILE_READ_LINE_LIMIT));
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
+
+  it("does not warn when requested range fits within limit", () => {
+    const tmpFile = path.join(REPO_ROOT, "__test-line-cap2.tmp");
+    try {
+      const content = Array.from({ length: 800 }, (_, i) => `line-${i + 1}`).join("\n");
+      fs.writeFileSync(tmpFile, content, "utf-8");
+
+      const result = fileReadTool.handler(
+        { file_path: "__test-line-cap2.tmp", start_line: 10, end_line: 20 },
+        { sessionId: "test", toolCallId: "tc-cap2", toolName: "file_read", arguments: {} },
+      ) as string;
+
+      assert.ok(result.includes("line-10"));
+      assert.ok(result.includes("line-20"));
+      assert.ok(!result.includes("[SYSTEM WARNING:"));
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
+
+  it("caps correctly when start_line is in the middle of the file", () => {
+    const tmpFile = path.join(REPO_ROOT, "__test-line-cap3.tmp");
+    try {
+      const content = Array.from({ length: 1000 }, (_, i) => `L${i + 1}`).join("\n");
+      fs.writeFileSync(tmpFile, content, "utf-8");
+
+      // Request lines 200-999999 — should get 200..699 (500 lines max)
+      const result = fileReadTool.handler(
+        { file_path: "__test-line-cap3.tmp", start_line: 200, end_line: 999999 },
+        { sessionId: "test", toolCallId: "tc-cap3", toolName: "file_read", arguments: {} },
+      ) as string;
+
+      assert.ok(result.includes("L200"));
+      assert.ok(result.includes("L699"));
+      assert.ok(!result.includes("L700\n"));
+      assert.ok(result.includes("[SYSTEM WARNING:"));
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review #3 Fix 3: Env var type coercion
+// ---------------------------------------------------------------------------
+
+describe("shell env_vars type coercion", () => {
+  const tools = buildCustomTools(REPO_ROOT);
+  const shellTool = tools.find((t) => t.name === "shell")!;
+
+  it("coerces boolean env_vars to strings without crashing", () => {
+    // LLMs may send { DEBUG: true } instead of { DEBUG: "true" }
+    const result = shellTool.handler(
+      { command: "echo $DEBUG_VAR", env_vars: { DEBUG_VAR: true as unknown as string } },
+      { sessionId: "test", toolCallId: "tc-env1", toolName: "shell", arguments: {} },
+    );
+    assert.ok(typeof result === "string");
+    assert.ok((result as string).includes("true"));
+  });
+
+  it("coerces numeric env_vars to strings without crashing", () => {
+    const result = shellTool.handler(
+      { command: "echo $COUNT", env_vars: { COUNT: 42 as unknown as string } },
+      { sessionId: "test", toolCallId: "tc-env2", toolName: "shell", arguments: {} },
+    );
+    assert.ok(typeof result === "string");
+    assert.ok((result as string).includes("42"));
+  });
+
+  it("coerces null/undefined env_vars to strings", () => {
+    const result = shellTool.handler(
+      { command: "echo done", env_vars: { NULL_VAR: null as unknown as string, UNDEF_VAR: undefined as unknown as string } },
+      { sessionId: "test", toolCallId: "tc-env3", toolName: "shell", arguments: {} },
+    );
+    assert.ok(typeof result === "string");
+    // Should not crash — just run
+    assert.ok((result as string).includes("done"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review #3 Fix 2 (belt-and-suspenders): onPostToolUse truncation
+// ---------------------------------------------------------------------------
+
+describe("onPostToolUse truncation with line range", () => {
+  it("truncates built-in read_file even when startLine/endLine are set", () => {
+    const hooks = buildSessionHooks(REPO_ROOT);
+    const postHook = hooks.onPostToolUse!;
+
+    // Simulate a read_file result with 700 lines
+    const bigContent = Array.from({ length: 700 }, (_, i) => `line-${i + 1}`).join("\n");
+    const result = postHook(
+      {
+        toolName: "read_file",
+        toolArgs: { startLine: 1, endLine: 700 },
+        toolResult: { textResultForLlm: bigContent, resultType: "text" },
+        timestamp: Date.now(),
+        cwd: REPO_ROOT,
+      },
+      { sessionId: "test" },
+    );
+
+    assert.ok(result, "should return a modified result");
+    const modified = (result as any).modifiedResult.textResultForLlm as string;
+    const lineCount = modified.split("\n").length;
+    // The 500 content lines + warning lines should be well under 700
+    assert.ok(lineCount <= FILE_READ_LINE_LIMIT + 5, `expected ≤${FILE_READ_LINE_LIMIT + 5} lines, got ${lineCount}`);
+    assert.ok(modified.includes("[SYSTEM WARNING:"));
+  });
+
+  it("does not truncate built-in read_file when within limit", () => {
+    const hooks = buildSessionHooks(REPO_ROOT);
+    const postHook = hooks.onPostToolUse!;
+
+    const smallContent = Array.from({ length: 100 }, (_, i) => `line-${i + 1}`).join("\n");
+    const result = postHook(
+      {
+        toolName: "read_file",
+        toolArgs: { startLine: 1, endLine: 100 },
+        toolResult: { textResultForLlm: smallContent, resultType: "text" },
+        timestamp: Date.now(),
+        cwd: REPO_ROOT,
+      },
+      { sessionId: "test" },
+    );
+
+    // Should return undefined (no modification needed)
+    assert.equal(result, undefined);
+  });
+
+  it("ignores non-read_file tools", () => {
+    const hooks = buildSessionHooks(REPO_ROOT);
+    const postHook = hooks.onPostToolUse!;
+
+    const result = postHook(
+      {
+        toolName: "bash",
+        toolArgs: {},
+        toolResult: { textResultForLlm: "x".repeat(100000), resultType: "text" },
+        timestamp: Date.now(),
+        cwd: REPO_ROOT,
+      },
+      { sessionId: "test" },
+    );
+
+    assert.equal(result, undefined);
   });
 });

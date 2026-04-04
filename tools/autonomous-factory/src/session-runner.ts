@@ -1310,6 +1310,20 @@ async function runAgentSession(
   const agentConfig = getAgentConfig(next.key, agentContext, apmContext);
   const timeout = getTimeout(next.key);
 
+  // Resolve tool limits early so the onDenial callback can reference them.
+  const manifestDefaults = apmContext.config?.defaultToolLimits;
+  const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
+  // Resolution order: per-agent → manifest default → last-resort fallback
+  const resolvedToolLimits = {
+    soft: agentToolLimits?.soft ?? manifestDefaults?.soft ?? TOOL_LIMIT_FALLBACK_SOFT,
+    hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
+  };
+
+  // Shared flag: the onDenial callback and wireToolLogging both need to
+  // read/write this to prevent duplicate disconnect attempts.
+  // Wrapped in an object so both closures reference the same mutable value.
+  const hardLimitRef = { fired: false };
+
   // Create SDK session
   const session = await client.createSession({
     model: agentConfig.model,
@@ -1323,6 +1337,19 @@ async function runAgentSession(
       // so we increment manually to prevent infinite denial loops.
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
+
+      // Evaluate the hard limit killswitch — denied calls must also trigger it.
+      const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
+      if (totalCalls >= resolvedToolLimits.hard && !hardLimitRef.fired) {
+        hardLimitRef.fired = true;
+        console.error(
+          `\n  ✖ HARD LIMIT: Agent exceeded ${resolvedToolLimits.hard} tool calls (via denied commands). ` +
+          `Force-disconnecting session to prevent runaway compute waste.\n`,
+        );
+        itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${resolvedToolLimits.hard} tool calls`;
+        itemSummary.outcome = "error";
+        session.disconnect().catch(() => { /* best-effort */ });
+      }
     }),
     ...(agentConfig.mcpServers
       ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
@@ -1330,13 +1357,6 @@ async function runAgentSession(
   });
 
   // Wire session event listeners
-  const manifestDefaults = apmContext.config?.defaultToolLimits;
-  const agentToolLimits = apmContext.agents[next.key]?.toolLimits;
-  // Resolution order: per-agent → manifest default → last-resort fallback
-  const resolvedToolLimits = {
-    soft: agentToolLimits?.soft ?? manifestDefaults?.soft ?? TOOL_LIMIT_FALLBACK_SOFT,
-    hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
-  };
 
   // Throttled heartbeat — writes _FLIGHT_DATA.json at most every 1.5 s
   // without calling the heavy Markdown/Git reporting functions.
@@ -1350,7 +1370,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat);
+  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat, hardLimitRef);
   const playwrightLog = wirePlaywrightLogging(session, next.key, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
@@ -1695,18 +1715,21 @@ function wireToolLogging(
   toolLimits: { soft: number; hard: number },
   sessionTimeout: number,
   triggerHeartbeat?: () => void,
+  hardLimitRef?: { fired: boolean },
 ): void {
   const softLimit = toolLimits.soft;
   const hardLimit = toolLimits.hard;
   let softWarningFired = false;
-  let hardLimitFired = false;
+  // Use shared ref if provided (for synchronization with onDenial callback),
+  // otherwise create a local one for backward compatibility.
+  const hlRef = hardLimitRef ?? { fired: false };
   /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
   const preTimeoutThresholdMs = sessionTimeout * 0.8;
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
-    if (hardLimitFired) return;
+    if (hlRef.fired) return;
 
     const name = event.data.toolName;
     const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
@@ -1719,8 +1742,8 @@ function wireToolLogging(
 
     // Cognitive Circuit Breaker — hard kill (soft interception is on tool.execution_complete)
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-    if (totalCalls >= hardLimit) {
-      hardLimitFired = true;
+    if (totalCalls >= hardLimit && !hlRef.fired) {
+      hlRef.fired = true;
       console.error(
         `\n  ✖ HARD LIMIT: Agent exceeded ${hardLimit} tool calls. ` +
         `Force-disconnecting session to prevent runaway compute waste.\n`,
@@ -1773,7 +1796,7 @@ function wireToolLogging(
   // so the LLM actually reads it on its next turn. console.warn is invisible
   // to the agent — this mutates the content the SDK sends back to the model.
   session.on("tool.execution_complete", (event: any) => {
-    if (hardLimitFired) return;
+    if (hlRef.fired) return;
 
     const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
 

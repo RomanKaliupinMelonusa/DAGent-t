@@ -171,13 +171,23 @@ export function buildSessionHooks(
     if (input.toolName !== "read_file") return;
 
     const args = input.toolArgs as { startLine?: number; endLine?: number } | undefined;
-    // Only truncate when the agent didn't provide line boundaries
-    if (args?.startLine != null || args?.endLine != null) return;
 
     const content = input.toolResult?.textResultForLlm;
     if (typeof content !== "string") return;
 
     const lines = content.split("\n");
+
+    // If the agent provided line boundaries, enforce the absolute cap on slice size.
+    if (args?.startLine != null || args?.endLine != null) {
+      if (lines.length <= FILE_READ_LINE_LIMIT) return;
+      const truncated = lines.slice(0, FILE_READ_LINE_LIMIT).join("\n") +
+        `\n\n[SYSTEM WARNING: Output capped at ${FILE_READ_LINE_LIMIT} lines to prevent token overflow.]`;
+      return {
+        modifiedResult: { ...input.toolResult, textResultForLlm: truncated } as any,
+      };
+    }
+
+    // No line boundaries — truncate if over the limit.
     if (lines.length <= FILE_READ_LINE_LIMIT) return;
 
     const truncated = lines.slice(0, FILE_READ_LINE_LIMIT).join("\n") + FILE_TRUNCATION_WARNING;
@@ -257,8 +267,14 @@ export function buildCustomTools(repoRoot: string): Tool<any>[] {
       if (hasLineRange) {
         // 1-indexed → 0-indexed slicing
         const start = Math.max(0, (args.start_line ?? 1) - 1);
-        const end = args.end_line != null ? args.end_line : allLines.length;
-        return allLines.slice(start, end).join("\n");
+        const requestedEnd = args.end_line != null ? args.end_line : allLines.length;
+        // Enforce absolute cap: never return more than FILE_READ_LINE_LIMIT lines
+        const end = Math.min(requestedEnd, start + FILE_READ_LINE_LIMIT);
+        let result = allLines.slice(start, end).join("\n");
+        if (requestedEnd > start + FILE_READ_LINE_LIMIT) {
+          result += `\n\n[SYSTEM WARNING: Requested line range exceeded limit. Output capped at ${FILE_READ_LINE_LIMIT} lines.]`;
+        }
+        return result;
       }
 
       // No line range — enforce truncation limit
@@ -302,7 +318,13 @@ export function buildCustomTools(repoRoot: string): Tool<any>[] {
         return `ERROR: cwd "${args.cwd}" resolves outside the repository root. Use a repo-relative path.`;
       }
 
-      const env = { ...process.env, ...(args.env_vars || {}) };
+      // Coerce all env var values to strings — LLMs may hallucinate
+      // booleans/numbers which would crash execSync with a TypeError.
+      const safeEnvVars: Record<string, string> = {};
+      for (const [key, value] of Object.entries(args.env_vars || {})) {
+        safeEnvVars[key] = String(value);
+      }
+      const env = { ...process.env, ...safeEnvVars };
 
       try {
         const stdout = execSync(args.command, {
