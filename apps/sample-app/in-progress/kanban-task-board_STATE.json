@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "## Infrastructure Changes\n\n### Resources Created (cosmos.tf)\n- `azurerm_cosmosdb_account.main` — Serverless Cosmos DB account (Session consistency)\n- `azurerm_cosmosdb_sql_database.main` — SQL database 'sample-app-db'\n- `azurerm_cosmosdb_sql_container.tasks` — **Tasks** container (partition key: /workspaceId)\n- `azurerm_cosmosdb_sql_role_assignment.func_data_contributor` — Function App MI → Cosmos DB Built-in Data Contributor\n\n### Outputs Added (in cosmos.tf)\n- `cosmosdb_endpoint` — Cosmos DB account endpoint URL\n- `cosmosdb_database_name` — Database name ('sample-app-db')\n\n### Function App Settings Added (main.tf)\n- `COSMOSDB_ENDPOINT` — Cosmos DB endpoint for DefaultAzureCredential auth\n- `COSMOSDB_DATABASE_NAME` — Database name for container operations\n- `MAX_TASKS_PER_WORKSPACE` — Task limit per workspace (default: 500)\n\n### APIM OpenAPI Spec Updated (api-sample.openapi.yaml)\n- `GET /tasks` — List all tasks (operationId: listTasks)\n- `POST /tasks` — Create a task (operationId: createTask)\n- `PATCH /tasks/{id}/status` — Update task status (operationId: updateTaskStatus)\n- Components: Task, CreateTask, UpdateTaskStatus, TaskStatus, ErrorResponse schemas\n\n### Hooks Updated\n- `.apm/hooks/validate-infra.sh` — Cosmos DB reachability check (curl COSMOSDB_ENDPOINT)\n\n### Terraform Plan Summary\n- **0 to add, 10 to change, 0 to destroy**\n- All Cosmos DB resources already exist in remote state (from previous deployment)\n- Changes are in-place updates only (APIM API spec, Function App settings, Entra AD provider drift)\n\n### Note\ncosmos.tf includes the full Cosmos DB account/database/RBAC setup because PR #35 (webhook-dispatcher) was already applied to Azure but the .tf files were not present in this branch. Without cosmos.tf, terraform plan would have destroyed the existing resources."
     },
     {
       "key": "push-infra",
