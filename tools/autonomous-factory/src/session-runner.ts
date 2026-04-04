@@ -37,6 +37,7 @@ import {
   computeEffectiveDevAttempts,
   writeChangeManifest,
 } from "./context-injection.js";
+import { buildSessionHooks, buildCustomTools } from "./tool-harness.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -277,6 +278,8 @@ const TOOL_LABELS: Record<string, string> = {
   edit_file:    "✏️  Edit",
   bash:         "🖥  Shell",
   write_bash:   "🖥  Shell (write)",
+  shell:        "🖥  StructuredShell",
+  file_read:    "📄 SafeRead",
   view:         "👁  View",
   grep_search:  "🔍 Search",
   list_dir:     "📂 List",
@@ -286,11 +289,13 @@ const TOOL_LABELS: Record<string, string> = {
 /** Group tool names into summary categories */
 const TOOL_CATEGORIES: Record<string, string> = {
   read_file: "file-read",
+  file_read: "file-read",
   view: "file-read",
   write_file: "file-write",
   edit_file: "file-edit",
   bash: "shell",
   write_bash: "shell",
+  shell: "shell",
   grep_search: "search",
   list_dir: "search",
   report_intent: "intent",
@@ -311,10 +316,14 @@ function toolSummary(
     case "edit_file":
       return args.filePath ? ` → ${path.relative(repoRoot, String(args.filePath))}` : "";
     case "bash":
-    case "write_bash": {
+    case "write_bash":
+    case "shell": {
       const cmd = String(args.command ?? "").split("\n")[0].slice(0, 80);
-      return cmd ? ` → ${cmd}` : "";
+      const cwd = args.cwd ? ` (cwd: ${args.cwd})` : "";
+      return cmd ? ` → ${cmd}${cwd}` : "";
     }
+    case "file_read":
+      return args.file_path ? ` → ${path.relative(repoRoot, String(args.file_path))}` : "";
     case "grep_search":
       return args.query ? ` → "${args.query}"` : "";
     case "list_dir":
@@ -1307,6 +1316,8 @@ async function runAgentSession(
     workingDirectory: repoRoot,
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
+    tools: buildCustomTools(repoRoot),
+    hooks: buildSessionHooks(repoRoot),
     ...(agentConfig.mcpServers
       ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
       : {}),
@@ -1723,7 +1734,7 @@ function wireToolLogging(
       }
     }
 
-    if (name === "bash" || name === "write_bash") {
+    if (name === "bash" || name === "write_bash" || name === "shell") {
       const cmd = String(args?.command ?? "").split("\n")[0].slice(0, 200);
       if (cmd) {
         const isPipelineOp = /pipeline:(complete|fail|set-note|set-url)|agent-commit\.sh/.test(cmd);
@@ -1740,6 +1751,14 @@ function wireToolLogging(
             itemSummary.filesChanged.push(sf);
           }
         }
+      }
+    }
+
+    // Track file_read file paths
+    if (name === "file_read") {
+      const fp = args?.file_path ? path.relative(repoRoot, String(args.file_path)) : null;
+      if (fp && !itemSummary.filesRead.includes(fp)) {
+        itemSummary.filesRead.push(fp);
       }
     }
   });
