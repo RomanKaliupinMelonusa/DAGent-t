@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Terraform resources created: (1) azurerm_cosmosdb_account.main — Serverless Cosmos DB account; (2) azurerm_cosmosdb_sql_database.main — 'sample-app-db'; (3) azurerm_cosmosdb_sql_container.tasks — 'Tasks' container with /workspaceId partition key (NEW for kanban feature); (4) azurerm_cosmosdb_sql_container.webhooks — 'Webhooks' container (from webhook-dispatcher prereq); (5) azurerm_cosmosdb_sql_role_assignment.func_data_contributor — Function App MI Data Contributor RBAC. Outputs: cosmosdb_endpoint, cosmosdb_account_name (in cosmos.tf). OpenAPI spec updated: GET /tasks, POST /tasks, PATCH /tasks/{id}/status with Task/CreateTask/UpdateTaskStatus/TaskStatus schemas. validate-infra.sh hook updated with Cosmos DB reachability check. NOTE: cosmos.tf includes full Cosmos DB setup from webhook-dispatcher prereq (PR #35) since that branch has not yet been merged to this feature branch. terraform plan: 5 to add, 4 to change, 0 to destroy."
     },
     {
       "key": "push-infra",
