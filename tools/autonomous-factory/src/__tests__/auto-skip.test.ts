@@ -126,4 +126,23 @@ describe("getDirectoryPrefixes", () => {
   it("throws when directories config is missing", () => {
     assert.throws(() => getDirectoryPrefixes("apps/sample-app", undefined), /Missing config\.directories/);
   });
+
+  it("produces no leading slash when appRel is empty (root-level app)", () => {
+    const result = getDirectoryPrefixes("", {
+      backend: "backend",
+      frontend: "frontend",
+      infra: "infra",
+      e2e: "e2e",
+      packages: "packages",
+      schemas: null,
+    });
+    // Must NOT have a leading slash — git diff outputs "backend/src/...", not "/backend/src/..."
+    assert.deepStrictEqual(result.frontend, ["frontend/", "e2e/"]);
+    assert.ok(result.backend.includes("backend/"));
+    assert.ok(result.backend.includes("infra/"));
+    assert.ok(result.backend.includes("packages/"));
+    assert.ok(!result.backend.some((p) => p.startsWith("/")), "no prefix should start with /");
+    assert.ok(!result.frontend.some((p) => p.startsWith("/")), "no prefix should start with /");
+    assert.ok(!result.infra.some((p) => p.startsWith("/")), "no prefix should start with /");
+  });
 });

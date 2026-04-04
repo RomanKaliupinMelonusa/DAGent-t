@@ -79,9 +79,12 @@ export function getDirectoryPrefixes(
     );
   }
   const d = dirs;
+  // Safely construct base prefix — when appRel is "" (root-level app),
+  // avoid a leading slash that would never match git diff output paths.
+  const basePrefix = appRel ? `${appRel}/` : "";
   const pfx = (key: string) => {
     const val = d[key];
-    return val ? `${appRel}/${val}/` : null;
+    return val ? `${basePrefix}${val}/` : null;
   };
   return {
     backend: [pfx("backend"), pfx("infra"), pfx("packages"), pfx("schemas")].filter(Boolean) as string[],
