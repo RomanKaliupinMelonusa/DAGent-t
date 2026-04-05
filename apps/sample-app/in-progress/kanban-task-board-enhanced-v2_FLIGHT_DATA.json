@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:36:07.445Z",
+  "generatedAt": "2026-04-05T04:42:29.232Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -729,9 +729,9 @@
       "phase": "post-deploy",
       "attempt": 1,
       "startedAt": "2026-04-05T04:33:06.935Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-05T04:36:15.533Z",
+      "durationMs": 188598,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good. The integration test file exists with comprehensive coverage. Now let me authenticate and retrieve the function key.",
@@ -739,7 +739,8 @@
         "Backend is reachable. Now let me run the full integration test suite.",
         "All 15 integration tests passed (exit code 0). Now let me do the APIM gateway validation.",
         "The APIM path prefix is `/sample`. The task endpoints work through APIM. Now let me validate all three task endpoints through APIM plus the PATCH endpoint:",
-        "All APIM gateway validations pass: - ✅ GET /sample/tasks → 200 - ✅ POST /sample/tasks → 201 - ✅ PATCH /sample/tasks/{id}/status → 200 - ✅ CORS preflight → 200 with correct headers - ✅ Unauthenticated request → 401  Both direct Function App integration tests (15/15 passed) and APIM-through validation are successful. Let me mark the pipeline complete."
+        "All APIM gateway validations pass: - ✅ GET /sample/tasks → 200 - ✅ POST /sample/tasks → 201 - ✅ PATCH /sample/tasks/{id}/status → 200 - ✅ CORS preflight → 200 with correct headers - ✅ Unauthenticated request → 401  Both direct Function App integration tests (15/15 passed) and APIM-through validation are successful. Let me mark the pipeline complete.",
+        "All tasks completed successfully. Here's the summary:  ## Integration Test Results ✅  ### Direct Function App Tests (15/15 passed) | Test | Status | |------|--------| | POST /tasks → 201 creates a task | ✅ | | GET /tasks → 200 includes created task | ✅ | | PATCH /tasks/{id}/status → 200 updates status | ✅ | | POST /tasks → 400 rejects invalid body | ✅ | | PATCH /tasks/nonexistent-id/status → 404 | ✅ | | PATCH /tasks/{id}/status → 400 invalid status | ✅ | | GET /tasks → 401 without function key | ✅ | | MAX_TASKS_PER_WORKSPACE = 500 (az CLI) | ✅ | | fn-hello (4 smoke tests) | ✅ | | fn-demo-login (4 smoke tests) | ✅ |  ### APIM Gateway Validation (5/5 passed) | Check | Status | |-------|--------| | GET /sample/tasks → 200 | ✅ | | POST /sample/tasks → 201 | ✅ | | PATCH /sample/tasks/{id}/status → 200 | ✅ | | OPTIONS /sample/tasks (CORS preflight) → 200 | ✅ | | Unauthenticated → 401 | ✅ |"
       ],
       "filesRead": [
         "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
@@ -833,16 +834,175 @@
           "command": "ls /workspaces/DAGent-t/tools/autonomous-factory/agent-commit.sh 2>/dev/null; ls /workspaces/DAGent-t/apps/sample-app/tools/autonomous-factory/agent-commit.sh 2>/dev/null; find /workspaces/DAGent-t -n",
           "timestamp": "2026-04-05T04:36:01.828Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark integration-test complete for kanban-task-board-enhanced-v2\" 2>&1",
+          "timestamp": "2026-04-05T04:36:07.447Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 6,
         "file-read": 4,
-        "shell": 17
+        "shell": 18
       },
-      "inputTokens": 592365,
-      "outputTokens": 7332,
-      "cacheReadTokens": 553916,
+      "inputTokens": 630609,
+      "outputTokens": 7705,
+      "cacheReadTokens": 591770,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "165cdc991ebdc78d1d5e6037fddcbb0b69451936"
+    },
+    {
+      "key": "live-ui",
+      "label": "Live UI Validated",
+      "agent": "@frontend-ui-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-05T04:36:16.685Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good. Phase 1 passed - frontend returns 200 and HTML loads correctly. The E2E test file `tasks.spec.ts` exists. Let me now proceed with Phase 2 (API Network Validation) and read the existing E2E test file.",
+        "Phase 1 and Phase 2 are passing! The frontend returns 200, HTML loads, CORS preflight works, and the API endpoints (`/sample/tasks`) return data through APIM. Let me now verify test configuration and run the E2E tests.",
+        "Tests compile. Now let me run them:",
+        "All 3 E2E tests passed! Let me verify the screenshots were captured and then check the deployed /tasks page manually.",
+        "All tests pass and screenshots are captured. Let me now write the completion report and finalize."
+      ],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:36:40.272Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:36:40.272Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:36:40.272Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:37:29.892Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:37:46.514Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:38:06.703Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:38:24.693Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:38:41.658Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:38:57.206Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:39:16.265Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:39:33.432Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:39:44.495Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:40:01.766Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:40:15.183Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:40:27.481Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:40:50.497Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:40:50.497Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:41:07.778Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:41:22.306Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:41:28.791Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:41:37.262Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:41:52.693Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:42:17.846Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app",
+          "timestamp": "2026-04-05T04:42:24.011Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 7,
+        "file-read": 3,
+        "shell": 24,
+        "stop_bash": 1
+      },
+      "inputTokens": 1155679,
+      "outputTokens": 15244,
+      "cacheReadTokens": 1031531,
       "cacheWriteTokens": 0
     }
   ]
