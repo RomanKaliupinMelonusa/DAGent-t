@@ -261,9 +261,19 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       resetKeys.push("push-app", "poll-app-ci");
       break;
     case "infra":
-      // Infrastructure error — route to infra-architect (Wave 1 redevelopment)
-      resetKeys.push("infra-architect");
+      // Infrastructure error — route to full Wave 1 redevelopment cascade
+      resetKeys.push(
+        "infra-architect",
+        "push-infra",
+        "poll-infra-plan",
+        "create-draft-pr",
+        "await-infra-approval",
+        "infra-handoff",
+      );
       break;
+    case "test-code":
+      // Zero cascade — only reset the test agent that wrote the broken test.
+      return [itemKey].filter((k) => !naItems.has(k));
     case "blocked":
       // Unfixable error — no items to reset, pipeline must halt.
       return [];

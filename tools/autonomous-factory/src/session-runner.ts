@@ -37,7 +37,7 @@ import {
   computeEffectiveDevAttempts,
   writeChangeManifest,
 } from "./context-injection.js";
-import { buildSessionHooks, buildCustomTools } from "./tool-harness.js";
+import { buildSessionHooks, buildCustomTools, SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "./tool-harness.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,46 +53,6 @@ const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integrati
 const DEPLOY_ITEMS = new Set(["push-infra", "poll-infra-plan", "push-app", "poll-app-ci"]);
 const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
 const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
-
-/**
- * Shell command patterns that write files.
- * Used to detect file mutations done via bash/write_bash tool calls
- * (e.g. `sed -i`, `tee`, `echo >`) instead of SDK write_file/edit_file.
- * Each regex captures the target file path in group 1.
- * Exported for unit testing.
- */
-export const SHELL_WRITE_PATTERNS: readonly RegExp[] = [
-  /\bsed\s+-i(?:\s+'[^']*'|\s+"[^"]*"|\s+[^\s]+)*\s+([^\s;|&>]+)/,    // sed -i 's/x/y/' <file>
-  /\btee\s+(?:-a\s+)?([^\s;|&>]+)/,                                       // tee <file> or tee -a <file>
-  /\bcat\s*>\s*([^\s;|&]+)/,                                               // cat > <file>
-  /\becho\s+.*?>{1,2}\s*([^\s;|&>]+)/,                                     // echo ... > <file> or echo ... >> <file>
-  /\bprintf\s+.*?>{1,2}\s*([^\s;|&>]+)/,                                   // printf ... > <file> or printf ... >> <file>
-  /\bcp\s+(?:-[a-zA-Z]+\s+)?[^\s]+\s+([^\s;|&]+)/,                        // cp <src> <dest>
-  /\bmv\s+(?:-[a-zA-Z]+\s+)?[^\s]+\s+([^\s;|&]+)/,                        // mv <src> <dest>
-];
-
-/**
- * Extract file paths written by a shell command.
- * Matches against SHELL_WRITE_PATTERNS and returns workspace-relative paths.
- * Exported for unit testing.
- */
-export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[] {
-  const files: string[] = [];
-  for (const re of SHELL_WRITE_PATTERNS) {
-    const m = cmd.match(re);
-    if (m?.[1]) {
-      const raw = m[1].replace(/["']/g, "");
-      // Resolve relative to repo root and normalize
-      const abs = path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
-      const rel = path.relative(repoRoot, abs);
-      // Exclude paths outside the repo or pipeline state files
-      if (!rel.startsWith("..") && !rel.includes("_STATE.json") && !rel.includes("_TRANS.md")) {
-        files.push(rel);
-      }
-    }
-  }
-  return files;
-}
 
 /**
  * Maximum total time (ms) to wait for data-plane readiness before proceeding.
@@ -1187,6 +1147,21 @@ async function runPublishPr(
   console.log(`  📋 publish-pr: Running deterministic PR publish (no agent session)`);
   let tmpDir: string | null = null;
   try {
+    // 0. Sync local artifacts to remote BEFORE notifying reviewers
+    try {
+      execSync(`bash "${commitScript}" all "chore(${slug}): finalize phase artifacts"`, {
+        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+        env: { ...process.env, APP_ROOT: appRoot },
+      });
+      execSync(`bash "${path.join(repoRoot, "tools/autonomous-factory/agent-branch.sh")}" push`, {
+        cwd: repoRoot, stdio: "inherit", timeout: 60_000,
+        env: { ...process.env, BASE_BRANCH: config.baseBranch },
+      });
+      console.log(`     Pushed finalize artifacts (READMEs, dead-code cleanup) to remote.`);
+    } catch {
+      console.log(`     No pending artifacts to push before publish.`);
+    }
+
     // 1. Get existing PR number
     const prNumber = execSync(`gh pr view --json number -q '.number'`, {
       cwd: repoRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30_000,
@@ -1353,8 +1328,8 @@ async function runAgentSession(
     workingDirectory: repoRoot,
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
-    tools: buildCustomTools(repoRoot),
-    hooks: buildSessionHooks(repoRoot, (toolName) => {
+    tools: buildCustomTools(repoRoot, next.key),
+    hooks: buildSessionHooks(repoRoot, next.key, (toolName) => {
       // Bridge denied tool calls into the circuit breaker counters.
       // SDK hooks that deny a tool may not fire tool.execution_start,
       // so we increment manually to prevent infinite denial loops.

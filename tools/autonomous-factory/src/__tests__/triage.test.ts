@@ -81,6 +81,13 @@ describe("parseTriageDiagnostic", () => {
     assert.equal(result?.diagnostic_trace, "SWA deployment stale");
   });
 
+  it("parses valid test-code diagnostic", () => {
+    const msg = makeJsonMsg("test-code", "Playwright timeout on bad locator");
+    const result = parseTriageDiagnostic(msg);
+    assert.equal(result?.fault_domain, "test-code");
+    assert.equal(result?.diagnostic_trace, "Playwright timeout on bad locator");
+  });
+
   it("returns null for invalid fault_domain value", () => {
     const msg = makeJsonMsg("database", "connection refused");
     assert.equal(parseTriageDiagnostic(msg), null);
@@ -162,17 +169,36 @@ describe("triageFailure (structured JSON)", () => {
     assert.deepStrictEqual(keys, []);
   });
 
-  it("infra fault_domain → resets infra-architect + itemKey", () => {
+  it("infra fault_domain → resets full Wave 1 cascade + itemKey", () => {
     const msg = makeJsonMsg("infra", "terraform state lock conflict");
     const keys = triageFailure("poll-infra-plan", msg, NO_NA);
-    assert.deepStrictEqual(keys, ["infra-architect", "poll-infra-plan"]);
+    assert.deepStrictEqual(keys, [
+      "infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr",
+      "await-infra-approval", "infra-handoff", "poll-infra-plan",
+    ]);
   });
 
   it("infra fault_domain filters out N/A items", () => {
     const msg = makeJsonMsg("infra", "terraform error");
     const naItems = new Set(["infra-architect"]);
     const keys = triageFailure("poll-infra-plan", msg, naItems);
-    assert.deepStrictEqual(keys, ["poll-infra-plan"]);
+    // infra-architect is filtered out, rest of Wave 1 cascade remains
+    assert.ok(!keys.includes("infra-architect"));
+    assert.ok(keys.includes("push-infra"));
+    assert.ok(keys.includes("poll-infra-plan"));
+  });
+
+  it("test-code fault_domain → zero cascade, only resets the failing test item", () => {
+    const msg = makeJsonMsg("test-code", "Playwright timeout on data-testid=modal — locator is incorrect");
+    const keys = triageFailure("live-ui", msg, NO_NA);
+    assert.deepStrictEqual(keys, ["live-ui"]);
+  });
+
+  it("test-code fault_domain filters out N/A items", () => {
+    const msg = makeJsonMsg("test-code", "bad locator");
+    const naItems = new Set(["live-ui"]);
+    const keys = triageFailure("live-ui", msg, naItems);
+    assert.deepStrictEqual(keys, []);
   });
 });
 

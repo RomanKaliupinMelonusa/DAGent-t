@@ -11,7 +11,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "../session-runner.js";
+import { SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 

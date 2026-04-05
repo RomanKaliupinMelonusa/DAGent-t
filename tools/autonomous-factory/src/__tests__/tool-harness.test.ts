@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   checkShellCommand,
+  checkRbac,
   buildSessionHooks,
   buildCustomTools,
   FILE_READ_LINE_LIMIT,
@@ -25,9 +26,18 @@ import {
   ERR_RECURSIVE_SEARCH,
   ERR_CODE_READ,
   FILE_TRUNCATION_WARNING,
+  VALIDATOR_ALLOW_RE,
+  MAKER_BLOCK_RE,
+  MAKER_CLOUD_CLI_RE,
+  ERR_VALIDATOR_WRITE,
+  ERR_MAKER_WRITE,
+  ERR_MAKER_CLOUD_CLI,
 } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
+
+/** Neutral itemKey that triggers no RBAC (unconstrained archetype) */
+const NEUTRAL_KEY = "deploy-manager";
 
 // ---------------------------------------------------------------------------
 // Regex constant smoke tests
@@ -214,7 +224,7 @@ describe("checkShellCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPreToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT);
+  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
   const preHook = hooks.onPreToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -269,7 +279,7 @@ describe("buildSessionHooks.onPreToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPostToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT);
+  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
   const postHook = hooks.onPostToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -343,7 +353,7 @@ describe("buildSessionHooks.onPostToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("is registered with correct name", () => {
@@ -457,7 +467,7 @@ describe("file_read tool handler", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("is registered with correct name", () => {
@@ -570,7 +580,7 @@ describe("constants", () => {
 describe("buildSessionHooks onDenial callback", () => {
   it("invokes onDenial when a bash command is denied", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -585,7 +595,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("invokes onDenial for write_bash denials", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -600,7 +610,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("does NOT invoke onDenial for allowed commands", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -613,7 +623,7 @@ describe("buildSessionHooks onDenial callback", () => {
   });
 
   it("works without onDenial callback (backward compat)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -632,7 +642,7 @@ describe("buildSessionHooks onDenial callback", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read line range cap", () => {
-  const tools = buildCustomTools(REPO_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("caps end_line at FILE_READ_LINE_LIMIT lines from start", () => {
@@ -705,7 +715,7 @@ describe("file_read line range cap", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell env_vars type coercion", () => {
-  const tools = buildCustomTools(REPO_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("coerces boolean env_vars to strings without crashing", () => {
@@ -744,7 +754,7 @@ describe("shell env_vars type coercion", () => {
 
 describe("onPostToolUse truncation with line range", () => {
   it("truncates built-in read_file even when startLine/endLine are set", () => {
-    const hooks = buildSessionHooks(REPO_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
     const postHook = hooks.onPostToolUse!;
 
     // Simulate a read_file result with 700 lines
@@ -769,7 +779,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("does not truncate built-in read_file when within limit", () => {
-    const hooks = buildSessionHooks(REPO_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
     const postHook = hooks.onPostToolUse!;
 
     const smallContent = Array.from({ length: 100 }, (_, i) => `line-${i + 1}`).join("\n");
@@ -789,7 +799,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("ignores non-read_file tools", () => {
-    const hooks = buildSessionHooks(REPO_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
     const postHook = hooks.onPostToolUse!;
 
     const result = postHook(
@@ -804,5 +814,154 @@ describe("onPostToolUse truncation with line range", () => {
     );
 
     assert.equal(result, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RBAC — checkRbac unit tests
+// ---------------------------------------------------------------------------
+
+describe("checkRbac", () => {
+  // --- Validator archetype ---
+
+  it("Validator denied write to app source (write_file)", () => {
+    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  });
+
+  it("Validator allowed write to __tests__ dir", () => {
+    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "apps/sample-app/backend/src/__tests__/hello.test.ts" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("Validator allowed write to .test. file outside __tests__ dir", () => {
+    const denial = checkRbac("frontend-unit-test", "edit_file", { filePath: "apps/sample-app/frontend/src/utils.test.tsx" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("Validator allowed write to .spec. file", () => {
+    const denial = checkRbac("live-ui", "write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("Validator denied write to infra dir", () => {
+    const denial = checkRbac("integration-test", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
+    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  });
+
+  it("Validator denied write via absolute path", () => {
+    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "/workspaces/DAGent-t/apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  });
+
+  // --- Maker archetype ---
+
+  it("Maker denied write to infra dir", () => {
+    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker denied write to .github dir", () => {
+    const denial = checkRbac("frontend-dev", "edit_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker denied write to e2e dir", () => {
+    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker denied write to integration test dir", () => {
+    const denial = checkRbac("backend-dev", "edit_file", { filePath: "apps/sample-app/integration/tests/api.test.ts" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker allowed write to app source", () => {
+    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("Maker allowed write to unit test dir (__tests__)", () => {
+    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/backend/src/__tests__/hello.test.ts" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("Maker denied terraform shell command", () => {
+    const denial = checkRbac("backend-dev", "bash", { command: "terraform plan -out=tfplan" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  });
+
+  it("Maker denied az cli shell command", () => {
+    const denial = checkRbac("frontend-dev", "shell", { command: "az login --service-principal" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  });
+
+  it("Maker denied aws cli shell command", () => {
+    const denial = checkRbac("backend-dev", "bash", { command: "aws s3 ls" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  });
+
+  it("Maker denied shell write to infra via echo redirect", () => {
+    const denial = checkRbac("backend-dev", "bash", { command: 'echo "resource" > apps/sample-app/infra/main.tf' }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker denied shell write to .github via sed", () => {
+    const denial = checkRbac("backend-dev", "bash", { command: "sed -i 's/old/new/' .github/workflows/ci.yml" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker allowed normal shell command", () => {
+    const denial = checkRbac("backend-dev", "bash", { command: "npm test" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  // --- Unconstrained archetype ---
+
+  it("deploy-manager allowed write to any path", () => {
+    const denial = checkRbac("deploy-manager", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("docs-expert allowed write to any path", () => {
+    const denial = checkRbac("docs-archived", "write_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("code-cleanup allowed write to app source", () => {
+    const denial = checkRbac("code-cleanup", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("infra-architect allowed terraform command", () => {
+    const denial = checkRbac("infra-architect", "bash", { command: "terraform plan" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  // --- Edge cases ---
+
+  it("returns null when toolArgs has no file path", () => {
+    const denial = checkRbac("backend-unit-test", "write_file", {}, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  it("handles path key as 'path'", () => {
+    const denial = checkRbac("backend-dev", "edit_file", { path: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("handles path key as 'file_path'", () => {
+    const denial = checkRbac("backend-dev", "write_file", { file_path: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Validator denied shell write to non-test path via echo redirect", () => {
+    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "hack" > apps/sample-app/backend/src/index.ts' }, REPO_ROOT);
+    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  });
+
+  it("Validator allowed shell write to test path via echo redirect", () => {
+    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "test" > apps/sample-app/backend/src/__tests__/foo.test.ts' }, REPO_ROOT);
+    assert.equal(denial, null);
   });
 });
