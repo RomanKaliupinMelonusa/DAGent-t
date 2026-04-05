@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:28:30.153Z",
+  "generatedAt": "2026-04-05T04:30:23.941Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -471,14 +471,15 @@
       "phase": "pre-deploy",
       "attempt": 1,
       "startedAt": "2026-04-05T04:27:40.096Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-05T04:28:41.493Z",
+      "durationMs": 61397,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now I have a clear picture. Tests and implementation are already in place. Let me run them.",
         "All 39 unit tests passed (2 integration test suites were correctly skipped). Now let me run schema validation.",
-        "All tests passed: - **Unit tests**: 39 passed (3 suites), 2 integration suites correctly skipped - **Schema validation**: 65 passed (1 suite) — all Zod schemas including TaskStatusSchema, TaskSchema, CreateTaskSchema, UpdateTaskStatusSchema  Now let me mark the pipeline complete and commit."
+        "All tests passed: - **Unit tests**: 39 passed (3 suites), 2 integration suites correctly skipped - **Schema validation**: 65 passed (1 suite) — all Zod schemas including TaskStatusSchema, TaskSchema, CreateTaskSchema, UpdateTaskStatusSchema  Now let me mark the pipeline complete and commit.",
+        "All done. Here's a summary:  ## Backend Unit Test Results ✅  | Suite | Tests | Status | |-------|-------|--------| | `fn-tasks.test.ts` — listTasks | 3 | ✅ All passed | | `fn-tasks.test.ts` — createTask | 7 | ✅ All passed | | `fn-tasks.test.ts` — updateTaskStatus | 7 | ✅ All passed | | `fn-hello.test.ts` | 9 | ✅ All passed | | `fn-demo-login.test.ts` | 11 | ✅ All passed | | **Integration suites** | 15 skipped | ⏭️ Correctly skipped (no live env) |  **Unit tests: 39 passed, 0 failed**  ## Schema Validation Results ✅  | Schema Suite | Tests | Status | |---|---|---| | TaskStatusSchema | 6 | ✅ | | TaskSchema | 14 | ✅ | | CreateTaskSchema | 7 | ✅ | | UpdateTaskStatusSchema | 8 | ✅ | | HelloResponseSchema | 6 | ✅ | | DemoLoginRequest/Response | 13 | ✅ | | ApiErrorCode/Response | 11 | ✅ |  **Schema validation: 65 passed, 0 failed**  ### Key coverage for `fn-tasks.ts`: - **Input validation**: Empty/missing title, title exceeding 200 chars, invalid status values, malformed JSON - **404 handling**: Task not found (both `undefined` resource and Cosmos 404 error code) - **429 limit enforcement**: `MAX_TASKS_PER_WORKSPACE` at limit (500) returns 429, below limit (499) allows creation - **Happy paths**: List tasks, create task with Zod-validated output, all status transitions (TODO/IN_PROGRESS/DONE) - **Error handling**: Cosmos DB failures for query, create, and replace operations"
       ],
       "filesRead": [
         "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
@@ -504,16 +505,155 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced-v2 backend-unit-test 2>&1",
           "timestamp": "2026-04-05T04:28:25.134Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Unit Tests Passed — Backend\" 2>&1",
+          "timestamp": "2026-04-05T04:28:30.154Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 5,
         "file-read": 11,
-        "shell": 3
+        "shell": 4
       },
-      "inputTokens": 206021,
-      "outputTokens": 1735,
-      "cacheReadTokens": 176901,
+      "inputTokens": 243386,
+      "outputTokens": 2242,
+      "cacheReadTokens": 213888,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "ce5d35eafeb4f1f8116c43e96c87f779699900a1"
+    },
+    {
+      "key": "frontend-unit-test",
+      "label": "Unit Tests Passed — Frontend",
+      "agent": "@frontend-ui-test",
+      "phase": "pre-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-05T04:27:40.111Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now let me check the key dependencies needed for writing the TaskBoard tests:",
+        "Now let me check the NavBar and run the existing tests first:",
+        "Good - 14 tests passing in 2 suites. Now I need to write comprehensive unit tests for the TaskBoardPage. Let me check what the second test suite is:",
+        "Now let me check the E2E tests existence and the Playwright config:",
+        "Good, E2E tests exist including `tasks.spec.ts`. Now let me write the unit tests for the TaskBoardPage component:",
+        "Now let's run the tests:",
+        "All 60 tests passing across 3 suites. Let me verify the full test output to see all the TaskBoardPage tests:",
+        "All 60 tests pass (46 new TaskBoard tests + 14 existing). Now let me verify E2E tests compile:"
+      ],
+      "filesRead": [
+        "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
+        "apps/sample-app/frontend/src/app/tasks/page.tsx",
+        "apps/sample-app/frontend/jest.config.mjs",
+        "apps/sample-app/frontend/src/components/__tests__/DemoLoginForm.test.tsx",
+        "apps/sample-app/frontend/src/lib/apiClient.ts",
+        "apps/sample-app/frontend/src/components/NavBar.tsx"
+      ],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && ls src/components/ | head -30",
+          "timestamp": "2026-04-05T04:27:48.252Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls src/components/ | head -30",
+          "timestamp": "2026-04-05T04:27:53.826Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls src/app/tasks/ 2>/dev/null || echo \"No tasks directory\"",
+          "timestamp": "2026-04-05T04:27:53.826Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find src -name \"*.test.*\" -o -name \"*.spec.*\" | head -30",
+          "timestamp": "2026-04-05T04:27:53.826Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls src/components/__tests__/",
+          "timestamp": "2026-04-05T04:27:57.322Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls src/app/tasks/",
+          "timestamp": "2026-04-05T04:27:57.322Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls src/app/__tests__/ 2>/dev/null; ls src/__tests__/ 2>/dev/null; echo \"---\"; ls jest.config.* 2>/dev/null; ls jest.setup.* 2>/dev/null",
+          "timestamp": "2026-04-05T04:28:01.289Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls jest.setup.* 2>/dev/null; cat jest.setup.ts 2>/dev/null || cat jest.setup.js 2>/dev/null || echo \"No jest setup file found\"",
+          "timestamp": "2026-04-05T04:28:07.162Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat ../packages/schemas/src/tasks.ts 2>/dev/null || echo \"No tasks schema\"",
+          "timestamp": "2026-04-05T04:28:11.907Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat src/lib/demoAuthContext.tsx | head -30",
+          "timestamp": "2026-04-05T04:28:15.928Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cat src/components/ui/primitives.tsx | head -60",
+          "timestamp": "2026-04-05T04:28:15.928Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "npx jest --verbose 2>&1 | tail -50",
+          "timestamp": "2026-04-05T04:28:21.019Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "npx jest --verbose 2>&1 | grep -E \"(PASS|FAIL|✓|✗|Test Suites|Tests:)\" | head -20",
+          "timestamp": "2026-04-05T04:28:30.880Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls ../e2e/ 2>/dev/null || echo \"No e2e dir\"; ls ../playwright.config.ts 2>/dev/null || echo \"No playwright config\"",
+          "timestamp": "2026-04-05T04:28:37.540Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "mkdir -p src/app/tasks/__tests__",
+          "timestamp": "2026-04-05T04:28:41.953Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "npx jest --verbose 2>&1 | tail -80",
+          "timestamp": "2026-04-05T04:29:59.845Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "npx jest --verbose 2>&1 | grep -E \"(PASS|FAIL|✓|✗|Test Suites|Tests:)\"",
+          "timestamp": "2026-04-05T04:30:07.488Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "npx playwright test --config /workspaces/DAGent-t/apps/sample-app/playwright.config.ts --list 2>&1 | tail -30",
+          "timestamp": "2026-04-05T04:30:16.751Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 4,
+        "file-read": 6,
+        "shell": 18,
+        "create": 1
+      },
+      "inputTokens": 475019,
+      "outputTokens": 10553,
+      "cacheReadTokens": 439470,
       "cacheWriteTokens": 0
     }
   ]
