@@ -79,13 +79,11 @@ function completionBlock(slug: string, itemKey: string, scope: string): string {
     : `npm run pipeline:fail ${slug} ${itemKey} "<detailed reason>"`;
 
   return `
-## Completion
-
-When your work is done successfully:
-\`\`\`bash
-npm run pipeline:complete ${slug} ${itemKey}
-bash tools/autonomous-factory/agent-commit.sh ${scope} "chore(pipeline): mark ${itemKey}"
-\`\`\`
+### Completion
+When you have finished your task and verified it works:
+1. You MUST execute all \`agent-*.sh\` and \`npm run pipeline:*\` scripts from the **repository root**, not the app directory.
+2. Run \`bash tools/autonomous-factory/agent-commit.sh ${scope} "<message>"\`
+3. Run \`npm run pipeline:complete ${slug} ${itemKey}\`
 
 If you cannot complete the task:
 \`\`\`bash

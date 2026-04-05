@@ -1829,7 +1829,7 @@ function wireToolLogging(
     }
 
     if (name === "bash" || name === "write_bash" || name === "shell") {
-      const cmd = String(args?.command ?? "").split("\n")[0].slice(0, 200);
+      const cmd = String(args?.command ?? "").replace(/\s*\r?\n\s*/g, " ↵ ").slice(0, 200);
       if (cmd) {
         const isPipelineOp = /pipeline:(complete|fail|set-note|set-url)|agent-commit\.sh/.test(cmd);
         itemSummary.shellCommands.push({
