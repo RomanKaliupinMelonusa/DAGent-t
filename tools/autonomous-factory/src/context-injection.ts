@@ -6,6 +6,7 @@
  * These are pure string builders with no session or SDK coupling.
  */
 
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary } from "./types.js";
@@ -183,6 +184,27 @@ export async function writeChangeManifest(
     const currentState = await readState(slug);
     stateItems = currentState.items;
   } catch { /* best effort — manifest still useful without docNotes */ }
+  let allFilesChanged: string[] = [];
+  try {
+    const baseBranch = process.env.BASE_BRANCH || "main";
+    if (!/^[\w.\-/]+$/.test(baseBranch)) {
+      throw new Error(`Invalid BASE_BRANCH value: ${baseBranch}`);
+    }
+    const mergeBase = execSync(`git merge-base origin/${baseBranch} HEAD`, {
+      cwd: repoRoot, encoding: "utf-8",
+    }).trim();
+
+    const diff = execSync(`git diff --name-only ${mergeBase}..HEAD`, {
+      cwd: repoRoot, encoding: "utf-8",
+    }).trim();
+
+    if (diff) {
+      allFilesChanged = diff.split("\n").filter(f => !f.includes("in-progress/"));
+    }
+  } catch {
+    console.warn("  ⚠ Could not compute full git diff for _CHANGES.json. Falling back to session memory.");
+    allFilesChanged = [...new Set(pipelineSummaries.flatMap((s) => s.filesChanged))];
+  }
   const manifest = {
     feature: slug,
     stepsCompleted: pipelineSummaries
@@ -196,7 +218,7 @@ export async function writeChangeManifest(
           docNote: stateItem?.docNote ?? null,
         };
       }),
-    allFilesChanged: [...new Set(pipelineSummaries.flatMap((s) => s.filesChanged))],
+    allFilesChanged,
     summaryIntents: pipelineSummaries
       .filter((s) => s.outcome === "completed")
       .flatMap((s) => s.intents),
