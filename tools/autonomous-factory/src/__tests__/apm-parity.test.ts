@@ -77,7 +77,7 @@ describe("APM Compiler Output", () => {
     assert.ok(result.success, `Schema validation failed: ${JSON.stringify(result.error?.issues)}`);
   });
 
-  it("compiled output has all 16 agent keys", () => {
+  it("compiled output has all 19 agent keys", () => {
     for (const key of ALL_AGENT_KEYS) {
       assert.ok(
         compiled.agents[key],

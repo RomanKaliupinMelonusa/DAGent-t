@@ -1322,14 +1322,53 @@ async function runAgentSession(
   // Wrapped in an object so both closures reference the same mutable value.
   const hardLimitRef = { fired: false };
 
+  // --- Zero-Trust tool allow-list extraction ---
+  const agentToolsCfg = apmContext.agents[next.key]?.tools;
+  const allowedCoreTools = new Set<string>(agentToolsCfg?.core ?? []);
+  const allowedMcpTools = new Set<string>();
+  const mcpToolConfig = agentToolsCfg?.mcp ?? {};
+  for (const tools of Object.values(mcpToolConfig)) {
+    if (tools === "*") allowedMcpTools.add("*");
+    else if (Array.isArray(tools)) tools.forEach((t: unknown) => allowedMcpTools.add(String(t)));
+  }
+
+  // --- Config-driven path sandbox & command blocking ---
+  // Migration guard: absent security block = no enforcement (matches Zero-Trust pattern).
+  // When security IS defined with allowedWritePaths: [], that means explicitly read-only.
+  const securityCfg = apmContext.agents[next.key]?.security;
+  const hasSecurityProfile = securityCfg !== undefined && securityCfg !== null;
+  const allowedWritePaths = hasSecurityProfile
+    ? (securityCfg.allowedWritePaths ?? []).map((p: string) => new RegExp(p))
+    : [/^.*/];  // No security profile = allow all writes (migration mode)
+  const blockedCommandRegexes = hasSecurityProfile
+    ? (securityCfg.blockedCommandRegexes ?? []).map((p: string) => new RegExp(p))
+    : [];  // No blocked commands in migration mode
+  if (!hasSecurityProfile) {
+    console.log(`  ⚠ Agent '${next.key}' has no security profile — RBAC enforcement skipped (migration mode)`);
+  }
+
+  // Build safeMcpPrefixes from resolved MCP configs (fsMutator: false = safe prefix)
+  const safeMcpPrefixes = new Set<string>();
+  const agentMcp = apmContext.agents[next.key]?.mcp ?? {};
+  for (const [serverName, mcpCfg] of Object.entries(agentMcp)) {
+    if ((mcpCfg as any).fsMutator === false) safeMcpPrefixes.add(serverName + "-");
+  }
+
+  // Filter custom tools to the agent's allow-list (empty sets = migration fallback: allow all)
+  const allCustomTools = buildCustomTools(repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot);
+  const agentHasToolConfig = allowedCoreTools.size > 0 || allowedMcpTools.size > 0;
+  const filteredTools = agentHasToolConfig
+    ? allCustomTools.filter((t) => allowedCoreTools.has(t.name))
+    : allCustomTools;
+
   // Create SDK session
   const session = await client.createSession({
     model: agentConfig.model,
     workingDirectory: repoRoot,
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
-    tools: buildCustomTools(repoRoot, next.key),
-    hooks: buildSessionHooks(repoRoot, next.key, (toolName) => {
+    tools: filteredTools,
+    hooks: buildSessionHooks(repoRoot, allowedCoreTools, allowedMcpTools, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot, (toolName) => {
       // Bridge denied tool calls into the circuit breaker counters.
       // SDK hooks that deny a tool may not fire tool.execution_start,
       // so we increment manually to prevent infinite denial loops.

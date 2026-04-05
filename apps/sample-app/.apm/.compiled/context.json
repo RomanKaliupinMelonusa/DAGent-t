@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-05T03:12:20.884Z",
+  "compiledAt": "2026-04-05T20:06:35.354Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -16,7 +16,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -25,6 +26,34 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^packages/schemas/",
+          "^backend/src/.*[Ss]chema"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "infra-architect": {
@@ -40,13 +69,39 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 70,
         "hard": 100
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^infra/",
+          "^\\.github/workflows/"
+        ]
       }
     },
     "infra-handoff": {
@@ -62,13 +117,38 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^infra/",
+          "^\\.github/"
+        ]
       }
     },
     "push-infra": {
@@ -79,6 +159,24 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "poll-infra-plan": {
@@ -89,6 +187,22 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "create-draft-pr": {
@@ -99,6 +213,24 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "await-infra-approval": {
@@ -109,6 +241,22 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "backend-dev": {
@@ -124,7 +272,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -133,6 +282,34 @@
       "toolLimits": {
         "soft": 80,
         "hard": 110
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^backend/",
+          "^packages/schemas/"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "frontend-dev": {
@@ -148,7 +325,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -158,6 +336,34 @@
       "toolLimits": {
         "soft": 80,
         "hard": 110
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^frontend/",
+          "^packages/schemas/"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "backend-unit-test": {
@@ -173,7 +379,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -182,6 +389,35 @@
       "toolLimits": {
         "soft": 60,
         "hard": 90
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)__tests__/",
+          "\\.test\\.",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "frontend-unit-test": {
@@ -197,7 +433,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -206,6 +443,35 @@
       "toolLimits": {
         "soft": 60,
         "hard": 90
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)__tests__/",
+          "\\.test\\.",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "push-app": {
@@ -216,6 +482,24 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "poll-app-ci": {
@@ -226,6 +510,22 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "integration-test": {
@@ -238,6 +538,32 @@
       "toolLimits": {
         "soft": 70,
         "hard": 120
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ]
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)e2e/",
+          "(^|/)__tests__/",
+          "\\.test\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "live-ui": {
@@ -253,7 +579,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         },
         "playwright": {
           "type": "local",
@@ -273,13 +600,43 @@
             "*"
           ],
           "cwd": "{appRoot}",
-          "availability": "required"
+          "availability": "required",
+          "fsMutator": false
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 100,
         "hard": 130
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*",
+          "playwright": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)e2e/",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)($|\\s)"
+        ]
       }
     },
     "code-cleanup": {
@@ -295,13 +652,38 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "doc-architect": {
@@ -317,7 +699,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         },
         "mermaid": {
           "type": "remote",
@@ -325,13 +708,39 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": false
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 40,
         "hard": 55
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*",
+          "mermaid": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "docs-archived": {
@@ -347,13 +756,38 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "publish-pr": {
@@ -369,13 +803,35 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     }
   },
