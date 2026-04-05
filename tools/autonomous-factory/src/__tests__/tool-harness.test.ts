@@ -32,6 +32,8 @@ import {
   ERR_VALIDATOR_WRITE,
   ERR_MAKER_WRITE,
   ERR_MAKER_CLOUD_CLI,
+  CD_CMD_RE,
+  ERR_CD_CMD,
 } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
@@ -91,6 +93,17 @@ describe("bouncer regex constants", () => {
     assert.ok(!CODE_FILE_RE.test("README.md"));
     assert.ok(!CODE_FILE_RE.test("data.json"));
   });
+
+  it("CD_CMD_RE matches cd/pushd anywhere in command", () => {
+    assert.ok(CD_CMD_RE.test("cd /tmp"));
+    assert.ok(CD_CMD_RE.test("cd backend && npm test"));
+    assert.ok(CD_CMD_RE.test("echo hello; cd infra"));
+    assert.ok(CD_CMD_RE.test("echo ok && cd infra && terraform plan"));
+    assert.ok(CD_CMD_RE.test("pushd /tmp && npm build"));
+    assert.ok(!CD_CMD_RE.test("npm test"));
+    assert.ok(!CD_CMD_RE.test("echo cd is not a command"));
+    assert.ok(!CD_CMD_RE.test("ls -la"));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -100,8 +113,8 @@ describe("bouncer regex constants", () => {
 describe("checkShellCommand", () => {
   // --- Denied cases ---
 
-  it("denies standalone cd", () => {
-    assert.equal(checkShellCommand("cd /tmp"), ERR_STATELESS_CMD);
+  it("denies standalone cd (caught by CD_CMD_RE before STATELESS_CMD_RE)", () => {
+    assert.equal(checkShellCommand("cd /tmp"), ERR_CD_CMD);
   });
 
   it("denies standalone source", () => {
@@ -116,20 +129,28 @@ describe("checkShellCommand", () => {
     assert.equal(checkShellCommand("alias ll='ls -la'"), ERR_STATELESS_CMD);
   });
 
-  it("allows cd in compound command (&&)", () => {
-    assert.equal(checkShellCommand("cd /tmp && ls"), null);
+  it("denies cd in compound command (&&)", () => {
+    assert.equal(checkShellCommand("cd /tmp && ls"), ERR_CD_CMD);
   });
 
-  it("allows cd with semicolon chaining", () => {
-    assert.equal(checkShellCommand("cd backend; npm test"), null);
+  it("denies cd with semicolon chaining", () => {
+    assert.equal(checkShellCommand("cd backend; npm test"), ERR_CD_CMD);
   });
 
-  it("allows cd with OR operator", () => {
-    assert.equal(checkShellCommand("cd backend || exit 1"), null);
+  it("denies cd with OR operator", () => {
+    assert.equal(checkShellCommand("cd backend || exit 1"), ERR_CD_CMD);
   });
 
-  it("allows cd in multiline script", () => {
-    assert.equal(checkShellCommand("cd backend\nnpm test"), null);
+  it("denies cd in multiline script", () => {
+    assert.equal(checkShellCommand("cd backend\nnpm test"), ERR_CD_CMD);
+  });
+
+  it("denies pushd in compound command", () => {
+    assert.equal(checkShellCommand("pushd /tmp && npm build"), ERR_CD_CMD);
+  });
+
+  it("denies chained cd after semicolon", () => {
+    assert.equal(checkShellCommand("echo hello; cd infra && terraform plan"), ERR_CD_CMD);
   });
 
   it("denies grep -r", () => {
@@ -215,7 +236,7 @@ describe("checkShellCommand", () => {
   });
 
   it("trims leading whitespace", () => {
-    assert.equal(checkShellCommand("  cd /tmp"), ERR_STATELESS_CMD);
+    assert.equal(checkShellCommand("  cd /tmp"), ERR_CD_CMD);
   });
 });
 
@@ -235,7 +256,7 @@ describe("buildSessionHooks.onPreToolUse", () => {
     );
     assert.ok(result);
     assert.equal((result as any).permissionDecision, "deny");
-    assert.ok((result as any).additionalContext?.includes("stateless"));
+    assert.ok((result as any).additionalContext?.includes("cd"));
   });
 
   it("denies bash with cat on code file", () => {
@@ -502,12 +523,12 @@ describe("shell tool handler", () => {
     assert.ok((result as string).includes("harness-test-value"));
   });
 
-  it("rejects banned stateless command", () => {
+  it("rejects banned cd command", () => {
     const result = shellTool.handler(
       { command: "cd /tmp" },
       { sessionId: "test", toolCallId: "tc7", toolName: "shell", arguments: {} },
     );
-    assert.equal(result, ERR_STATELESS_CMD);
+    assert.equal(result, ERR_CD_CMD);
   });
 
   it("rejects recursive grep", () => {
@@ -962,6 +983,50 @@ describe("checkRbac", () => {
 
   it("Validator allowed shell write to test path via echo redirect", () => {
     const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "test" > apps/sample-app/backend/src/__tests__/foo.test.ts' }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+
+  // --- CWD bypass tests ---
+
+  it("Maker denied shell write to infra via cwd arg bypass", () => {
+    // Relative path 'main.tf' + cwd 'apps/sample-app/infra' => infra/main.tf
+    const denial = checkRbac("backend-dev", "shell", { command: 'echo "hack" > main.tf', cwd: "apps/sample-app/infra" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Validator denied shell write to non-test path via cwd arg bypass", () => {
+    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "hack" > hello.ts', cwd: "apps/sample-app/backend/src/functions" }, REPO_ROOT);
+    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  });
+
+  it("Maker denied shell write to .github via cwd arg", () => {
+    const denial = checkRbac("backend-dev", "shell", { command: 'echo "hack" > ci.yml', cwd: ".github/workflows" }, REPO_ROOT);
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("hookCwd is used when no cwd in args", () => {
+    const denial = checkRbac(
+      "backend-dev", "bash",
+      { command: 'echo "hack" > main.tf' },
+      REPO_ROOT,
+      path.join(REPO_ROOT, "apps/sample-app/infra"),
+    );
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("args.cwd takes priority over hookCwd", () => {
+    // args.cwd points to infra (blocked), hookCwd points to src (allowed)
+    const denial = checkRbac(
+      "backend-dev", "bash",
+      { command: 'echo "hack" > main.tf', cwd: "apps/sample-app/infra" },
+      REPO_ROOT,
+      path.join(REPO_ROOT, "apps/sample-app/backend/src"),
+    );
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("Maker allowed write via cwd to non-protected path", () => {
+    const denial = checkRbac("backend-dev", "shell", { command: 'echo "ok" > utils.ts', cwd: "apps/sample-app/backend/src" }, REPO_ROOT);
     assert.equal(denial, null);
   });
 });

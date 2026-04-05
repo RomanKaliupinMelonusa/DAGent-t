@@ -11,6 +11,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
@@ -188,5 +189,38 @@ describe("extractShellWrittenFiles", () => {
       REPO_ROOT,
     );
     assert.deepStrictEqual(files, ["apps/sample-app/output.json"]);
+  });
+
+  // --- execCwd parameter tests ---
+
+  it("resolves relative write path against execCwd (not repoRoot)", () => {
+    const execCwd = path.join(REPO_ROOT, "apps/sample-app/infra");
+    const files = extractShellWrittenFiles('echo "hack" > main.tf', REPO_ROOT, execCwd);
+    assert.deepStrictEqual(files, ["apps/sample-app/infra/main.tf"]);
+  });
+
+  it("resolves relative write path against repoRoot when execCwd is not specified", () => {
+    const files = extractShellWrittenFiles('echo "data" > main.tf', REPO_ROOT);
+    assert.deepStrictEqual(files, ["main.tf"]);
+  });
+
+  it("absolute write paths ignore execCwd", () => {
+    const execCwd = path.join(REPO_ROOT, "apps/sample-app/infra");
+    const files = extractShellWrittenFiles(
+      `echo "data" > ${REPO_ROOT}/apps/sample-app/backend/src/index.ts`,
+      REPO_ROOT,
+      execCwd,
+    );
+    assert.deepStrictEqual(files, ["apps/sample-app/backend/src/index.ts"]);
+  });
+
+  it("resolves sed -i relative path against execCwd", () => {
+    const execCwd = path.join(REPO_ROOT, ".github/workflows");
+    const files = extractShellWrittenFiles(
+      "sed -i 's/old/new/' ci.yml",
+      REPO_ROOT,
+      execCwd,
+    );
+    assert.deepStrictEqual(files, [".github/workflows/ci.yml"]);
   });
 });

@@ -72,6 +72,14 @@ const SHELL_TIMEOUT_MS = 120_000;
 /** Matches standalone stateless commands that do nothing in a one-shot exec. */
 export const STATELESS_CMD_RE = /^(cd|source|export|alias)\s/;
 
+/** Matches cd/pushd anywhere in the command (standalone or chained).
+ *  Forces agents to use the trackable `cwd` parameter instead. */
+export const CD_CMD_RE = /(^|[;|&]\s*)(cd|pushd)\s/;
+
+export const ERR_CD_CMD =
+  "ERROR: Do not use `cd` or `pushd` in shell commands. " +
+  "You MUST use the `cwd` parameter of the shell tool to set the working directory.";
+
 /** Matches unbounded recursive text searches (grep -r, find, ag, rg). */
 export const RECURSIVE_SEARCH_RE = /(grep\s+.*-[a-zA-Z]*[rR]|find\s+(?:\.|src|apps|packages|lib|bin)|ag\s+|rg\s+)/;
 
@@ -127,16 +135,18 @@ export const SHELL_WRITE_PATTERNS: readonly RegExp[] = [
 /**
  * Extract file paths written by a shell command.
  * Matches against SHELL_WRITE_PATTERNS and returns workspace-relative paths.
+ * @param execCwd - The actual working directory the command executes in.
+ *   Relative paths in the command are resolved against this, not repoRoot.
  * Exported for unit testing.
  */
-export function extractShellWrittenFiles(cmd: string, repoRoot: string): string[] {
+export function extractShellWrittenFiles(cmd: string, repoRoot: string, execCwd: string = repoRoot): string[] {
   const files: string[] = [];
   for (const re of SHELL_WRITE_PATTERNS) {
     const m = cmd.match(re);
     if (m?.[1]) {
       const raw = m[1].replace(/["']/g, "");
-      // Resolve relative to repo root and normalize
-      const abs = path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
+      // Resolve against the actual execution directory, NOT just repoRoot
+      const abs = path.isAbsolute(raw) ? raw : path.resolve(execCwd, raw);
       const rel = path.relative(repoRoot, abs);
       // Exclude paths outside the repo or pipeline state files
       if (!rel.startsWith("..") && !rel.includes("_STATE.json") && !rel.includes("_TRANS.md")) {
@@ -206,12 +216,15 @@ function extractFilePath(toolArgs: unknown): string | null {
 /**
  * Run RBAC checks for a tool invocation. Returns a denial message string
  * if the action is blocked, or `null` if allowed.
+ * @param hookCwd - The SDK session's working directory (from onPreToolUse input.cwd).
+ *   Used to resolve relative shell write paths against the actual execution context.
  */
 export function checkRbac(
   itemKey: string,
   toolName: string,
   toolArgs: unknown,
   repoRoot: string,
+  hookCwd?: string,
 ): string | null {
   const archetype = getAgentArchetype(itemKey);
   if (!archetype) return null; // Unconstrained agent
@@ -236,14 +249,20 @@ export function checkRbac(
 
   // --- Shell RBAC ---
   if (isShellTool) {
-    const args = toolArgs as { command?: string } | undefined;
+    const args = toolArgs as { command?: string; cwd?: string } | undefined;
     const cmd = String(args?.command ?? "");
+
+    // Determine the exact directory this command will execute in.
+    // Priority: tool arg `cwd` > SDK hook `input.cwd` > repoRoot.
+    const effectiveCwd = args?.cwd
+      ? path.resolve(repoRoot, args.cwd)
+      : (hookCwd || repoRoot);
 
     if (archetype === "maker") {
       // Block cloud CLI commands
       if (MAKER_CLOUD_CLI_RE.test(cmd)) return ERR_MAKER_CLOUD_CLI;
       // Block shell-based file writes to protected paths
-      const shellFiles = extractShellWrittenFiles(cmd, repoRoot);
+      const shellFiles = extractShellWrittenFiles(cmd, repoRoot, effectiveCwd);
       for (const sf of shellFiles) {
         if (MAKER_BLOCK_RE.test(sf)) return ERR_MAKER_WRITE;
       }
@@ -251,7 +270,7 @@ export function checkRbac(
 
     if (archetype === "validator") {
       // Block shell-based file writes to non-test paths
-      const shellFiles = extractShellWrittenFiles(cmd, repoRoot);
+      const shellFiles = extractShellWrittenFiles(cmd, repoRoot, effectiveCwd);
       for (const sf of shellFiles) {
         if (!VALIDATOR_ALLOW_RE.test(sf)) return ERR_VALIDATOR_WRITE;
       }
@@ -271,6 +290,11 @@ export function checkRbac(
  */
 export function checkShellCommand(cmd: string): string | null {
   const trimmed = cmd.trim();
+
+  // Ban 0: cd/pushd anywhere in command — forces use of trackable `cwd` param
+  if (CD_CMD_RE.test(trimmed)) {
+    return ERR_CD_CMD;
+  }
 
   // Ban 1: Stateless commands (unless part of a compound/chained command)
   if (STATELESS_CMD_RE.test(trimmed) && !SHELL_CHAIN_RE.test(trimmed)) {
@@ -308,7 +332,7 @@ export function buildSessionHooks(
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
   ): PreToolUseHookOutput | void => {
     // --- RBAC interceptor (runs before shell bouncers) ---
-    const rbacDenial = checkRbac(itemKey, input.toolName, input.toolArgs, repoRoot);
+    const rbacDenial = checkRbac(itemKey, input.toolName, input.toolArgs, repoRoot, input.cwd);
     if (rbacDenial) {
       onDenial?.(input.toolName);
       return {
@@ -479,7 +503,7 @@ export function buildCustomTools(repoRoot: string, itemKey: string): Tool<any>[]
       required: ["command"],
     },
     handler: (args: { command: string; cwd?: string; env_vars?: Record<string, string> }) => {
-      // Run RBAC checks first
+      // Run RBAC checks first (no hookCwd — custom tool resolves cwd from args internally)
       const rbacDenial = checkRbac(itemKey, "shell", args, repoRoot);
       if (rbacDenial) return rbacDenial;
 

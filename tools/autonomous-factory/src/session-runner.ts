@@ -1800,7 +1800,8 @@ function wireToolLogging(
         });
 
         // Detect shell-based file writes (replaces the removed git diff augmentation)
-        const shellFiles = extractShellWrittenFiles(cmd, repoRoot);
+        const shellCwd = args?.cwd ? path.resolve(repoRoot, String(args.cwd)) : repoRoot;
+        const shellFiles = extractShellWrittenFiles(cmd, repoRoot, shellCwd);
         for (const sf of shellFiles) {
           if (!itemSummary.filesChanged.includes(sf)) {
             itemSummary.filesChanged.push(sf);
