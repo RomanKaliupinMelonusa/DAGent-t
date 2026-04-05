@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:30:46.541Z",
+  "generatedAt": "2026-04-05T04:36:07.445Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -697,6 +697,152 @@
       "inputTokens": 0,
       "outputTokens": 0,
       "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "App CI Workflows Passed",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-05T04:30:47.847Z",
+      "finishedAt": "2026-04-05T04:33:05.779Z",
+      "durationMs": 137932,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    {
+      "key": "integration-test",
+      "label": "Integration Tests Passed",
+      "agent": "@backend-test",
+      "phase": "post-deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-05T04:33:06.935Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Good. The integration test file exists with comprehensive coverage. Now let me authenticate and retrieve the function key.",
+        "Got the function key. Let me verify the backend is reachable before running the full suite.",
+        "Backend is reachable. Now let me run the full integration test suite.",
+        "All 15 integration tests passed (exit code 0). Now let me do the APIM gateway validation.",
+        "The APIM path prefix is `/sample`. The task endpoints work through APIM. Now let me validate all three task endpoints through APIM plus the PATCH endpoint:",
+        "All APIM gateway validations pass: - ✅ GET /sample/tasks → 200 - ✅ POST /sample/tasks → 201 - ✅ PATCH /sample/tasks/{id}/status → 200 - ✅ CORS preflight → 200 with correct headers - ✅ Unauthenticated request → 401  Both direct Function App integration tests (15/15 passed) and APIM-through validation are successful. Let me mark the pipeline complete."
+      ],
+      "filesRead": [
+        "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
+        "apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/smoke.integration.test.ts",
+        "apps/sample-app/infra/api-specs/api-sample.openapi.yaml"
+      ],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:status kanban-task-board-enhanced-v2 2>&1",
+          "timestamp": "2026-04-05T04:33:15.695Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && az account show --query '{subscription:name,user:user.name}' -o json 2>&1 | head -20",
+          "timestamp": "2026-04-05T04:33:31.740Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "FUNC_APP_NAME=\"func-sample-app-001\"",
+          "timestamp": "2026-04-05T04:33:38.037Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "BACKEND_URL=\"https://func-sample-app-001.azurewebsites.net\"",
+          "timestamp": "2026-04-05T04:33:49.007Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-05T04:33:56.690Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && cat package.json | grep -A5 '\"test:integration\"' 2>&1; echo \"---\"; ls *.config.* jest.* 2>/dev/null",
+          "timestamp": "2026-04-05T04:34:02.017Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && \\",
+          "timestamp": "2026-04-05T04:34:07.136Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Get demo token",
+          "timestamp": "2026-04-05T04:34:25.692Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check OpenAPI spec paths",
+          "timestamp": "2026-04-05T04:34:43.492Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "APIM_URL=\"https://apim-sample-app-001.azure-api.net\"",
+          "timestamp": "2026-04-05T04:34:51.008Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "# Check APIM terraform config",
+          "timestamp": "2026-04-05T04:35:04.298Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && grep -B2 -A30 'azurerm_api_management_api.*sample' infra/apim.tf",
+          "timestamp": "2026-04-05T04:35:10.884Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "DEMO_TOKEN=\"16fc3942-557c-ae3d-8f87-d761619d3509\"",
+          "timestamp": "2026-04-05T04:35:23.375Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "DEMO_TOKEN=\"16fc3942-557c-ae3d-8f87-d761619d3509\"",
+          "timestamp": "2026-04-05T04:35:40.051Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced-v2 integration-test 2>&1",
+          "timestamp": "2026-04-05T04:35:51.593Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark integration-test complete for kanban-task-board-enhanced-v2\" 2>&1",
+          "timestamp": "2026-04-05T04:35:56.736Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "ls /workspaces/DAGent-t/tools/autonomous-factory/agent-commit.sh 2>/dev/null; ls /workspaces/DAGent-t/apps/sample-app/tools/autonomous-factory/agent-commit.sh 2>/dev/null; find /workspaces/DAGent-t -n",
+          "timestamp": "2026-04-05T04:36:01.828Z",
+          "isPipelineOp": true
+        }
+      ],
+      "toolCounts": {
+        "intent": 6,
+        "file-read": 4,
+        "shell": 17
+      },
+      "inputTokens": 592365,
+      "outputTokens": 7332,
+      "cacheReadTokens": 553916,
       "cacheWriteTokens": 0
     }
   ]
