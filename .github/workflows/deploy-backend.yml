@@ -107,6 +107,13 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Set application settings
+        run: |
+          az functionapp config appsettings set \
+            --name ${{ vars.AZURE_FUNCTION_APP_NAME }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP || 'rg-sample-app-dev' }} \
+            --settings MAX_TASKS_PER_WORKSPACE=500
+
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         with:
