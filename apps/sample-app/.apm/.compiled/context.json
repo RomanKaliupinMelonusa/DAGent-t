@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-05T19:45:08.406Z",
+  "compiledAt": "2026-04-05T20:06:35.354Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -27,13 +27,32 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^packages/schemas/",
           "^backend/src/.*[Ss]chema"
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -58,6 +77,25 @@
       "toolLimits": {
         "soft": 70,
         "hard": 100
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
       },
       "security": {
         "allowedWritePaths": [
@@ -88,6 +126,24 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^infra/",
@@ -104,6 +160,19 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
       "security": {
         "allowedWritePaths": [
           "^.*"
@@ -119,6 +188,19 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
       "security": {
         "allowedWritePaths": []
       }
@@ -131,6 +213,19 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
       },
       "security": {
         "allowedWritePaths": [
@@ -146,6 +241,19 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
       },
       "security": {
         "allowedWritePaths": []
@@ -175,13 +283,32 @@
         "soft": 80,
         "hard": 110
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^backend/",
           "^packages/schemas/"
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -210,13 +337,32 @@
         "soft": 80,
         "hard": 110
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^frontend/",
           "^packages/schemas/"
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -244,6 +390,25 @@
         "soft": 60,
         "hard": 90
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "(^|/)__tests__/",
@@ -251,7 +416,7 @@
           "\\.spec\\."
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -279,6 +444,25 @@
         "soft": 60,
         "hard": 90
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "(^|/)__tests__/",
@@ -286,7 +470,7 @@
           "\\.spec\\."
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -298,6 +482,19 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
       },
       "security": {
         "allowedWritePaths": [
@@ -314,6 +511,19 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ]
+      },
       "security": {
         "allowedWritePaths": []
       }
@@ -329,6 +539,22 @@
         "soft": 70,
         "hard": 120
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ]
+      },
       "security": {
         "allowedWritePaths": [
           "(^|/)e2e/",
@@ -336,7 +562,7 @@
           "\\.test\\."
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -383,13 +609,33 @@
         "soft": 100,
         "hard": 130
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*",
+          "playwright": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "(^|/)e2e/",
           "\\.spec\\."
         ],
         "blockedCommandRegexes": [
-          "(^|\\s)(az|aws|terraform)\\s"
+          "(^|\\s)(az|aws|terraform)($|\\s)"
         ]
       }
     },
@@ -414,6 +660,25 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
       },
       "security": {
         "allowedWritePaths": [
@@ -452,6 +717,26 @@
         "soft": 40,
         "hard": 55
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*",
+          "mermaid": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^.*"
@@ -480,6 +765,25 @@
         "soft": 60,
         "hard": 80
       },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "write_file",
+          "edit_file",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent",
+          "semantic_search"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
+      },
       "security": {
         "allowedWritePaths": [
           "^.*"
@@ -507,6 +811,22 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "tools": {
+        "core": [
+          "read_file",
+          "file_read",
+          "view",
+          "bash",
+          "write_bash",
+          "shell",
+          "grep_search",
+          "list_dir",
+          "report_intent"
+        ],
+        "mcp": {
+          "roam-code": "*"
+        }
       },
       "security": {
         "allowedWritePaths": [

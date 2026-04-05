@@ -176,8 +176,8 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string, execCwd:
       // Resolve against the actual execution directory, NOT just repoRoot
       const abs = path.isAbsolute(raw) ? raw : path.resolve(execCwd, raw);
       const rel = path.relative(repoRoot, abs);
-      // Exclude paths outside the repo or pipeline state files
-      if (!rel.startsWith("..") && !rel.includes("_STATE.json") && !rel.includes("_TRANS.md")) {
+      // Only exclude paths outside the repository. The allow-list handles everything else.
+      if (!rel.startsWith("..")) {
         files.push(rel);
       }
     }

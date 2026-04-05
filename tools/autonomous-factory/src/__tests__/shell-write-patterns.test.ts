@@ -162,20 +162,20 @@ describe("extractShellWrittenFiles", () => {
 
   // --- Edge cases ---
 
-  it("excludes _STATE.json from results", () => {
+  it("includes _STATE.json in extraction (allow-list handles enforcement)", () => {
     const files = extractShellWrittenFiles(
       "echo '{}' > apps/sample-app/in-progress/slug_STATE.json",
       REPO_ROOT,
     );
-    assert.deepStrictEqual(files, []);
+    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug_STATE.json"]);
   });
 
-  it("excludes _TRANS.md from results", () => {
+  it("includes _TRANS.md in extraction (allow-list handles enforcement)", () => {
     const files = extractShellWrittenFiles(
       "echo 'log' >> apps/sample-app/in-progress/slug_TRANS.md",
       REPO_ROOT,
     );
-    assert.deepStrictEqual(files, []);
+    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug_TRANS.md"]);
   });
 
   it("handles empty command", () => {
