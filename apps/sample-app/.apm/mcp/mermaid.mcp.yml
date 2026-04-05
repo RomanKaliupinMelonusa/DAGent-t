@@ -4,3 +4,4 @@ type: remote
 url: "https://mcp.mermaid.ai/mcp"
 tools: ["*"]
 availability: optional
+fsMutator: false

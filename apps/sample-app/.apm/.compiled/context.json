@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-05T19:00:48.824Z",
+  "compiledAt": "2026-04-05T19:45:08.406Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -16,7 +16,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -25,6 +26,15 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^packages/schemas/",
+          "^backend/src/.*[Ss]chema"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "infra-architect": {
@@ -40,13 +50,20 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 70,
         "hard": 100
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^infra/",
+          "^\\.github/workflows/"
+        ]
       }
     },
     "infra-handoff": {
@@ -62,13 +79,20 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^infra/",
+          "^\\.github/"
+        ]
       }
     },
     "push-infra": {
@@ -79,6 +103,11 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "poll-infra-plan": {
@@ -89,6 +118,9 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "create-draft-pr": {
@@ -99,6 +131,11 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "await-infra-approval": {
@@ -109,6 +146,9 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "backend-dev": {
@@ -124,7 +164,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -133,6 +174,15 @@
       "toolLimits": {
         "soft": 80,
         "hard": 110
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^backend/",
+          "^packages/schemas/"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "frontend-dev": {
@@ -148,7 +198,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -158,6 +209,15 @@
       "toolLimits": {
         "soft": 80,
         "hard": 110
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^frontend/",
+          "^packages/schemas/"
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "backend-unit-test": {
@@ -173,7 +233,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -182,6 +243,16 @@
       "toolLimits": {
         "soft": 60,
         "hard": 90
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)__tests__/",
+          "\\.test\\.",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "frontend-unit-test": {
@@ -197,7 +268,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {
@@ -206,6 +278,16 @@
       "toolLimits": {
         "soft": 60,
         "hard": 90
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)__tests__/",
+          "\\.test\\.",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "push-app": {
@@ -216,6 +298,11 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "poll-app-ci": {
@@ -226,6 +313,9 @@
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": []
       }
     },
     "integration-test": {
@@ -238,6 +328,16 @@
       "toolLimits": {
         "soft": 70,
         "hard": 120
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)e2e/",
+          "(^|/)__tests__/",
+          "\\.test\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "live-ui": {
@@ -253,7 +353,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         },
         "playwright": {
           "type": "local",
@@ -273,13 +374,23 @@
             "*"
           ],
           "cwd": "{appRoot}",
-          "availability": "required"
+          "availability": "required",
+          "fsMutator": false
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 100,
         "hard": 130
+      },
+      "security": {
+        "allowedWritePaths": [
+          "(^|/)e2e/",
+          "\\.spec\\."
+        ],
+        "blockedCommandRegexes": [
+          "(^|\\s)(az|aws|terraform)\\s"
+        ]
       }
     },
     "code-cleanup": {
@@ -295,13 +406,19 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "doc-architect": {
@@ -317,7 +434,8 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         },
         "mermaid": {
           "type": "remote",
@@ -325,13 +443,19 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": false
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 40,
         "hard": 55
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "docs-archived": {
@@ -347,13 +471,19 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     },
     "publish-pr": {
@@ -369,13 +499,19 @@
           "tools": [
             "*"
           ],
-          "availability": "optional"
+          "availability": "optional",
+          "fsMutator": true
         }
       },
       "skills": {},
       "toolLimits": {
         "soft": 60,
         "hard": 80
+      },
+      "security": {
+        "allowedWritePaths": [
+          "^.*"
+        ]
       }
     }
   },

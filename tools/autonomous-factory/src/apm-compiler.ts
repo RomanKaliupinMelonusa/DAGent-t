@@ -61,8 +61,8 @@ function parseMcpYaml(filePath: string): { name: string; config: ApmMcpConfig } 
   }
   const data = parsed.data;
   const config: ApmMcpConfig = data.type === "remote"
-    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability }
-    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability };
+    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability, fsMutator: data.fsMutator }
+    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability, fsMutator: data.fsMutator };
   return { name: data.name, config };
 }
 
@@ -244,6 +244,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       skills: agentSkills,
       toolLimits: agentDecl.toolLimits,
       tools: agentDecl.tools,
+      security: agentDecl.security,
     };
   }
 

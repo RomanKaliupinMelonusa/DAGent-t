@@ -137,12 +137,7 @@ export const SAFE_READ_TOOLS = new Set([
   "roam_syntax_check", "roam_expand_toolset",
 ]);
 
-/**
- * MCP tool name prefixes whose tools do not write to the local filesystem.
- * Tools matching these prefixes bypass write-path RBAC in `checkRbac`.
- * Playwright tools interact with the browser, not the repo.
- */
-const MCP_NON_FILESYSTEM_PREFIXES = ["playwright-", "mermaid-"];
+// (safeMcpPrefixes is now config-driven via the agent's MCP fsMutator flags)
 
 // ---------------------------------------------------------------------------
 // Shell write detection — moved from session-runner.ts for RBAC reuse
@@ -191,37 +186,27 @@ export function extractShellWrittenFiles(cmd: string, repoRoot: string, execCwd:
 }
 
 // ---------------------------------------------------------------------------
-// RBAC — Agentic Write Access Control ("The Bouncer")
+// RBAC — Config-Driven Write Access Control ("The Bouncer")
 // ---------------------------------------------------------------------------
 
-/** Validator agents can ONLY write to test-related paths. */
-export const VALIDATOR_ALLOW_RE = /(^|\/)(e2e|__tests__)\/|(\.test\.|\.spec\.)/;
+export const ERR_WRITE_DENIED =
+  "ERROR: Write Access Denied. Your security profile forbids modifying this path. " +
+  "If fixing an out-of-scope bug, use pipeline:fail to route the error to the appropriate agent.";
 
-/** Maker agents are BLOCKED from writing to infra, CI/CD, E2E, and integration test paths. */
-export const MAKER_BLOCK_RE = /(^|\/)(infra|\.github|e2e|integration)\//;
+export const ERR_COMMAND_BLOCKED =
+  "ERROR: Command execution denied by security profile. " +
+  "This command is not authorized for your agent persona.";
 
-/** Maker agents are BLOCKED from running cloud CLI commands. */
-export const MAKER_CLOUD_CLI_RE = /(az |aws |terraform )/;
-
-export const ERR_VALIDATOR_WRITE =
-  "ERROR: Write Access Denied. You are a Validator. You are strictly forbidden from modifying application " +
-  "source code. If the app logic or infra is broken, use pipeline:fail to return a diagnostic report so " +
-  "the DAG can route it to the Makers.";
-
-export const ERR_MAKER_WRITE =
-  "ERROR: Write Access Denied. You are a Maker. You cannot modify infra state, CI/CD scripts, or " +
-  "E2E/Integration tests. If you are missing cloud resources, use pipeline:fail -> infra. If a black-box " +
-  "test is fundamentally flawed, use pipeline:fail -> test-code.";
-
-export const ERR_MAKER_CLOUD_CLI =
-  "ERROR: Write Access Denied. You are a Maker. You cannot execute cloud CLI commands (az, aws, terraform). " +
-  "Infrastructure changes must go through the infra-architect agent via the DAG.";
-
-/** Determine agent archetype from itemKey. Returns "validator", "maker", or null (unconstrained). */
-function getAgentArchetype(itemKey: string): "validator" | "maker" | null {
-  if (itemKey.includes("test") || itemKey.includes("ui")) return "validator";
-  if (itemKey.includes("dev")) return "maker";
-  return null;
+/**
+ * Convert a repo-relative path to app-relative by stripping the app prefix.
+ * Example: "apps/sample-app/backend/src/index.ts" → "backend/src/index.ts"
+ */
+function toAppRelative(repoRelPath: string, appRoot: string, repoRoot: string): string {
+  const appPrefix = path.relative(repoRoot, appRoot);
+  if (appPrefix && repoRelPath.startsWith(appPrefix + "/")) {
+    return repoRelPath.slice(appPrefix.length + 1);
+  }
+  return repoRelPath;
 }
 
 /**
@@ -249,24 +234,28 @@ function extractFilePath(toolArgs: unknown): string | null {
 /**
  * Run RBAC checks for a tool invocation. Returns a denial message string
  * if the action is blocked, or `null` if allowed.
+ *
+ * Config-driven: uses `allowedWritePaths`, `blockedCommandRegexes`, and
+ * `safeMcpPrefixes` from the agent's security profile instead of hardcoded
+ * archetype-based rules.
+ *
  * @param hookCwd - The SDK session's working directory (from onPreToolUse input.cwd).
  *   Used to resolve relative shell write paths against the actual execution context.
  */
 export function checkRbac(
-  itemKey: string,
   toolName: string,
   toolArgs: unknown,
   repoRoot: string,
+  allowedWritePaths: RegExp[],
+  blockedCommandRegexes: RegExp[],
+  safeMcpPrefixes: Set<string>,
+  appRoot: string,
   hookCwd?: string,
 ): string | null {
-  const archetype = getAgentArchetype(itemKey);
-  if (!archetype) return null; // Unconstrained agent
-
   // Fail-closed write classification: any tool NOT in the safe-read set,
-  // not a shell tool, and not from a non-filesystem MCP prefix is treated
-  // as a write tool.
+  // not a shell tool, and not from a safe MCP prefix is treated as a write tool.
   const isShellTool = toolName === "bash" || toolName === "write_bash" || toolName === "shell";
-  const isMcpNonFs = MCP_NON_FILESYSTEM_PREFIXES.some((p) => toolName.startsWith(p));
+  const isMcpNonFs = [...safeMcpPrefixes].some((p) => toolName.startsWith(p));
   const isWriteTool = !SAFE_READ_TOOLS.has(toolName) && !isShellTool && !isMcpNonFs;
 
   // --- File write RBAC ---
@@ -279,13 +268,11 @@ export function checkRbac(
       );
     }
     const relPath = toRepoRelative(rawPath, repoRoot);
-
-    if (archetype === "validator") {
-      // Validators can ONLY write to test-related paths
-      if (!VALIDATOR_ALLOW_RE.test(relPath)) return ERR_VALIDATOR_WRITE;
-    } else {
-      // Makers are BLOCKED from infra, CI/CD, E2E, integration
-      if (MAKER_BLOCK_RE.test(relPath)) return ERR_MAKER_WRITE;
+    const appRelPath = toAppRelative(relPath, appRoot, repoRoot);
+    if (allowedWritePaths.length === 0) return ERR_WRITE_DENIED;
+    const isAllowed = allowedWritePaths.some((re) => re.test(appRelPath));
+    if (!isAllowed) {
+      return `ERROR: Write Access Denied. Your security profile forbids modifying '${appRelPath}'.`;
     }
   }
 
@@ -294,27 +281,23 @@ export function checkRbac(
     const args = toolArgs as { command?: string; cwd?: string } | undefined;
     const cmd = String(args?.command ?? "");
 
+    // Check blocked commands first
+    for (const re of blockedCommandRegexes) {
+      if (re.test(cmd)) return ERR_COMMAND_BLOCKED;
+    }
+
     // Determine the exact directory this command will execute in.
-    // Priority: tool arg `cwd` > SDK hook `input.cwd` > repoRoot.
     const effectiveCwd = args?.cwd
       ? path.resolve(repoRoot, args.cwd)
       : (hookCwd || repoRoot);
 
-    if (archetype === "maker") {
-      // Block cloud CLI commands
-      if (MAKER_CLOUD_CLI_RE.test(cmd)) return ERR_MAKER_CLOUD_CLI;
-      // Block shell-based file writes to protected paths
-      const shellFiles = extractShellWrittenFiles(cmd, repoRoot, effectiveCwd);
-      for (const sf of shellFiles) {
-        if (MAKER_BLOCK_RE.test(sf)) return ERR_MAKER_WRITE;
-      }
-    }
-
-    if (archetype === "validator") {
-      // Block shell-based file writes to non-test paths
-      const shellFiles = extractShellWrittenFiles(cmd, repoRoot, effectiveCwd);
-      for (const sf of shellFiles) {
-        if (!VALIDATOR_ALLOW_RE.test(sf)) return ERR_VALIDATOR_WRITE;
+    // Check shell-based file writes against allowedWritePaths
+    const shellFiles = extractShellWrittenFiles(cmd, repoRoot, effectiveCwd);
+    for (const sf of shellFiles) {
+      const appRelSf = toAppRelative(sf, appRoot, repoRoot);
+      if (allowedWritePaths.length === 0) return ERR_WRITE_DENIED;
+      if (!allowedWritePaths.some((re) => re.test(appRelSf))) {
+        return `ERROR: Write Access Denied. Your security profile forbids modifying '${appRelSf}'.`;
       }
     }
   }
@@ -367,9 +350,12 @@ export function checkShellCommand(cmd: string): string | null {
  */
 export function buildSessionHooks(
   repoRoot: string,
-  itemKey: string,
   allowedCoreTools: Set<string>,
   allowedMcpTools: Set<string>,
+  allowedWritePaths: RegExp[],
+  blockedCommandRegexes: RegExp[],
+  safeMcpPrefixes: Set<string>,
+  appRoot: string,
   onDenial?: (toolName: string) => void,
 ): SessionHooks {
   const onPreToolUse = (
@@ -391,7 +377,7 @@ export function buildSessionHooks(
     }
 
     // --- RBAC interceptor (runs before shell bouncers) ---
-    const rbacDenial = checkRbac(itemKey, input.toolName, input.toolArgs, repoRoot, input.cwd);
+    const rbacDenial = checkRbac(input.toolName, input.toolArgs, repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot, input.cwd);
     if (rbacDenial) {
       onDenial?.(input.toolName);
       return {
@@ -465,7 +451,13 @@ export function buildSessionHooks(
  * Build custom tools that provide structured, safe alternatives to the
  * built-in bash and read_file tools.
  */
-export function buildCustomTools(repoRoot: string, itemKey: string): Tool<any>[] {
+export function buildCustomTools(
+  repoRoot: string,
+  allowedWritePaths: RegExp[],
+  blockedCommandRegexes: RegExp[],
+  safeMcpPrefixes: Set<string>,
+  appRoot: string,
+): Tool<any>[] {
   // -- file_read tool --
   const fileReadTool = defineTool("file_read", {
     description: "Read the contents of a file safely. Use this instead of 'cat'.",
@@ -563,7 +555,7 @@ export function buildCustomTools(repoRoot: string, itemKey: string): Tool<any>[]
     },
     handler: (args: { command: string; cwd?: string; env_vars?: Record<string, string> }) => {
       // Run RBAC checks first (no hookCwd — custom tool resolves cwd from args internally)
-      const rbacDenial = checkRbac(itemKey, "shell", args, repoRoot);
+      const rbacDenial = checkRbac("shell", args, repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot);
       if (rbacDenial) return rbacDenial;
 
       // Run shared bouncer checks

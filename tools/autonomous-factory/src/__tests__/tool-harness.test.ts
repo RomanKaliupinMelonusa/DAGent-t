@@ -26,25 +26,30 @@ import {
   ERR_RECURSIVE_SEARCH,
   ERR_CODE_READ,
   FILE_TRUNCATION_WARNING,
-  VALIDATOR_ALLOW_RE,
-  MAKER_BLOCK_RE,
-  MAKER_CLOUD_CLI_RE,
-  ERR_VALIDATOR_WRITE,
-  ERR_MAKER_WRITE,
-  ERR_MAKER_CLOUD_CLI,
+  ERR_WRITE_DENIED,
+  ERR_COMMAND_BLOCKED,
   CD_CMD_RE,
   ERR_CD_CMD,
   SAFE_READ_TOOLS,
 } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
-
-/** Neutral itemKey that triggers no RBAC (unconstrained archetype) */
-const NEUTRAL_KEY = "deploy-manager";
+const APP_ROOT = "/workspaces/DAGent-t/apps/sample-app";
 
 /** Empty sets for migration-mode (no Zero-Trust filtering) */
 const NO_CORE = new Set<string>();
 const NO_MCP = new Set<string>();
+
+/** Config-driven test constants */
+const BACKEND_PATHS = [/^backend\//, /^packages\/schemas\//];
+const TEST_PATHS = [/(^|\/)__tests__\//, /\.test\./, /\.spec\./];
+const E2E_PATHS = [/(^|\/)e2e\//, /\.spec\./];
+const GLOBAL_PATHS = [/^.*/];
+const READ_ONLY: RegExp[] = [];
+const CLOUD_CLI_BLOCK = [/(^|\s)(az|aws|terraform)\s/];
+const NO_CMD_BLOCK: RegExp[] = [];
+const NO_MCP_PREFIXES = new Set<string>();
+const PLAYWRIGHT_PREFIX = new Set(["playwright-"]);
 
 // ---------------------------------------------------------------------------
 // Regex constant smoke tests
@@ -250,7 +255,7 @@ describe("checkShellCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPreToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+  const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const preHook = hooks.onPreToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -305,7 +310,7 @@ describe("buildSessionHooks.onPreToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPostToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+  const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const postHook = hooks.onPostToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -379,7 +384,7 @@ describe("buildSessionHooks.onPostToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("is registered with correct name", () => {
@@ -493,7 +498,7 @@ describe("file_read tool handler", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("is registered with correct name", () => {
@@ -606,7 +611,7 @@ describe("constants", () => {
 describe("buildSessionHooks onDenial callback", () => {
   it("invokes onDenial when a bash command is denied", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -621,7 +626,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("invokes onDenial for write_bash denials", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -636,7 +641,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("does NOT invoke onDenial for allowed commands", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -649,7 +654,7 @@ describe("buildSessionHooks onDenial callback", () => {
   });
 
   it("works without onDenial callback (backward compat)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -668,7 +673,7 @@ describe("buildSessionHooks onDenial callback", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read line range cap", () => {
-  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("caps end_line at FILE_READ_LINE_LIMIT lines from start", () => {
@@ -741,7 +746,7 @@ describe("file_read line range cap", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell env_vars type coercion", () => {
-  const tools = buildCustomTools(REPO_ROOT, NEUTRAL_KEY);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("coerces boolean env_vars to strings without crashing", () => {
@@ -780,7 +785,7 @@ describe("shell env_vars type coercion", () => {
 
 describe("onPostToolUse truncation with line range", () => {
   it("truncates built-in read_file even when startLine/endLine are set", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     // Simulate a read_file result with 700 lines
@@ -805,7 +810,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("does not truncate built-in read_file when within limit", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     const smallContent = Array.from({ length: 100 }, (_, i) => `line-${i + 1}`).join("\n");
@@ -825,7 +830,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("ignores non-read_file tools", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     const result = postHook(
@@ -848,191 +853,208 @@ describe("onPostToolUse truncation with line range", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkRbac", () => {
-  // --- Validator archetype ---
+  // --- Test-only scoped agent (e.g. backend-unit-test) ---
 
-  it("Validator denied write to app source (write_file)", () => {
-    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
-    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  it("Test-scoped agent denied write to app source (write_file)", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Validator allowed write to __tests__ dir", () => {
-    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "apps/sample-app/backend/src/__tests__/hello.test.ts" }, REPO_ROOT);
+  it("Test-scoped agent allowed write to __tests__ dir", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/backend/src/__tests__/hello.test.ts" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("Validator allowed write to .test. file outside __tests__ dir", () => {
-    const denial = checkRbac("frontend-unit-test", "edit_file", { filePath: "apps/sample-app/frontend/src/utils.test.tsx" }, REPO_ROOT);
+  it("Test-scoped agent allowed write to .test. file outside __tests__ dir", () => {
+    const denial = checkRbac("edit_file", { filePath: "apps/sample-app/frontend/src/utils.test.tsx" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("Validator allowed write to .spec. file", () => {
-    const denial = checkRbac("live-ui", "write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
+  it("Test-scoped agent allowed write to .spec. file", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT, E2E_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("Validator denied write to infra dir", () => {
-    const denial = checkRbac("integration-test", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
-    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  it("Test-scoped agent denied write to infra dir", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Validator denied write via absolute path", () => {
-    const denial = checkRbac("backend-unit-test", "write_file", { filePath: "/workspaces/DAGent-t/apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
-    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  it("Test-scoped agent denied write via absolute path", () => {
+    const denial = checkRbac("write_file", { filePath: "/workspaces/DAGent-t/apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  // --- Maker archetype ---
+  // --- Backend-scoped agent (e.g. backend-dev) ---
 
-  it("Maker denied write to infra dir", () => {
-    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied write to infra dir", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker denied write to .github dir", () => {
-    const denial = checkRbac("frontend-dev", "edit_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied write to .github dir", () => {
+    const denial = checkRbac("edit_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker denied write to e2e dir", () => {
-    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied write to e2e dir", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker denied write to integration test dir", () => {
-    const denial = checkRbac("backend-dev", "edit_file", { filePath: "apps/sample-app/integration/tests/api.test.ts" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
-  });
-
-  it("Maker allowed write to app source", () => {
-    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+  it("Backend-scoped agent allowed write to backend source", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("Maker allowed write to unit test dir (__tests__)", () => {
-    const denial = checkRbac("backend-dev", "write_file", { filePath: "apps/sample-app/backend/src/__tests__/hello.test.ts" }, REPO_ROOT);
+  it("Backend-scoped agent allowed write to packages/schemas", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/packages/schemas/src/index.ts" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("Maker denied terraform shell command", () => {
-    const denial = checkRbac("backend-dev", "bash", { command: "terraform plan -out=tfplan" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  it("Backend-scoped agent denied terraform shell command", () => {
+    const denial = checkRbac("bash", { command: "terraform plan -out=tfplan" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.equal(denial, ERR_COMMAND_BLOCKED);
   });
 
-  it("Maker denied az cli shell command", () => {
-    const denial = checkRbac("frontend-dev", "shell", { command: "az login --service-principal" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  it("Backend-scoped agent denied az cli shell command", () => {
+    const denial = checkRbac("shell", { command: "az login --service-principal" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.equal(denial, ERR_COMMAND_BLOCKED);
   });
 
-  it("Maker denied aws cli shell command", () => {
-    const denial = checkRbac("backend-dev", "bash", { command: "aws s3 ls" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_CLOUD_CLI);
+  it("Backend-scoped agent denied aws cli shell command", () => {
+    const denial = checkRbac("bash", { command: "aws s3 ls" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.equal(denial, ERR_COMMAND_BLOCKED);
   });
 
-  it("Maker denied shell write to infra via echo redirect", () => {
-    const denial = checkRbac("backend-dev", "bash", { command: 'echo "resource" > apps/sample-app/infra/main.tf' }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied shell write to infra via echo redirect", () => {
+    const denial = checkRbac("bash", { command: 'echo "resource" > apps/sample-app/infra/main.tf' }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker denied shell write to .github via sed", () => {
-    const denial = checkRbac("backend-dev", "bash", { command: "sed -i 's/old/new/' .github/workflows/ci.yml" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied shell write to .github via sed", () => {
+    const denial = checkRbac("bash", { command: "sed -i 's/old/new/' .github/workflows/ci.yml" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker allowed normal shell command", () => {
-    const denial = checkRbac("backend-dev", "bash", { command: "npm test" }, REPO_ROOT);
+  it("Backend-scoped agent allowed normal shell command", () => {
+    const denial = checkRbac("bash", { command: "npm test" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  // --- Unconstrained archetype ---
+  // --- Global-access agent (e.g. code-cleanup, docs-archived) ---
 
-  it("deploy-manager allowed write to any path", () => {
-    const denial = checkRbac("deploy-manager", "write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
+  it("Global-access agent allowed write to any path", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/infra/main.tf" }, REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("docs-expert allowed write to any path", () => {
-    const denial = checkRbac("docs-archived", "write_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT);
+  it("Global-access agent allowed write to .github", () => {
+    const denial = checkRbac("write_file", { filePath: ".github/workflows/ci.yml" }, REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("code-cleanup allowed write to app source", () => {
-    const denial = checkRbac("code-cleanup", "write_file", { filePath: "apps/sample-app/backend/src/functions/hello.ts" }, REPO_ROOT);
+  it("Infra-scoped agent allowed terraform command (no blockedCommandRegexes)", () => {
+    const INFRA_PATHS = [/^infra\//, /^\.github\/workflows\//];
+    const denial = checkRbac("bash", { command: "terraform plan" }, REPO_ROOT, INFRA_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
-  it("infra-architect allowed terraform command", () => {
-    const denial = checkRbac("infra-architect", "bash", { command: "terraform plan" }, REPO_ROOT);
-    assert.equal(denial, null);
+  // --- Read-only agent (empty allowedWritePaths) ---
+
+  it("Read-only agent denied write to any path", () => {
+    const denial = checkRbac("write_file", { filePath: "apps/sample-app/backend/src/index.ts" }, REPO_ROOT, READ_ONLY, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.equal(denial, ERR_WRITE_DENIED);
+  });
+
+  it("Read-only agent denied shell write", () => {
+    const denial = checkRbac("bash", { command: 'echo "x" > test.txt' }, REPO_ROOT, READ_ONLY, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.equal(denial, ERR_WRITE_DENIED);
   });
 
   // --- Edge cases ---
 
   it("denies write_file when toolArgs has no file path (fail-closed)", () => {
-    const denial = checkRbac("backend-unit-test", "write_file", {}, REPO_ROOT);
+    const denial = checkRbac("write_file", {}, REPO_ROOT, BACKEND_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.ok(denial);
     assert.ok(denial!.includes("Security Policy Violation"));
   });
 
   it("handles path key as 'path'", () => {
-    const denial = checkRbac("backend-dev", "edit_file", { path: "apps/sample-app/infra/main.tf" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+    const denial = checkRbac("edit_file", { path: "apps/sample-app/infra/main.tf" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
   it("handles path key as 'file_path'", () => {
-    const denial = checkRbac("backend-dev", "write_file", { file_path: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+    const denial = checkRbac("write_file", { file_path: "apps/sample-app/e2e/login.spec.ts" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Validator denied shell write to non-test path via echo redirect", () => {
-    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "hack" > apps/sample-app/backend/src/index.ts' }, REPO_ROOT);
-    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  it("Test-scoped agent denied shell write to non-test path via echo redirect", () => {
+    const denial = checkRbac("bash", { command: 'echo "hack" > apps/sample-app/backend/src/index.ts' }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Validator allowed shell write to test path via echo redirect", () => {
-    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "test" > apps/sample-app/backend/src/__tests__/foo.test.ts' }, REPO_ROOT);
+  it("Test-scoped agent allowed shell write to test path via echo redirect", () => {
+    const denial = checkRbac("bash", { command: 'echo "test" > apps/sample-app/backend/src/__tests__/foo.test.ts' }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 
   // --- CWD bypass tests ---
 
-  it("Maker denied shell write to infra via cwd arg bypass", () => {
-    // Relative path 'main.tf' + cwd 'apps/sample-app/infra' => infra/main.tf
-    const denial = checkRbac("backend-dev", "shell", { command: 'echo "hack" > main.tf', cwd: "apps/sample-app/infra" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied shell write to infra via cwd arg bypass", () => {
+    const denial = checkRbac("shell", { command: 'echo "hack" > main.tf', cwd: "apps/sample-app/infra" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Validator denied shell write to non-test path via cwd arg bypass", () => {
-    const denial = checkRbac("backend-unit-test", "bash", { command: 'echo "hack" > hello.ts', cwd: "apps/sample-app/backend/src/functions" }, REPO_ROOT);
-    assert.equal(denial, ERR_VALIDATOR_WRITE);
+  it("Test-scoped agent denied shell write to non-test path via cwd arg bypass", () => {
+    const denial = checkRbac("bash", { command: 'echo "hack" > hello.ts', cwd: "apps/sample-app/backend/src/functions" }, REPO_ROOT, TEST_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker denied shell write to .github via cwd arg", () => {
-    const denial = checkRbac("backend-dev", "shell", { command: 'echo "hack" > ci.yml', cwd: ".github/workflows" }, REPO_ROOT);
-    assert.equal(denial, ERR_MAKER_WRITE);
+  it("Backend-scoped agent denied shell write to .github via cwd arg", () => {
+    const denial = checkRbac("shell", { command: 'echo "hack" > ci.yml', cwd: ".github/workflows" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
   it("hookCwd is used when no cwd in args", () => {
     const denial = checkRbac(
-      "backend-dev", "bash",
+      "bash",
       { command: 'echo "hack" > main.tf' },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
       path.join(REPO_ROOT, "apps/sample-app/infra"),
     );
-    assert.equal(denial, ERR_MAKER_WRITE);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
   it("args.cwd takes priority over hookCwd", () => {
-    // args.cwd points to infra (blocked), hookCwd points to src (allowed)
     const denial = checkRbac(
-      "backend-dev", "bash",
+      "bash",
       { command: 'echo "hack" > main.tf', cwd: "apps/sample-app/infra" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
       path.join(REPO_ROOT, "apps/sample-app/backend/src"),
     );
-    assert.equal(denial, ERR_MAKER_WRITE);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
-  it("Maker allowed write via cwd to non-protected path", () => {
-    const denial = checkRbac("backend-dev", "shell", { command: 'echo "ok" > utils.ts', cwd: "apps/sample-app/backend/src" }, REPO_ROOT);
+  it("Backend-scoped agent allowed write via cwd to allowed path", () => {
+    const denial = checkRbac("shell", { command: 'echo "ok" > utils.ts', cwd: "apps/sample-app/backend/src" }, REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     assert.equal(denial, null);
   });
 });
@@ -1045,7 +1067,7 @@ describe("Zero-Trust Gate", () => {
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
   it("bypasses gate when both sets are empty (migration mode)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "bash", toolArgs: { command: "npm test" }, ...baseInput },
       { sessionId: "test" },
@@ -1056,7 +1078,7 @@ describe("Zero-Trust Gate", () => {
 
   it("denies tool not in allowedCoreTools", () => {
     const coreOnly = new Set(["shell"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "file_read", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1068,7 +1090,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows tool in allowedCoreTools", () => {
     const coreOnly = new Set(["shell", "file_read"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP);
+    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "shell", toolArgs: { command: "npm test" }, ...baseInput },
       { sessionId: "test" },
@@ -1079,7 +1101,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows MCP tool when in allowedMcpTools", () => {
     const mcpTools = new Set(["roam_understand"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpTools);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpTools, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_understand", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1089,7 +1111,7 @@ describe("Zero-Trust Gate", () => {
 
   it("denies MCP tool NOT in allowedMcpTools", () => {
     const mcpTools = new Set(["roam_understand"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpTools);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpTools, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1101,7 +1123,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows all MCP tools when wildcard '*' is in allowedMcpTools", () => {
     const mcpWild = new Set(["*"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpWild);
+    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpWild, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1112,7 +1134,7 @@ describe("Zero-Trust Gate", () => {
   it("fires onDenial callback on Zero-Trust denial", () => {
     const denied: string[] = [];
     const coreOnly = new Set(["shell"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP, (t) => denied.push(t));
+    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (t) => denied.push(t));
     hooks.onPreToolUse!(
       { toolName: "write_file", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1128,21 +1150,22 @@ describe("Zero-Trust Gate", () => {
 
 describe("Fail-closed checkRbac with SAFE_READ_TOOLS", () => {
   it("classifies unknown tool as write tool and applies path RBAC", () => {
-    // Unknown MCP tool writing to protected infra path → denied for maker
+    // Unknown MCP tool writing to protected infra path → denied for backend-scoped agent
     const denial = checkRbac(
-      "backend-dev", "ai_refactor",
+      "ai_refactor",
       { filePath: "apps/sample-app/infra/main.tf" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
-    assert.equal(denial, ERR_MAKER_WRITE);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Write Access Denied"));
   });
 
   it("denies unknown tool when path cannot be extracted (fail-closed)", () => {
     // Unknown tool with no filePath arg → hard deny
     const denial = checkRbac(
-      "backend-dev", "ai_refactor",
+      "ai_refactor",
       { someOtherArg: "value" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.ok(denial);
     assert.ok(denial!.includes("Security Policy Violation"));
@@ -1152,18 +1175,18 @@ describe("Fail-closed checkRbac with SAFE_READ_TOOLS", () => {
   it("allows known safe read tool without path checks", () => {
     // read_file is in SAFE_READ_TOOLS — should not be treated as write tool
     const denial = checkRbac(
-      "backend-dev", "read_file",
+      "read_file",
       { filePath: "apps/sample-app/infra/main.tf" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.equal(denial, null);
   });
 
   it("allows known safe read tool (roam_understand) for any agent", () => {
     const denial = checkRbac(
-      "backend-dev", "roam_understand",
+      "roam_understand",
       {},
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.equal(denial, null);
   });
@@ -1178,32 +1201,31 @@ describe("Fail-closed checkRbac with SAFE_READ_TOOLS", () => {
     }
   });
 
-  it("allows write_file to non-protected path for maker", () => {
-    // Standard write_file to allowed path should still work
+  it("allows write_file to allowed path for backend-scoped agent", () => {
     const denial = checkRbac(
-      "backend-dev", "write_file",
+      "write_file",
       { filePath: "apps/sample-app/backend/src/index.ts" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.equal(denial, null);
   });
 
-  it("allows playwright MCP tools for validators (non-filesystem prefix bypass)", () => {
+  it("allows playwright MCP tools with playwright prefix bypass", () => {
     // Playwright tools interact with the browser, not the filesystem
     const denial = checkRbac(
-      "live-ui", "playwright-navigate",
+      "playwright-navigate",
       { url: "https://example.com" },
-      REPO_ROOT,
+      REPO_ROOT, E2E_PATHS, CLOUD_CLI_BLOCK, PLAYWRIGHT_PREFIX, APP_ROOT,
     );
     assert.equal(denial, null);
   });
 
-  it("allows roam-code MCP tools for makers", () => {
+  it("allows roam-code MCP tools (in SAFE_READ_TOOLS)", () => {
     // All roam tools are read-only analysis
     const denial = checkRbac(
-      "backend-dev", "roam_context",
+      "roam_context",
       { symbol: "MyClass" },
-      REPO_ROOT,
+      REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.equal(denial, null);
   });

@@ -19,6 +19,7 @@ export const ApmMcpLocalConfigSchema = z.object({
   tools: z.array(z.string()),
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]),
+  fsMutator: z.boolean().default(true),
 });
 
 export const ApmMcpRemoteConfigSchema = z.object({
@@ -26,6 +27,7 @@ export const ApmMcpRemoteConfigSchema = z.object({
   url: z.string().url(),
   tools: z.array(z.string()),
   availability: z.enum(["required", "optional"]),
+  fsMutator: z.boolean().default(true),
 });
 
 export const ApmMcpConfigSchema = z.discriminatedUnion("type", [
@@ -54,6 +56,18 @@ export const ApmAgentToolsSchema = z.object({
   mcp: z.record(z.string(), z.any()).optional().describe("Allowed MCP tools per server — keys are server names, values are tool name arrays or '*' wildcard"),
 }).optional();
 
+/**
+ * Per-agent security profile for config-driven path sandboxing.
+ * `allowedWritePaths` — regex strings for allowed file write paths (app-relative). Empty array = read-only.
+ * `blockedCommandRegexes` — regex strings matching shell commands to block (e.g. cloud CLI).
+ */
+export const ApmAgentSecuritySchema = z.object({
+  allowedWritePaths: z.array(z.string()).optional()
+    .describe("Regex strings for allowed file write paths (app-relative). Empty array = read-only."),
+  blockedCommandRegexes: z.array(z.string()).optional()
+    .describe("Regex strings matching shell commands to block (e.g. cloud CLI)."),
+}).optional();
+
 export const ApmCompiledAgentSchema = z.object({
   /** Fully assembled rules markdown (compiled from .apm/instructions/). */
   rules: z.string(),
@@ -67,6 +81,8 @@ export const ApmCompiledAgentSchema = z.object({
   toolLimits: ApmToolLimitsSchema,
   /** Per-agent tool allow-lists for Zero-Trust sandboxing. */
   tools: ApmAgentToolsSchema,
+  /** Per-agent security profile for config-driven path sandboxing. */
+  security: ApmAgentSecuritySchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -140,6 +156,7 @@ export const ApmAgentDeclSchema = z.object({
   skills: z.array(z.string()).default([]),
   toolLimits: ApmToolLimitsSchema,
   tools: ApmAgentToolsSchema,
+  security: ApmAgentSecuritySchema,
 });
 
 export const ApmGeneratedInstructionSchema = z.object({
@@ -173,6 +190,7 @@ export const ApmMcpLocalFileSchema = z.object({
   tools: z.array(z.string()).default(["*"]),
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]).default("optional"),
+  fsMutator: z.boolean().default(true),
 });
 
 export const ApmMcpRemoteFileSchema = z.object({
@@ -182,6 +200,7 @@ export const ApmMcpRemoteFileSchema = z.object({
   url: z.string().url(),
   tools: z.array(z.string()).default(["*"]),
   availability: z.enum(["required", "optional"]).default("optional"),
+  fsMutator: z.boolean().default(true),
 });
 
 export const ApmMcpFileSchema = z.discriminatedUnion("type", [
@@ -207,6 +226,7 @@ export type ApmConfig = z.infer<typeof ApmConfigSchema>;
 export type ApmMcpConfig = z.infer<typeof ApmMcpConfigSchema>;
 export type ApmToolLimits = z.infer<typeof ApmToolLimitsSchema>;
 export type ApmAgentTools = z.infer<typeof ApmAgentToolsSchema>;
+export type ApmAgentSecurity = z.infer<typeof ApmAgentSecuritySchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;

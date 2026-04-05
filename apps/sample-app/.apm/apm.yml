@@ -9,96 +9,141 @@ agents:
     mcp: [roam-code]
     skills: [test-schema-validation]
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^packages/schemas/", "^backend/src/.*[Ss]chema"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   infra-architect:
     instructions: [always, infra, backend/schema-sync.md, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 70, hard: 100 }
+    security:
+      allowedWritePaths: ["^infra/", "^\\.github/workflows/"]
   infra-handoff:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^infra/", "^\\.github/"]
   push-infra:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
   poll-infra-plan:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: []
   create-draft-pr:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
   await-infra-approval:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: []
   backend-dev:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
     toolLimits: { soft: 80, hard: 110 }
+    security:
+      allowedWritePaths: ["^backend/", "^packages/schemas/"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
     toolLimits: { soft: 80, hard: 110 }
+    security:
+      allowedWritePaths: ["^frontend/", "^packages/schemas/"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   backend-unit-test:
     instructions: [always, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-backend-unit]
     toolLimits: { soft: 60, hard: 90 }
+    security:
+      allowedWritePaths: ["(^|/)__tests__/", "\\.test\\.", "\\.spec\\."]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   frontend-unit-test:
     instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
     mcp: [roam-code]
     skills: [test-frontend-unit]
     toolLimits: { soft: 60, hard: 90 }
+    security:
+      allowedWritePaths: ["(^|/)__tests__/", "\\.test\\.", "\\.spec\\."]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   push-app:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
   poll-app-ci:
     instructions: [always]
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: []
   integration-test:
     instructions: [always, backend/integration-testing.md, backend/integration-auth.md, tooling/cloud-telemetry.md]
     mcp: []
     skills: [test-integration]
     toolLimits: { soft: 70, hard: 120 }
+    security:
+      allowedWritePaths: ["(^|/)e2e/", "(^|/)__tests__/", "\\.test\\."]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   live-ui:
     instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
     mcp: [roam-code, playwright]
     skills: []
     toolLimits: { soft: 100, hard: 130 }
+    security:
+      allowedWritePaths: ["(^|/)e2e/", "\\.spec\\."]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)\\s"]
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
   doc-architect:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     mcp: [roam-code, mermaid]
     skills: []
     toolLimits: { soft: 40, hard: 55 }
+    security:
+      allowedWritePaths: ["^.*"]
   docs-archived:
     instructions: [always, tooling/roam-tool-rules.md]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
   publish-pr:
     instructions: [always]
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
+    security:
+      allowedWritePaths: ["^.*"]
 
 config:
   defaultToolLimits: { soft: 60, hard: 80 }
