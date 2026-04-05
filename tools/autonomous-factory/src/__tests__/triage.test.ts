@@ -174,7 +174,7 @@ describe("triageFailure (structured JSON)", () => {
     const keys = triageFailure("poll-infra-plan", msg, NO_NA);
     assert.deepStrictEqual(keys, [
       "infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr",
-      "await-infra-approval", "infra-handoff", "poll-infra-plan",
+      "await-infra-approval", "infra-handoff",
     ]);
   });
 

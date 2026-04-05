@@ -282,7 +282,7 @@ function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<str
       return [itemKey].filter((k) => !naItems.has(k));
   }
 
-  resetKeys.push(itemKey);
+  if (!resetKeys.includes(itemKey)) resetKeys.push(itemKey);
   return resetKeys.filter((k) => !naItems.has(k));
 }
 
