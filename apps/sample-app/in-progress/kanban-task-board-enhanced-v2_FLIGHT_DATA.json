@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:19:52.700Z",
+  "generatedAt": "2026-04-05T04:20:00.536Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -10,13 +10,14 @@
       "phase": "approval",
       "attempt": 1,
       "startedAt": "2026-04-05T04:18:59.994Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-05T04:20:00.522Z",
+      "durationMs": 60528,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Good. Now let me create the `infra-interfaces.md` file with all the Terraform outputs, masking the sensitive `application_insights_connection_string`.",
-        "Now let me commit this file and mark the pipeline stage complete."
+        "Now let me commit this file and mark the pipeline stage complete.",
+        "The infra-handoff phase is complete. Here's a summary of what was done:  ## Summary  **Created** `/apps/sample-app/in-progress/infra-interfaces.md` with structured documentation of all deployed infrastructure outputs:  | Section | Contents | |---|---| | **Endpoints** | Function App, APIM Gateway, SWA, and Cosmos DB URLs | | **Resource Names** | All Azure resource names (RG, Function App, SWA, Cosmos, Key Vault, APIM) | | **Auth Config** | Entra tenant/client IDs, CICD client IDs, CORS origins | | **Cosmos DB** | Reuse notes from webhook-dispatcher, new `Tasks` container spec | | **Terraform Outputs** | Full table with sensitive values masked (`application_insights_connection_string` → `<HIDDEN>`) | | **Environment Variables** | Backend (existing + new `MAX_TASKS_PER_WORKSPACE=500`) and Frontend vars | | **API Routes** | `GET /tasks`, `POST /tasks`, `PATCH /tasks/{id}/status` mapping through APIM |  Downstream agents (`backend-dev`, `frontend-dev`, `e2e-dev`) can now consume this file for endpoint URLs, resource names, and configuration values."
       ],
       "filesRead": [],
       "filesChanged": [],
@@ -45,17 +46,23 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete kanban-task-board-enhanced-v2 infra-handoff",
           "timestamp": "2026-04-05T04:19:48.294Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark Infra Outputs Captured — Interfaces Written\"",
+          "timestamp": "2026-04-05T04:19:52.701Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
-        "shell": 5,
+        "shell": 6,
         "create": 1
       },
-      "inputTokens": 119151,
-      "outputTokens": 2715,
-      "cacheReadTokens": 96136,
-      "cacheWriteTokens": 0
+      "inputTokens": 142000,
+      "outputTokens": 3023,
+      "cacheReadTokens": 118552,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "a42c9c94a20b3a3ad1f6c2d3d2e24fa6d1f0a700"
     }
   ]
 }
