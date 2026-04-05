@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:45:33.737Z",
+  "generatedAt": "2026-04-05T04:48:56.546Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -1111,6 +1111,102 @@
       "cacheReadTokens": 455618,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "b9a5eb227598fa85c79f64c1418ee3fb06ac65a5"
+    },
+    {
+      "key": "docs-archived",
+      "label": "Docs Updated & Archived",
+      "agent": "@docs-expert",
+      "phase": "finalize",
+      "attempt": 1,
+      "startedAt": "2026-04-05T04:45:35.044Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "in-progress",
+      "intents": [],
+      "messages": [
+        "Now let me read the existing documentation files that need updating, and check what files actually changed with a diff.",
+        "Let me quickly verify key implementation details before writing docs.",
+        "Now I have all the information I need. Let me check test counts to verify the numbers mentioned in the code-cleanup docNote.",
+        "Now I have all the data. Let me plan the updates:  **Files to update:** 1. `backend/README.md` — Add tasks endpoints, env vars, test counts, schema references 2. `frontend/README.md` — Add tasks page, key files, test counts 3. `e2e/README.md` — Add tasks.spec.ts 4. `packages/schemas/README.md` — Add task schemas 5. `infra/README.md` — Add Cosmos DB Tasks container, APIM update  Let me execute all updates now.",
+        "Now update the frontend README:",
+        "Now update the e2e README:",
+        "Now update the schemas README:",
+        "Now update the infra README — add Cosmos DB Tasks container and note the CI/CD change:",
+        "Now let me verify all edited files read back correctly:",
+        "Backend README looks good. Let me verify the frontend README:"
+      ],
+      "filesRead": [
+        "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_CHANGES.json",
+        "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
+        "apps/sample-app/docs/architecture/system-overview.md",
+        "apps/sample-app/docs/specs/api-contracts.md",
+        "apps/sample-app/docs/specs/functional-spec.md",
+        "apps/sample-app/frontend/README.md",
+        "README.md",
+        "apps/sample-app/backend/README.md",
+        "apps/sample-app/e2e/README.md",
+        "apps/sample-app/packages/schemas/README.md",
+        "apps/sample-app/infra/README.md",
+        "apps/sample-app/backend/src/functions/fn-tasks.ts"
+      ],
+      "filesChanged": [],
+      "shellCommands": [
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"*/archive/*\" | head -30",
+          "timestamp": "2026-04-05T04:46:00.355Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"*/archive/*\" -not -path \"*/.apm/*\" -not -path \"*/in-progress/*\" | sort",
+          "timestamp": "2026-04-05T04:46:06.454Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t/apps/sample-app/.github -name \"*.md\" 2>/dev/null; find /workspaces/DAGent-t/.github/instructions -name \"*.md\" 2>/dev/null | head -20",
+          "timestamp": "2026-04-05T04:46:22.974Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "find /workspaces/DAGent-t -path \"*/node_modules\" -prune -o -name \"*.instructions.md\" -print 2>/dev/null | head -20",
+          "timestamp": "2026-04-05T04:46:27.405Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "ls /workspaces/DAGent-t/apps/sample-app/packages/schemas/src/tasks.ts 2>/dev/null && cat /workspaces/DAGent-t/apps/sample-app/packages/schemas/src/tasks.ts || echo \"File not found\"",
+          "timestamp": "2026-04-05T04:46:36.367Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --verbose 2>&1 | tail -5",
+          "timestamp": "2026-04-05T04:46:41.331Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && npx jest --verbose 2>&1 | tail -5",
+          "timestamp": "2026-04-05T04:46:47.666Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --verbose 2>&1 | grep -E \"^\\s+(✓|✕|PASS|FAIL|√|×|●)\" | head -50; echo \"---\"; cd /workspaces/DAGent-t/apps/sample-app/backend && npx jest --v",
+          "timestamp": "2026-04-05T04:46:57.189Z",
+          "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t/apps/sample-app/frontend && npx jest --verbose 2>&1 | grep -E \"(PASS|FAIL)\" | head -10",
+          "timestamp": "2026-04-05T04:47:05.384Z",
+          "isPipelineOp": false
+        }
+      ],
+      "toolCounts": {
+        "intent": 5,
+        "file-read": 16,
+        "shell": 9,
+        "edit": 11
+      },
+      "inputTokens": 916116,
+      "outputTokens": 8852,
+      "cacheReadTokens": 880966,
+      "cacheWriteTokens": 0
     }
   ]
 }

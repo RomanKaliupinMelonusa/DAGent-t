@@ -51,11 +51,12 @@ Error responses are always parsed against `ApiErrorResponseSchema` for structure
 | File | Purpose |
 |------|---------|
 | `src/app/providers.tsx` | Dual-mode auth provider (DemoProviders / EntraProviders) |
+| `src/app/tasks/page.tsx` | Kanban task board — 3-column drag-and-drop + fallback buttons |
 | `src/lib/demoAuthContext.tsx` | React context for demo auth state (validates with `DemoLoginResponseSchema`) |
 | `src/lib/authConfig.ts` | MSAL configuration for Entra ID |
 | `src/lib/apiClient.ts` | Authenticated fetch wrapper with optional Zod validation |
 | `src/components/DemoLoginForm.tsx` | Login form UI |
-| `src/components/NavBar.tsx` | Dual-mode navigation bar |
+| `src/components/NavBar.tsx` | Dual-mode navigation bar (Home, About, Task Board, Sign Out) |
 | `src/components/ui/primitives.tsx` | Shared UI primitives (Button, Input, Card) |
 
 ## Tests
@@ -66,8 +67,9 @@ Unit tests use Jest with `next/jest`. Run with `npm test`.
 |------|-------|----------|
 | `src/lib/__tests__/apiClient.test.ts` | 9 | Dual-mode auth headers, error parsing, Zod validation |
 | `src/components/__tests__/DemoLoginForm.test.tsx` | 5 | Login form rendering, submission, error handling |
+| `src/app/tasks/__tests__/page.test.tsx` | 46 | Kanban board rendering, drag-and-drop events, status transitions, optimistic UI |
 
-**Total: 14 unit tests passing.**
+**Total: 60 unit tests passing.**
 
 ## Build
 

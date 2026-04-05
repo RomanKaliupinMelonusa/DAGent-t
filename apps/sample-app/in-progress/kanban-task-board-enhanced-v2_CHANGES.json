@@ -1,0 +1,92 @@
+{
+  "feature": "kanban-task-board-enhanced-v2",
+  "stepsCompleted": [
+    {
+      "key": "infra-handoff",
+      "agent": "@infra-handoff",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-dev",
+      "agent": "@frontend-dev",
+      "filesChanged": [
+        "apps/sample-app/e2e/tasks.spec.ts",
+        "apps/sample-app/frontend/src/app/tasks/page.tsx",
+        "apps/sample-app/frontend/src/components/NavBar.tsx"
+      ],
+      "docNote": "Added Kanban task board page at /tasks with 3-column layout (TODO/IN_PROGRESS/DONE), HTML5 native drag-and-drop between columns with optimistic UI, fallback status-transition buttons (Start/Done/Back to To Do/Reopen), and Task Board nav link in NavBar. E2E tests cover create→drag→persist and button fallback flows."
+    },
+    {
+      "key": "backend-dev",
+      "agent": "@backend-dev",
+      "filesChanged": [
+        ".github/workflows/deploy-backend.yml",
+        "apps/sample-app/backend/package.json",
+        "apps/sample-app/backend/src/functions/__tests__/fn-tasks.test.ts",
+        "apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts",
+        "apps/sample-app/backend/src/functions/fn-tasks.ts"
+      ],
+      "docNote": "Added fn-tasks.ts with 3 HTTP triggers (GET/POST/PATCH) for Kanban task CRUD against Cosmos DB Tasks container. Uses DefaultAzureCredential, enforces MAX_TASKS_PER_WORKSPACE=500 via 429. Added @azure/cosmos + @azure/identity deps (were missing from webhook-dispatcher merge). Integration tests validate CRUD flow + az CLI appsettings check."
+    },
+    {
+      "key": "backend-unit-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "frontend-unit-test",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [
+        "apps/sample-app/frontend/src/app/tasks/__tests__/page.test.tsx"
+      ],
+      "docNote": null
+    },
+    {
+      "key": "push-app",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "integration-test",
+      "agent": "@backend-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "live-ui",
+      "agent": "@frontend-ui-test",
+      "filesChanged": [],
+      "docNote": null
+    },
+    {
+      "key": "code-cleanup",
+      "agent": "@code-cleanup",
+      "filesChanged": [],
+      "docNote": "Dead code analysis complete. No dead code found to remove. All feature symbols (fn-tasks.ts: 7 symbols, page.tsx: 8 symbols, tasks.ts: 8 symbols) are actively used. CreateTask/UpdateTaskStatus types in packages/schemas have zero AST consumers but are protected shared-schema public API exports. All tests green (39 backend, 60 frontend)."
+    }
+  ],
+  "allFilesChanged": [
+    "apps/sample-app/e2e/tasks.spec.ts",
+    "apps/sample-app/frontend/src/app/tasks/page.tsx",
+    "apps/sample-app/frontend/src/components/NavBar.tsx",
+    ".github/workflows/deploy-backend.yml",
+    "apps/sample-app/backend/package.json",
+    "apps/sample-app/backend/src/functions/__tests__/fn-tasks.test.ts",
+    "apps/sample-app/backend/src/functions/__tests__/tasks.integration.test.ts",
+    "apps/sample-app/backend/src/functions/fn-tasks.ts",
+    "apps/sample-app/frontend/src/app/tasks/__tests__/page.test.tsx"
+  ],
+  "summaryIntents": [
+    "Deterministic push — no agent session",
+    "Deterministic CI poll — all workflows passed"
+  ]
+}
