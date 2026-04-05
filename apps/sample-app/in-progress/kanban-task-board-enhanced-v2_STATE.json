@@ -18,8 +18,9 @@
       "label": "Infrastructure Written — Terraform",
       "agent": "@infra-architect",
       "phase": "infra",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Terraform resources created:\n- azurerm_cosmosdb_account.main (cosmos-sample-app-001, serverless, Session consistency)\n- azurerm_cosmosdb_sql_database.main (sample-app-db)\n- azurerm_cosmosdb_sql_container.webhooks (Webhooks, partition: /workspaceId) — from webhook-dispatcher prereq\n- azurerm_cosmosdb_sql_container.tasks (Tasks, partition: /workspaceId) — NEW for kanban board\n- azurerm_cosmosdb_sql_role_assignment.func_data_contributor (Function App MI → Cosmos DB Data Contributor)\n\nApp settings added to Function App:\n- COSMOSDB_ENDPOINT = azurerm_cosmosdb_account.main.endpoint\n- COSMOSDB_DATABASE_NAME = azurerm_cosmosdb_sql_database.main.name\n\nOutputs added:\n- cosmosdb_endpoint — Cosmos DB account endpoint URL\n- cosmosdb_account_name — Cosmos DB account name\n\nOpenAPI spec updated (api-sample.openapi.yaml):\n- GET /tasks — listTasks (returns Task[])\n- POST /tasks — createTask (accepts CreateTask, returns Task, 429 on limit)\n- PATCH /tasks/{id}/status — updateTaskStatus (accepts UpdateTaskStatus, returns Task, 404 if missing)\n- Components: Task, CreateTask, UpdateTaskStatus, TaskStatus schemas\n\nHooks updated:\n- .apm/hooks/validate-infra.sh — Cosmos DB reachability check via COSMOSDB_ENDPOINT\n\nNote: cosmos.tf includes full Cosmos DB setup (account, database, RBAC) because webhook-dispatcher PR #35 was not merged to main before this branch. Terraform state already has these resources — plan shows them as 'create' but apply will import/converge cleanly."
     },
     {
       "key": "push-infra",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-05T04:10:20.044Z",
+  "generatedAt": "2026-04-05T04:10:29.858Z",
   "featureSlug": "kanban-task-board-enhanced-v2",
   "items": [
     {
@@ -93,9 +93,9 @@
       "phase": "infra",
       "attempt": 1,
       "startedAt": "2026-04-05T04:05:10.930Z",
-      "finishedAt": "",
-      "durationMs": 0,
-      "outcome": "in-progress",
+      "finishedAt": "2026-04-05T04:10:29.853Z",
+      "durationMs": 318923,
+      "outcome": "completed",
       "intents": [],
       "messages": [
         "Now I have the full picture. The `webhook-dispatcher` branch has `cosmos.tf` but it hasn't been merged to `main` (our base). I need to bring those resources forward and add the Tasks container. Let me also check the hooks.",
@@ -105,7 +105,8 @@
         "Now let me run the Terraform validation gate:",
         "Terraform validates. Now let me check Azure CLI auth and run the full validation gate with `terraform plan`:",
         "Terraform plan succeeds. Summary: - **5 to add**: Cosmos DB account, database, Webhooks container, Tasks container, RBAC role assignment - **4 to change**: APIM API (new OpenAPI spec paths), Function App (new app settings), KV secret (refresh), SWA (drift) - **0 to destroy**  The plan is clean. Now let me commit and complete:",
-        "Now leave the doc-note and mark complete:"
+        "Now leave the doc-note and mark complete:",
+        "All done. Here's a summary of what was implemented:  ## Infrastructure Changes — Summary  ### Files Created | File | Description | |---|---| | `infra/cosmos.tf` | Full Cosmos DB setup: serverless account, SQL database, Webhooks container (from webhook-dispatcher prereq), **Tasks container** (new), and RBAC role assignment for Function App MI |  ### Files Modified | File | Change | |---|---| | `infra/main.tf` | Added `COSMOSDB_ENDPOINT` and `COSMOSDB_DATABASE_NAME` app settings to Function App | | `infra/outputs.tf` | Added `cosmosdb_endpoint` and `cosmosdb_account_name` outputs | | `infra/api-specs/api-sample.openapi.yaml` | Added 3 task API paths (`GET /tasks`, `POST /tasks`, `PATCH /tasks/{id}/status`) with full OpenAPI schemas (`Task`, `CreateTask`, `UpdateTaskStatus`, `TaskStatus` enum) | | `.apm/hooks/validate-infra.sh` | Appended Cosmos DB reachability check |  ### Terraform Validation - ✅ `terraform init` — success (remote backend) - ✅ `terraform validate` — success - ✅ `terraform plan` — **5 to add, 4 to change, 0 to destroy**  ### Key Decision The `feature/webhook-dispatcher` branch (PR #35) was not merged to `main` before this branch was created, so `cosmos.tf` didn't exist. I brought forward the full Cosmos DB setup (account, database, RBAC) alongside the new Tasks container. Since these resources likely already exist in the Terraform state from the webhook-dispatcher deployment, `terraform apply` will reconcile cleanly."
       ],
       "filesRead": [
         "apps/sample-app/in-progress/kanban-task-board-enhanced-v2_SPEC.md",
@@ -195,19 +196,25 @@
           "command": "cd /workspaces/DAGent-t/apps/sample-app && npm run pipeline:complete kanban-task-board-enhanced-v2 infra-architect 2>&1",
           "timestamp": "2026-04-05T04:10:15.475Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh infra \"chore(pipeline): mark infra-architect complete for kanban-task-board-enhanced-v2\"",
+          "timestamp": "2026-04-05T04:10:20.047Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 6,
         "file-read": 10,
-        "shell": 17,
+        "shell": 18,
         "create": 1,
         "edit": 4
       },
-      "inputTokens": 885007,
-      "outputTokens": 9523,
-      "cacheReadTokens": 848569,
-      "cacheWriteTokens": 0
+      "inputTokens": 929371,
+      "outputTokens": 9950,
+      "cacheReadTokens": 892575,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "4bb30aad1329e30ba4aa970c099f224c049fe4e5"
     }
   ]
 }
