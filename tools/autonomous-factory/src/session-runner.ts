@@ -1322,14 +1322,31 @@ async function runAgentSession(
   // Wrapped in an object so both closures reference the same mutable value.
   const hardLimitRef = { fired: false };
 
+  // --- Zero-Trust tool allow-list extraction ---
+  const agentToolsCfg = apmContext.agents[next.key]?.tools;
+  const allowedCoreTools = new Set<string>(agentToolsCfg?.core ?? []);
+  const allowedMcpTools = new Set<string>();
+  const mcpToolConfig = agentToolsCfg?.mcp ?? {};
+  for (const tools of Object.values(mcpToolConfig)) {
+    if (tools === "*") allowedMcpTools.add("*");
+    else if (Array.isArray(tools)) tools.forEach((t: unknown) => allowedMcpTools.add(String(t)));
+  }
+
+  // Filter custom tools to the agent's allow-list (empty sets = migration fallback: allow all)
+  const allCustomTools = buildCustomTools(repoRoot, next.key);
+  const agentHasToolConfig = allowedCoreTools.size > 0 || allowedMcpTools.size > 0;
+  const filteredTools = agentHasToolConfig
+    ? allCustomTools.filter((t) => allowedCoreTools.has(t.name))
+    : allCustomTools;
+
   // Create SDK session
   const session = await client.createSession({
     model: agentConfig.model,
     workingDirectory: repoRoot,
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
-    tools: buildCustomTools(repoRoot, next.key),
-    hooks: buildSessionHooks(repoRoot, next.key, (toolName) => {
+    tools: filteredTools,
+    hooks: buildSessionHooks(repoRoot, next.key, allowedCoreTools, allowedMcpTools, (toolName) => {
       // Bridge denied tool calls into the circuit breaker counters.
       // SDK hooks that deny a tool may not fire tool.execution_start,
       // so we increment manually to prevent infinite denial loops.

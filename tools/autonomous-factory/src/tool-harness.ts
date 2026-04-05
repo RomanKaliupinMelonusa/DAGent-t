@@ -112,6 +112,39 @@ export const FILE_TRUNCATION_WARNING =
   "Use start_line/end_line parameters to paginate, or use roam-code tools for structural AST querying.]";
 
 // ---------------------------------------------------------------------------
+// Zero-Trust: Safe read-only tools (fail-closed write classification)
+// ---------------------------------------------------------------------------
+
+/**
+ * Exhaustive set of tools known to be read-only. Any tool NOT in this set
+ * (and not a shell tool, and not an MCP tool from a known prefix) is
+ * classified as a write tool by `checkRbac`.
+ * This is deliberately fail-closed: new tools must be explicitly added here.
+ * Exported for unit testing.
+ */
+export const SAFE_READ_TOOLS = new Set([
+  // SDK built-in read tools
+  "read_file", "file_read", "view", "grep_search", "list_dir", "list_directory",
+  "semantic_search", "search_code",
+  // Custom / orchestrator tools
+  "report_intent",
+  // roam-code MCP tools (all are read-only analysis tools)
+  "roam_understand", "roam_file_info", "roam_diff", "roam_health", "roam_deps",
+  "roam_context", "roam_explore", "roam_search_symbol", "roam_trace", "roam_uses",
+  "roam_batch_get", "roam_batch_search", "roam_impact", "roam_affected_tests",
+  "roam_complexity_report", "roam_dead_code", "roam_diagnose", "roam_diagnose_issue",
+  "roam_pr_risk", "roam_preflight", "roam_prepare_change", "roam_review_change",
+  "roam_syntax_check", "roam_expand_toolset",
+]);
+
+/**
+ * MCP tool name prefixes whose tools do not write to the local filesystem.
+ * Tools matching these prefixes bypass write-path RBAC in `checkRbac`.
+ * Playwright tools interact with the browser, not the repo.
+ */
+const MCP_NON_FILESYSTEM_PREFIXES = ["playwright-", "mermaid-"];
+
+// ---------------------------------------------------------------------------
 // Shell write detection — moved from session-runner.ts for RBAC reuse
 // ---------------------------------------------------------------------------
 
@@ -229,13 +262,22 @@ export function checkRbac(
   const archetype = getAgentArchetype(itemKey);
   if (!archetype) return null; // Unconstrained agent
 
-  const isWriteTool = toolName === "write_file" || toolName === "edit_file" || toolName === "create_file";
+  // Fail-closed write classification: any tool NOT in the safe-read set,
+  // not a shell tool, and not from a non-filesystem MCP prefix is treated
+  // as a write tool.
   const isShellTool = toolName === "bash" || toolName === "write_bash" || toolName === "shell";
+  const isMcpNonFs = MCP_NON_FILESYSTEM_PREFIXES.some((p) => toolName.startsWith(p));
+  const isWriteTool = !SAFE_READ_TOOLS.has(toolName) && !isShellTool && !isMcpNonFs;
 
   // --- File write RBAC ---
   if (isWriteTool) {
     const rawPath = extractFilePath(toolArgs);
-    if (!rawPath) return null; // Can't determine path — allow through
+    if (!rawPath) {
+      return (
+        `ERROR: Security Policy Violation. The platform cannot determine the target file path ` +
+        `for the '${toolName}' tool. You MUST use standard 'write_file' or 'bash' tools.`
+      );
+    }
     const relPath = toRepoRelative(rawPath, repoRoot);
 
     if (archetype === "validator") {
@@ -326,11 +368,28 @@ export function checkShellCommand(cmd: string): string | null {
 export function buildSessionHooks(
   repoRoot: string,
   itemKey: string,
+  allowedCoreTools: Set<string>,
+  allowedMcpTools: Set<string>,
   onDenial?: (toolName: string) => void,
 ): SessionHooks {
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
   ): PreToolUseHookOutput | void => {
+    // --- UNIVERSAL ZERO-TRUST GATE ---
+    // Bypass the gate if the agent hasn't been migrated to explicit tool config yet.
+    if (allowedCoreTools.size > 0 || allowedMcpTools.size > 0) {
+      const mcpAllowed = allowedMcpTools.has("*") || allowedMcpTools.has(input.toolName);
+      if (!allowedCoreTools.has(input.toolName) && !mcpAllowed) {
+        const msg = `ERROR: Zero-Trust Policy Violation. The tool '${input.toolName}' is not authorized for your agent persona. Do not attempt to use it again.`;
+        onDenial?.(input.toolName);
+        return {
+          permissionDecision: "deny",
+          permissionDecisionReason: msg,
+          additionalContext: msg,
+        };
+      }
+    }
+
     // --- RBAC interceptor (runs before shell bouncers) ---
     const rbacDenial = checkRbac(itemKey, input.toolName, input.toolArgs, repoRoot, input.cwd);
     if (rbacDenial) {

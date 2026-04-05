@@ -34,12 +34,17 @@ import {
   ERR_MAKER_CLOUD_CLI,
   CD_CMD_RE,
   ERR_CD_CMD,
+  SAFE_READ_TOOLS,
 } from "../tool-harness.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 
 /** Neutral itemKey that triggers no RBAC (unconstrained archetype) */
 const NEUTRAL_KEY = "deploy-manager";
+
+/** Empty sets for migration-mode (no Zero-Trust filtering) */
+const NO_CORE = new Set<string>();
+const NO_MCP = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Regex constant smoke tests
@@ -245,7 +250,7 @@ describe("checkShellCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPreToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
   const preHook = hooks.onPreToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -300,7 +305,7 @@ describe("buildSessionHooks.onPreToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPostToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+  const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
   const postHook = hooks.onPostToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -601,7 +606,7 @@ describe("constants", () => {
 describe("buildSessionHooks onDenial callback", () => {
   it("invokes onDenial when a bash command is denied", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -616,7 +621,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("invokes onDenial for write_bash denials", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -631,7 +636,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("does NOT invoke onDenial for allowed commands", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -644,7 +649,7 @@ describe("buildSessionHooks onDenial callback", () => {
   });
 
   it("works without onDenial callback (backward compat)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -775,7 +780,7 @@ describe("shell env_vars type coercion", () => {
 
 describe("onPostToolUse truncation with line range", () => {
   it("truncates built-in read_file even when startLine/endLine are set", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
     const postHook = hooks.onPostToolUse!;
 
     // Simulate a read_file result with 700 lines
@@ -800,7 +805,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("does not truncate built-in read_file when within limit", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
     const postHook = hooks.onPostToolUse!;
 
     const smallContent = Array.from({ length: 100 }, (_, i) => `line-${i + 1}`).join("\n");
@@ -820,7 +825,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("ignores non-read_file tools", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
     const postHook = hooks.onPostToolUse!;
 
     const result = postHook(
@@ -961,9 +966,10 @@ describe("checkRbac", () => {
 
   // --- Edge cases ---
 
-  it("returns null when toolArgs has no file path", () => {
+  it("denies write_file when toolArgs has no file path (fail-closed)", () => {
     const denial = checkRbac("backend-unit-test", "write_file", {}, REPO_ROOT);
-    assert.equal(denial, null);
+    assert.ok(denial);
+    assert.ok(denial!.includes("Security Policy Violation"));
   });
 
   it("handles path key as 'path'", () => {
@@ -1027,6 +1033,178 @@ describe("checkRbac", () => {
 
   it("Maker allowed write via cwd to non-protected path", () => {
     const denial = checkRbac("backend-dev", "shell", { command: 'echo "ok" > utils.ts', cwd: "apps/sample-app/backend/src" }, REPO_ROOT);
+    assert.equal(denial, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Zero-Trust Gate — buildSessionHooks with allowedCoreTools / allowedMcpTools
+// ---------------------------------------------------------------------------
+
+describe("Zero-Trust Gate", () => {
+  const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
+
+  it("bypasses gate when both sets are empty (migration mode)", () => {
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, NO_MCP);
+    const result = hooks.onPreToolUse!(
+      { toolName: "bash", toolArgs: { command: "npm test" }, ...baseInput },
+      { sessionId: "test" },
+    );
+    // Should NOT be denied — gate is inactive in migration mode
+    assert.ok(!result || (result as any).permissionDecision !== "deny");
+  });
+
+  it("denies tool not in allowedCoreTools", () => {
+    const coreOnly = new Set(["shell"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP);
+    const result = hooks.onPreToolUse!(
+      { toolName: "file_read", toolArgs: {}, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.ok(result);
+    assert.equal((result as any).permissionDecision, "deny");
+    assert.ok((result as any).additionalContext?.includes("Zero-Trust Policy Violation"));
+  });
+
+  it("allows tool in allowedCoreTools", () => {
+    const coreOnly = new Set(["shell", "file_read"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP);
+    const result = hooks.onPreToolUse!(
+      { toolName: "shell", toolArgs: { command: "npm test" }, ...baseInput },
+      { sessionId: "test" },
+    );
+    // Should not be denied by Zero-Trust gate
+    assert.ok(!result || (result as any).permissionDecision !== "deny" || !(result as any).additionalContext?.includes("Zero-Trust"));
+  });
+
+  it("allows MCP tool when in allowedMcpTools", () => {
+    const mcpTools = new Set(["roam_understand"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpTools);
+    const result = hooks.onPreToolUse!(
+      { toolName: "roam_understand", toolArgs: {}, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.ok(!result || (result as any).permissionDecision !== "deny");
+  });
+
+  it("denies MCP tool NOT in allowedMcpTools", () => {
+    const mcpTools = new Set(["roam_understand"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpTools);
+    const result = hooks.onPreToolUse!(
+      { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.ok(result);
+    assert.equal((result as any).permissionDecision, "deny");
+    assert.ok((result as any).additionalContext?.includes("Zero-Trust"));
+  });
+
+  it("allows all MCP tools when wildcard '*' is in allowedMcpTools", () => {
+    const mcpWild = new Set(["*"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, NO_CORE, mcpWild);
+    const result = hooks.onPreToolUse!(
+      { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.ok(!result || (result as any).permissionDecision !== "deny");
+  });
+
+  it("fires onDenial callback on Zero-Trust denial", () => {
+    const denied: string[] = [];
+    const coreOnly = new Set(["shell"]);
+    const hooks = buildSessionHooks(REPO_ROOT, NEUTRAL_KEY, coreOnly, NO_MCP, (t) => denied.push(t));
+    hooks.onPreToolUse!(
+      { toolName: "write_file", toolArgs: {}, ...baseInput },
+      { sessionId: "test" },
+    );
+    assert.equal(denied.length, 1);
+    assert.equal(denied[0], "write_file");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fail-closed checkRbac — SAFE_READ_TOOLS & unknown tool classification
+// ---------------------------------------------------------------------------
+
+describe("Fail-closed checkRbac with SAFE_READ_TOOLS", () => {
+  it("classifies unknown tool as write tool and applies path RBAC", () => {
+    // Unknown MCP tool writing to protected infra path → denied for maker
+    const denial = checkRbac(
+      "backend-dev", "ai_refactor",
+      { filePath: "apps/sample-app/infra/main.tf" },
+      REPO_ROOT,
+    );
+    assert.equal(denial, ERR_MAKER_WRITE);
+  });
+
+  it("denies unknown tool when path cannot be extracted (fail-closed)", () => {
+    // Unknown tool with no filePath arg → hard deny
+    const denial = checkRbac(
+      "backend-dev", "ai_refactor",
+      { someOtherArg: "value" },
+      REPO_ROOT,
+    );
+    assert.ok(denial);
+    assert.ok(denial!.includes("Security Policy Violation"));
+    assert.ok(denial!.includes("ai_refactor"));
+  });
+
+  it("allows known safe read tool without path checks", () => {
+    // read_file is in SAFE_READ_TOOLS — should not be treated as write tool
+    const denial = checkRbac(
+      "backend-dev", "read_file",
+      { filePath: "apps/sample-app/infra/main.tf" },
+      REPO_ROOT,
+    );
+    assert.equal(denial, null);
+  });
+
+  it("allows known safe read tool (roam_understand) for any agent", () => {
+    const denial = checkRbac(
+      "backend-dev", "roam_understand",
+      {},
+      REPO_ROOT,
+    );
+    assert.equal(denial, null);
+  });
+
+  it("SAFE_READ_TOOLS contains expected entries", () => {
+    for (const tool of [
+      "read_file", "file_read", "view", "grep_search", "list_dir",
+      "roam_understand", "roam_file_info", "roam_context", "roam_explore",
+      "roam_search_symbol", "roam_trace", "roam_uses", "roam_batch_get",
+    ]) {
+      assert.ok(SAFE_READ_TOOLS.has(tool), `Expected ${tool} in SAFE_READ_TOOLS`);
+    }
+  });
+
+  it("allows write_file to non-protected path for maker", () => {
+    // Standard write_file to allowed path should still work
+    const denial = checkRbac(
+      "backend-dev", "write_file",
+      { filePath: "apps/sample-app/backend/src/index.ts" },
+      REPO_ROOT,
+    );
+    assert.equal(denial, null);
+  });
+
+  it("allows playwright MCP tools for validators (non-filesystem prefix bypass)", () => {
+    // Playwright tools interact with the browser, not the filesystem
+    const denial = checkRbac(
+      "live-ui", "playwright-navigate",
+      { url: "https://example.com" },
+      REPO_ROOT,
+    );
+    assert.equal(denial, null);
+  });
+
+  it("allows roam-code MCP tools for makers", () => {
+    // All roam tools are read-only analysis
+    const denial = checkRbac(
+      "backend-dev", "roam_context",
+      { symbol: "MyClass" },
+      REPO_ROOT,
+    );
     assert.equal(denial, null);
   });
 });

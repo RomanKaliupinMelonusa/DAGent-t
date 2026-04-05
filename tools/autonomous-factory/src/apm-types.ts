@@ -43,6 +43,17 @@ export const ApmToolLimitsSchema = z.object({
   hard: z.number().int().positive().optional(),
 }).optional();
 
+/**
+ * Per-agent tool allow-lists for Zero-Trust sandboxing.
+ * `core` lists built-in and custom tools (e.g. "file_read", "shell", "write_file").
+ * `mcp` maps server names to allowed tool arrays or "*" for wildcard access.
+ * Omit entirely during migration — the orchestrator falls back to allow-all.
+ */
+export const ApmAgentToolsSchema = z.object({
+  core: z.array(z.string()).optional().describe("Allowed built-in and custom core tools (e.g., file_read, shell, write_file)"),
+  mcp: z.record(z.string(), z.any()).optional().describe("Allowed MCP tools per server — keys are server names, values are tool name arrays or '*' wildcard"),
+}).optional();
+
 export const ApmCompiledAgentSchema = z.object({
   /** Fully assembled rules markdown (compiled from .apm/instructions/). */
   rules: z.string(),
@@ -54,6 +65,8 @@ export const ApmCompiledAgentSchema = z.object({
   skills: z.record(z.string(), z.string()),
   /** Per-agent tool call limits (cognitive circuit breaker). */
   toolLimits: ApmToolLimitsSchema,
+  /** Per-agent tool allow-lists for Zero-Trust sandboxing. */
+  tools: ApmAgentToolsSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -126,6 +139,7 @@ export const ApmAgentDeclSchema = z.object({
   mcp: z.array(z.string()),
   skills: z.array(z.string()).default([]),
   toolLimits: ApmToolLimitsSchema,
+  tools: ApmAgentToolsSchema,
 });
 
 export const ApmGeneratedInstructionSchema = z.object({
@@ -192,6 +206,7 @@ export const ApmSkillFrontmatterSchema = z.object({
 export type ApmConfig = z.infer<typeof ApmConfigSchema>;
 export type ApmMcpConfig = z.infer<typeof ApmMcpConfigSchema>;
 export type ApmToolLimits = z.infer<typeof ApmToolLimitsSchema>;
+export type ApmAgentTools = z.infer<typeof ApmAgentToolsSchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;

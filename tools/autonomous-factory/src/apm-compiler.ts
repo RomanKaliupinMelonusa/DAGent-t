@@ -243,6 +243,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       mcp: agentMcp,
       skills: agentSkills,
       toolLimits: agentDecl.toolLimits,
+      tools: agentDecl.tools,
     };
   }
 
