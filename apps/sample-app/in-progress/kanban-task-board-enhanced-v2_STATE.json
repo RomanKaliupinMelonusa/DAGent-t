@@ -125,7 +125,7 @@
       "label": "Live UI Validated",
       "agent": "@frontend-ui-test",
       "phase": "post-deploy",
-      "status": "pending",
+      "status": "done",
       "error": null
     },
     {
