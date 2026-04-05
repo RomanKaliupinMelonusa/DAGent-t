@@ -67,16 +67,18 @@
       "label": "Development Complete — Backend",
       "agent": "@backend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added fn-tasks.ts with 3 HTTP triggers (GET/POST/PATCH) for Kanban task CRUD against Cosmos DB Tasks container. Uses DefaultAzureCredential, enforces MAX_TASKS_PER_WORKSPACE=500 via 429. Added @azure/cosmos + @azure/identity deps (were missing from webhook-dispatcher merge). Integration tests validate CRUD flow + az CLI appsettings check."
     },
     {
       "key": "frontend-dev",
       "label": "Development Complete — Frontend",
       "agent": "@frontend-dev",
       "phase": "pre-deploy",
-      "status": "pending",
-      "error": null
+      "status": "done",
+      "error": null,
+      "docNote": "Added Kanban task board page at /tasks with 3-column layout (TODO/IN_PROGRESS/DONE), HTML5 native drag-and-drop between columns with optimistic UI, fallback status-transition buttons (Start/Done/Back to To Do/Reopen), and Task Board nav link in NavBar. E2E tests cover create→drag→persist and button fallback flows."
     },
     {
       "key": "backend-unit-test",
