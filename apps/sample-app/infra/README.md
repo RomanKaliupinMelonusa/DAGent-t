@@ -83,6 +83,14 @@ All resources below are tracked in remote state. `terraform plan` with no config
 | `azurerm_static_web_app.main` | `swa-sample-app-001` | Frontend (Next.js) |
 | `azurerm_api_management.main` | `apim-sample-app-001` | API gateway with dual-mode auth policies |
 
+### Data
+
+| Resource | Name | Purpose |
+|----------|------|---------||
+| `azurerm_cosmosdb_account.cosmos` | serverless, Session consistency | Cosmos DB account (provisioned by `webhook-dispatcher`) |
+| `azurerm_cosmosdb_sql_database.main` | `sample-app-db` | Primary database |
+| `azurerm_cosmosdb_sql_container.tasks` | `Tasks` | Kanban task storage (partition key: `/workspaceId`) |
+
 ### APIM Configuration
 
 | Resource | Purpose |
@@ -114,6 +122,8 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 ## Sample Protected API
 
 The `GET /hello` endpoint (`api-specs/api-sample.openapi.yaml`) demonstrates the full dual-mode auth pattern end-to-end. APIM applies `check-header` (demo) or `validate-jwt` (Entra) based on `auth_mode`, then forwards to the Function App with the function key.
+
+The OpenAPI spec also defines the Kanban Task Board API: `GET /tasks`, `POST /tasks`, and `PATCH /tasks/{id}/status`. These routes follow the same dual-mode auth pattern and are auto-imported by the existing `azurerm_api_management_api.sample` resource.
 
 ## Adding Your Own APIs
 

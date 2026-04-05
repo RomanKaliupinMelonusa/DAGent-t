@@ -24,6 +24,7 @@ npx playwright test --ui           # interactive mode
 |------|-------|-------------|
 | `login.spec.ts` | 4 | Demo login flow — form rendering, credential validation, session persistence |
 | `authenticated-hello.spec.ts` | 4 | Post-login API call — /hello response display, navigation while authenticated, sign-out |
+| `tasks.spec.ts` | 3 | Kanban task board — create task, drag-and-drop column transitions, button fallback status changes, persistence after reload |
 
 ## Environment Variables
 

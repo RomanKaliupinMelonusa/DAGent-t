@@ -7,7 +7,7 @@ Azure Functions backend with shared Zod schema validation and dual-mode auth.
 ```bash
 cp .env.example .env          # configure environment
 npm install
-npm test                       # run unit tests (20 passing)
+npm test                       # run unit tests (39 passing)
 npm start                      # start Functions host on :7071
 ```
 
@@ -27,6 +27,48 @@ Sample protected endpoint demonstrating the dual-mode auth pattern. Auth is enfo
 ```
 
 **Errors:** 400 (name exceeds 100 chars)
+
+### `GET /api/tasks`
+
+List all tasks for the default workspace, ordered by `createdAt` descending. Data is stored in the Cosmos DB `Tasks` container (partition key: `/workspaceId`).
+
+**Success (200):**
+```json
+[
+  {
+    "id": "a1b2c3d4-...",
+    "workspaceId": "default",
+    "title": "Implement drag-and-drop",
+    "status": "TODO",
+    "createdAt": "2026-04-05T00:00:00.000Z",
+    "updatedAt": "2026-04-05T00:00:00.000Z"
+  }
+]
+```
+
+### `POST /api/tasks`
+
+Create a new task. Body validated with `CreateTaskSchema`. Enforces a per-workspace limit of `MAX_TASKS_PER_WORKSPACE` (default 500) — returns 429 when exceeded.
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `title` | string | yes | 1–200 characters |
+
+**Success (201):** Returns the created `Task` with `id`, `workspaceId: "default"`, `status: "TODO"`, and timestamps.
+
+**Errors:** 400 (invalid input), 429 (workspace task limit exceeded), 500 (server error)
+
+### `PATCH /api/tasks/{id}/status`
+
+Update a task's status (Kanban column transition). Body validated with `UpdateTaskStatusSchema`.
+
+| Field | Type | Required | Values |
+|-------|------|----------|--------|
+| `status` | string | yes | `"TODO"`, `"IN_PROGRESS"`, `"DONE"` |
+
+**Success (200):** Returns the updated `Task`.
+
+**Errors:** 400 (invalid input), 404 (task not found), 500 (server error)
 
 ### `POST /api/auth/login`
 
@@ -53,6 +95,11 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | `GET /hello` response | `HelloResponseSchema` |
 | `POST /auth/login` request | `DemoLoginRequestSchema` |
 | `POST /auth/login` response | `DemoLoginResponseSchema` |
+| `GET /tasks` response | `z.array(TaskSchema)` |
+| `POST /tasks` request | `CreateTaskSchema` |
+| `POST /tasks` response | `TaskSchema` |
+| `PATCH /tasks/{id}/status` request | `UpdateTaskStatusSchema` |
+| `PATCH /tasks/{id}/status` response | `TaskSchema` |
 | All error responses | `ApiErrorResponseSchema` |
 
 ## AUTH_MODE Feature Flag
@@ -70,6 +117,9 @@ Both endpoints use Zod schemas from `@branded/schemas` for request validation an
 | `DEMO_USER` | — | Demo username |
 | `DEMO_PASS` | — | Demo password |
 | `DEMO_TOKEN` | — | Token returned on successful login |
+| `COSMOSDB_ENDPOINT` | — | Cosmos DB account endpoint (set by Terraform) |
+| `COSMOSDB_DATABASE_NAME` | — | Cosmos DB database name (set by Terraform) |
+| `MAX_TASKS_PER_WORKSPACE` | `500` | Max tasks allowed per workspace (429 if exceeded) |
 
 ## Tests
 
@@ -77,8 +127,13 @@ Unit tests live in `src/functions/__tests__/`. Run with `npm test`.
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `fn-hello.test.ts` | fn-hello endpoint logic | Response format, input validation, name param |
-| `smoke.integration.test.ts` | Live endpoint smoke tests | Verifies deployed endpoints return expected schemas |
+| `fn-hello.test.ts` | 9 | Response format, input validation, name param |
+| `fn-demo-login.test.ts` | 11 | Auth mode gating, credential validation, error handling |
+| `fn-tasks.test.ts` | 19 | CRUD logic, Zod validation, 429 limit, 404 handling, status transitions |
+| `smoke.integration.test.ts` | — | Live endpoint smoke tests (skipped locally) |
+| `tasks.integration.test.ts` | — | Live CRUD + `MAX_TASKS_PER_WORKSPACE` az CLI check (skipped locally) |
+
+**Total: 39 unit tests passing** (integration tests run in CI only).
 
 ## Adding Your Own Functions
 

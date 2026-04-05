@@ -18,6 +18,10 @@ npm test         # run schema unit tests
 | `DemoLoginResponseSchema` | `src/auth.ts` | `POST /auth/login` | `{ token: string, displayName: string }` |
 | `ApiErrorCodeSchema` | `src/errors.ts` | All endpoints | `"INVALID_INPUT" \| "UNAUTHORIZED" \| "NOT_FOUND" \| "SERVER_ERROR"` |
 | `ApiErrorResponseSchema` | `src/errors.ts` | All endpoints | `{ error: ApiErrorCode, message: string }` |
+| `TaskStatusSchema` | `src/tasks.ts` | Task endpoints | `"TODO" \| "IN_PROGRESS" \| "DONE"` |
+| `TaskSchema` | `src/tasks.ts` | `GET /tasks`, `POST /tasks`, `PATCH /tasks/{id}/status` | `{ id, workspaceId, title, status, createdAt, updatedAt }` |
+| `CreateTaskSchema` | `src/tasks.ts` | `POST /tasks` | `{ title: string }` (1–200 chars) |
+| `UpdateTaskStatusSchema` | `src/tasks.ts` | `PATCH /tasks/{id}/status` | `{ status: TaskStatus }` |
 
 ## Usage
 
