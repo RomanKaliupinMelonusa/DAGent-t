@@ -83,6 +83,8 @@ export const ApmCompiledAgentSchema = z.object({
   tools: ApmAgentToolsSchema,
   /** Per-agent security profile for config-driven path sandboxing. */
   security: ApmAgentSecuritySchema,
+  /** Raw Handlebars template for the agent's system prompt (read from .apm/agents/<promptFile>). */
+  systemPromptTemplate: z.string(),
 });
 
 // ---------------------------------------------------------------------------
@@ -152,6 +154,8 @@ export const ApmCompiledOutputSchema = z.object({
 
 export const ApmAgentDeclSchema = z.object({
   instructions: z.array(z.string()),
+  /** Path to the Handlebars agent template relative to .apm/agents/. */
+  promptFile: z.string().describe("Path to the Handlebars agent template relative to .apm/agents/"),
   mcp: z.array(z.string()),
   skills: z.array(z.string()).default([]),
   toolLimits: ApmToolLimitsSchema,
