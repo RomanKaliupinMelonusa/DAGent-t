@@ -6,6 +6,7 @@ tokenBudget: 8000
 agents:
   schema-dev:
     instructions: [always, backend/schema-sync.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: schema-dev.agent.md
     mcp: [roam-code]
     skills: [test-schema-validation]
     toolLimits: { soft: 60, hard: 80 }
@@ -18,6 +19,7 @@ agents:
         roam-code: "*"
   infra-architect:
     instructions: [always, infra, backend/schema-sync.md, tooling/roam-tool-rules.md]
+    promptFile: infra-architect.agent.md
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 70, hard: 100 }
@@ -29,6 +31,7 @@ agents:
         roam-code: "*"
   infra-handoff:
     instructions: [always, tooling/roam-tool-rules.md]
+    promptFile: infra-handoff.agent.md
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -40,6 +43,7 @@ agents:
         roam-code: "*"
   push-infra:
     instructions: [always]
+    promptFile: push-code.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -49,6 +53,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   poll-infra-plan:
     instructions: [always]
+    promptFile: poll-ci.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -58,6 +63,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   create-draft-pr:
     instructions: [always]
+    promptFile: create-pr.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -67,6 +73,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   await-infra-approval:
     instructions: [always]
+    promptFile: await-infra-approval.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -76,6 +83,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   backend-dev:
     instructions: [always, backend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: backend-dev.agent.md
     mcp: [roam-code]
     skills: [test-backend-unit]
     toolLimits: { soft: 80, hard: 110 }
@@ -88,6 +96,7 @@ agents:
         roam-code: "*"
   frontend-dev:
     instructions: [always, frontend, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: frontend-dev.agent.md
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
     toolLimits: { soft: 80, hard: 110 }
@@ -100,6 +109,7 @@ agents:
         roam-code: "*"
   backend-unit-test:
     instructions: [always, tooling/roam-test-intelligence.md]
+    promptFile: backend-unit-test.agent.md
     mcp: [roam-code]
     skills: [test-backend-unit]
     toolLimits: { soft: 60, hard: 90 }
@@ -112,6 +122,7 @@ agents:
         roam-code: "*"
   frontend-unit-test:
     instructions: [always, frontend/known-framework-issues.md, tooling/roam-test-intelligence.md]
+    promptFile: frontend-unit-test.agent.md
     mcp: [roam-code]
     skills: [test-frontend-unit]
     toolLimits: { soft: 60, hard: 90 }
@@ -124,6 +135,7 @@ agents:
         roam-code: "*"
   push-app:
     instructions: [always]
+    promptFile: push-code.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -133,6 +145,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   poll-app-ci:
     instructions: [always]
+    promptFile: poll-ci.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -142,6 +155,7 @@ agents:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   integration-test:
     instructions: [always, backend/integration-testing.md, backend/integration-auth.md, tooling/cloud-telemetry.md]
+    promptFile: backend-unit-test.agent.md
     mcp: []
     skills: [test-integration]
     toolLimits: { soft: 70, hard: 120 }
@@ -152,6 +166,7 @@ agents:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
   live-ui:
     instructions: [always, frontend/e2e-testing-mandate.md, frontend/known-framework-issues.md, tooling/roam-tool-rules.md, tooling/roam-test-intelligence.md, tooling/cloud-telemetry.md]
+    promptFile: frontend-unit-test.agent.md
     mcp: [roam-code, playwright]
     skills: []
     toolLimits: { soft: 100, hard: 130 }
@@ -165,6 +180,7 @@ agents:
         playwright: "*"
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: code-cleanup.agent.md
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -176,6 +192,7 @@ agents:
         roam-code: "*"
   doc-architect:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: doc-architect.agent.md
     mcp: [roam-code, mermaid]
     skills: []
     toolLimits: { soft: 40, hard: 55 }
@@ -188,6 +205,7 @@ agents:
         mermaid: "*"
   docs-archived:
     instructions: [always, tooling/roam-tool-rules.md]
+    promptFile: docs-archived.agent.md
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }
@@ -199,6 +217,7 @@ agents:
         roam-code: "*"
   publish-pr:
     instructions: [always]
+    promptFile: publish-pr.agent.md
     mcp: [roam-code]
     skills: []
     toolLimits: { soft: 60, hard: 80 }

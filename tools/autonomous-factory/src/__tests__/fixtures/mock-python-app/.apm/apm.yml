@@ -6,26 +6,32 @@ tokenBudget: 4500
 agents:
   backend-dev:
     instructions: [always]
+    promptFile: backend-dev.agent.md
     mcp: []
     skills: []
   backend-unit-test:
     instructions: [always]
+    promptFile: backend-unit-test.agent.md
     mcp: []
     skills: []
   push-app:
     instructions: [always]
+    promptFile: push-code.agent.md
     mcp: []
     skills: []
   poll-app-ci:
     instructions: [always]
+    promptFile: poll-ci.agent.md
     mcp: []
     skills: []
   integration-test:
     instructions: [always]
+    promptFile: backend-unit-test.agent.md
     mcp: []
     skills: []
   publish-pr:
     instructions: [always]
+    promptFile: publish-pr.agent.md
     mcp: []
     skills: []
 

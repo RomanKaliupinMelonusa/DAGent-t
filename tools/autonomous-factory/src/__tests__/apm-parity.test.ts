@@ -15,6 +15,7 @@ import path from "node:path";
 import { compileApm } from "../apm-compiler.js";
 import { loadApmContext } from "../apm-context-loader.js";
 import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm-types.js";
+import Handlebars from "handlebars";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -99,6 +100,16 @@ describe("APM Compiler Output", () => {
       assert.ok(
         agent.tokenCount <= compiled.tokenBudget,
         `${agentKey}: ${agent.tokenCount} tokens exceeds budget ${compiled.tokenBudget}`,
+      );
+    });
+  }
+
+  for (const agentKey of ALL_AGENT_KEYS) {
+    it(`${agentKey}: systemPromptTemplate is a non-empty string`, () => {
+      const agent = compiled.agents[agentKey];
+      assert.ok(
+        typeof agent.systemPromptTemplate === "string" && agent.systemPromptTemplate.trim().length > 0,
+        `systemPromptTemplate should be a non-empty string for "${agentKey}"`,
       );
     });
   }
@@ -224,4 +235,70 @@ describe("APM Compiler", () => {
       "Skill description should not be empty",
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// Handlebars template compilation smoke tests
+// ---------------------------------------------------------------------------
+
+describe("Handlebars Template Compilation", () => {
+  const hasApm = fs.existsSync(path.join(APM_DIR, "apm.yml"));
+
+  if (!hasApm) {
+    it("skips — .apm/ not found", () => {
+      assert.ok(true);
+    });
+    return;
+  }
+
+  // Import Handlebars at top level — this file is ESM
+  const compiled: ApmCompiledOutput = compileApm(APP_ROOT);
+
+  for (const agentKey of ALL_AGENT_KEYS) {
+    it(`${agentKey}: systemPromptTemplate compiles without Handlebars errors`, () => {
+      const agent = compiled.agents[agentKey];
+      assert.doesNotThrow(() => {
+        Handlebars.compile(agent.systemPromptTemplate, { noEscape: true });
+      }, `Handlebars.compile() should not throw for "${agentKey}"`);
+    });
+  }
+
+  for (const agentKey of ALL_AGENT_KEYS) {
+    it(`${agentKey}: template evaluates to non-empty output with mock context`, () => {
+      const agent = compiled.agents[agentKey];
+      const template = Handlebars.compile(agent.systemPromptTemplate, { noEscape: true });
+      const mockData = {
+        featureSlug: "test-feature",
+        specPath: "apps/sample-app/in-progress/test-feature_SPEC.md",
+        workflowType: "Full-Stack",
+        repoRoot: "/workspaces/test",
+        appRoot: "/workspaces/test/apps/sample-app",
+        itemKey: agentKey,
+        baseBranch: "main",
+        infraChanges: false,
+        deployedUrl: "https://example.com",
+        apimUrl: "https://apim.example.com",
+        frontendUrl: "https://frontend.example.com",
+        backendUrl: "https://backend.example.com",
+        isPostDeploy: agentKey === "integration-test" || agentKey === "live-ui",
+        isLiveUi: agentKey === "live-ui",
+        isIntegrationTest: agentKey === "integration-test",
+        jsonGated: false,
+        rules: agent.rules,
+        environmentContext: "",
+        resolvedBackendUnit: "cd apps/sample-app/backend && npx jest --verbose",
+        resolvedFrontendUnit: "cd apps/sample-app/frontend && npx jest --verbose",
+        resolvedSchemaValidation: "cd apps/sample-app/backend && npm run validate:schemas",
+        resolvedIntegration: "cd apps/sample-app/backend && npm run test:integration",
+        backendCommitPaths: "",
+        frontendCommitPaths: "",
+        scope: "pipeline",
+      };
+      const output = template(mockData);
+      assert.ok(
+        output.trim().length > 0,
+        `Template output should be non-empty for "${agentKey}"`,
+      );
+    });
+  }
 });

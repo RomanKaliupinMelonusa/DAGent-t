@@ -171,8 +171,9 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     }
   }
 
-  // --- 5. For each agent: resolve includes, validate budget, build compiled entry ---
+  // --- 5. For each agent: resolve includes, validate budget, load template, build compiled entry ---
   const agents: Record<string, ApmCompiledAgent> = {};
+  const agentsDir = path.join(apmDir, "agents");
 
   for (const [agentKey, agentDecl] of Object.entries(manifest.agents)) {
     // Resolve instructions
@@ -218,6 +219,17 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       throw new ApmBudgetExceededError(agentKey, tokenCount, manifest.tokenBudget);
     }
 
+    // --- Load agent prompt template from .apm/agents/<promptFile> ---
+    const templatePath = path.join(agentsDir, agentDecl.promptFile);
+    if (!fs.existsSync(templatePath)) {
+      throw new ApmCompileError(
+        `Agent template not found: .apm/agents/${agentDecl.promptFile} ` +
+        `(referenced by agent "${agentKey}" via promptFile). ` +
+        `Create the file or fix the promptFile path in apm.yml.`,
+      );
+    }
+    const systemPromptTemplate = fs.readFileSync(templatePath, "utf-8");
+
     // Resolve MCP configs for this agent
     const agentMcp: Record<string, ApmMcpConfig> = {};
     for (const mcpName of agentDecl.mcp) {
@@ -245,6 +257,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       toolLimits: agentDecl.toolLimits,
       tools: agentDecl.tools,
       security: agentDecl.security,
+      systemPromptTemplate,
     };
   }
 

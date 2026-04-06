@@ -75,7 +75,7 @@ describe("ApmManifestSchema", () => {
       name: "test-app",
       version: "1.0.0",
       tokenBudget: 4500,
-      agents: { "backend-dev": { instructions: ["always"], mcp: [], skills: [] } },
+      agents: { "backend-dev": { instructions: ["always"], promptFile: "backend-dev.agent.md", mcp: [], skills: [] } },
     };
     const result = ApmManifestSchema.safeParse(minimal);
     assert.ok(result.success, `Validation failed: ${JSON.stringify(result.error?.issues)}`);
@@ -87,7 +87,7 @@ describe("ApmManifestSchema", () => {
       name: "test-app",
       version: "1.0.0",
       tokenBudget: 4500,
-      agents: { "backend-dev": { instructions: ["always"], mcp: [], skills: [] } },
+      agents: { "backend-dev": { instructions: ["always"], promptFile: "backend-dev.agent.md", mcp: [], skills: [] } },
       config: { environment: { FRONTEND_URL: "https://example.com" } },
     };
     const result = ApmManifestSchema.safeParse(invalid);
@@ -99,7 +99,7 @@ describe("ApmManifestSchema", () => {
       name: "test-app",
       version: "1.0.0",
       tokenBudget: 4500,
-      agents: { "backend-dev": { instructions: ["always"], mcp: [], skills: [] } },
+      agents: { "backend-dev": { instructions: ["always"], promptFile: "backend-dev.agent.md", mcp: [], skills: [] } },
       config: {
         directories: { backend: "src", frontend: null },
         testCommands: { backendUnit: "pytest", frontendUnit: null },
