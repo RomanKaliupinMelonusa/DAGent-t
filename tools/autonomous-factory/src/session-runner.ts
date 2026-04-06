@@ -164,39 +164,25 @@ async function pollReadiness(config: PipelineRunConfig): Promise<void> {
 }
 
 /**
- * Map agent item keys to their owned directory prefixes for scoped git-diff
+ * Map workflow nodes to their owned directory prefixes for scoped git-diff
  * attribution. Prevents cross-agent pollution when backend-dev and frontend-dev
- * run in parallel. Returns empty array for agents without a clear directory scope
+ * run in parallel. Returns empty array for nodes without diff_attribution_dirs
  * (e.g. code-cleanup, docs-archived), which falls back to "all non-state files".
  */
 function getAgentDirectoryPrefixes(
-  itemKey: string,
+  node: ApmWorkflowNode | undefined,
   appRel: string,
   directories?: Record<string, string | null>,
 ): string[] {
+  if (!node?.diff_attribution_dirs?.length) return [];
   const prefix = appRel ? `${appRel}/` : "";
-  const backendDir = directories?.backend ?? "backend";
-  const frontendDir = directories?.frontend ?? "frontend";
-  const infraDir = directories?.infra ?? "infra";
-  const e2eDir = directories?.e2e ?? "e2e";
-  const packagesDir = "packages";
-
-  switch (itemKey) {
-    case "backend-dev":
-    case "backend-unit-test":
-    case "integration-test":
-      return [`${prefix}${backendDir}/`, `${prefix}${packagesDir}/`, `${prefix}${infraDir}/`, ".github/"];
-    case "frontend-dev":
-    case "frontend-unit-test":
-    case "live-ui":
-      return [`${prefix}${frontendDir}/`, `${prefix}${packagesDir}/`, `${prefix}${e2eDir}/`, ".github/"];
-    case "schema-dev":
-      return [`${prefix}${packagesDir}/`];
-    case "infra-architect":
-      return [`${prefix}${infraDir}/`];
-    default:
-      return []; // No scope restriction — use all non-state files
-  }
+  return node.diff_attribution_dirs.map((dir) => {
+    // Entries ending with "/" are literal path prefixes (e.g. .github/)
+    if (dir.endsWith("/")) return dir;
+    // Resolve from APM config.directories map, fall back to literal key
+    const resolved = directories?.[dir] ?? dir;
+    return `${prefix}${resolved}/`;
+  });
 }
 
 /**
@@ -1409,6 +1395,7 @@ async function runAgentSession(
     { key: next.key, label: next.label },
     slug,
     appRoot,
+    apmContext,
   );
 
   const nodeForCtx = getWorkflowNode(apmContext, next.key);
@@ -1549,7 +1536,7 @@ async function runAgentSession(
         const appRel = path.relative(repoRoot, appRoot);
         const dirs = apmContext.config?.directories as Record<string, string | null> | undefined;
         // Build allowed directory prefixes for this agent to prevent cross-attribution
-        const allowedPrefixes = getAgentDirectoryPrefixes(next.key, appRel, dirs);
+        const allowedPrefixes = getAgentDirectoryPrefixes(getWorkflowNode(apmContext, next.key), appRel, dirs);
         const diffFiles = diffOutput.split("\n").filter(Boolean);
         const scopedFiles = allowedPrefixes.length > 0
           ? diffFiles.filter((f) => allowedPrefixes.some((p) => f.startsWith(p)))

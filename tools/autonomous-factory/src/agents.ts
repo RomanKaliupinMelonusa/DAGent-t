@@ -15,12 +15,6 @@ import type { ApmCompiledOutput, ApmMcpConfig } from "./apm-types.js";
 // Types
 // ---------------------------------------------------------------------------
 
-/** Items whose `pipeline:fail` messages must be valid TriageDiagnostic JSON. */
-const JSON_GATED_ITEMS = new Set([
-  "backend-unit-test", "frontend-unit-test",
-  "live-ui", "integration-test", "poll-app-ci", "poll-infra-plan",
-]);
-
 export interface AgentContext {
   featureSlug: string;
   specPath: string;
@@ -101,15 +95,6 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
  */
 Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
   return a === b;
-});
-
-/**
- * Set-membership helper — enables {{#if (contains setName value)}} in templates.
- * Supports checking against known sets like JSON_GATED_ITEMS.
- */
-Handlebars.registerHelper('contains', function (setName: string, value: string) {
-  if (setName === 'JSON_GATED_ITEMS') return JSON_GATED_ITEMS.has(value);
-  return false;
 });
 
 // ---------------------------------------------------------------------------
@@ -222,7 +207,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     isPostDeploy: ctx.itemKey === "integration-test" || ctx.itemKey === "live-ui",
     isLiveUi: ctx.itemKey === "live-ui",
     isIntegrationTest: ctx.itemKey === "integration-test",
-    jsonGated: JSON_GATED_ITEMS.has(ctx.itemKey),
+    jsonGated: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.triage_json_gated ?? false,
 
     // APM rules for this agent
     rules: apmContext.agents[ctx.itemKey].rules,
@@ -240,22 +225,9 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     backendCommitPaths,
     frontendCommitPaths,
 
-    // Scope for the completion partial (inferred from itemKey)
-    scope: inferCommitScope(ctx.itemKey),
+    // Scope for the completion partial (driven by workflow manifest)
+    scope: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",
   };
-}
-
-/**
- * Infers the default commit scope from the item key.
- * Used by the completion partial's {{scope}} variable.
- */
-function inferCommitScope(itemKey: string): string {
-  if (itemKey === "backend-dev" || itemKey === "schema-dev") return "backend";
-  if (itemKey === "frontend-dev") return "frontend";
-  if (itemKey === "infra-architect") return "infra";
-  if (itemKey === "docs-archived") return "docs";
-  if (itemKey === "doc-architect" || itemKey === "code-cleanup") return "pipeline";
-  return "pipeline";
 }
 
 // ---------------------------------------------------------------------------
@@ -320,9 +292,9 @@ export function buildTaskPrompt(
   item: { key: string; label: string },
   slug: string,
   appRoot: string,
+  apmContext: ApmCompiledOutput,
 ): string {
-  const roamAgents = ["backend-dev", "frontend-dev", "schema-dev", "infra-architect", "backend-unit-test", "frontend-unit-test", "code-cleanup", "live-ui", "docs-archived", "doc-architect"];
-  const hasRoam = roamAgents.includes(item.key);
+  const hasRoam = !!apmContext.agents[item.key]?.mcp?.["roam-code"];
   const roamPreamble = hasRoam ? `
 **IMPORTANT — Roam-First Monorepo Workflow:**
 - Start with \`roam_understand ${appRoot}\` or \`roam_context <symbol> ${appRoot}\` to orient yourself — do NOT grep.

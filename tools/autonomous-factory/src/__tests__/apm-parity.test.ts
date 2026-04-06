@@ -268,13 +268,6 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
   Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
     return a === b;
   });
-  Handlebars.registerHelper('contains', function (setName: string, value: string) {
-    if (setName === 'JSON_GATED_ITEMS') return [
-      'backend-unit-test', 'frontend-unit-test',
-      'live-ui', 'integration-test', 'poll-app-ci', 'poll-infra-plan',
-    ].includes(value);
-    return false;
-  });
 
   for (const agentKey of ALL_AGENT_KEYS) {
     it(`${agentKey}: systemPromptTemplate compiles without Handlebars errors`, () => {

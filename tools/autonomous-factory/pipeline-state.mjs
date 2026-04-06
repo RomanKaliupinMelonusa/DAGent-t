@@ -267,10 +267,12 @@ export function initState(slug, workflowType, contextJsonPath) {
   const dependencies = {};
   const nodeTypes = {};
   const nodeCategories = {};
+  const jsonGated = {};
   for (const [key, node] of nodeEntries) {
     dependencies[key] = node.depends_on || [];
     nodeTypes[key] = node.type || "agent";
     nodeCategories[key] = node.category;
+    jsonGated[key] = node.triage_json_gated ?? false;
   }
 
   // Compute N/A keys from run_if: if run_if is non-empty and workflowType is NOT in it, mark N/A
@@ -304,6 +306,7 @@ export function initState(slug, workflowType, contextJsonPath) {
     phases,
     nodeTypes,
     nodeCategories,
+    jsonGated,
     naByType,
   };
 
@@ -1048,12 +1051,11 @@ function cmdComplete(slug, itemKey) {
 }
 
 /** Post-deploy items whose failure messages must be valid TriageDiagnostic JSON.
- *  Derived from state at call time (reads nodeCategories + phase). */
+ *  Derived from persisted triage_json_gated flags in state (set during initState from workflow YAML). */
 function getZodGatedKeys(state) {
   const gated = new Set();
   for (const item of state.items) {
-    const cat = (state.nodeCategories || {})[item.key];
-    if (item.phase === "post-deploy" || cat === "test") {
+    if (state.jsonGated?.[item.key]) {
       gated.add(item.key);
     }
   }
