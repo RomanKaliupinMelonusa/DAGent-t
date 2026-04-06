@@ -10,7 +10,6 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary } from "./types.js";
-import { DEV_ITEMS, POST_DEPLOY_ITEMS } from "./types.js";
 import { readState } from "./state.js";
 
 /**
@@ -64,12 +63,14 @@ export function buildDownstreamFailureContext(
   itemKey: string,
   pipelineSummaries: readonly ItemSummary[],
   ciWorkflowFilePatterns?: string[],
+  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  nodeCategory?: string,
 ): string {
-  if (!DEV_ITEMS.has(itemKey)) return "";
+  if (nodeCategory !== "dev") return "";
 
   const downstreamFailures = pipelineSummaries.filter(
-    (s) => POST_DEPLOY_ITEMS.has(s.key) && s.outcome !== "completed",
-  );
+    (s) => s.outcome !== "completed",
+  ).filter((s) => s.key !== itemKey);
   if (downstreamFailures.length === 0) return "";
 
   const failureDetails = downstreamFailures
@@ -116,8 +117,10 @@ export function buildDownstreamFailureContext(
 export function buildRevertWarning(
   itemKey: string,
   effectiveDevAttempts: number,
+  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  nodeCategory?: string,
 ): string {
-  if (!DEV_ITEMS.has(itemKey) || effectiveDevAttempts < 3) return "";
+  if (nodeCategory !== "dev" || effectiveDevAttempts < 3) return "";
 
   return `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
     + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
@@ -155,8 +158,10 @@ export async function computeEffectiveDevAttempts(
   itemKey: string,
   inMemoryAttempts: number,
   slug: string,
+  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  nodeCategory?: string,
 ): Promise<number> {
-  if (!DEV_ITEMS.has(itemKey)) return inMemoryAttempts;
+  if (nodeCategory !== "dev") return inMemoryAttempts;
   try {
     const pipeState = await readState(slug);
     const persistedCycles = pipeState.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;

@@ -14,8 +14,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { compileApm } from "../apm-compiler.js";
 import { loadApmContext } from "../apm-context-loader.js";
-import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm-types.js";
+import { ApmCompiledOutputSchema, ApmWorkflowSchema, type ApmCompiledOutput } from "../apm-types.js";
 import Handlebars from "handlebars";
+import yaml from "js-yaml";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -25,28 +26,20 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const APP_ROOT = path.join(REPO_ROOT, "apps/sample-app");
 const APM_DIR = path.join(APP_ROOT, ".apm");
 
-// All agent keys from pipeline-state.mjs ALL_ITEMS
-const ALL_AGENT_KEYS = [
-  "schema-dev",
-  "infra-architect",
-  "infra-handoff",
-  "push-infra",
-  "poll-infra-plan",
-  "create-draft-pr",
-  "await-infra-approval",
-  "backend-dev",
-  "frontend-dev",
-  "backend-unit-test",
-  "frontend-unit-test",
-  "push-app",
-  "poll-app-ci",
-  "integration-test",
-  "live-ui",
-  "code-cleanup",
-  "docs-archived",
-  "doc-architect",
-  "publish-pr",
-];
+// Derive agent keys from the workflow manifest (single source of truth).
+function loadAgentKeys(): string[] {
+  const wfPath = path.join(APM_DIR, "workflows.yml");
+  if (!fs.existsSync(wfPath)) return [];
+  const raw = yaml.load(fs.readFileSync(wfPath, "utf-8")) as Record<string, unknown>;
+  // workflows.yml wraps in a workflow name key (e.g. "default")
+  const firstKey = Object.keys(raw)[0];
+  if (!firstKey) return [];
+  const parsed = ApmWorkflowSchema.safeParse(raw[firstKey]);
+  if (!parsed.success) return [];
+  return Object.keys(parsed.data.nodes);
+}
+
+const ALL_AGENT_KEYS = loadAgentKeys();
 
 // ---------------------------------------------------------------------------
 // APM compiler output validation

@@ -13,12 +13,14 @@ import {
   ApmManifestSchema,
   ApmMcpFileSchema,
   ApmSkillFrontmatterSchema,
+  ApmWorkflowSchema,
   ApmBudgetExceededError,
   ApmCompileError,
   type ApmCompiledOutput,
   type ApmCompiledAgent,
   type ApmMcpConfig,
   type ApmManifest,
+  type ApmWorkflow,
 } from "./apm-types.js";
 
 // ---------------------------------------------------------------------------
@@ -171,7 +173,26 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     }
   }
 
-  // --- 5. For each agent: resolve includes, validate budget, load template, build compiled entry ---
+  // --- 5. Load workflow definitions ---
+  const workflowsPath = path.join(apmDir, "workflows.yml");
+  const workflows: Record<string, ApmWorkflow> = {};
+  if (fs.existsSync(workflowsPath)) {
+    const workflowsYaml = fs.readFileSync(workflowsPath, "utf-8");
+    const rawWorkflows = yaml.load(workflowsYaml) as Record<string, unknown>;
+    if (rawWorkflows && typeof rawWorkflows === "object") {
+      for (const [name, raw] of Object.entries(rawWorkflows)) {
+        const result = ApmWorkflowSchema.safeParse(raw);
+        if (!result.success) {
+          throw new ApmCompileError(
+            `Invalid workflow "${name}" in workflows.yml: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
+          );
+        }
+        workflows[name] = result.data;
+      }
+    }
+  }
+
+  // --- 6. For each agent: resolve includes, validate budget, load template, build compiled entry ---
   const agents: Record<string, ApmCompiledAgent> = {};
   const agentsDir = path.join(apmDir, "agents");
 
@@ -261,7 +282,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     };
   }
 
-  // --- 6. Build compiled output (resolve env vars in config) ---
+  // --- 7. Build compiled output (resolve env vars in config) ---
   const resolvedConfig = manifest.config
     ? resolveEnvVars(manifest.config)
     : undefined;
@@ -272,9 +293,10 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     tokenBudget: manifest.tokenBudget,
     agents,
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
+    workflows,
   };
 
-  // --- 7. Write to .compiled/context.json ---
+  // --- 8. Write to .compiled/context.json ---
   const compiledDir = path.join(apmDir, ".compiled");
   if (!fs.existsSync(compiledDir)) {
     fs.mkdirSync(compiledDir, { recursive: true });

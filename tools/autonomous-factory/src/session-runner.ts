@@ -25,8 +25,8 @@ import type { AgentContext } from "./agents.js";
 import type { ApmCompiledOutput, ApmConfig } from "./apm-types.js";
 import type { NextAction, ItemSummary, PlaywrightLogEntry } from "./types.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
-import { DEV_ITEMS, POST_DEPLOY_ITEMS, TEST_ITEMS } from "./types.js";
 import { triageFailure, parseTriageDiagnostic } from "./triage.js";
+import type { ApmWorkflowNode } from "./apm-types.js";
 import { getAutoSkipBaseRef, getMergeBase, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "./auto-skip.js";
 import { writePipelineSummary, writeTerminalLog, writePlaywrightLog, writeFlightData } from "./reporting.js";
 import {
@@ -42,17 +42,6 @@ import { buildSessionHooks, buildCustomTools, SHELL_WRITE_PATTERNS, extractShell
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Session timeouts per pipeline phase (ms) */
-const TIMEOUT_DEV      = 1_200_000; // 20 min (dev items — heaviest workload)
-const TIMEOUT_TEST     = 600_000;   // 10 min (unit test items — just running tests)
-const TIMEOUT_DEFAULT  = 900_000;   // 15 min (fallback)
-const TIMEOUT_DEPLOY   = 900_000;   // 15 min (push-code/poll-ci now deterministic; fallback agent gets 15 min)
-const TIMEOUT_FINALIZE = 1_200_000; // 20 min (docs-archived, live-ui, integration-test)
-
-const DEPLOY_ITEMS = new Set(["push-infra", "poll-infra-plan", "push-app", "poll-app-ci"]);
-const FINALIZE_ITEMS = new Set(["code-cleanup", "docs-archived"]);
-const LONG_ITEMS = new Set(["live-ui", "integration-test"]);
 
 /**
  * Maximum total time (ms) to wait for data-plane readiness before proceeding.
@@ -218,13 +207,14 @@ function getAgentDirectoryPrefixes(
 const TOOL_LIMIT_FALLBACK_SOFT = 30;
 const TOOL_LIMIT_FALLBACK_HARD = 40;
 
-function getTimeout(itemKey: string): number {
-  if (DEV_ITEMS.has(itemKey)) return TIMEOUT_DEV;
-  if (TEST_ITEMS.has(itemKey)) return TIMEOUT_TEST;
-  if (DEPLOY_ITEMS.has(itemKey)) return TIMEOUT_DEPLOY;
-  if (FINALIZE_ITEMS.has(itemKey)) return TIMEOUT_FINALIZE;
-  if (LONG_ITEMS.has(itemKey)) return TIMEOUT_FINALIZE;
-  return TIMEOUT_DEFAULT;
+/** Resolve the workflow node definition for an item key. */
+function getWorkflowNode(apmContext: ApmCompiledOutput, itemKey: string): ApmWorkflowNode | undefined {
+  return apmContext.workflows?.default?.nodes?.[itemKey];
+}
+
+function getTimeout(itemKey: string, apmContext: ApmCompiledOutput): number {
+  const node = getWorkflowNode(apmContext, itemKey);
+  return (node?.timeout_minutes ?? 15) * 60_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,7 +444,8 @@ export async function runItemSession(
     // For DEV items, grant one bypass so the clean-slate revert warning can fire.
     // The revert wipes ALL feature code (not just the delta between attempts),
     // so it may resolve the root cause even when shouldSkipRetry sees no change.
-    if (DEV_ITEMS.has(next.key) && !circuitBreakerBypassed.has(next.key)) {
+    const nodeForBreaker = getWorkflowNode(apmContext, next.key);
+    if (nodeForBreaker?.category === "dev" && !circuitBreakerBypassed.has(next.key)) {
       console.log(`\n  ⚡ Circuit breaker deferred for ${next.key} — granting clean-slate revert opportunity`);
       circuitBreakerBypassed.add(next.key);
     } else {
@@ -492,7 +483,7 @@ export async function runItemSession(
         .pop()?.errorMessage ?? "";
       const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
 
-      if (DEV_ITEMS.has(next.key) && isTimeoutLoop) {
+      if (nodeForBreaker?.category === "dev" && isTimeoutLoop) {
         console.log(`  📝 DEV item ${next.key} stuck in timeout loop — triggering Graceful Degradation to Draft PR`);
         try {
           await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
@@ -556,25 +547,26 @@ export async function runItemSession(
   // Replaces the fixed-duration sleep with a stack-agnostic readiness probe.
   // Parses infra-interfaces.md for endpoint URLs and polls with exponential
   // backoff until the data plane responds (HTTP 200/401/403) or timeout.
-  if (LONG_ITEMS.has(next.key)) {
+  const node = getWorkflowNode(config.apmContext, next.key);
+  if (node?.requires_data_plane_ready) {
     await pollReadiness(config);
   }
 
   // ── Deterministic bypasses (no agent session) ─────────────────────────
-  // DEPLOY_ITEMS must NEVER create an LLM session. push-* and poll-* are
-  // handled by shell scripts — zero tokens, deterministic, no hallucination.
-  if (DEPLOY_ITEMS.has(next.key)) {
+  // Script-type items must NEVER create an LLM session. push-* and poll-*
+  // are handled by shell scripts — zero tokens, deterministic, no hallucination.
+  if (node?.type === "script" && next.key !== "publish-pr") {
     if (next.key === "push-infra" || next.key === "push-app") {
       return runPushCode(next.key, config, state, itemSummary, stepStart);
     }
     if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
       return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
     }
-    // Safety: if a new deploy item is added to DEPLOY_ITEMS but not handled
-    // above, fail loudly rather than falling through to an LLM session.
+    // Safety: if a new script item is added but not handled above, fail loudly
+    // rather than falling through to an LLM session.
     throw new Error(
-      `BUG: Deploy item "${next.key}" is in DEPLOY_ITEMS but has no deterministic handler. ` +
-      `Never route deploy items to LLM sessions. Either add a handler or remove it from DEPLOY_ITEMS.`,
+      `BUG: Script item "${next.key}" has type "script" but no deterministic handler. ` +
+      `Never route script items to LLM sessions. Either add a handler or change its type.`,
     );
   }
 
@@ -608,6 +600,9 @@ async function tryAutoSkip(
   // Reset per-item
   liveUiInfraChanges = undefined;
 
+  const node = getWorkflowNode(apmContext, next.key);
+  if (!node) return null; // No workflow node → no auto-skip
+
   const autoSkipRef = getAutoSkipBaseRef(repoRoot, baseBranch, preStepRefs);
   const appRel = path.relative(repoRoot, appRoot);
   const dirPrefixes = getDirectoryPrefixes(appRel, apmContext.config?.directories as Record<string, string | null> | undefined);
@@ -624,53 +619,44 @@ async function tryAutoSkip(
     return { summary: itemSummary, halt: false, createPr: false };
   };
 
-  if (next.key === "integration-test" || next.key === "backend-unit-test") {
-    const backendRef = autoSkipRef("backend-dev");
-    if (backendRef) {
-      const gitChanged = getGitChangedFiles(repoRoot, backendRef);
+  // ── Data-driven auto-skip: check directory changes ────────────────────
+  if (node.auto_skip_if_no_changes_in && node.auto_skip_if_no_changes_in.length > 0) {
+    // Find the best base ref — try the dev item that produces this item's input
+    const devRef = autoSkipRef("backend-dev") ?? autoSkipRef("frontend-dev");
+    if (devRef) {
+      const gitChanged = getGitChangedFiles(repoRoot, devRef);
       if (gitChanged === null) return null; // Fail-closed: abort skip on git error
-      const hasBackendChanges = gitChanged.some((f) => dirPrefixes.backend.some((p) => f.startsWith(p)));
-      if (!hasBackendChanges) {
-        console.log(`  ⏭ Auto-skipping ${next.key} — no backend/infra/packages file changes since ${backendRef.slice(0, 8)}`);
-        return completeSkip("Auto-skipped: no backend/infra changes detected (git diff)");
+
+      // Build union of prefixes from all declared directory keys
+      const allPrefixes: string[] = [];
+      for (const dirKey of node.auto_skip_if_no_changes_in) {
+        const prefixSet = dirPrefixes[dirKey as keyof typeof dirPrefixes];
+        if (prefixSet) {
+          allPrefixes.push(...prefixSet);
+        }
+      }
+
+      const hasChanges = gitChanged.some((f) => allPrefixes.some((p) => f.startsWith(p)));
+
+      // Special case: live-ui also checks infra changes for CORS/APIM/IAM
+      if (next.key === "live-ui" && node.auto_skip_if_no_changes_in.includes("infra")) {
+        const hasInfraChanges = gitChanged.some((f) => dirPrefixes.infra.some((p) => f.startsWith(p)));
+        liveUiInfraChanges = hasInfraChanges;
+        if (hasInfraChanges && !gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)))) {
+          console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
+          return null; // Do NOT auto-skip
+        }
+      }
+
+      if (!hasChanges) {
+        console.log(`  ⏭ Auto-skipping ${next.key} — no changes in [${node.auto_skip_if_no_changes_in.join(", ")}] since ${devRef.slice(0, 8)}`);
+        return completeSkip(`Auto-skipped: no changes in [${node.auto_skip_if_no_changes_in.join(", ")}] detected (git diff)`);
       }
     }
   }
 
-  if (next.key === "frontend-unit-test") {
-    const frontendRef = autoSkipRef("frontend-dev");
-    if (frontendRef) {
-      const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
-      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
-      const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
-      if (!hasFrontendChanges) {
-        console.log(`  ⏭ Auto-skipping ${next.key} — no frontend/e2e file changes since ${frontendRef.slice(0, 8)}`);
-        return completeSkip("Auto-skipped: no frontend changes detected (git diff)");
-      }
-    }
-  }
-
-  // live-ui: also check infra/ changes — CORS/APIM/IAM changes silently break
-  // the frontend API connection and MUST be caught by real browser verification.
-  if (next.key === "live-ui") {
-    const frontendRef = autoSkipRef("frontend-dev") ?? autoSkipRef("backend-dev");
-    if (frontendRef) {
-      const gitChanged = getGitChangedFiles(repoRoot, frontendRef);
-      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
-      const hasFrontendChanges = gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)));
-      const hasInfraChanges = gitChanged.some((f) => dirPrefixes.infra.some((p) => f.startsWith(p)));
-      liveUiInfraChanges = hasInfraChanges;
-      if (!hasFrontendChanges && !hasInfraChanges) {
-        console.log(`  ⏭ Auto-skipping ${next.key} — no frontend/e2e/infra file changes since ${frontendRef.slice(0, 8)}`);
-        return completeSkip("Auto-skipped: no frontend/e2e/infra changes detected (git diff)");
-      }
-      if (hasInfraChanges && !hasFrontendChanges) {
-        console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
-      }
-    }
-  }
-
-  if (next.key === "code-cleanup") {
+  // ── Data-driven auto-skip: check deletions ────────────────────────────
+  if (node.auto_skip_if_no_deletions) {
     const deletions = getGitDeletions(repoRoot, baseBranch);
     const deleted = hasDeletedFiles(repoRoot, baseBranch);
     if (deletions === 0 && !deleted) {
@@ -1306,7 +1292,7 @@ async function runAgentSession(
   };
 
   const agentConfig = getAgentConfig(next.key, agentContext, apmContext);
-  const timeout = getTimeout(next.key);
+  const timeout = getTimeout(next.key, apmContext);
 
   // Resolve tool limits early so the onDenial callback can reference them.
   const manifestDefaults = apmContext.config?.defaultToolLimits;
@@ -1420,10 +1406,12 @@ async function runAgentSession(
     appRoot,
   );
 
+  const nodeForCtx = getWorkflowNode(apmContext, next.key);
   const effectiveDevAttempts = await computeEffectiveDevAttempts(
     next.key,
     attemptCounts[next.key],
     slug,
+    nodeForCtx?.category,
   );
 
   // Inject retry context from previous attempt
@@ -1432,7 +1420,8 @@ async function runAgentSession(
       .reverse()
       .find((s) => s.key === next.key);
     if (prevAttempt) {
-      const atRevertThreshold = DEV_ITEMS.has(next.key) && effectiveDevAttempts >= 3;
+      const nodeForRevert = getWorkflowNode(apmContext, next.key);
+      const atRevertThreshold = nodeForRevert?.category === "dev" && effectiveDevAttempts >= 3;
       taskPrompt += buildRetryContext(prevAttempt, atRevertThreshold);
       console.log(`  📎 Injected retry context from attempt ${prevAttempt.attempt}`);
     }
@@ -1443,11 +1432,12 @@ async function runAgentSession(
     next.key,
     pipelineSummaries,
     apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
+    nodeForCtx?.category,
   );
   if (downstreamCtx) {
     taskPrompt += downstreamCtx;
     const downstreamCount = pipelineSummaries.filter(
-      (s) => POST_DEPLOY_ITEMS.has(s.key) && s.outcome !== "completed",
+      (s) => getWorkflowNode(apmContext, s.key)?.category === "test" && s.outcome !== "completed",
     ).length;
     const involvesCicd = downstreamCtx.includes("Commit Scope Warning");
     console.log(
@@ -1456,7 +1446,7 @@ async function runAgentSession(
   }
 
   // Inject clean-slate revert warning
-  const revertWarning = buildRevertWarning(next.key, effectiveDevAttempts);
+  const revertWarning = buildRevertWarning(next.key, effectiveDevAttempts, nodeForCtx?.category);
   if (revertWarning) {
     taskPrompt += revertWarning;
     console.log(
@@ -1592,7 +1582,8 @@ async function runAgentSession(
     itemSummary.outcome = "failed";
     itemSummary.errorMessage = item.error ?? "Unknown failure";
     // Post-deploy & unit test failure reroute
-    if (POST_DEPLOY_ITEMS.has(next.key) || TEST_ITEMS.has(next.key)) {
+    const failedNode = getWorkflowNode(apmContext, next.key);
+    if (failedNode?.category === "test") {
       const rawError = item.error ?? "Unknown failure";
       const diagnostic = parseTriageDiagnostic(rawError);
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
@@ -1701,7 +1692,10 @@ async function handleFailureReroute(
   // redevelopment cycle. This handles "deployment-stale" faults deterministically.
   // TEST_ITEMS also imply code changes (test failures need dev fixes), so they
   // route to the full redevelopment path alongside DEV_ITEMS.
-  const hasDevOrTestItems = resetKeys.some((k) => DEV_ITEMS.has(k) || TEST_ITEMS.has(k));
+  const hasDevOrTestItems = resetKeys.some((k) => {
+    const cat = getWorkflowNode(config.apmContext, k)?.category;
+    return cat === "dev" || cat === "test";
+  });
 
   try {
     if (hasDevOrTestItems) {

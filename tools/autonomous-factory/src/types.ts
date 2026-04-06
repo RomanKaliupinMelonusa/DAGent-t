@@ -10,20 +10,6 @@ import { TriageDiagnosticSchema } from "../triage-schema.mjs";
 
 export { TriageDiagnosticSchema };
 
-// ---------------------------------------------------------------------------
-// Pipeline item category constants — shared across session-runner and
-// context-injection to avoid duplication.
-// ---------------------------------------------------------------------------
-
-/** Item keys that represent dev agents */
-export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev", "infra-architect"]);
-
-/** Pre-deploy test items whose failures can trigger redevelopment reroute back to dev agents */
-export const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
-
-/** Post-deploy items whose failures get injected as downstream context or can trigger redevelopment reroute */
-export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-app-ci", "poll-infra-plan"]);
-
 export interface PipelineItem {
   key: string;
   label: string;

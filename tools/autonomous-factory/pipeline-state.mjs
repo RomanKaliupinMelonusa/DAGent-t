@@ -43,86 +43,54 @@ const APP_ROOT = process.env.APP_ROOT
   : REPO_ROOT;
 const IN_PROGRESS = join(APP_ROOT, "in-progress");
 
-export const PHASES = ["infra", "approval", "pre-deploy", "deploy", "post-deploy", "finalize"];
-
-/** Canonical checklist items. Order matters — it defines execution sequence.
- *  Two-Wave model: Wave 1 (infra) completes before Wave 2 (application) begins.
- *  Linear model: feature branch deploys directly via CI, PR to base branch is last step. */
-export const ALL_ITEMS = [
-  // ── Wave 1: Infrastructure ──────────────────────────────────────────────
-  { key: "schema-dev",           label: "Development Complete — Schemas",              agent: "@schema-dev",         phase: "infra" },
-  { key: "infra-architect",      label: "Infrastructure Written — Terraform",          agent: "@infra-architect",    phase: "infra" },
-  { key: "push-infra",           label: "Infra Code Pushed to Origin",                 agent: "@deploy-manager",     phase: "infra" },
-  { key: "create-draft-pr",      label: "Draft PR Created",                            agent: "@pr-creator",         phase: "infra" },
-  { key: "poll-infra-plan",      label: "Infra Plan CI Passed",                        agent: "@deploy-manager",     phase: "infra" },
-  // ── Approval Gate ───────────────────────────────────────────────────────
-  { key: "await-infra-approval", label: "Infra Approval Received",                     agent: null,                  phase: "approval" },
-  { key: "infra-handoff",        label: "Infra Outputs Captured — Interfaces Written", agent: "@infra-handoff",      phase: "approval" },
-  // ── Wave 2: Application ─────────────────────────────────────────────────
-  { key: "backend-dev",          label: "Development Complete — Backend",              agent: "@backend-dev",        phase: "pre-deploy" },
-  { key: "frontend-dev",         label: "Development Complete — Frontend",             agent: "@frontend-dev",       phase: "pre-deploy" },
-  { key: "backend-unit-test",    label: "Unit Tests Passed — Backend",                 agent: "@backend-test",       phase: "pre-deploy" },
-  { key: "frontend-unit-test",   label: "Unit Tests Passed — Frontend",                agent: "@frontend-ui-test",   phase: "pre-deploy" },
-  { key: "push-app",             label: "App Code Pushed to Origin",                   agent: "@deploy-manager",     phase: "deploy" },
-  { key: "poll-app-ci",          label: "App CI Workflows Passed",                     agent: "@deploy-manager",     phase: "deploy" },
-  { key: "integration-test",     label: "Integration Tests Passed",                    agent: "@backend-test",       phase: "post-deploy" },
-  { key: "live-ui",              label: "Live UI Validated",                            agent: "@frontend-ui-test",   phase: "post-deploy" },
-  { key: "code-cleanup",         label: "Dead Code Eliminated",                         agent: "@code-cleanup",       phase: "finalize" },
-  { key: "docs-archived",        label: "Docs Updated & Archived",                     agent: "@docs-expert",        phase: "finalize" },
-  { key: "doc-architect",        label: "Architecture & Risk Documented",               agent: "@doc-architect",      phase: "finalize" },
-  { key: "publish-pr",           label: "PR Published & Ready for Review",              agent: "@pr-creator",         phase: "finalize" },
-];
+// ─── Graph Utilities ────────────────────────────────────────────────────────
 
 /**
- * Workflow-type → items that are NOT applicable and should be marked N/A.
- * Every key NOT in this list stays "pending".
+ * Compute all transitive downstream dependents of the given seed keys.
+ * Uses the reverse of state.dependencies (i.e., for each key, which keys
+ * transitively depend on it). Returns the seed keys + all downstream.
  */
-export const NA_ITEMS_BY_TYPE = {
-  Backend:     ["frontend-dev", "frontend-unit-test", "live-ui"],
-  Frontend:    ["backend-dev", "backend-unit-test", "integration-test", "schema-dev"],
-  "Full-Stack": [],
-  Infra:       ["frontend-dev", "frontend-unit-test", "backend-dev", "backend-unit-test",
-                "integration-test", "live-ui", "schema-dev", "code-cleanup",
-                "push-app", "poll-app-ci", "doc-architect"],
-  "App-Only":  ["schema-dev", "infra-architect", "push-infra", "poll-infra-plan",
-                "await-infra-approval", "infra-handoff"],
-  "Backend-Only": ["schema-dev", "infra-architect", "push-infra", "poll-infra-plan",
-                   "await-infra-approval", "infra-handoff",
-                   "frontend-dev", "frontend-unit-test", "live-ui"],
-};
-// NOTE: create-draft-pr, docs-archived, and publish-pr are always active for all types.
-// The Infra workflow type skips Wave 2 app items entirely — only infra wave + docs + PR.
+export function getDownstream(state, seedKeys) {
+  // Build reverse adjacency: child → parents becomes parent → children
+  const reverse = {};
+  for (const [key, deps] of Object.entries(state.dependencies)) {
+    for (const dep of deps) {
+      if (!reverse[dep]) reverse[dep] = [];
+      reverse[dep].push(key);
+    }
+  }
+  const result = new Set(seedKeys);
+  const queue = [...seedKeys];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const child of (reverse[current] || [])) {
+      if (!result.has(child)) {
+        result.add(child);
+        queue.push(child);
+      }
+    }
+  }
+  return [...result];
+}
 
 /**
- * DAG dependency map: each item lists the item keys it depends on.
- * An item is runnable when ALL dependencies are "done" or "na".
- * This enables parallel execution of independent items (e.g., backend-dev ‖ frontend-dev).
+ * Compute all transitive upstream dependencies of the given seed keys.
+ * Returns the seed keys + all upstream.
  */
-export const ITEM_DEPENDENCIES = {
-  // ── Wave 1: Infrastructure ──────────────────────────────────────────────
-  "schema-dev":           [],
-  "infra-architect":      ["schema-dev"],
-  "push-infra":           ["infra-architect"],
-  "create-draft-pr":      ["push-infra"],
-  "poll-infra-plan":      ["create-draft-pr"],
-  // ── Approval Gate (human reviews TF plan on Draft PR) ──────────────────
-  "await-infra-approval": ["poll-infra-plan"],
-  "infra-handoff":        ["await-infra-approval"],
-  // ── Wave 2: Application (gated behind infra-handoff) ────────────────────
-  "backend-dev":          ["schema-dev", "infra-handoff"],
-  "frontend-dev":         ["schema-dev", "infra-handoff"],
-  "backend-unit-test":    ["backend-dev"],
-  "frontend-unit-test":   ["frontend-dev"],
-  "push-app":             ["backend-unit-test", "frontend-unit-test"],
-  "poll-app-ci":          ["push-app"],
-  "integration-test":     ["poll-app-ci"],
-  "live-ui":              ["poll-app-ci", "integration-test"],
-  "code-cleanup":         ["integration-test", "live-ui"],
-  "docs-archived":        ["code-cleanup"],
-  // ── Wave 3: Architecture Analysis (frozen AST) ────────────────────────
-  "doc-architect":        ["code-cleanup", "docs-archived"],
-  "publish-pr":           ["doc-architect"],
-};
+export function getUpstream(state, seedKeys) {
+  const result = new Set(seedKeys);
+  const queue = [...seedKeys];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const dep of (state.dependencies[current] || [])) {
+      if (!result.has(dep)) {
+        result.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...result];
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -172,8 +140,9 @@ function renderTrans(slug, state) {
   lines.push("");
   lines.push("## Checklist");
 
-  // Group items by phase
-  for (const phase of PHASES) {
+  // Group items by phase (use state.phases if available, else derive from items)
+  const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
+  for (const phase of phases) {
     const heading = phase === "infra" ? "Infrastructure (Wave 1)"
       : phase === "approval" ? "Approval Gate"
       : phase === "pre-deploy" ? "Pre-Deploy (Wave 2)"
@@ -249,18 +218,78 @@ function withLock(slug, fn) {
 
 /**
  * Initialize pipeline state for a new feature.
+ * Bootstraps the DAG from context.json (compiled by APM compiler) and persists
+ * the full graph into _STATE.json so all subsequent operations are self-contained.
+ * @param {string} slug - Feature slug
+ * @param {string} workflowType - Workflow type (e.g. "Full-Stack", "Backend")
+ * @param {string} [contextJsonPath] - Path to .apm/.compiled/context.json. If omitted, attempts to find it via APP_ROOT.
  * @returns {{ state: object, statePath: string, transPath: string }}
- * @throws {Error} if slug, workflowType missing or workflowType is invalid
+ * @throws {Error} if slug, workflowType missing, contextJsonPath invalid, or no workflow found
  */
-export function initState(slug, workflowType) {
+export function initState(slug, workflowType, contextJsonPath) {
   if (!slug || !workflowType) {
     throw new Error("initState requires slug and workflowType");
   }
-  if (!NA_ITEMS_BY_TYPE[workflowType]) {
-    throw new Error(`Unknown workflow type "${workflowType}". Must be one of: ${Object.keys(NA_ITEMS_BY_TYPE).join(", ")}`);
+
+  // Resolve context.json path
+  if (!contextJsonPath) {
+    contextJsonPath = join(APP_ROOT, ".apm", ".compiled", "context.json");
+  }
+  if (!existsSync(contextJsonPath)) {
+    throw new Error(`APM compiled context not found: ${contextJsonPath}. Run the APM compiler first.`);
   }
 
-  const naKeys = new Set(NA_ITEMS_BY_TYPE[workflowType]);
+  const context = JSON.parse(readFileSync(contextJsonPath, "utf-8"));
+  const workflow = context.workflows?.default;
+  if (!workflow || !workflow.nodes) {
+    throw new Error(
+      `No "default" workflow found in ${contextJsonPath}. ` +
+      `Create .apm/workflows.yml with a "default" workflow and recompile.`,
+    );
+  }
+
+  const { phases, nodes } = workflow;
+  if (!phases || !Array.isArray(phases) || phases.length === 0) {
+    throw new Error(`Workflow "default" has no phases array in ${contextJsonPath}.`);
+  }
+
+  // Build items array from workflow nodes (order: by phase, then alphabetical within phase)
+  const phaseOrder = new Map(phases.map((p, i) => [p, i]));
+  const nodeEntries = Object.entries(nodes);
+  nodeEntries.sort(([aKey, aNode], [bKey, bNode]) => {
+    const pa = phaseOrder.get(aNode.phase) ?? 999;
+    const pb = phaseOrder.get(bNode.phase) ?? 999;
+    if (pa !== pb) return pa - pb;
+    return aKey.localeCompare(bKey);
+  });
+
+  // Build dependencies, nodeTypes, nodeCategories from workflow
+  const dependencies = {};
+  const nodeTypes = {};
+  const nodeCategories = {};
+  for (const [key, node] of nodeEntries) {
+    dependencies[key] = node.depends_on || [];
+    nodeTypes[key] = node.type || "agent";
+    nodeCategories[key] = node.category;
+  }
+
+  // Compute N/A keys from run_if: if run_if is non-empty and workflowType is NOT in it, mark N/A
+  const naByType = [];
+  for (const [key, node] of nodeEntries) {
+    if (node.run_if && node.run_if.length > 0 && !node.run_if.includes(workflowType)) {
+      naByType.push(key);
+    }
+  }
+  const naKeys = new Set(naByType);
+
+  const items = nodeEntries.map(([key, node]) => ({
+    key,
+    label: key,
+    agent: node.agent ?? null,
+    phase: node.phase,
+    status: naKeys.has(key) ? "na" : "pending",
+    error: null,
+  }));
 
   const state = {
     feature: slug,
@@ -268,12 +297,14 @@ export function initState(slug, workflowType) {
     started: today(),
     deployedUrl: null,
     implementationNotes: null,
-    items: ALL_ITEMS.map((item) => ({
-      ...item,
-      status: naKeys.has(item.key) ? "na" : "pending",
-      error: null,
-    })),
+    items,
     errorLog: [],
+    // ── Dynamic graph (persisted in _STATE.json) ──────────────────────
+    dependencies,
+    phases,
+    nodeTypes,
+    nodeCategories,
+    naByType,
   };
 
   writeState(slug, state);
@@ -302,9 +333,10 @@ export function completeItem(slug, itemKey) {
     }
 
     // Phase-gating check: ensure all prior phases are complete
-    const itemPhaseIndex = PHASES.indexOf(item.phase);
+    const itemPhases = state.phases || ["infra", "approval", "pre-deploy", "deploy", "post-deploy", "finalize"];
+    const itemPhaseIndex = itemPhases.indexOf(item.phase);
     for (let pi = 0; pi < itemPhaseIndex; pi++) {
-      const phase = PHASES[pi];
+      const phase = itemPhases[pi];
       const incomplete = state.items.filter(
         (i) => i.phase === phase && i.status !== "done" && i.status !== "na"
       );
@@ -376,29 +408,17 @@ export function salvageForDraft(slug, failedItemKey) {
     return state;
   }
 
-  const skipKeys = new Set(["integration-test", "live-ui", "code-cleanup"]);
-  // When infra wave fails (CI or agent), also skip all Wave 2 items
-  if (failedItemKey === "poll-infra-plan" || failedItemKey === "infra-handoff" || failedItemKey === "infra-architect") {
-    for (const k of ["infra-handoff", "await-infra-approval", "backend-dev", "frontend-dev", "backend-unit-test",
-                      "frontend-unit-test", "push-app", "poll-app-ci"]) {
-      skipKeys.add(k);
-    }
-  }
-  // When infra-architect triggers permission escalation, also skip push-infra and poll-infra-plan
-  // (they will be reset by resumeAfterElevated when the elevated apply succeeds)
-  if (failedItemKey === "infra-architect") {
-    skipKeys.add("push-infra");
-    skipKeys.add("create-draft-pr");
-    skipKeys.add("poll-infra-plan");
-    skipKeys.add("await-infra-approval");
-  }
+  // Cascade: mark the failed item + all transitive downstream dependents as na
+  const skipKeys = new Set(getDownstream(state, [failedItemKey]));
+  // Always force docs-archived and publish-pr to pending (these are the "always run" finalization nodes)
   const forcePendingKeys = new Set(["docs-archived", "publish-pr"]);
   for (const item of state.items) {
-    if ((skipKeys.has(item.key) || item.key === failedItemKey) && item.status !== "done") {
-      item.status = "na";
-    } else if (forcePendingKeys.has(item.key)) {
+    if (forcePendingKeys.has(item.key)) {
+      // Finalization nodes always stay pending (for draft PR creation)
       item.status = "pending";
       item.error = null;
+    } else if ((skipKeys.has(item.key) || item.key === failedItemKey) && item.status !== "done") {
+      item.status = "na";
     }
   }
 
@@ -440,13 +460,14 @@ export function resumeAfterElevated(slug) {
     return { state, cycleCount, halted: true };
   }
 
-  const naByType = new Set(NA_ITEMS_BY_TYPE[state.workflowType] || []);
-  const salvageTargets = ["integration-test", "live-ui", "code-cleanup",
-                          "await-infra-approval", "infra-handoff", "backend-dev", "frontend-dev",
-                          "backend-unit-test", "frontend-unit-test", "push-app", "poll-app-ci"];
-  // push-infra must also reset so a fresh push triggers new CI runs for poll-infra-plan to verify.
-  // Without this, poll-infra-plan would poll stale (failed) CI runs from before the elevated apply.
-  const forceResetKeys = new Set(["push-app", "poll-app-ci"]);
+  const naByType = new Set(state.naByType || []);
+  // Reset all items that are "na" due to salvageForDraft (not due to workflow type)
+  // plus deploy items that need a fresh push + poll cycle
+  const forceResetKeys = new Set(
+    state.items
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "deploy")
+      .map((i) => i.key),
+  );
   let resetCount = 0;
 
   for (const item of state.items) {
@@ -459,7 +480,7 @@ export function resumeAfterElevated(slug) {
     }
 
     // Reset salvaged items — only if "na" was set by salvageForDraft, not by workflow type
-    if (salvageTargets.includes(item.key) && item.status === "na" && !naByType.has(item.key)) {
+    if (item.status === "na" && !naByType.has(item.key)) {
       item.status = "pending";
       item.error = null;
       resetCount++;
@@ -522,8 +543,8 @@ export function recoverElevated(slug, errorMessage) {
     }
 
     const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-    const deployItems = ["push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "push-app", "poll-app-ci"];
-    const keysToReset = new Set(["infra-architect", ...deployItems]);
+    // Reset infra-architect + all downstream dependents
+    const keysToReset = new Set(getDownstream(state, ["infra-architect"]));
     let resetCount = 0;
     for (const it of state.items) {
       if (keysToReset.has(it.key) && it.status !== "na") {
@@ -656,10 +677,8 @@ export function resetForRedeploy(slug, itemKeys, reason) {
   // triage routed deployment-stale-frontend → live-ui only), do NOT blanket-reset
   // all post-deploy items. Only cascade when no post-deploy item was explicitly
   // included — this preserves already-passed tests in the unaffected domain.
-  const POST_DEPLOY_KEYS = new Set(["integration-test", "live-ui"]);
-  const callerSpecifiedPostDeploy = [...keysToReset].some(k => POST_DEPLOY_KEYS.has(k));
-  const deployItemSet = new Set(["push-app", "poll-app-ci", "push-infra", "poll-infra-plan"]);
-  const hasDeployReset = [...keysToReset].some(k => deployItemSet.has(k));
+  const callerSpecifiedPostDeploy = [...keysToReset].some(k => (state.nodeCategories || {})[k] === "test");
+  const hasDeployReset = [...keysToReset].some(k => (state.nodeTypes || {})[k] === "script");
   if (hasDeployReset && !callerSpecifiedPostDeploy) {
     // No specific post-deploy item targeted — cascade to all done post-deploy items
     for (const item of state.items) {
@@ -713,22 +732,12 @@ export function resetForDev(slug, itemKeys, reason) {
     return { state, cycleCount, halted: true };
   }
 
-  // Always include the appropriate deploy items so the fix gets redeployed.
-  // If infra-architect is being reset, include infra wave deploy items.
-  // Otherwise include app wave deploy items.
-  const infraKeys = new Set(["infra-architect"]);
-  const hasInfraReset = itemKeys.some(k => infraKeys.has(k));
-  const deployItems = hasInfraReset
-    ? ["push-infra", "create-draft-pr", "poll-infra-plan", "await-infra-approval", "infra-handoff", "push-app", "poll-app-ci"]
-    : ["push-app", "poll-app-ci"];
-  const keysToReset = new Set([...itemKeys, ...deployItems]);
+  // Include the specified items + all downstream dependents so the fix gets redeployed.
+  const keysToReset = new Set(getDownstream(state, itemKeys));
 
-  // Cascade: when deploy items are being reset, also reset any "done" post-deploy
-  // items that depend on them. This prevents stale `integration-test: done` while
-  // `push-app: pending` — the post-deploy items must re-run to verify the new
-  // deployment.
-  const deployItemSet = new Set(deployItems);
-  const hasDeployReset = [...keysToReset].some(k => deployItemSet.has(k));
+  // Also reset any "done" post-deploy items when deploy items are being reset
+  // (prevents stale test results while push-app is pending)
+  const hasDeployReset = [...keysToReset].some(k => (state.nodeTypes || {})[k] === "script");
   if (hasDeployReset) {
     for (const item of state.items) {
       if (item.phase === "post-deploy" && item.status === "done") {
@@ -783,10 +792,11 @@ export function redevelopInfra(slug, reason) {
     return { state, cycleCount, halted: true };
   }
 
-  const resetItemKeys = new Set([
-    "infra-architect", "push-infra", "create-draft-pr",
-    "poll-infra-plan", "await-infra-approval", "infra-handoff",
-  ]);
+  // Reset all nodes in the infra and approval phases
+  const infraPhases = new Set(["infra", "approval"]);
+  const resetItemKeys = new Set(
+    state.items.filter((i) => infraPhases.has(i.phase)).map((i) => i.key),
+  );
   let resetCount = 0;
   for (const item of state.items) {
     if (resetItemKeys.has(item.key) && item.status !== "na") {
@@ -830,7 +840,8 @@ export function getNext(slug) {
 
   const state = readStateOrThrow(slug);
 
-  for (const phase of PHASES) {
+  const phases = state.phases || ["infra", "approval", "pre-deploy", "deploy", "post-deploy", "finalize"];
+  for (const phase of phases) {
     const phaseItems = state.items.filter((i) => i.phase === phase);
     const incomplete = phaseItems.filter((i) => i.status !== "done" && i.status !== "na");
 
@@ -862,7 +873,7 @@ export function getNextAvailable(slug) {
   for (const item of state.items) {
     if (item.status !== "pending" && item.status !== "failed") continue;
 
-    const deps = ITEM_DEPENDENCIES[item.key] || [];
+    const deps = (state.dependencies || {})[item.key] || [];
     const depsResolved = deps.every((depKey) => {
       const depStatus = statusMap.get(depKey);
       return depStatus === "done" || depStatus === "na";
@@ -964,12 +975,12 @@ export function setUrl(slug, url) {
 function cmdInit(slug, workflowType) {
   if (!slug || !workflowType) {
     console.error("Usage: pipeline-state.mjs init <slug> <workflow-type>");
-    console.error("  workflow-type: Backend | Frontend | Full-Stack | Infra | App-Only | Backend-Only");
+    console.error("  workflow-type: Any type defined in workflows.yml run_if arrays");
     process.exit(1);
   }
 
   try {
-    const result = initState(slug, workflowType);
+    const result = initState(slug, workflowType);  // contextJsonPath will be derived from APP_ROOT
     console.log(`✔ Initialized pipeline state for "${slug}" (${workflowType})`);
     console.log(`  State: ${result.statePath}`);
     console.log(`  TRANS:  ${result.transPath}`);
@@ -1006,13 +1017,18 @@ function cmdComplete(slug, itemKey) {
   }
 }
 
-/** Post-deploy items whose failure messages must be valid TriageDiagnostic JSON. */
-const POST_DEPLOY_ITEMS = new Set(
-  ALL_ITEMS.filter((i) => i.phase === "post-deploy").map((i) => i.key),
-);
-
-/** Pre-deploy test items that also require structured JSON for triage rerouting. */
-const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
+/** Post-deploy items whose failure messages must be valid TriageDiagnostic JSON.
+ *  Derived from state at call time (reads nodeCategories + phase). */
+function getZodGatedKeys(state) {
+  const gated = new Set();
+  for (const item of state.items) {
+    const cat = (state.nodeCategories || {})[item.key];
+    if (item.phase === "post-deploy" || cat === "test") {
+      gated.add(item.key);
+    }
+  }
+  return gated;
+}
 
 function cmdFail(slug, itemKey, message) {
   if (!slug || !itemKey) {
@@ -1021,7 +1037,9 @@ function cmdFail(slug, itemKey, message) {
   }
 
   // ── Zod gate: post-deploy & test items must supply valid TriageDiagnostic JSON ──
-  if (POST_DEPLOY_ITEMS.has(itemKey) || TEST_ITEMS.has(itemKey)) {
+  const state = readState(slug);
+  const zodGated = getZodGatedKeys(state);
+  if (zodGated.has(itemKey)) {
     let parsed;
     try {
       parsed = JSON.parse(message);
