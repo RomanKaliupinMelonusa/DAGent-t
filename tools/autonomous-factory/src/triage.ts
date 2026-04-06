@@ -15,6 +15,7 @@
 
 import { TriageDiagnosticSchema } from "./types.js";
 import type { FaultDomain, TriageDiagnostic } from "./types.js";
+import type { ApmFaultRoute } from "./apm-types.js";
 
 // ---------------------------------------------------------------------------
 // Unfixable error signals — no agent can fix these
@@ -72,6 +73,7 @@ export function triageFailure(
   naItems: Set<string>,
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
+  faultRouting?: Record<string, ApmFaultRoute>,
 ): string[] {
   // --- Tier 0: Unfixable error detection → immediate halt ---
   const unfixableReason = isUnfixableError(errorMessage);
@@ -92,7 +94,7 @@ export function triageFailure(
       diagnostic.fault_domain, errorMessage, directories, ciWorkflowFilePatterns,
     );
     console.log(`  🎯 Structured triage: fault_domain=${validated}${augmentWithDeploy ? " (+cicd deploy augmentation)" : ""}`);
-    const keys = applyFaultDomain(validated, itemKey, naItems);
+    const keys = applyFaultDomain(validated, itemKey, naItems, faultRouting);
     // When cicd root cause is detected, ensure deploy items are in the reset
     // list so the agent's cicd-scope commit gets pushed and verified by CI.
     if (augmentWithDeploy) {
@@ -114,7 +116,7 @@ export function triageFailure(
       return keys.filter((k) => !naItems.has(k));
     }
     console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain}`);
-    return applyFaultDomain(headerResult.domain, itemKey, naItems);
+    return applyFaultDomain(headerResult.domain, itemKey, naItems, faultRouting);
   }
 
   // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
@@ -222,68 +224,30 @@ function buildDirectoryPathSignals(
 
 /**
  * Map a validated `FaultDomain` to the set of pipeline item keys that need reset.
+ *
+ * When `faultRouting` is provided (from workflows.yml), performs a WYSIWYG lookup:
+ * the YAML declares exactly what gets reset. "$SELF" is replaced with `itemKey`.
+ * No hidden appending — if the domain needs to reset the calling item, it must
+ * include "$SELF" in `reset_nodes`.
+ *
+ * When `faultRouting` is undefined or the domain is not found, returns `[]`
+ * (graceful degradation — the caller interprets this as "blocked").
  */
-function applyFaultDomain(domain: FaultDomain, itemKey: string, naItems: Set<string>): string[] {
-  const resetKeys: string[] = [];
-
-  switch (domain) {
-    case "backend":
-      resetKeys.push("backend-dev", "backend-unit-test");
-      break;
-    case "frontend":
-      resetKeys.push("frontend-dev", "frontend-unit-test");
-      break;
-    case "both":
-      resetKeys.push("backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
-      break;
-    case "frontend+infra":
-      resetKeys.push("frontend-dev", "frontend-unit-test");
-      break;
-    case "backend+infra":
-      resetKeys.push("backend-dev", "backend-unit-test");
-      break;
-    case "cicd":
-      // CI/CD workflow file issue — route to push-app + poll-app-ci for the
-      // deploy-manager agent which has the correct commit scope for .github/
-      resetKeys.push("push-app", "poll-app-ci");
-      break;
-    case "deployment-stale":
-      // Deployed artifact is outdated but code on branch is correct.
-      // Only re-deploy — do NOT reset dev items (code doesn't need fixing).
-      resetKeys.push("push-app", "poll-app-ci");
-      break;
-    case "deployment-stale-backend":
-      // Backend deployment stale — only re-deploy and re-run backend post-deploy test.
-      resetKeys.push("push-app", "poll-app-ci");
-      break;
-    case "deployment-stale-frontend":
-      // Frontend deployment stale — only re-deploy and re-run frontend post-deploy test.
-      resetKeys.push("push-app", "poll-app-ci");
-      break;
-    case "infra":
-      // Infrastructure error — route to full Wave 1 redevelopment cascade
-      resetKeys.push(
-        "infra-architect",
-        "push-infra",
-        "poll-infra-plan",
-        "create-draft-pr",
-        "await-infra-approval",
-        "infra-handoff",
-      );
-      break;
-    case "test-code":
-      // Zero cascade — only reset the test agent that wrote the broken test.
-      return [itemKey].filter((k) => !naItems.has(k));
-    case "blocked":
-      // Unfixable error — no items to reset, pipeline must halt.
-      return [];
-    case "environment":
-      // Not a code bug — only reset the post-deploy item itself.
-      return [itemKey].filter((k) => !naItems.has(k));
+function applyFaultDomain(
+  domain: FaultDomain,
+  itemKey: string,
+  naItems: Set<string>,
+  faultRouting?: Record<string, ApmFaultRoute>,
+): string[] {
+  const route = faultRouting?.[domain as string];
+  if (!route) {
+    // No routing table or unknown domain → graceful degradation
+    return [];
   }
 
-  if (!resetKeys.includes(itemKey)) resetKeys.push(itemKey);
-  return resetKeys.filter((k) => !naItems.has(k));
+  const resetKeys = route.reset_nodes.map((k: string) => (k === "$SELF" ? itemKey : k));
+  // Deduplicate (e.g. if $SELF expands to a key already in the list)
+  return [...new Set(resetKeys)].filter((k: string) => !naItems.has(k));
 }
 
 // ---------------------------------------------------------------------------

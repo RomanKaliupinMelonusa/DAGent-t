@@ -26,9 +26,9 @@ interface PipelineStateMod {
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetCi: (slug: string) => ResetResult;
   resetInfraPlan: (slug: string) => ResetResult;
-  redevelopInfra: (slug: string, reason: string) => ResetResult;
-  resetForDev: (slug: string, itemKeys: string[], reason: string) => ResetResult;
-  resetForRedeploy: (slug: string, itemKeys: string[], reason: string) => ResetResult;
+  redevelopInfra: (slug: string, reason: string, maxCycles?: number) => ResetResult;
+  resetForDev: (slug: string, itemKeys: string[], reason: string, maxCycles?: number) => ResetResult;
+  resetForRedeploy: (slug: string, itemKeys: string[], reason: string, maxCycles?: number) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
   resumeAfterElevated: (slug: string) => ResetResult;
   recoverElevated: (slug: string, errorMessage: string) => ResetResult;
@@ -75,19 +75,19 @@ export async function resetInfraPlan(slug: string): Promise<ResetResult> {
   return mod.resetInfraPlan(slug);
 }
 
-export async function redevelopInfra(slug: string, reason: string): Promise<ResetResult> {
+export async function redevelopInfra(slug: string, reason: string, maxCycles?: number): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.redevelopInfra(slug, reason);
+  return mod.redevelopInfra(slug, reason, maxCycles);
 }
 
-export async function resetForDev(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
+export async function resetForDev(slug: string, itemKeys: string[], reason: string, maxCycles?: number): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.resetForDev(slug, itemKeys, reason);
+  return mod.resetForDev(slug, itemKeys, reason, maxCycles);
 }
 
-export async function resetForRedeploy(slug: string, itemKeys: string[], reason: string): Promise<ResetResult> {
+export async function resetForRedeploy(slug: string, itemKeys: string[], reason: string, maxCycles?: number): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.resetForRedeploy(slug, itemKeys, reason);
+  return mod.resetForRedeploy(slug, itemKeys, reason, maxCycles);
 }
 
 export async function salvageForDraft(slug: string, failedItemKey: string): Promise<PipelineState> {

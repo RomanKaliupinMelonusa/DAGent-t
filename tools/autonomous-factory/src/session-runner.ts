@@ -1646,7 +1646,11 @@ async function handleFailureReroute(
   );
   const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
   const ciFilePatterns = config.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined;
-  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns);
+  const workflow = config.apmContext.workflows?.default;
+  const faultRouting = workflow?.fault_routing;
+  const maxDevCycles = workflow?.max_redevelopment_cycles ?? 5;
+  const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns, faultRouting);
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
@@ -1722,7 +1726,7 @@ async function handleFailureReroute(
 
   try {
     if (hasDevOrTestItems) {
-      const result = await resetForDev(slug, resetKeys, errorMsg);
+      const result = await resetForDev(slug, resetKeys, errorMsg, maxDevCycles);
       if (result.halted) {
         console.error(
           `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
@@ -1730,7 +1734,7 @@ async function handleFailureReroute(
         return { summary: itemSummary, halt: true, createPr: false };
       }
       console.log(
-        `     Redevelopment cycle ${result.cycleCount}/5 — pipeline will restart from dev`,
+        `     Redevelopment cycle ${result.cycleCount}/${maxDevCycles} — pipeline will restart from dev`,
       );
 
       // Re-index semantic graph after redevelopment reroute
@@ -1741,7 +1745,7 @@ async function handleFailureReroute(
         } catch { /* non-fatal */ }
       }
     } else {
-      const result = await resetForRedeploy(slug, resetKeys, errorMsg);
+      const result = await resetForRedeploy(slug, resetKeys, errorMsg, maxRedeployCycles);
       if (result.halted) {
         console.error(
           `  ✖ HALTED: ${result.cycleCount} re-deploy cycles exhausted. Exiting.`,
@@ -1749,7 +1753,7 @@ async function handleFailureReroute(
         return { summary: itemSummary, halt: true, createPr: false };
       }
       console.log(
-        `     Re-deploy cycle ${result.cycleCount}/3 — pipeline will restart from deploy`,
+        `     Re-deploy cycle ${result.cycleCount}/${maxRedeployCycles} — pipeline will restart from deploy`,
       );
       // No roam re-indexing needed — no code changes, just re-push and re-poll
     }
