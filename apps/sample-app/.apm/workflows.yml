@@ -39,6 +39,7 @@ default:
       run_if: [Backend, Frontend, Full-Stack, Infra]
       commit_scope: infra
       diff_attribution_dirs: [infra]
+      injects_infra_rollback: true
 
     push-infra:
       type: script
@@ -69,6 +70,7 @@ default:
       run_if: [Backend, Frontend, Full-Stack, Infra]
       triage_json_gated: true
       commit_scope: pipeline
+      post_ci_artifact_to_pr: "plan-output"
 
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
@@ -148,6 +150,7 @@ default:
       depends_on: [backend-unit-test, frontend-unit-test]
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
       commit_scope: pipeline
+      writes_deploy_sentinel: true
 
     poll-app-ci:
       type: script
@@ -209,6 +212,7 @@ default:
       timeout_minutes: 20
       depends_on: [code-cleanup]
       commit_scope: docs
+      generates_change_manifest: true
 
     doc-architect:
       type: agent
