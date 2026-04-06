@@ -195,11 +195,25 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
   return result;
 }
 
+/** Schema for a fault_routing entry — maps a fault domain to the nodes that should be reset. */
+export const ApmFaultRouteSchema = z.object({
+  /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
+  reset_nodes: z.array(z.string()),
+});
+
 export const ApmWorkflowSchema = z.object({
   /** Explicit ordered phase names (human-authored). */
   phases: z.array(z.string()),
   /** Pipeline nodes keyed by item key. */
   nodes: z.record(z.string(), ApmWorkflowNodeSchema),
+  /** Maximum redevelopment cycles before the pipeline halts. */
+  max_redevelopment_cycles: z.number().int().positive().default(5),
+  /** Maximum re-deploy cycles before the pipeline halts. */
+  max_redeploy_cycles: z.number().int().positive().default(3),
+  /** Declarative fault routing — maps fault domain strings to reset node lists.
+   *  WYSIWYG: the kernel returns exactly what is declared here. No hidden appending.
+   *  Use "$SELF" to include the calling item in the reset list. */
+  fault_routing: z.record(z.string(), ApmFaultRouteSchema).default({}),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key
@@ -233,6 +247,18 @@ export const ApmWorkflowSchema = z.object({
     }
   },
   { message: "Workflow DAG contains a cycle." },
+).refine(
+  (wf) => {
+    // Validate: every fault_routing reset_nodes entry is "$SELF" or a valid node key
+    const nodeKeys = new Set(Object.keys(wf.nodes));
+    for (const [domain, route] of Object.entries(wf.fault_routing)) {
+      for (const node of route.reset_nodes) {
+        if (node !== "$SELF" && !nodeKeys.has(node)) return false;
+      }
+    }
+    return true;
+  },
+  { message: "fault_routing reset_nodes references an undefined node key (use \"$SELF\" for the calling item)." },
 );
 
 export const ApmCompiledOutputSchema = z.object({
@@ -332,6 +358,7 @@ export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmWorkflowNode = z.infer<typeof ApmWorkflowNodeSchema>;
 export type ApmWorkflow = z.infer<typeof ApmWorkflowSchema>;
+export type ApmFaultRoute = z.infer<typeof ApmFaultRouteSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;

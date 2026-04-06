@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-06T03:15:22.498Z",
+  "compiledAt": "2026-04-06T03:56:22.822Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1280,6 +1280,97 @@
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
           "auto_skip_if_no_deletions": false
+        }
+      },
+      "max_redevelopment_cycles": 5,
+      "max_redeploy_cycles": 3,
+      "fault_routing": {
+        "backend": {
+          "reset_nodes": [
+            "backend-dev",
+            "backend-unit-test",
+            "$SELF"
+          ]
+        },
+        "frontend": {
+          "reset_nodes": [
+            "frontend-dev",
+            "frontend-unit-test",
+            "$SELF"
+          ]
+        },
+        "both": {
+          "reset_nodes": [
+            "backend-dev",
+            "backend-unit-test",
+            "frontend-dev",
+            "frontend-unit-test",
+            "$SELF"
+          ]
+        },
+        "frontend+infra": {
+          "reset_nodes": [
+            "infra-architect",
+            "frontend-dev",
+            "frontend-unit-test",
+            "$SELF"
+          ]
+        },
+        "backend+infra": {
+          "reset_nodes": [
+            "infra-architect",
+            "backend-dev",
+            "backend-unit-test",
+            "$SELF"
+          ]
+        },
+        "cicd": {
+          "reset_nodes": [
+            "push-app",
+            "poll-app-ci"
+          ]
+        },
+        "deployment-stale": {
+          "reset_nodes": [
+            "push-app",
+            "poll-app-ci"
+          ]
+        },
+        "deployment-stale-backend": {
+          "reset_nodes": [
+            "push-app",
+            "poll-app-ci"
+          ]
+        },
+        "deployment-stale-frontend": {
+          "reset_nodes": [
+            "push-app",
+            "poll-app-ci"
+          ]
+        },
+        "infra": {
+          "reset_nodes": [
+            "infra-architect",
+            "push-infra",
+            "poll-infra-plan",
+            "create-draft-pr",
+            "await-infra-approval",
+            "infra-handoff",
+            "$SELF"
+          ]
+        },
+        "test-code": {
+          "reset_nodes": [
+            "$SELF"
+          ]
+        },
+        "environment": {
+          "reset_nodes": [
+            "$SELF"
+          ]
+        },
+        "blocked": {
+          "reset_nodes": []
         }
       }
     }

@@ -684,7 +684,7 @@ export function resetInfraPlan(slug) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or no itemKeys provided
  */
-export function resetForRedeploy(slug, itemKeys, reason) {
+export function resetForRedeploy(slug, itemKeys, reason, maxCycles = 3) {
   if (!slug || !itemKeys?.length) {
     throw new Error("resetForRedeploy requires slug and at least one itemKey");
   }
@@ -693,7 +693,7 @@ export function resetForRedeploy(slug, itemKeys, reason) {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-redeploy").length;
-  if (cycleCount >= 3) {
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
@@ -727,7 +727,7 @@ export function resetForRedeploy(slug, itemKeys, reason) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: "reset-for-redeploy",
-    message: `Re-deployment cycle ${cycleCount + 1}/3: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
+    message: `Re-deployment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -746,7 +746,7 @@ export function resetForRedeploy(slug, itemKeys, reason) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or no itemKeys provided
  */
-export function resetForDev(slug, itemKeys, reason) {
+export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
   if (!slug || !itemKeys?.length) {
     throw new Error("resetForDev requires slug and at least one itemKey");
   }
@@ -755,7 +755,7 @@ export function resetForDev(slug, itemKeys, reason) {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
-  if (cycleCount >= 5) {
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
@@ -785,7 +785,7 @@ export function resetForDev(slug, itemKeys, reason) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: "reset-for-dev",
-    message: `Redevelopment cycle ${cycleCount + 1}/5: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
+    message: `Redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -806,7 +806,7 @@ export function resetForDev(slug, itemKeys, reason) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug or reason missing, or state file not found
  */
-export function redevelopInfra(slug, reason) {
+export function redevelopInfra(slug, reason, maxCycles = 5) {
   if (!slug || !reason) {
     throw new Error("redevelopInfra requires slug and reason");
   }
@@ -815,7 +815,7 @@ export function redevelopInfra(slug, reason) {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "redevelop-infra").length;
-  if (cycleCount >= 5) {
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
@@ -836,7 +836,7 @@ export function redevelopInfra(slug, reason) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: "redevelop-infra",
-    message: `Infra redevelopment cycle ${cycleCount + 1}/5: ${reason}. Reset ${resetCount} items: ${[...resetItemKeys].join(", ")}`,
+    message: `Infra redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...resetItemKeys].join(", ")}`,
   });
 
   writeState(slug, state);
