@@ -699,17 +699,20 @@ export function resetForRedeploy(slug, itemKeys, reason, maxCycles = 3) {
 
   const keysToReset = new Set(itemKeys);
 
-  // Cascade: also reset "done" post-deploy items that depend on deploy items.
+  // Cascade: also reset post-deploy items that depend on deploy items.
+  // When WYSIWYG fault_routing omits "$SELF" (e.g. deployment-stale routes),
+  // the triggering post-deploy item has status "failed" (set by failItem before
+  // this function runs). Include both "done" and "failed" post-deploy items so
+  // the full test suite re-runs after the fresh deployment.
   // SURGICAL: if the caller already specified specific post-deploy items (e.g.,
-  // triage routed deployment-stale-frontend → live-ui only), do NOT blanket-reset
-  // all post-deploy items. Only cascade when no post-deploy item was explicitly
-  // included — this preserves already-passed tests in the unaffected domain.
+  // via "$SELF" in fault_routing), do NOT blanket-reset — this preserves
+  // already-passed tests in the unaffected domain.
   const callerSpecifiedPostDeploy = [...keysToReset].some(k => (state.nodeCategories || {})[k] === "test");
   const hasDeployReset = [...keysToReset].some(k => (state.nodeTypes || {})[k] === "script");
   if (hasDeployReset && !callerSpecifiedPostDeploy) {
-    // No specific post-deploy item targeted — cascade to all done post-deploy items
+    // No specific post-deploy item targeted — cascade to all done/failed post-deploy items
     for (const item of state.items) {
-      if (item.phase === "post-deploy" && item.status === "done") {
+      if (item.phase === "post-deploy" && (item.status === "done" || item.status === "failed")) {
         keysToReset.add(item.key);
       }
     }
