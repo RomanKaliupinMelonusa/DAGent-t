@@ -165,6 +165,13 @@ export const ApmWorkflowNodeSchema = z.object({
   auto_skip_if_no_changes_in: z.array(z.string()).default([]),
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
+  /** Whether `pipeline:fail` messages must be valid TriageDiagnostic JSON for triage routing. */
+  triage_json_gated: z.boolean().default(false),
+  /** Commit scope for `agent-commit.sh`. Defaults to "all" (no scope restriction). */
+  commit_scope: z.string().default("all"),
+  /** Directory keys (from config.directories) or literal path prefixes for scoped git-diff attribution.
+   *  Empty array = no scope restriction (all non-state files). Entries ending in "/" are literal prefixes. */
+  diff_attribution_dirs: z.array(z.string()).default([]),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },

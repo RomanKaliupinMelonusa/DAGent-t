@@ -34,6 +34,8 @@ interface PipelineState {
   nodeTypes: Record<string, "agent" | "script" | "approval">;
   /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
   nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Whether pipeline:fail messages must be valid TriageDiagnostic JSON — persisted at init from workflows.yml */
+  jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
 }
