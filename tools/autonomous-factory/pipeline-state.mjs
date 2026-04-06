@@ -333,7 +333,7 @@ export function completeItem(slug, itemKey) {
     }
 
     // Phase-gating check: ensure all prior phases are complete
-    const itemPhases = state.phases || ["infra", "approval", "pre-deploy", "deploy", "post-deploy", "finalize"];
+    const itemPhases = state.phases || [...new Set(state.items.map((i) => i.phase))];
     const itemPhaseIndex = itemPhases.indexOf(item.phase);
     for (let pi = 0; pi < itemPhaseIndex; pi++) {
       const phase = itemPhases[pi];
@@ -410,8 +410,12 @@ export function salvageForDraft(slug, failedItemKey) {
 
   // Cascade: mark the failed item + all transitive downstream dependents as na
   const skipKeys = new Set(getDownstream(state, [failedItemKey]));
-  // Always force docs-archived and publish-pr to pending (these are the "always run" finalization nodes)
+  // Force the docs+PR finalization pair to pending for draft PR creation.
+  // These are the minimum path: docs-archived writes the summary, publish-pr creates the PR.
+  // Other finalize nodes (code-cleanup, doc-architect) get na'd since their work is inapplicable
+  // in degraded mode. publish-pr still runs because na'd deps count as resolved.
   const forcePendingKeys = new Set(["docs-archived", "publish-pr"]);
+  const skippedKeys = [];
   for (const item of state.items) {
     if (forcePendingKeys.has(item.key)) {
       // Finalization nodes always stay pending (for draft PR creation)
@@ -419,13 +423,14 @@ export function salvageForDraft(slug, failedItemKey) {
       item.error = null;
     } else if ((skipKeys.has(item.key) || item.key === failedItemKey) && item.status !== "done") {
       item.status = "na";
+      skippedKeys.push(item.key);
     }
   }
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: "salvage-draft",
-    message: `Graceful degradation: skipped ${failedItemKey}, integration-test, live-ui, code-cleanup for Draft PR.`,
+    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.`,
   });
 
   writeState(slug, state);
@@ -518,18 +523,29 @@ export function recoverElevated(slug, errorMessage) {
   return withLock(slug, () => {
     const state = readStateOrThrow(slug);
 
-    // Step 1: Record the failure on poll-infra-plan (inlined from failItem)
-    const item = state.items.find((i) => i.key === "poll-infra-plan");
-    if (item) {
-      item.status = "failed";
-      item.error = `Elevated apply failed: ${errorMessage}`;
-      state.errorLog.push({
-        timestamp: new Date().toISOString(),
-        itemKey: "poll-infra-plan",
-        message: `Elevated apply failed: ${errorMessage}`,
-      });
+    // Derive infra CI observer: last script-type node in the infra phase
+    const infraPollKey = state.items
+      .filter((i) => i.phase === "infra" && (state.nodeTypes || {})[i.key] === "script")
+      .at(-1)?.key;
+    // Derive infra entry point: first dev-category node in the infra phase
+    const infraDevKey = state.items
+      .find((i) => i.phase === "infra" && (state.nodeCategories || {})[i.key] === "dev")?.key;
+
+    // Step 1: Record the failure on the infra CI observer (inlined from failItem)
+    if (infraPollKey) {
+      const item = state.items.find((i) => i.key === infraPollKey);
+      if (item) {
+        item.status = "failed";
+        item.error = `Elevated apply failed: ${errorMessage}`;
+        state.errorLog.push({
+          timestamp: new Date().toISOString(),
+          itemKey: infraPollKey,
+          message: `Elevated apply failed: ${errorMessage}`,
+        });
+      }
     }
-    const failCount = state.errorLog.filter((e) => e.itemKey === "poll-infra-plan").length;
+    const pollLogKey = infraPollKey || "poll-infra-plan";
+    const failCount = state.errorLog.filter((e) => e.itemKey === pollLogKey).length;
     if (failCount >= 10) {
       writeState(slug, state);
       return { state, failCount, halted: true };
@@ -543,8 +559,9 @@ export function recoverElevated(slug, errorMessage) {
     }
 
     const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-    // Reset infra-architect + all downstream dependents
-    const keysToReset = new Set(getDownstream(state, ["infra-architect"]));
+    // Reset infra dev entry + all downstream dependents
+    const resetSeed = infraDevKey || "infra-architect";
+    const keysToReset = new Set(getDownstream(state, [resetSeed]));
     let resetCount = 0;
     for (const it of state.items) {
       if (keysToReset.has(it.key) && it.status !== "na") {
@@ -582,7 +599,12 @@ export function resetCi(slug) {
     return { state, cycleCount, halted: true };
   }
 
-  const resetKeys = new Set(["push-app", "poll-app-ci"]);
+  // Derive app-CI script nodes from graph: script-type nodes in the deploy phase
+  const resetKeys = new Set(
+    state.items
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "deploy")
+      .map((i) => i.key)
+  );
   let resetCount = 0;
   for (const item of state.items) {
     if (resetKeys.has(item.key) && item.status !== "na") {
@@ -621,7 +643,12 @@ export function resetInfraPlan(slug) {
     return { state, cycleCount, halted: true };
   }
 
-  const resetKeys = new Set(["push-infra", "create-draft-pr", "poll-infra-plan"]);
+  // Derive infra-CI script nodes from graph: script-type nodes in the infra phase
+  const resetKeys = new Set(
+    state.items
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "infra")
+      .map((i) => i.key)
+  );
   let resetCount = 0;
   for (const item of state.items) {
     if (resetKeys.has(item.key) && item.status !== "na") {
@@ -840,7 +867,7 @@ export function getNext(slug) {
 
   const state = readStateOrThrow(slug);
 
-  const phases = state.phases || ["infra", "approval", "pre-deploy", "deploy", "post-deploy", "finalize"];
+  const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
   for (const phase of phases) {
     const phaseItems = state.items.filter((i) => i.phase === phase);
     const incomplete = phaseItems.filter((i) => i.status !== "done" && i.status !== "na");

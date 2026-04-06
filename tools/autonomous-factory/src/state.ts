@@ -139,3 +139,13 @@ export async function readState(slug: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.readState(slug);
 }
+
+export async function getDownstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
+  const mod = await getMod();
+  return mod.getDownstream(state, seedKeys);
+}
+
+export async function getUpstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
+  const mod = await getMod();
+  return mod.getUpstream(state, seedKeys);
+}

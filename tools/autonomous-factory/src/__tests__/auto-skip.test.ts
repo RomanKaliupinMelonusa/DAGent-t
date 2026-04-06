@@ -112,7 +112,7 @@ describe("getMergeBase", () => {
 });
 
 describe("getDirectoryPrefixes", () => {
-  it("builds prefixes from directory config", () => {
+  it("builds prefixes from directory config (one per key)", () => {
     const result = getDirectoryPrefixes("apps/sample-app", {
       backend: "backend",
       frontend: "frontend",
@@ -121,11 +121,13 @@ describe("getDirectoryPrefixes", () => {
       packages: "packages",
       schemas: null,
     });
-    assert.deepStrictEqual(result.frontend, ["apps/sample-app/frontend/", "apps/sample-app/e2e/"]);
-    assert.ok(result.backend.includes("apps/sample-app/backend/"));
-    assert.ok(result.backend.includes("apps/sample-app/infra/"));
-    assert.ok(result.backend.includes("apps/sample-app/packages/"));
-    assert.ok(result.infra.includes("apps/sample-app/infra/"));
+    // Each key maps to its own directory only (1:1 mapping)
+    assert.deepStrictEqual(result.frontend, ["apps/sample-app/frontend/"]);
+    assert.deepStrictEqual(result.backend, ["apps/sample-app/backend/"]);
+    assert.deepStrictEqual(result.infra, ["apps/sample-app/infra/"]);
+    assert.deepStrictEqual(result.e2e, ["apps/sample-app/e2e/"]);
+    assert.deepStrictEqual(result.packages, ["apps/sample-app/packages/"]);
+    assert.deepStrictEqual(result.schemas, [], "null directory value → empty prefix array");
   });
 
   it("throws when directories config is missing", () => {
@@ -142,10 +144,9 @@ describe("getDirectoryPrefixes", () => {
       schemas: null,
     });
     // Must NOT have a leading slash — git diff outputs "backend/src/...", not "/backend/src/..."
-    assert.deepStrictEqual(result.frontend, ["frontend/", "e2e/"]);
-    assert.ok(result.backend.includes("backend/"));
-    assert.ok(result.backend.includes("infra/"));
-    assert.ok(result.backend.includes("packages/"));
+    assert.deepStrictEqual(result.frontend, ["frontend/"]);
+    assert.deepStrictEqual(result.backend, ["backend/"]);
+    assert.deepStrictEqual(result.infra, ["infra/"]);
     assert.ok(!result.backend.some((p) => p.startsWith("/")), "no prefix should start with /");
     assert.ok(!result.frontend.some((p) => p.startsWith("/")), "no prefix should start with /");
     assert.ok(!result.infra.some((p) => p.startsWith("/")), "no prefix should start with /");

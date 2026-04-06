@@ -76,7 +76,7 @@ default:
       category: dev
       agent: "@infra-handoff"
       phase: approval
-      timeout_minutes: 15
+      timeout_minutes: 20
       depends_on: [await-infra-approval]
       run_if: [Backend, Frontend, Full-Stack, Infra]
 
@@ -107,7 +107,7 @@ default:
       timeout_minutes: 10
       depends_on: [backend-dev]
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
-      auto_skip_if_no_changes_in: [backend]
+      auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
 
     frontend-unit-test:
       type: agent
@@ -117,7 +117,7 @@ default:
       timeout_minutes: 10
       depends_on: [frontend-dev]
       run_if: [Frontend, Full-Stack, App-Only]
-      auto_skip_if_no_changes_in: [frontend]
+      auto_skip_if_no_changes_in: [frontend, e2e]
 
     push-app:
       type: script
@@ -147,7 +147,7 @@ default:
       depends_on: [poll-app-ci]
       requires_data_plane_ready: true
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
-      auto_skip_if_no_changes_in: [backend]
+      auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
 
     live-ui:
       type: agent
@@ -158,7 +158,7 @@ default:
       depends_on: [poll-app-ci, integration-test]
       requires_data_plane_ready: true
       run_if: [Frontend, Full-Stack, App-Only]
-      auto_skip_if_no_changes_in: [frontend, infra]
+      auto_skip_if_no_changes_in: [frontend, infra, e2e]
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
@@ -184,7 +184,7 @@ default:
       category: finalize
       agent: "@doc-architect"
       phase: finalize
-      timeout_minutes: 15
+      timeout_minutes: 20
       depends_on: [code-cleanup, docs-archived]
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
 

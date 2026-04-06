@@ -6,7 +6,7 @@
 interface PipelineItem {
   key: string;
   label: string;
-  agent: string;
+  agent: string | null;
   phase: string;
   status: "pending" | "done" | "failed" | "na";
   error: string | null;

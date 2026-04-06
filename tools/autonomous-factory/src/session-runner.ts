@@ -630,7 +630,7 @@ async function tryAutoSkip(
       // Build union of prefixes from all declared directory keys
       const allPrefixes: string[] = [];
       for (const dirKey of node.auto_skip_if_no_changes_in) {
-        const prefixSet = dirPrefixes[dirKey as keyof typeof dirPrefixes];
+        const prefixSet = dirPrefixes[dirKey];
         if (prefixSet) {
           allPrefixes.push(...prefixSet);
         }
@@ -638,12 +638,17 @@ async function tryAutoSkip(
 
       const hasChanges = gitChanged.some((f) => allPrefixes.some((p) => f.startsWith(p)));
 
-      // Special case: live-ui also checks infra changes for CORS/APIM/IAM
-      if (next.key === "live-ui" && node.auto_skip_if_no_changes_in.includes("infra")) {
-        const hasInfraChanges = gitChanged.some((f) => dirPrefixes.infra.some((p) => f.startsWith(p)));
+      // Special case: nodes that require data plane readiness and check infra changes
+      // (e.g., live-ui checks CORS/APIM/IAM changes even when frontend didn't change)
+      if (node.requires_data_plane_ready && node.auto_skip_if_no_changes_in.includes("infra")) {
+        const infraPrefixes = dirPrefixes["infra"] || [];
+        const hasInfraChanges = gitChanged.some((f) => infraPrefixes.some((p) => f.startsWith(p)));
         liveUiInfraChanges = hasInfraChanges;
-        if (hasInfraChanges && !gitChanged.some((f) => dirPrefixes.frontend.some((p) => f.startsWith(p)))) {
-          console.log(`  ▶ Running ${next.key} — infra changes detected (forcing browser verification for CORS/APIM/IAM)`);
+        // Find the non-infra directory keys this node watches
+        const nonInfraKeys = node.auto_skip_if_no_changes_in.filter((k) => k !== "infra");
+        const nonInfraPrefixes = nonInfraKeys.flatMap((k) => dirPrefixes[k] || []);
+        if (hasInfraChanges && !gitChanged.some((f) => nonInfraPrefixes.some((p) => f.startsWith(p)))) {
+          console.log(`  ▶ Running ${next.key} — infra changes detected (forcing verification for CORS/APIM/IAM)`);
           return null; // Do NOT auto-skip
         }
       }
@@ -1663,25 +1668,43 @@ async function handleFailureReroute(
   }
 
   // ── Guard: detect unreachable dev items behind an incomplete approval gate ──
-  // When poll-infra-plan (or other Wave 1 items) fail with a backend/frontend
-  // error, triage routes to Wave 2 dev items. But if infra-handoff is not yet
-  // done/na, those dev items can never run — resetting them plus the poll item
-  // creates an infinite retry loop against the same failing CI run.
-  const WAVE2_GATE = "infra-handoff";
-  const gateStatus = pipeState.items.find((i) => i.key === WAVE2_GATE)?.status;
-  const wave2Open = gateStatus === "done" || gateStatus === "na";
-  const WAVE2_DEV_KEYS = new Set(["backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test"]);
+  // When Wave 1 CI items fail with a backend/frontend error, triage routes to
+  // Wave 2 dev items. But if an approval gate they depend on is not yet done/na,
+  // those dev items can never run — resetting them creates an infinite retry loop.
+  //
+  // Derive approval gates and dev/test items from workflow manifest:
+  const approvalGates = pipeState.items.filter(
+    (i) => (pipeState.nodeTypes || {})[i.key] === "approval" &&
+           i.status !== "done" && i.status !== "na"
+  );
+  const openGateKeys = new Set(
+    pipeState.items
+      .filter((i) => (pipeState.nodeTypes || {})[i.key] === "approval" &&
+                     (i.status === "done" || i.status === "na"))
+      .map((i) => i.key)
+  );
+  // Check if any reset keys are dev/test items behind a pending approval gate
+  const gatedKeys = resetKeys.filter((k) => {
+    const cat = getWorkflowNode(config.apmContext, k)?.category;
+    if (cat !== "dev" && cat !== "test") return false;
+    // Check if this item has any upstream approval gate that is NOT yet open
+    return approvalGates.some((gate) => {
+      // The dev item is gated if the gate is upstream of it (the item depends transitively on the gate)
+      const depChain = pipeState.dependencies?.[k] || [];
+      // Simple check: does this item or any of its deps include the gate?
+      // For deep dependency chains, use getUpstream — but that requires async.
+      // Simpler: if any approval gate is still pending, check if the gate is in this item's phase predecessors
+      return !openGateKeys.has(gate.key);
+    });
+  });
 
-  if (!wave2Open) {
-    const gatedKeys = resetKeys.filter((k) => WAVE2_DEV_KEYS.has(k));
-    if (gatedKeys.length > 0) {
-      console.warn(`\n  🚧 Triaged dev items [${gatedKeys.join(", ")}] are gated behind infra approval — cannot run in current wave.`);
-      console.warn(`     This is likely a pre-existing CI failure unrelated to the current feature.`);
-      console.warn(`     Fix the failing tests on the base branch or feature branch, then re-run the pipeline.`);
-      // Don't reset — let the pipeline naturally block on the next getNextAvailable() call.
-      // The item was already marked as failed by the caller.
-      return { summary: itemSummary, halt: false, createPr: false };
-    }
+  if (approvalGates.length > 0 && gatedKeys.length > 0) {
+    console.warn(`\n  🚧 Triaged dev items [${gatedKeys.join(", ")}] are gated behind approval — cannot run in current wave.`);
+    console.warn(`     This is likely a pre-existing CI failure unrelated to the current feature.`);
+    console.warn(`     Fix the failing tests on the base branch or feature branch, then re-run the pipeline.`);
+    // Don't reset — let the pipeline naturally block on the next getNextAvailable() call.
+    // The item was already marked as failed by the caller.
+    return { summary: itemSummary, halt: false, createPr: false };
   }
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
@@ -1690,8 +1713,8 @@ async function handleFailureReroute(
   // Branch: if triage targets only deploy/post-deploy items (no dev or test code
   // changes needed), use the separate re-deploy budget instead of burning a full
   // redevelopment cycle. This handles "deployment-stale" faults deterministically.
-  // TEST_ITEMS also imply code changes (test failures need dev fixes), so they
-  // route to the full redevelopment path alongside DEV_ITEMS.
+  // category === "test" also implies code changes (test failures need dev fixes),
+  // so they route to the full redevelopment path alongside category === "dev".
   const hasDevOrTestItems = resetKeys.some((k) => {
     const cat = getWorkflowNode(config.apmContext, k)?.category;
     return cat === "dev" || cat === "test";

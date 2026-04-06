@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-06T03:01:47.243Z",
+  "compiledAt": "2026-04-06T03:15:22.498Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1025,7 +1025,7 @@
           "category": "dev",
           "agent": "@infra-handoff",
           "phase": "approval",
-          "timeout_minutes": 15,
+          "timeout_minutes": 20,
           "depends_on": [
             "await-infra-approval"
           ],
@@ -1095,7 +1095,10 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [
-            "backend"
+            "backend",
+            "infra",
+            "schemas",
+            "packages"
           ],
           "auto_skip_if_no_deletions": false
         },
@@ -1115,7 +1118,8 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [
-            "frontend"
+            "frontend",
+            "e2e"
           ],
           "auto_skip_if_no_deletions": false
         },
@@ -1177,7 +1181,10 @@
           ],
           "requires_data_plane_ready": true,
           "auto_skip_if_no_changes_in": [
-            "backend"
+            "backend",
+            "infra",
+            "schemas",
+            "packages"
           ],
           "auto_skip_if_no_deletions": false
         },
@@ -1199,7 +1206,8 @@
           "requires_data_plane_ready": true,
           "auto_skip_if_no_changes_in": [
             "frontend",
-            "infra"
+            "infra",
+            "e2e"
           ],
           "auto_skip_if_no_deletions": false
         },
@@ -1243,7 +1251,7 @@
           "category": "finalize",
           "agent": "@doc-architect",
           "phase": "finalize",
-          "timeout_minutes": 15,
+          "timeout_minutes": 20,
           "depends_on": [
             "code-cleanup",
             "docs-archived"
