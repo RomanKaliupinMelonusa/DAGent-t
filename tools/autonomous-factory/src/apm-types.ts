@@ -172,6 +172,14 @@ export const ApmWorkflowNodeSchema = z.object({
   /** Directory keys (from config.directories) or literal path prefixes for scoped git-diff attribution.
    *  Empty array = no scope restriction (all non-state files). Entries ending in "/" are literal prefixes. */
   diff_attribution_dirs: z.array(z.string()).default([]),
+  /** When true, runPushCode writes `.deploy-trigger` sentinel files to force CI. */
+  writes_deploy_sentinel: z.boolean().default(false),
+  /** When set, runPollCi downloads the named CI artifact and posts it to the PR (e.g. "plan-output"). */
+  post_ci_artifact_to_pr: z.string().optional(),
+  /** When true, writeChangeManifest() is called before the agent session starts. */
+  generates_change_manifest: z.boolean().default(false),
+  /** When true, buildInfraRollbackContext() is injected into the agent prompt. */
+  injects_infra_rollback: z.boolean().default(false),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },

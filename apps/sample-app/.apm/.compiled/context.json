@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-06T04:09:45.715Z",
+  "compiledAt": "2026-04-06T05:23:13.654Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -929,7 +929,15 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "backend",
+          "diff_attribution_dirs": [
+            "packages"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "infra-architect": {
           "type": "agent",
@@ -948,7 +956,15 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "infra",
+          "diff_attribution_dirs": [
+            "infra"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": true
         },
         "push-infra": {
           "type": "script",
@@ -967,7 +983,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "create-draft-pr": {
           "type": "script",
@@ -981,7 +1003,13 @@
           "run_if": [],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "poll-infra-plan": {
           "type": "script",
@@ -1000,7 +1028,14 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "post_ci_artifact_to_pr": "plan-output",
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "await-infra-approval": {
           "type": "approval",
@@ -1018,7 +1053,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "infra-handoff": {
           "type": "agent",
@@ -1037,7 +1078,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "backend-dev": {
           "type": "agent",
@@ -1057,7 +1104,18 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "backend",
+          "diff_attribution_dirs": [
+            "backend",
+            "packages",
+            "infra",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "frontend-dev": {
           "type": "agent",
@@ -1076,7 +1134,18 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "frontend",
+          "diff_attribution_dirs": [
+            "frontend",
+            "packages",
+            "e2e",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "backend-unit-test": {
           "type": "agent",
@@ -1100,7 +1169,18 @@
             "schemas",
             "packages"
           ],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "backend",
+          "diff_attribution_dirs": [
+            "backend",
+            "packages",
+            "infra",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "frontend-unit-test": {
           "type": "agent",
@@ -1121,7 +1201,18 @@
             "frontend",
             "e2e"
           ],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "frontend",
+          "diff_attribution_dirs": [
+            "frontend",
+            "packages",
+            "e2e",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "push-app": {
           "type": "script",
@@ -1142,7 +1233,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": true,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "poll-app-ci": {
           "type": "script",
@@ -1162,7 +1259,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "integration-test": {
           "type": "agent",
@@ -1186,7 +1289,18 @@
             "schemas",
             "packages"
           ],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [
+            "backend",
+            "packages",
+            "infra",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "live-ui": {
           "type": "agent",
@@ -1209,7 +1323,18 @@
             "infra",
             "e2e"
           ],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": true,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [
+            "frontend",
+            "packages",
+            "e2e",
+            ".github/"
+          ],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "code-cleanup": {
           "type": "agent",
@@ -1230,7 +1355,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": true
+          "auto_skip_if_no_deletions": true,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "docs-archived": {
           "type": "agent",
@@ -1244,7 +1375,13 @@
           "run_if": [],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "docs",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": true,
+          "injects_infra_rollback": false
         },
         "doc-architect": {
           "type": "agent",
@@ -1265,7 +1402,13 @@
           ],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         },
         "publish-pr": {
           "type": "script",
@@ -1279,7 +1422,13 @@
           "run_if": [],
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
-          "auto_skip_if_no_deletions": false
+          "auto_skip_if_no_deletions": false,
+          "triage_json_gated": false,
+          "commit_scope": "pipeline",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false
         }
       },
       "max_redevelopment_cycles": 5,
