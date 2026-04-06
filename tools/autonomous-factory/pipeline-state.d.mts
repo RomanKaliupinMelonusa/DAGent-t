@@ -6,7 +6,7 @@
 interface PipelineItem {
   key: string;
   label: string;
-  agent: string;
+  agent: string | null;
   phase: string;
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
@@ -26,6 +26,16 @@ interface PipelineState {
     itemKey: string;
     message: string;
   }>;
+  /** DAG dependency graph — persisted at init from workflows.yml */
+  dependencies: Record<string, string[]>;
+  /** Explicit ordered phase names — persisted at init from workflows.yml */
+  phases: string[];
+  /** Node execution types — persisted at init from workflows.yml */
+  nodeTypes: Record<string, "agent" | "script" | "approval">;
+  /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
+  nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
+  naByType: string[];
 }
 
 interface NextAction {
@@ -54,7 +64,7 @@ interface InitResult {
   transPath: string;
 }
 
-export function initState(slug: string, workflowType: string): InitResult;
+export function initState(slug: string, workflowType: string, contextJsonPath?: string): InitResult;
 export function completeItem(slug: string, itemKey: string): PipelineState;
 /**
  * Record a failure for a pipeline item.
@@ -85,7 +95,5 @@ export function setNote(slug: string, note: string): PipelineState;
 export function setDocNote(slug: string, itemKey: string, note: string): PipelineState;
 export function setUrl(slug: string, url: string): PipelineState;
 export function readState(slug: string): PipelineState;
-export const ALL_ITEMS: Array<{ key: string; label: string; agent: string; phase: string }>;
-export const PHASES: string[];
-export const NA_ITEMS_BY_TYPE: Record<string, string[]>;
-export const ITEM_DEPENDENCIES: Record<string, string[]>;
+export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
+export function getUpstream(state: PipelineState, seedKeys: string[]): string[];

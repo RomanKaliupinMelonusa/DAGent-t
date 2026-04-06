@@ -73,7 +73,7 @@ export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[]
 export function getDirectoryPrefixes(
   appRel: string,
   dirs: Record<string, string | null> | undefined,
-): { backend: string[]; frontend: string[]; infra: string[] } {
+): Record<string, string[]> {
   if (!dirs) {
     throw new Error(
       "Missing config.directories in apm.yml. " +
@@ -88,11 +88,13 @@ export function getDirectoryPrefixes(
     const val = d[key];
     return val ? `${basePrefix}${val}/` : null;
   };
-  return {
-    backend: [pfx("backend"), pfx("infra"), pfx("packages"), pfx("schemas")].filter(Boolean) as string[],
-    frontend: [pfx("frontend"), pfx("e2e")].filter(Boolean) as string[],
-    infra: [pfx("infra")].filter(Boolean) as string[],
-  };
+  // Build a prefix set for every directory key declared in config.directories
+  const result: Record<string, string[]> = {};
+  for (const key of Object.keys(d)) {
+    const p = pfx(key);
+    result[key] = p ? [p] : [];
+  }
+  return result;
 }
 
 /**

@@ -140,12 +140,109 @@ export const ApmConfigSchema = z.object({
     .optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Workflow DAG schemas (workflows.yml)
+// ---------------------------------------------------------------------------
+
+export const ApmWorkflowNodeSchema = z.object({
+  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate. */
+  type: z.enum(["agent", "script", "approval"]).default("agent"),
+  /** Semantic category — replaces hardcoded DEV_ITEMS / TEST_ITEMS / POST_DEPLOY_ITEMS sets. */
+  category: z.enum(["dev", "test", "deploy", "finalize"]),
+  /** Agent key from the agents section (required when type is "agent"). */
+  agent: z.string().optional(),
+  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
+  phase: z.string(),
+  /** Session timeout in minutes. */
+  timeout_minutes: z.number().positive().default(15),
+  /** DAG edges — keys of nodes that must complete before this one can run. */
+  depends_on: z.array(z.string()).default([]),
+  /** Workflow types this node participates in. Empty array = all types. */
+  run_if: z.array(z.string()).default([]),
+  /** Whether pollReadiness() must pass before the agent session starts. */
+  requires_data_plane_ready: z.boolean().default(false),
+  /** Directory keys (from config.directories) to check for git changes; skip if none. */
+  auto_skip_if_no_changes_in: z.array(z.string()).default([]),
+  /** When true, auto-skip if feature has 0 deletions (purely additive). */
+  auto_skip_if_no_deletions: z.boolean().default(false),
+}).refine(
+  (node) => node.type !== "agent" || typeof node.agent === "string",
+  { message: "Workflow node with type 'agent' must declare an 'agent' field." },
+);
+
+/**
+ * Topological sort for DAG acyclicity validation.
+ * Returns sorted keys or throws on cycle detection.
+ */
+export function topoSort(nodes: Record<string, { depends_on?: string[] }>): string[] {
+  const visited = new Set<string>();
+  const stack = new Set<string>();
+  const result: string[] = [];
+
+  function visit(key: string): void {
+    if (stack.has(key)) throw new Error(`Cycle detected in workflow DAG involving node "${key}"`);
+    if (visited.has(key)) return;
+    stack.add(key);
+    for (const dep of nodes[key]?.depends_on ?? []) {
+      visit(dep);
+    }
+    stack.delete(key);
+    visited.add(key);
+    result.push(key);
+  }
+
+  for (const key of Object.keys(nodes)) visit(key);
+  return result;
+}
+
+export const ApmWorkflowSchema = z.object({
+  /** Explicit ordered phase names (human-authored). */
+  phases: z.array(z.string()),
+  /** Pipeline nodes keyed by item key. */
+  nodes: z.record(z.string(), ApmWorkflowNodeSchema),
+}).refine(
+  (wf) => {
+    // Validate: every depends_on reference is a valid node key
+    const nodeKeys = new Set(Object.keys(wf.nodes));
+    for (const [key, node] of Object.entries(wf.nodes)) {
+      for (const dep of node.depends_on) {
+        if (!nodeKeys.has(dep)) return false;
+      }
+    }
+    return true;
+  },
+  { message: "Workflow node depends_on references an undefined node key." },
+).refine(
+  (wf) => {
+    // Validate: every node's phase appears in the phases array
+    const phases = new Set(wf.phases);
+    for (const node of Object.values(wf.nodes)) {
+      if (!phases.has(node.phase)) return false;
+    }
+    return true;
+  },
+  { message: "Workflow node references a phase not listed in the workflow's phases array." },
+).refine(
+  (wf) => {
+    // Validate: DAG is acyclic
+    try {
+      topoSort(wf.nodes);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Workflow DAG contains a cycle." },
+);
+
 export const ApmCompiledOutputSchema = z.object({
   version: z.literal("1.0.0"),
   compiledAt: z.string(),
   tokenBudget: z.number().int().positive(),
   agents: z.record(z.string(), ApmCompiledAgentSchema),
   config: ApmConfigSchema.optional(),
+  /** Workflow DAG definitions (keyed by workflow name, e.g. "default"). */
+  workflows: z.record(z.string(), ApmWorkflowSchema).default({}),
 });
 
 // ---------------------------------------------------------------------------
@@ -233,6 +330,8 @@ export type ApmAgentTools = z.infer<typeof ApmAgentToolsSchema>;
 export type ApmAgentSecurity = z.infer<typeof ApmAgentSecuritySchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
+export type ApmWorkflowNode = z.infer<typeof ApmWorkflowNodeSchema>;
+export type ApmWorkflow = z.infer<typeof ApmWorkflowSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;

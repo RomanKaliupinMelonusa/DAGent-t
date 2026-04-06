@@ -21,7 +21,7 @@ import type {
 let _mod: PipelineStateMod | null = null;
 
 interface PipelineStateMod {
-  initState: (slug: string, workflowType: string) => InitResult;
+  initState: (slug: string, workflowType: string, contextJsonPath?: string) => InitResult;
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetCi: (slug: string) => ResetResult;
@@ -39,10 +39,8 @@ interface PipelineStateMod {
   setDocNote: (slug: string, itemKey: string, note: string) => PipelineState;
   setUrl: (slug: string, url: string) => PipelineState;
   readState: (slug: string) => PipelineState;
-  ALL_ITEMS: Array<{ key: string; label: string; agent: string; phase: string }>;
-  PHASES: string[];
-  NA_ITEMS_BY_TYPE: Record<string, string[]>;
-  ITEM_DEPENDENCIES: Record<string, string[]>;
+  getDownstream: (state: PipelineState, seedKeys: string[]) => string[];
+  getUpstream: (state: PipelineState, seedKeys: string[]) => string[];
 }
 
 async function getMod(): Promise<PipelineStateMod> {
@@ -52,9 +50,9 @@ async function getMod(): Promise<PipelineStateMod> {
   return _mod;
 }
 
-export async function initState(slug: string, workflowType: string): Promise<InitResult> {
+export async function initState(slug: string, workflowType: string, contextJsonPath?: string): Promise<InitResult> {
   const mod = await getMod();
-  return mod.initState(slug, workflowType);
+  return mod.initState(slug, workflowType, contextJsonPath);
 }
 
 export async function completeItem(slug: string, itemKey: string): Promise<PipelineState> {
@@ -140,4 +138,14 @@ export async function setUrl(slug: string, url: string): Promise<PipelineState> 
 export async function readState(slug: string): Promise<PipelineState> {
   const mod = await getMod();
   return mod.readState(slug);
+}
+
+export async function getDownstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
+  const mod = await getMod();
+  return mod.getDownstream(state, seedKeys);
+}
+
+export async function getUpstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
+  const mod = await getMod();
+  return mod.getUpstream(state, seedKeys);
 }

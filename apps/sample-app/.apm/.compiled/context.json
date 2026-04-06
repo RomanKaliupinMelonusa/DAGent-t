@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-06T02:12:29.085Z",
+  "compiledAt": "2026-04-06T03:15:22.498Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -900,6 +900,388 @@
       "validateInfra": "bash .apm/hooks/validate-infra.sh",
       "validateApp": "bash .apm/hooks/validate-app.sh",
       "preflightAuth": "bash .apm/hooks/preflight-auth.sh"
+    }
+  },
+  "workflows": {
+    "default": {
+      "phases": [
+        "infra",
+        "approval",
+        "pre-deploy",
+        "deploy",
+        "post-deploy",
+        "finalize"
+      ],
+      "nodes": {
+        "schema-dev": {
+          "type": "agent",
+          "category": "dev",
+          "agent": "@schema-dev",
+          "phase": "infra",
+          "timeout_minutes": 20,
+          "depends_on": [],
+          "run_if": [
+            "Backend",
+            "Full-Stack",
+            "Infra",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "infra-architect": {
+          "type": "agent",
+          "category": "dev",
+          "agent": "@infra-architect",
+          "phase": "infra",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "schema-dev"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "Infra"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "push-infra": {
+          "type": "script",
+          "category": "deploy",
+          "agent": "@deploy-manager",
+          "phase": "infra",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "infra-architect"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "Infra"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "create-draft-pr": {
+          "type": "script",
+          "category": "deploy",
+          "agent": "@pr-creator",
+          "phase": "infra",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "push-infra"
+          ],
+          "run_if": [],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "poll-infra-plan": {
+          "type": "script",
+          "category": "deploy",
+          "agent": "@deploy-manager",
+          "phase": "infra",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "create-draft-pr"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "Infra"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "await-infra-approval": {
+          "type": "approval",
+          "category": "deploy",
+          "phase": "approval",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "poll-infra-plan"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "Infra"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "infra-handoff": {
+          "type": "agent",
+          "category": "dev",
+          "agent": "@infra-handoff",
+          "phase": "approval",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "await-infra-approval"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "Infra"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "backend-dev": {
+          "type": "agent",
+          "category": "dev",
+          "agent": "@backend-dev",
+          "phase": "pre-deploy",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "schema-dev",
+            "infra-handoff"
+          ],
+          "run_if": [
+            "Backend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "frontend-dev": {
+          "type": "agent",
+          "category": "dev",
+          "agent": "@frontend-dev",
+          "phase": "pre-deploy",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "schema-dev",
+            "infra-handoff"
+          ],
+          "run_if": [
+            "Frontend",
+            "Full-Stack",
+            "App-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "backend-unit-test": {
+          "type": "agent",
+          "category": "test",
+          "agent": "@backend-test",
+          "phase": "pre-deploy",
+          "timeout_minutes": 10,
+          "depends_on": [
+            "backend-dev"
+          ],
+          "run_if": [
+            "Backend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [
+            "backend",
+            "infra",
+            "schemas",
+            "packages"
+          ],
+          "auto_skip_if_no_deletions": false
+        },
+        "frontend-unit-test": {
+          "type": "agent",
+          "category": "test",
+          "agent": "@frontend-ui-test",
+          "phase": "pre-deploy",
+          "timeout_minutes": 10,
+          "depends_on": [
+            "frontend-dev"
+          ],
+          "run_if": [
+            "Frontend",
+            "Full-Stack",
+            "App-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [
+            "frontend",
+            "e2e"
+          ],
+          "auto_skip_if_no_deletions": false
+        },
+        "push-app": {
+          "type": "script",
+          "category": "deploy",
+          "agent": "@deploy-manager",
+          "phase": "deploy",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "backend-unit-test",
+            "frontend-unit-test"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "poll-app-ci": {
+          "type": "script",
+          "category": "deploy",
+          "agent": "@deploy-manager",
+          "phase": "deploy",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "push-app"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "integration-test": {
+          "type": "agent",
+          "category": "test",
+          "agent": "@backend-test",
+          "phase": "post-deploy",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "poll-app-ci"
+          ],
+          "run_if": [
+            "Backend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": true,
+          "auto_skip_if_no_changes_in": [
+            "backend",
+            "infra",
+            "schemas",
+            "packages"
+          ],
+          "auto_skip_if_no_deletions": false
+        },
+        "live-ui": {
+          "type": "agent",
+          "category": "test",
+          "agent": "@frontend-ui-test",
+          "phase": "post-deploy",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "poll-app-ci",
+            "integration-test"
+          ],
+          "run_if": [
+            "Frontend",
+            "Full-Stack",
+            "App-Only"
+          ],
+          "requires_data_plane_ready": true,
+          "auto_skip_if_no_changes_in": [
+            "frontend",
+            "infra",
+            "e2e"
+          ],
+          "auto_skip_if_no_deletions": false
+        },
+        "code-cleanup": {
+          "type": "agent",
+          "category": "finalize",
+          "agent": "@code-cleanup",
+          "phase": "finalize",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "integration-test",
+            "live-ui"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": true
+        },
+        "docs-archived": {
+          "type": "agent",
+          "category": "finalize",
+          "agent": "@docs-expert",
+          "phase": "finalize",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "code-cleanup"
+          ],
+          "run_if": [],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "doc-architect": {
+          "type": "agent",
+          "category": "finalize",
+          "agent": "@doc-architect",
+          "phase": "finalize",
+          "timeout_minutes": 20,
+          "depends_on": [
+            "code-cleanup",
+            "docs-archived"
+          ],
+          "run_if": [
+            "Backend",
+            "Frontend",
+            "Full-Stack",
+            "App-Only",
+            "Backend-Only"
+          ],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        },
+        "publish-pr": {
+          "type": "script",
+          "category": "finalize",
+          "agent": "@pr-creator",
+          "phase": "finalize",
+          "timeout_minutes": 15,
+          "depends_on": [
+            "doc-architect"
+          ],
+          "run_if": [],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false
+        }
+      }
     }
   }
 }

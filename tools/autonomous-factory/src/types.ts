@@ -10,24 +10,10 @@ import { TriageDiagnosticSchema } from "../triage-schema.mjs";
 
 export { TriageDiagnosticSchema };
 
-// ---------------------------------------------------------------------------
-// Pipeline item category constants — shared across session-runner and
-// context-injection to avoid duplication.
-// ---------------------------------------------------------------------------
-
-/** Item keys that represent dev agents */
-export const DEV_ITEMS = new Set(["backend-dev", "frontend-dev", "schema-dev", "infra-architect"]);
-
-/** Pre-deploy test items whose failures can trigger redevelopment reroute back to dev agents */
-export const TEST_ITEMS = new Set(["backend-unit-test", "frontend-unit-test"]);
-
-/** Post-deploy items whose failures get injected as downstream context or can trigger redevelopment reroute */
-export const POST_DEPLOY_ITEMS = new Set(["live-ui", "integration-test", "poll-app-ci", "poll-infra-plan"]);
-
 export interface PipelineItem {
   key: string;
   label: string;
-  agent: string;
+  agent: string | null;
   phase: string;
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
@@ -40,12 +26,23 @@ export interface PipelineState {
   started: string;
   deployedUrl: string | null;
   implementationNotes: string | null;
+  elevatedApply?: boolean;
   items: PipelineItem[];
   errorLog: Array<{
     timestamp: string;
     itemKey: string;
     message: string;
   }>;
+  /** DAG dependency graph — persisted at init from workflows.yml */
+  dependencies: Record<string, string[]>;
+  /** Explicit ordered phase names — persisted at init from workflows.yml */
+  phases: string[];
+  /** Node execution types — persisted at init from workflows.yml */
+  nodeTypes: Record<string, "agent" | "script" | "approval">;
+  /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
+  nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
+  naByType: string[];
 }
 
 export interface NextAction {
