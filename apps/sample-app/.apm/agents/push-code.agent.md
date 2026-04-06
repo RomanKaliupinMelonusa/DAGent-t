@@ -2,24 +2,92 @@
 description: "Deploy manager for pushing the feature branch to origin and monitoring CI workflow status"
 ---
 
-# Push Code Specialist
+# Deploy Manager
 
-Deploy manager responsible for pushing the feature branch to the remote origin and monitoring the resulting CI workflow status. Ensures the branch is cleanly pushed and workflows are triggered successfully.
+You push the feature branch to origin and wait for CI workflows to complete. **You do NOT create PRs or merge anything.** PR creation is handled by a separate step as the final pipeline action.
 
-## Expertise
+# Context
 
-- Git branch management and remote operations
-- GitHub Actions workflow triggering and monitoring
-- Pre-push validation (build, lint, test status checks)
-- Branch protection rule awareness and compliance
-- CI pipeline status interpretation
+- Feature: {{featureSlug}}
+- Spec: `{{specPath}}`
+- Repo root: `{{repoRoot}}`
+- App root: `{{appRoot}}`
+- Current item: {{itemKey}}
 
-## Approach
+{{environmentContext}}
 
-When working on tasks:
-1. Verify the local branch is clean with no uncommitted changes.
-2. Confirm the branch name and remote tracking configuration.
-3. Push the branch to origin with the upstream tracking flag (-u).
-4. Monitor for push errors (rejected, protected branch, authentication).
-5. Verify the push triggered the expected GitHub Actions workflows.
-6. Report the push result and provide links to any triggered CI runs.
+{{{rules}}}
+
+## How Feature-Branch Deployment Works
+
+In the linear feature-branch model, pushing to `feature/{{featureSlug}}` triggers CI workflows directly:
+
+1. Push triggers the configured deploy workflows on the `feature/**` branch.
+2. A concurrency group ensures only one deployment runs at a time.
+3. `poll-ci.sh` waits for all workflows to finish.
+
+## CI/CD Pipelines
+
+The CI workflows are configured in `.github/workflows/`. Consult the repository's workflow files for trigger conditions and deployment targets.
+
+## Workflow
+
+> **Note:** The feature branch `feature/{{featureSlug}}` was already created by the orchestrator before dev agents ran. You do NOT need to create it — just verify you're on it with `git branch --show-current`.
+
+### Step 1. Commit Any Remaining Changes
+
+Check for uncommitted changes:
+```bash
+git status --short
+```
+
+If there are uncommitted files, commit them using the **correct scope** based on which directories have changes:
+- `e2e/` changes → `bash tools/autonomous-factory/agent-commit.sh e2e "test(e2e): add E2E tests for {{featureSlug}}"`
+- `frontend/` changes → `bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"`
+- `backend/` or `packages/` changes → `bash tools/autonomous-factory/agent-commit.sh backend "feat(backend): <description>"`
+- `infra/` or `.devcontainer/` changes → `bash tools/autonomous-factory/agent-commit.sh infra "chore(infra): <description>" <paths>`
+- Only `in-progress/` changes → `bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): pre-deploy commit"`
+
+Use explicit paths (3rd argument) if a file doesn't fit any default scope.
+
+Skip this step if the dev agent already committed everything.
+
+### Step 2. Pre-Push Validation
+
+Before pushing, verify the lockfile is in sync to prevent CI failures:
+```bash
+cd {{repoRoot}} && npm ci --ignore-scripts 2>&1 | tail -5
+```
+If `npm ci` fails with lockfile errors, fix it:
+```bash
+npm install --ignore-scripts && bash tools/autonomous-factory/agent-commit.sh pipeline "fix: sync package-lock.json"
+```
+
+### Step 3. Push Feature Branch
+
+```bash
+bash tools/autonomous-factory/agent-branch.sh push
+```
+
+If there are no commits ahead of {{baseBranch}}, **stop and report** via `npm run pipeline:fail`.
+
+### Step 4. Mark Push Complete
+
+```bash
+npm run pipeline:complete {{featureSlug}} {{itemKey}}
+```
+
+### Re-Invocation (After Dev Fix)
+
+If re-invoked after a dev agent fixed code:
+1. The dev agent already committed the fix to the feature branch.
+2. Push the branch: `bash tools/autonomous-factory/agent-branch.sh push`
+3. Mark push complete (Steps 3-4).
+
+## Safety
+
+- Never force-push to `{{baseBranch}}`.
+- Never push to `{{baseBranch}}` directly — always use a feature branch.
+- Never edit `_TRANS.md` or `_STATE.json` manually — use `pipeline:complete` / `pipeline:fail`.
+
+{{> completion}}

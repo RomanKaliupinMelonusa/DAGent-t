@@ -254,6 +254,35 @@ describe("Handlebars Template Compilation", () => {
   // Import Handlebars at top level — this file is ESM
   const compiled: ApmCompiledOutput = compileApm(APP_ROOT);
 
+  // Register partials and helpers that agents.ts normally registers at import time.
+  // The test uses its own Handlebars instance, so we must register them here.
+  Handlebars.registerPartial('completion', `
+### Completion
+When you have finished your task and verified it works:
+1. You MUST execute all \`agent-*.sh\` and \`npm run pipeline:*\` scripts from the **repository root**, not the app directory.
+2. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\`
+3. Run \`npm run pipeline:complete {{featureSlug}} {{itemKey}}\`
+
+If you cannot complete the task:
+\`\`\`bash
+{{#if jsonGated}}
+npm run pipeline:fail {{featureSlug}} {{itemKey}} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'
+{{else}}
+npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
+{{/if}}
+\`\`\`
+`);
+  Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
+    return a === b;
+  });
+  Handlebars.registerHelper('contains', function (setName: string, value: string) {
+    if (setName === 'JSON_GATED_ITEMS') return [
+      'backend-unit-test', 'frontend-unit-test',
+      'live-ui', 'integration-test', 'poll-app-ci', 'poll-infra-plan',
+    ].includes(value);
+    return false;
+  });
+
   for (const agentKey of ALL_AGENT_KEYS) {
     it(`${agentKey}: systemPromptTemplate compiles without Handlebars errors`, () => {
       const agent = compiled.agents[agentKey];
