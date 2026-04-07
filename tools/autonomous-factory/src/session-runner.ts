@@ -88,7 +88,7 @@ export interface PipelineRunState {
    */
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
   /**
-   * Last pushed commit SHA per push-item key (e.g. "push-infra", "push-app").
+   * Last pushed commit SHA per push-item key (e.g. "push-<scope>").
    * Captured by runPushCode(), consumed by runPollCi() for SHA-pinned CI polling.
    * Scoped per-item to prevent cross-contamination if multiple push items ever
    * run in the same batch.
@@ -335,7 +335,7 @@ async function tryAutoSkip(
       const hasChanges = gitChanged.some((f) => allPrefixes.some((p) => f.startsWith(p)));
 
       // Dynamic force-run: if force_run_if_changed dirs have changes but primary dirs don't,
-      // force the node to run anyway (e.g., live-ui checks CORS/APIM when infra/ changes)
+      // force the node to run anyway (driven by workflow manifest)
       if (node.force_run_if_changed && node.force_run_if_changed.length > 0) {
         const forceRunPrefixes = node.force_run_if_changed.flatMap((k: string) => dirPrefixes[k] || []);
         const hasForceRunChanges = gitChanged.some((f) => forceRunPrefixes.some((p) => f.startsWith(p)));
@@ -548,13 +548,14 @@ async function runAgentSession(
     pipelineSummaries,
     apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
     nodeForCtx?.category,
+    apmContext.config?.ci_scope_warning as string | undefined,
   );
   if (downstreamCtx) {
     taskPrompt += downstreamCtx;
     const downstreamCount = pipelineSummaries.filter(
       (s) => getWorkflowNode(apmContext, s.key)?.category === "test" && s.outcome !== "completed",
     ).length;
-    const involvesCicd = downstreamCtx.includes("Commit Scope Warning");
+    const involvesCicd = downstreamCtx.includes("Commit Scope Warning") || downstreamCtx.includes("scope");
     console.log(
       `  🔗 Injected downstream failure context from ${downstreamCount} post-deploy item(s)${involvesCicd ? " (with CI/CD scope guidance)" : ""}`,
     );

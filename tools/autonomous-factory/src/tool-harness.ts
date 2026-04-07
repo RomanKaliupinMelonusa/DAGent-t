@@ -199,7 +199,7 @@ export const ERR_COMMAND_BLOCKED =
 
 /**
  * Convert a repo-relative path to app-relative by stripping the app prefix.
- * Example: "apps/sample-app/backend/src/index.ts" → "backend/src/index.ts"
+ * Example: "apps/sample-app/service-a/src/index.ts" → "service-a/src/index.ts"
  */
 function toAppRelative(repoRelPath: string, appRoot: string, repoRoot: string): string {
   const appPrefix = path.relative(repoRoot, appRoot);
@@ -544,7 +544,7 @@ export function buildCustomTools(
         command: { type: "string", description: "The bash command to run." },
         cwd: {
           type: "string",
-          description: "OPTIONAL: Absolute or repo-relative path (e.g., 'apps/sample-app/backend').",
+          description: "OPTIONAL: Absolute or repo-relative path (e.g., 'apps/sample-app/service-a').",
         },
         env_vars: {
           type: "object",

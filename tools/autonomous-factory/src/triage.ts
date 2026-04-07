@@ -74,6 +74,8 @@ export function triageFailure(
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
   faultRouting?: Record<string, ApmFaultRoute>,
+  /** Workflow nodes for dynamic deploy-augmentation lookup (script_type === "push"|"poll"). */
+  nodes?: Record<string, { script_type?: string }>,
 ): string[] {
   // --- Tier 0: Unfixable error detection → immediate halt ---
   const unfixableReason = isUnfixableError(errorMessage);
@@ -98,28 +100,29 @@ export function triageFailure(
     // When cicd root cause is detected, ensure deploy items are in the reset
     // list so the agent's cicd-scope commit gets pushed and verified by CI.
     if (augmentWithDeploy) {
-      for (const k of ["push-app", "poll-app-ci"]) {
-        if (!naItems.has(k) && !keys.includes(k)) keys.push(k);
+      for (const k of getDeployAugmentationNodes(nodes, naItems)) {
+        if (!keys.includes(k)) keys.push(k);
       }
     }
     return keys;
   }
 
   // --- Tier 2: CI metadata DOMAIN: header (from poll-ci.sh) ---
-  const headerResult = parseDomainHeader(errorMessage);
-  if (headerResult) {
-    if (headerResult.hasSchemas) {
-      // Schema failures cascade — use the schemas fault_routing entry
-      console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain} (schema cascade)`);
-      return applyFaultDomain("schemas" as FaultDomain, itemKey, naItems, faultRouting);
+  const headerDomains = parseDomainHeader(errorMessage, faultRouting);
+  if (headerDomains) {
+    console.log(`  📋 CI metadata triage: DOMAIN=${headerDomains.join(",")}`);
+    const keys: string[] = [];
+    for (const domain of headerDomains) {
+      for (const k of applyFaultDomain(domain as FaultDomain, itemKey, naItems, faultRouting)) {
+        if (!keys.includes(k)) keys.push(k);
+      }
     }
-    console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain}`);
-    return applyFaultDomain(headerResult.domain, itemKey, naItems, faultRouting);
+    return keys;
   }
 
   // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
   console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON or DOMAIN header found)");
-  return triageByKeywords(itemKey, errorMessage, naItems, faultRouting, directories, ciWorkflowFilePatterns);
+  return triageByKeywords(itemKey, errorMessage, naItems, faultRouting, directories, ciWorkflowFilePatterns, nodes);
 }
 
 /**
@@ -140,19 +143,25 @@ export function parseTriageDiagnostic(message: string): TriageDiagnostic | null 
 
 /**
  * Parse the `DOMAIN:` header from the first line of a CI diagnostic file.
- * Returns a routing result if the header is present and maps to known domains,
- * or `null` if the header is absent, empty, or maps to "unknown".
+ * Returns an array of matched domain strings that exist as keys in `faultRouting`,
+ * or `null` if the header is absent, empty, or no domains match.
  *
- * Format: `DOMAIN: backend,frontend` (comma-separated domains)
- * Mapping:
- *   - "backend"            → { domain: "backend", hasSchemas: false }
- *   - "frontend"           → { domain: "frontend", hasSchemas: false }
- *   - "backend,frontend"   → { domain: "both", hasSchemas: false }
- *   - "schemas"            → { domain: "both", hasSchemas: true }
- *   - "schemas,backend"    → { domain: "both", hasSchemas: true }
- *   - "unknown"            → null (fall through to keyword matching)
+ * Format: `DOMAIN: service-a,service-b` (comma-separated domain names)
+ * Matching: Each comma-separated value is checked against `faultRouting` keys.
+ *           Only values that exist as keys are returned. If none match, returns `null`
+ *           to fall through to keyword matching.
+ *
+ * Examples (with appropriate faultRouting keys):
+ *   - "DOMAIN: service-a"              → ["service-a"]
+ *   - "DOMAIN: service-a,service-b"    → ["service-a", "service-b"]
+ *   - "DOMAIN: schemas"                → ["schemas"]
+ *   - "DOMAIN: unknown"                → null (fall through)
+ *   - "DOMAIN: ios"                    → ["ios"] (if "ios" exists in faultRouting)
  */
-export function parseDomainHeader(message: string): { domain: FaultDomain; hasSchemas: boolean } | null {
+export function parseDomainHeader(
+  message: string,
+  faultRouting?: Record<string, ApmFaultRoute>,
+): string[] | null {
   const firstLine = message.split("\n")[0]?.trim() ?? "";
   const match = /^DOMAIN:\s*(.+)$/i.exec(firstLine);
   if (!match) return null;
@@ -160,27 +169,32 @@ export function parseDomainHeader(message: string): { domain: FaultDomain; hasSc
   const domains = match[1].split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
   if (domains.length === 0 || domains.includes("unknown")) return null;
 
-  const hasBackend = domains.includes("backend");
-  const hasFrontend = domains.includes("frontend");
-  const hasSchemas = domains.includes("schemas");
-  const hasInfra = domains.includes("infra");
-
-  // Schemas cascade to all downstream
-  if (hasSchemas) return { domain: "both", hasSchemas: true };
-  // Infrastructure failures route to infra domain
-  if (hasInfra && !hasBackend && !hasFrontend) return { domain: "infra", hasSchemas: false };
-  if (hasBackend && hasFrontend) return { domain: "both", hasSchemas: false };
-  if (hasBackend) return { domain: "backend", hasSchemas: false };
-  if (hasFrontend) return { domain: "frontend", hasSchemas: false };
-  if (hasInfra) return { domain: "infra", hasSchemas: false };
-
-  // Unrecognized domain tags → fall through to keyword matching
-  return null;
+  // Return only domains that exist as keys in faultRouting
+  const matched = faultRouting
+    ? domains.filter((d) => d in faultRouting)
+    : domains; // When no faultRouting, pass all parsed domains through
+  return matched.length > 0 ? matched : null;
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Dynamically discover deploy-augmentation nodes from the workflow DAG.
+ * Returns all node keys where `script_type` is "push" or "poll", filtered by `naItems`.
+ * When no `nodes` dictionary is provided, returns an empty array (graceful degradation).
+ */
+function getDeployAugmentationNodes(
+  nodes?: Record<string, { script_type?: string }>,
+  naItems?: Set<string>,
+): string[] {
+  if (!nodes) return [];
+  return Object.entries(nodes)
+    .filter(([, n]) => n.script_type === "push" || n.script_type === "poll")
+    .map(([key]) => key)
+    .filter((k) => !naItems?.has(k));
+}
 
 /**
  * Map a validated `FaultDomain` to the set of pipeline item keys that need reset.
@@ -231,7 +245,7 @@ export interface ValidationResult {
   /** The (possibly unchanged) fault domain to route through applyFaultDomain. */
   domain: FaultDomain;
   /** True when cicd root-cause indicators were detected — caller should add
-   *  push-app + poll-app-ci to the reset list so the workflow fix gets deployed. */
+   *  deploy-augmentation nodes to the reset list so the workflow fix gets deployed. */
   augmentWithDeploy: boolean;
 }
 
@@ -320,15 +334,14 @@ const CICD_ROOT_CAUSE_INDICATORS = [
  * `.github/workflows/` files.
  *
  * IMPORTANT: Does NOT override the domain to "cicd". The "cicd" domain in
- * applyFaultDomain only resets push-app + poll-app-ci (shell scripts that can't
+ * applyFaultDomain only resets deploy-scope script nodes (which can't
  * edit files). Instead, the function keeps the original domain (so the dev agent
  * runs and can fix the workflow file using Fix C's dual-commit instructions)
  * and signals `augmentWithDeploy: true` so the caller adds deploy items to
  * the reset list.
  *
- * Never augments "cicd" (already routes to deploy), "deployment-stale",
- * "deployment-stale-backend", "deployment-stale-frontend" (code is correct),
- * "blocked" (unfixable), or "environment" (not a code bug).
+ * Never augments "cicd" (already routes to deploy), "deployment-stale*"
+ * variants (code is correct), "blocked" (unfixable), or "environment" (not a code bug).
  */
 export function validateFaultDomain(
   agentDomain: FaultDomain,
@@ -337,9 +350,12 @@ export function validateFaultDomain(
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
 ): ValidationResult {
-  // Domains that should never be augmented
-  const NO_AUGMENT: Set<FaultDomain> = new Set(["cicd", "deployment-stale", "deployment-stale-backend", "deployment-stale-frontend", "blocked", "environment"]);
-  if (NO_AUGMENT.has(agentDomain)) return { domain: agentDomain, augmentWithDeploy: false };
+  // Domains that should never be augmented — operational domains where deploy augmentation is wrong
+  const domainStr = agentDomain as string;
+  const NO_AUGMENT = new Set(["cicd", "blocked", "environment"]);
+  if (NO_AUGMENT.has(domainStr) || domainStr.startsWith("deployment-stale")) {
+    return { domain: agentDomain, augmentWithDeploy: false };
+  }
 
   const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
 
@@ -348,7 +364,7 @@ export function validateFaultDomain(
   // 2. The raw error message contains root-cause indicators proving the fix
   //    involves .github/workflows/ (not just a symptom mention)
   // The dev agent keeps its original domain so it can edit the workflow file,
-  // and the caller adds push-app + poll-app-ci to ensure the fix gets deployed.
+  // and the caller adds deploy-augmentation nodes to ensure the fix gets deployed.
   if (keywords.hasCicd) {
     const msgLower = errorMessage.toLowerCase();
     const hasCicdRootCause = CICD_ROOT_CAUSE_INDICATORS.some((s) => msgLower.includes(s));
@@ -376,6 +392,7 @@ function triageByKeywords(
   faultRouting?: Record<string, ApmFaultRoute>,
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
+  nodes?: Record<string, { script_type?: string }>,
 ): string[] {
   const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
 
@@ -389,7 +406,7 @@ function triageByKeywords(
   // Must be checked BEFORE domain signals to avoid misrouting.
   if (keywords.hasDeploymentStale) {
     console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
-    return ["push-app", "poll-app-ci", itemKey].filter((k) => !naItems.has(k));
+    return [...getDeployAugmentationNodes(nodes, naItems), itemKey].filter((k) => !naItems.has(k));
   }
 
   // Collect all matched fault_routing domains and merge their reset_nodes
@@ -407,8 +424,8 @@ function triageByKeywords(
 
   // If CI/CD signals detected, also reset deploy items
   if (keywords.hasCicd) {
-    for (const k of ["push-app", "poll-app-ci"]) {
-      if (!naItems.has(k) && !resetKeys.includes(k)) resetKeys.push(k);
+    for (const k of getDeployAugmentationNodes(nodes, naItems)) {
+      if (!resetKeys.includes(k)) resetKeys.push(k);
     }
   }
 

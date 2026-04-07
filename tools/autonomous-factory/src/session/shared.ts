@@ -66,7 +66,7 @@ export function findUpstreamDevKeys(
 
 /**
  * Map workflow nodes to their owned directory prefixes for scoped git-diff
- * attribution. Prevents cross-agent pollution when backend-dev and frontend-dev
+ * attribution. Prevents cross-agent pollution when parallel dev agents
  * run in parallel. Returns empty array for nodes without diff_attribution_dirs
  * (e.g. code-cleanup, docs-archived), which falls back to "all non-state files".
  */

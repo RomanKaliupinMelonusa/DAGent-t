@@ -49,7 +49,7 @@ export function getAutoSkipBaseRef(
 
 /**
  * Get the list of files changed since a given git ref, using `git diff --name-only`.
- * Returns workspace-relative paths (e.g. "backend/src/functions/fn-list-generations.ts").
+ * Returns workspace-relative paths (e.g. "service-a/src/functions/fn-example.ts").
  */
 export function getGitChangedFiles(repoRoot: string, sinceRef: string): string[] | null {
   try {
@@ -77,7 +77,7 @@ export function getDirectoryPrefixes(
   if (!dirs) {
     throw new Error(
       "Missing config.directories in apm.yml. " +
-      "Each app must declare its directory layout (backend, frontend, infra, etc.) in the config section.",
+      "Each app must declare its directory layout (service-a, service-b, etc.) in the config section.",
     );
   }
   const d = dirs;

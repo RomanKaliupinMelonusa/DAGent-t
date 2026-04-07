@@ -27,7 +27,7 @@ export interface AgentContext {
   /** True when force_run_if_changed directories have changes — forces the node to run even without primary changes. */
   forceRunChanges?: boolean;
   /** Generic environment dictionary from apm.yml config.environment — cloud-agnostic key-value pairs.
-   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP, APIM_URL). */
+   *  Keys are app-defined (e.g. SERVICE_A_URL, SERVICE_B_URL, FUNC_APP_NAME, RESOURCE_GROUP). */
   environment?: Record<string, string>;
   /** Test command templates from manifest. Keys map to logical test names, values use {appRoot} placeholder. */
   testCommands?: Record<string, string | null>;
@@ -176,12 +176,22 @@ function environmentContext(ctx: AgentContext): string {
  * All values currently computed inline in prompt builders are pre-resolved here.
  */
 function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Record<string, unknown> {
-  const backendCommitPaths = ctx.commitScopes?.backend
-    ? " " + ctx.commitScopes.backend.map(p => `${ctx.appRoot}/${p}`).join(" ")
-    : "";
-  const frontendCommitPaths = ctx.commitScopes?.frontend
-    ? " " + ctx.commitScopes.frontend.map(p => `${ctx.appRoot}/${p}`).join(" ")
-    : "";
+  // Generic commit-path resolution — iterate all declared scopes
+  const resolvedCommitPaths: Record<string, string> = {};
+  if (ctx.commitScopes) {
+    for (const [scope, paths] of Object.entries(ctx.commitScopes)) {
+      resolvedCommitPaths[scope] = " " + paths.map(p => `${ctx.appRoot}/${p}`).join(" ");
+    }
+  }
+
+  // Generic test-command resolution — iterate all declared commands
+  const resolvedTestCommands: Record<string, string> = {};
+  if (ctx.testCommands) {
+    for (const [name, template] of Object.entries(ctx.testCommands)) {
+      const resolved = resolveCmd(template, ctx.appRoot);
+      if (resolved) resolvedTestCommands[name] = resolved;
+    }
+  }
 
   return {
     // Spread all AgentContext fields
@@ -197,11 +207,8 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     testCommands: ctx.testCommands,
     commitScopes: ctx.commitScopes,
 
-    // Resolved URLs with fallback chains
-    deployedUrl: ctx.deployedUrl ?? ctx.environment?.BACKEND_URL ?? ctx.environment?.FRONTEND_URL ?? "DEPLOY_URL_NOT_SET",
-    apimUrl: ctx.environment?.APIM_URL ?? "YOUR_APIM_URL",
-    frontendUrl: ctx.environment?.FRONTEND_URL ?? "YOUR_FRONTEND_URL",
-    backendUrl: ctx.environment?.BACKEND_URL ?? "YOUR_BACKEND_URL",
+    // Deployed URL — pass as-is from context (resolved by APM hooks, not hardcoded fallback chains)
+    deployedUrl: ctx.deployedUrl ?? "DEPLOY_URL_NOT_SET",
 
     // Boolean flags for template branching — driven by workflow manifest template_flags
     ...((apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.template_flags ?? []) as string[]).reduce(
@@ -215,15 +222,11 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     // Pre-rendered environment context string
     environmentContext: environmentContext(ctx),
 
-    // Pre-resolved test commands
-    resolvedBackendUnit: resolveCmd(ctx.testCommands?.backendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npx jest --verbose`,
-    resolvedFrontendUnit: resolveCmd(ctx.testCommands?.frontendUnit, ctx.appRoot) ?? `cd ${ctx.appRoot}/frontend && npx jest --verbose`,
-    resolvedSchemaValidation: resolveCmd(ctx.testCommands?.schemaValidation, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npm run validate:schemas`,
-    resolvedIntegration: resolveCmd(ctx.testCommands?.integration, ctx.appRoot) ?? `cd ${ctx.appRoot}/backend && npm run test:integration`,
+    // Generic resolved test commands — templates use {{resolvedTestCommands.<name>}} etc.
+    resolvedTestCommands,
 
-    // Commit scope paths (pre-rendered for template use)
-    backendCommitPaths,
-    frontendCommitPaths,
+    // Generic resolved commit paths — templates use {{resolvedCommitPaths.<scope>}} etc.
+    resolvedCommitPaths,
 
     // Scope for the completion partial (driven by workflow manifest)
     scope: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",

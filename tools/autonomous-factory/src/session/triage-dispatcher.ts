@@ -39,9 +39,10 @@ export async function handleFailureReroute(
   const ciFilePatterns = config.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined;
   const workflow = config.apmContext.workflows?.default;
   const faultRouting = workflow?.fault_routing;
+  const workflowNodes = workflow?.nodes as Record<string, { script_type?: string }> | undefined;
   const maxDevCycles = workflow?.max_redevelopment_cycles ?? 5;
   const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
-  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns, faultRouting);
+  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns, faultRouting, workflowNodes);
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
@@ -63,7 +64,7 @@ export async function handleFailureReroute(
   }
 
   // ── Guard: detect unreachable dev items behind an incomplete approval gate ──
-  // When Wave 1 CI items fail with a backend/frontend error, triage routes to
+  // When Wave 1 CI items fail with a domain-specific error, triage routes to
   // Wave 2 dev items. But if an approval gate they depend on is not yet done/na,
   // those dev items can never run — resetting them creates an infinite retry loop.
   //

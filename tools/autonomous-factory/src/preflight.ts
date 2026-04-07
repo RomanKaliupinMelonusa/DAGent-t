@@ -32,50 +32,6 @@ export function checkJunkFiles(repoRoot: string): void {
 }
 
 /**
- * Warn if any backend app.http() route lacks a matching APIM OpenAPI operation.
- * This catches the #1 cause of post-deploy live-ui 404 failures.
- * Skipped entirely when manifest has no preflight.apimRouteCheck config.
- */
-export function checkApimRoutes(
-  repoRoot: string,
-  appRoot: string,
-  apmContext: ApmCompiledOutput,
-): void {
-  if (!apmContext.config?.preflight?.apimRouteCheck) return;
-
-  const { functionGlob, specGlob } = apmContext.config.preflight.apimRouteCheck;
-  try {
-    const fnFiles = execSync(
-      `grep -rl 'app.http(' ${path.relative(repoRoot, path.join(appRoot, functionGlob))} 2>/dev/null || true`,
-      { cwd: repoRoot, encoding: "utf-8", timeout: 10_000 },
-    ).trim();
-    const specFiles = execSync(
-      `cat ${path.relative(repoRoot, path.join(appRoot, specGlob))} 2>/dev/null || true`,
-      { cwd: repoRoot, encoding: "utf-8", timeout: 10_000 },
-    );
-    if (fnFiles) {
-      const routeRegex = /route:\s*["']([^"']+)["']/g;
-      const registeredRoutes: string[] = [];
-      for (const fnFile of fnFiles.split("\n").filter(Boolean)) {
-        const fnContent = fs.readFileSync(path.join(repoRoot, fnFile), "utf-8");
-        let match: RegExpExecArray | null;
-        while ((match = routeRegex.exec(fnContent)) !== null) {
-          registeredRoutes.push(match[1]);
-        }
-      }
-      const missingRoutes = registeredRoutes.filter(
-        (route) => !specFiles.includes(`/${route}`),
-      );
-      if (missingRoutes.length > 0) {
-        console.warn(`\n  ⚠ WARNING: Backend routes missing APIM OpenAPI operations:`);
-        missingRoutes.forEach((r) => console.warn(`      - /${r}`));
-        console.warn(`    These will cause 404s in the live deployment. Add them to the API spec.\n`);
-      }
-    }
-  } catch { /* non-fatal */ }
-}
-
-/**
  * Scan in-progress/ for non-standard files (temp scripts, etc.).
  */
 export function checkInProgressArtifacts(repoRoot: string, appRoot: string): void {

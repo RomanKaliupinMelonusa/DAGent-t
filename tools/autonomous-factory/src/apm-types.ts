@@ -95,7 +95,7 @@ export const ApmConfigSchema = z.object({
   /** Default cognitive circuit breaker limits — used when an agent does not declare per-agent toolLimits. */
   defaultToolLimits: ApmToolLimitsSchema,
   /** Generic key-value environment dictionary — replaces cloud-specific url/resource blocks.
-   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP).
+   *  Keys are app-defined (e.g. SERVICE_A_URL, SERVICE_B_URL, FUNC_APP_NAME, RESOURCE_GROUP).
    *  Values support ${ENV_VAR} interpolation resolved at compile time. */
   environment: z.record(z.string(), z.string()).optional(),
   directories: z.record(z.string(), z.nullable(z.string())),
@@ -105,7 +105,7 @@ export const ApmConfigSchema = z.object({
   ciWorkflows: z.object({
     app: z.string().optional(),
     infra: z.string().optional(),
-    /** Workflow filename patterns for detection in error logs (e.g. ["deploy-backend.yml", "deploy-frontend.yml"]).
+    /** Workflow filename patterns for detection in error logs (e.g. ["deploy-service-a.yml", "deploy-service-b.yml"]).
      *  Used by triage signal matching and context-injection scope detection. */
     filePatterns: z.array(z.string()).optional(),
     /** Exact workflow filename for `gh run list --workflow` when polling infra plan results. */
@@ -130,16 +130,9 @@ export const ApmConfigSchema = z.object({
     /** Pre-flight auth check. Exit 0 = authenticated, non-zero = not authenticated. */
     preflightAuth: z.string().optional(),
   }).optional(),
-  preflight: z
-    .object({
-      apimRouteCheck: z
-        .object({
-          functionGlob: z.string(),
-          specGlob: z.string(),
-        })
-        .optional(),
-    })
-    .optional(),
+  /** Config-driven commit scope warning injected into dev agents when CI/CD files are involved.
+   *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */
+  ci_scope_warning: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -235,7 +228,7 @@ export const ApmFaultRouteSchema = z.object({
   /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
   reset_nodes: z.array(z.string()),
   /** Keyword signals for triage keyword matching. When present, these replace
-   *  hardcoded BACKEND_SIGNALS / FRONTEND_SIGNALS / INFRA_SIGNALS arrays.
+   *  hardcoded domain-specific keyword signal arrays.
    *  Error messages are lowercased and checked for substring matches. */
   keyword_signals: z.array(z.string()).optional(),
 });
