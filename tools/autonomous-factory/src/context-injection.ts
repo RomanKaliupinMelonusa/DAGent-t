@@ -65,6 +65,8 @@ export function buildDownstreamFailureContext(
   ciWorkflowFilePatterns?: string[],
   /** Caller-resolved node.category for itemKey (from workflow manifest) */
   nodeCategory?: string,
+  /** Config-driven commit scope warning text (from apm.yml config.ci_scope_warning). */
+  ciScopeWarning?: string,
 ): string {
   if (nodeCategory !== "dev") return "";
 
@@ -87,24 +89,15 @@ export function buildDownstreamFailureContext(
     ].filter(Boolean).join("\n"))
     .join("\n\n");
 
-  // Detect cross-cutting scope issues: if the error mentions .github/workflows
-  // or CI/CD files, warn the agent about commit scope and provide the cicd scope
-  const lastError = downstreamFailures[downstreamFailures.length - 1]?.errorMessage ?? "";
-  const cicdFilePatterns = [".github/workflows", ...(ciWorkflowFilePatterns ?? [])];
-  const involvesCicd = cicdFilePatterns.some((p) => lastError.includes(p));
-
+  // Inject config-driven scope warning when CI/CD files are detected in the error
   let scopeGuidance = "";
-  if (involvesCicd) {
-    scopeGuidance = `\n\n## Commit Scope Warning (CRITICAL)\n`
-      + `The error above involves CI/CD workflow files under \`.github/workflows/\`. `
-      + `These files are NOT covered by the default \`backend\` or \`frontend\` commit scopes.\n\n`
-      + `**To commit .github/ changes, use the \`cicd\` scope:**\n`
-      + "```bash\n"
-      + `bash tools/autonomous-factory/agent-commit.sh cicd "fix(ci): <description>"\n`
-      + "```\n"
-      + `If your fix spans both backend code AND workflow files, make TWO commits:\n`
-      + `1. \`agent-commit.sh backend "fix(backend): ..."\` for backend/ changes\n`
-      + `2. \`agent-commit.sh cicd "fix(ci): ..."\` for .github/ changes\n`;
+  if (ciScopeWarning) {
+    const lastError = downstreamFailures[downstreamFailures.length - 1]?.errorMessage ?? "";
+    const cicdFilePatterns = [".github/workflows", ...(ciWorkflowFilePatterns ?? [])];
+    const involvesCicd = cicdFilePatterns.some((p) => lastError.includes(p));
+    if (involvesCicd) {
+      scopeGuidance = `\n\n${ciScopeWarning}`;
+    }
   }
 
   return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}`;

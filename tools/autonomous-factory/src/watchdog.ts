@@ -10,7 +10,7 @@
  * The heavy lifting is delegated to focused modules:
  *   - session-runner.ts  — per-item session lifecycle, auto-skip, deterministic bypasses
  *   - reporting.ts       — summary, terminal log, playwright log, cost analysis
- *   - preflight.ts       — pre-flight checks (junk files, APIM routes, Azure auth, roam)
+ *   - preflight.ts       — pre-flight checks (junk files, auth, roam)
  *   - auto-skip.ts       — git-based change detection for skipping no-op items
  *   - context-injection.ts — retry/downstream/revert prompt augmentation
  *
@@ -26,7 +26,7 @@ import { loadApmContext } from "./apm-context-loader.js";
 import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
-import { checkJunkFiles, checkApimRoutes, checkInProgressArtifacts, checkPreflightAuth, checkAzureLogin, checkGitHubLogin, buildRoamIndex } from "./preflight.js";
+import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkAzureLogin, checkGitHubLogin, buildRoamIndex } from "./preflight.js";
 import { writePipelineSummary, writeTerminalLog, parsePreviousSummary } from "./reporting.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
@@ -185,7 +185,7 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
       fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
     }
 
-    // Clean up non-slug-prefixed feature files (infra-interfaces.md, etc.)
+    // Clean up non-slug-prefixed feature files
     // that shouldn't persist after the feature is archived.  Keep only README.md.
     const stragglers = fs.readdirSync(inProgress).filter((f) => {
       if (f.toLowerCase() === "readme.md") return false;
@@ -233,7 +233,7 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
  * CRITICAL GUARD: The push step checks whether the local branch contains
  * unpushed code commits (files outside in-progress/ or archive/). If so, the
  * push is skipped — state stays committed locally and gets pushed later by
- * the deterministic `push-app` or `push-infra` step. This prevents premature
+ * the deterministic push-* DAG node. This prevents premature
  * pushes from triggering deploy-* CI workflows before the pipeline formally
  * reaches the push-code DAG node, which caused stale deployment artifacts
  * and $130+ in wasted agent sessions (health-badge incident).
@@ -270,7 +270,7 @@ function commitAndPushState(
 
     // ── PUSH GUARD: only push when no unpushed code commits exist ──────
     // If local branch has commits containing files outside in-progress/ or
-    // archive/ that haven't been pushed yet, defer the push to push-app/push-infra.
+    // archive/ that haven't been pushed yet, defer the push to push-* nodes.
     // This prevents deploy-* workflows from triggering prematurely.
     let hasUnpushedCodeCommits = false;
     try {
@@ -285,7 +285,7 @@ function commitAndPushState(
       }
     } catch {
       // If origin/<branch> doesn't exist yet (first push), allow the push —
-      // push-infra will be the first code push and will trigger CI properly.
+      // the first push-* node will trigger CI properly.
       // This initial push only contains state/spec files.
     }
 
@@ -382,7 +382,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  checkApimRoutes(repoRoot, appRoot, apmContext);
   checkInProgressArtifacts(repoRoot, appRoot);
   checkPreflightAuth(repoRoot, appRoot, apmContext);
 
@@ -437,11 +436,18 @@ async function main(): Promise<void> {
         break;
       }
 
-      // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
-      const approvalGateItems = available.filter((i) => i.agent === null);
-      if (approvalGateItems.length > 0 && available.every((i) => i.agent === null)) {
+      // --- Approval gate: orchestrator pauses for human approval ---
+      const workflowNodes = apmContext.workflows?.default?.nodes;
+      const approvalGateItems = available.filter((i) => {
+        const node = i.key ? workflowNodes?.[i.key] : undefined;
+        return node?.type === "approval";
+      });
+      if (approvalGateItems.length > 0 && available.every((i) => {
+        const node = i.key ? workflowNodes?.[i.key] : undefined;
+        return node?.type === "approval";
+      })) {
         console.log(`\n${"─".repeat(70)}`);
-        console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra on the Draft PR to continue.");
+        console.log("  ⏸  Awaiting human approval — use the appropriate ChatOps command on the Draft PR to continue.");
         console.log(`     Pending gate items: ${approvalGateItems.map((i) => i.key).join(", ")}`);
         console.log(`${"─".repeat(70)}\n`);
         // Clean exit — ChatOps will pipeline:complete + re-trigger the orchestrator
@@ -455,9 +461,13 @@ async function main(): Promise<void> {
       }
 
       // Run items in parallel (or sequentially if only one)
-      // Filter out agent-null items (e.g. await-infra-approval) — they are completed externally
+      // Filter out approval-gate items — they are completed externally (ChatOps)
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } => item.key !== null && item.agent !== null,
+        (item): item is NextAction & { key: string } => {
+          if (item.key === null) return false;
+          const node = workflowNodes?.[item.key];
+          return node?.type !== "approval";
+        },
       );
 
       // Pre-batch sync: single pull before parallel execution

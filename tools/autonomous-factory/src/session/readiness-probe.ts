@@ -5,9 +5,6 @@
  * Contains pollReadiness, runValidateApp, and runValidateInfra.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { execSync } from "node:child_process";
 import { executeHook, buildHookEnv } from "../hooks.js";
 import type { PipelineRunConfig } from "../session-runner.js";
 
@@ -40,10 +37,10 @@ export const READINESS_OK_CODES = new Set([200, 401, 403]);
  * app define what "ready" means (e.g., feature routes propagated, not just
  * the root URL returning 200).
  *
- * Fallback: when no validateApp hook is configured, parses `infra-interfaces.md`
- * for base URLs and polls them with curl (backward compat).
+ * Fallback: when no validateApp hook is configured, falls back to a fixed
+ * 60-second propagation delay.
  *
- * Stack-agnostic: only needs bash hooks or HTTP endpoints, not CI-provider commands.
+ * Stack-agnostic: only needs bash hooks, not CI-provider commands.
  */
 export async function pollReadiness(config: PipelineRunConfig): Promise<void> {
   const hookCmd = config.apmContext.config?.hooks?.validateApp;
@@ -72,71 +69,9 @@ export async function pollReadiness(config: PipelineRunConfig): Promise<void> {
     return;
   }
 
-  // ── Fallback: URL-based polling from infra-interfaces.md ────────────────
-  const interfacesPath = path.join(config.appRoot, "in-progress", "infra-interfaces.md");
-  if (!fs.existsSync(interfacesPath)) {
-    console.log("  ⏳ No validateApp hook and no infra-interfaces.md — falling back to 60s propagation delay");
-    await new Promise((resolve) => setTimeout(resolve, 60_000));
-    return;
-  }
-
-  // Parse base URLs from the ## Endpoints section
-  const content = fs.readFileSync(interfacesPath, "utf-8");
-  const urls: string[] = [];
-  let inEndpoints = false;
-  for (const line of content.split("\n")) {
-    if (/^##\s+Endpoints/i.test(line)) { inEndpoints = true; continue; }
-    if (inEndpoints && /^##\s/.test(line)) break; // Next section
-    if (inEndpoints) {
-      const match = line.match(/https?:\/\/[^\s)>]+/);
-      if (match) urls.push(match[0].replace(/\/+$/, ""));
-    }
-  }
-
-  if (urls.length === 0) {
-    console.log("  ⏳ No endpoint URLs found in infra-interfaces.md — falling back to 60s delay");
-    await new Promise((resolve) => setTimeout(resolve, 60_000));
-    return;
-  }
-
-  console.log(`  🔍 Readiness probe: checking ${urls.length} endpoint(s)...`);
-
-  const start = Date.now();
-  let delay = 2_000; // Start at 2s, exponential backoff
-  const maxDelay = 30_000;
-
-  while (Date.now() - start < READINESS_PROBE_TIMEOUT_MS) {
-    let allReady = true;
-    for (const url of urls) {
-      try {
-        const result = execSync(
-          `curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${url}"`,
-          { encoding: "utf-8", timeout: 15_000 },
-        ).trim();
-        const code = parseInt(result, 10);
-        if (READINESS_OK_CODES.has(code)) {
-          continue; // This URL is ready
-        }
-        allReady = false;
-        console.log(`  🔍 ${url} → HTTP ${code} (not ready, retrying in ${delay / 1000}s)`);
-      } catch {
-        allReady = false;
-        console.log(`  🔍 ${url} → connection failed (retrying in ${delay / 1000}s)`);
-      }
-    }
-
-    if (allReady) {
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      console.log(`  ✅ All endpoints ready after ${elapsed}s`);
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    delay = Math.min(delay * 2, maxDelay);
-  }
-
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  console.warn(`  ⚠ Readiness probe timed out after ${elapsed}s — proceeding anyway`);
+  // ── Fallback: fixed delay when no hook is configured ────────────────────
+  console.log("  ⏳ No validateApp hook configured — falling back to 60s propagation delay");
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
 }
 
 // ---------------------------------------------------------------------------

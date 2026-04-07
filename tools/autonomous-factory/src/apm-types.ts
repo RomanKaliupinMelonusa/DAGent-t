@@ -95,7 +95,7 @@ export const ApmConfigSchema = z.object({
   /** Default cognitive circuit breaker limits — used when an agent does not declare per-agent toolLimits. */
   defaultToolLimits: ApmToolLimitsSchema,
   /** Generic key-value environment dictionary — replaces cloud-specific url/resource blocks.
-   *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP).
+   *  Keys are app-defined (e.g. SERVICE_A_URL, SERVICE_B_URL, FUNC_APP_NAME, RESOURCE_GROUP).
    *  Values support ${ENV_VAR} interpolation resolved at compile time. */
   environment: z.record(z.string(), z.string()).optional(),
   directories: z.record(z.string(), z.nullable(z.string())),
@@ -105,11 +105,13 @@ export const ApmConfigSchema = z.object({
   ciWorkflows: z.object({
     app: z.string().optional(),
     infra: z.string().optional(),
-    /** Workflow filename patterns for detection in error logs (e.g. ["deploy-backend.yml", "deploy-frontend.yml"]).
+    /** Workflow filename patterns for detection in error logs (e.g. ["deploy-service-a.yml", "deploy-service-b.yml"]).
      *  Used by triage signal matching and context-injection scope detection. */
     filePatterns: z.array(z.string()).optional(),
     /** Exact workflow filename for `gh run list --workflow` when polling infra plan results. */
     infraPlanFile: z.string().optional(),
+    /** Template string for the PR comment that tells users how to approve (e.g. infra plan). */
+    pr_comment_template: z.string().optional(),
   }).optional(),
   /** Lifecycle hooks — shell commands that abstract cloud-specific operations.
    *  Hook scripts live in `.apm/hooks/` and receive config.environment as env vars.
@@ -128,16 +130,9 @@ export const ApmConfigSchema = z.object({
     /** Pre-flight auth check. Exit 0 = authenticated, non-zero = not authenticated. */
     preflightAuth: z.string().optional(),
   }).optional(),
-  preflight: z
-    .object({
-      apimRouteCheck: z
-        .object({
-          functionGlob: z.string(),
-          specGlob: z.string(),
-        })
-        .optional(),
-    })
-    .optional(),
+  /** Config-driven commit scope warning injected into dev agents when CI/CD files are involved.
+   *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */
+  ci_scope_warning: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -167,6 +162,13 @@ export const ApmWorkflowNodeSchema = z.object({
   auto_skip_if_no_deletions: z.boolean().default(false),
   /** Whether `pipeline:fail` messages must be valid TriageDiagnostic JSON for triage routing. */
   triage_json_gated: z.boolean().default(false),
+  /** Handlebars template flags — injected as boolean `true` keys into the template context.
+   *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
+  template_flags: z.array(z.string()).default([]),
+  /** Directory keys (from config.directories) whose changes force this node to run
+   *  even when primary auto_skip_if_no_changes_in dirs have no changes.
+   *  Replaces the hardcoded live-ui infra change detection hack. */
+  force_run_if_changed: z.array(z.string()).default([]),
   /** Commit scope for `agent-commit.sh`. Defaults to "all" (no scope restriction). */
   commit_scope: z.string().default("all"),
   /** Directory keys (from config.directories) or literal path prefixes for scoped git-diff attribution.
@@ -225,6 +227,10 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
 export const ApmFaultRouteSchema = z.object({
   /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
   reset_nodes: z.array(z.string()),
+  /** Keyword signals for triage keyword matching. When present, these replace
+   *  hardcoded domain-specific keyword signal arrays.
+   *  Error messages are lowercased and checked for substring matches. */
+  keyword_signals: z.array(z.string()).optional(),
 });
 
 export const ApmWorkflowSchema = z.object({

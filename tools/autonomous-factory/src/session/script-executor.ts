@@ -208,12 +208,10 @@ export async function runPollCi(
               }
             : {}),
           ...(config.apmContext.config?.ciJobs
-            ? {
-                CI_JOB_MATCH_BACKEND: (config.apmContext.config.ciJobs as Record<string, string>).backend,
-                CI_JOB_MATCH_FRONTEND: (config.apmContext.config.ciJobs as Record<string, string>).frontend,
-                CI_JOB_MATCH_SCHEMAS: (config.apmContext.config.ciJobs as Record<string, string>).schemas,
-                CI_JOB_MATCH_INFRA: (config.apmContext.config.ciJobs as Record<string, string>).infra,
-              }
+            ? Object.fromEntries(
+                Object.entries(config.apmContext.config.ciJobs as Record<string, string>)
+                  .map(([key, value]) => [`CI_JOB_MATCH_${key.toUpperCase()}`, value]),
+              )
             : {}),
         },
       });
@@ -255,6 +253,8 @@ export async function runPollCi(
               const planFile = path.join(tmpDir, "plan-output.txt");
               if (fs.existsSync(planFile)) {
                 const planText = fs.readFileSync(planFile, "utf-8").trim();
+                const prCommentTemplate = (config.apmContext.config?.ciWorkflows as Record<string, unknown> | undefined)?.pr_comment_template as string | undefined
+                  ?? "> Comment `/dagent approve-infra` to apply this plan.";
                 const commentBody = [
                   marker,
                   "### Terraform Plan — `success`",
@@ -267,7 +267,7 @@ export async function runPollCi(
                   "",
                   "</details>",
                   "",
-                  "> Comment `/dagent approve-infra` to apply this plan.",
+                  prCommentTemplate,
                 ].join("\n");
                 const commentFile = path.join(tmpDir, "plan-comment.md");
                 fs.writeFileSync(commentFile, commentBody, "utf-8");
