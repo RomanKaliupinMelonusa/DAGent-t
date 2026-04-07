@@ -48,6 +48,7 @@ function makeState(): PipelineRunState {
     preStepRefs: {},
     baseTelemetry: null,
     lastPushedShas: {},
+    forceRunChangesDetected: {},
   };
 }
 

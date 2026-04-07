@@ -97,8 +97,8 @@ export interface PipelineRunState {
    * run in the same batch.
    */
   lastPushedShas: Record<string, string>;
-  /** Whether force_run_if_changed directories had changes (set during auto-skip, consumed by agent context) */
-  forceRunChangesDetected?: boolean;
+  /** Per-item flag: whether force_run_if_changed dirs had changes (set by tryAutoSkip, consumed by runAgentSession). Keyed by item key to prevent cross-contamination in parallel batches. */
+  forceRunChangesDetected: Record<string, boolean>;
 }
 
 /** Immutable config for the pipeline run */
@@ -291,7 +291,7 @@ async function tryAutoSkip(
   const { pipelineSummaries, preStepRefs } = state;
 
   // Reset per-item
-  state.forceRunChangesDetected = undefined;
+  delete state.forceRunChangesDetected[next.key];
 
   const node = getWorkflowNode(apmContext, next.key);
   if (!node) return null; // No workflow node → no auto-skip
@@ -337,7 +337,7 @@ async function tryAutoSkip(
       if (node.force_run_if_changed && node.force_run_if_changed.length > 0) {
         const forceRunPrefixes = node.force_run_if_changed.flatMap((k: string) => dirPrefixes[k] || []);
         const hasForceRunChanges = gitChanged.some((f) => forceRunPrefixes.some((p) => f.startsWith(p)));
-        state.forceRunChangesDetected = hasForceRunChanges;
+        state.forceRunChangesDetected[next.key] = hasForceRunChanges;
         if (hasForceRunChanges) {
           const nonForceKeys = node.auto_skip_if_no_changes_in.filter((k: string) => !node.force_run_if_changed!.includes(k));
           const nonForcePrefixes = nonForceKeys.flatMap((k: string) => dirPrefixes[k] || []);
@@ -396,7 +396,7 @@ async function runAgentSession(
     appRoot,
     itemKey: next.key,
     baseBranch,
-    ...(state.forceRunChangesDetected && { forceRunChanges: true }),
+    ...(state.forceRunChangesDetected[next.key] && { forceRunChanges: true }),
     environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
     commitScopes: apmContext.config?.commitScopes,

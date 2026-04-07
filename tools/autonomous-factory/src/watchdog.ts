@@ -201,6 +201,7 @@ async function main(): Promise<void> {
     preStepRefs: {},
     baseTelemetry,
     lastPushedShas: {},
+    forceRunChangesDetected: {},
   };
 
   // --- Main DAG loop ---

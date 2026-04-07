@@ -217,10 +217,12 @@ function withLock(slug, fn) {
             process.kill(ownerPid, 0); // Signal 0 = liveness probe
           }
         } catch (probeErr) {
-          // ESRCH = no such process → stale lock; ENOENT = no PID file → stale lock
-          if (probeErr.code === "ESRCH" || probeErr.code === "ENOENT") {
+          // ESRCH = no such process → stale lock (safe to reclaim)
+          if (probeErr.code === "ESRCH") {
             stale = true;
           }
+          // ENOENT = PID file not yet written → another process just acquired
+          // the lock between mkdirSync and writeFileSync. NOT stale — back off.
           // EPERM = process exists but we lack permission → not stale
         }
         if (stale) {
