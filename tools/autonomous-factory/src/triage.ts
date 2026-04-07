@@ -91,7 +91,7 @@ export function triageFailure(
   const diagnostic = parseTriageDiagnostic(errorMessage);
   if (diagnostic) {
     const { domain: validated, augmentWithDeploy } = validateFaultDomain(
-      diagnostic.fault_domain, errorMessage, directories, ciWorkflowFilePatterns,
+      diagnostic.fault_domain, errorMessage, faultRouting, directories, ciWorkflowFilePatterns,
     );
     console.log(`  🎯 Structured triage: fault_domain=${validated}${augmentWithDeploy ? " (+cicd deploy augmentation)" : ""}`);
     const keys = applyFaultDomain(validated, itemKey, naItems, faultRouting);
@@ -109,11 +109,9 @@ export function triageFailure(
   const headerResult = parseDomainHeader(errorMessage);
   if (headerResult) {
     if (headerResult.hasSchemas) {
-      // Schema failures cascade to schema-dev + all downstream dev/test items.
-      // applyFaultDomain("both") would miss schema-dev, so expand explicitly.
+      // Schema failures cascade — use the schemas fault_routing entry
       console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain} (schema cascade)`);
-      const keys = ["schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", itemKey];
-      return keys.filter((k) => !naItems.has(k));
+      return applyFaultDomain("schemas" as FaultDomain, itemKey, naItems, faultRouting);
     }
     console.log(`  📋 CI metadata triage: DOMAIN=${headerResult.domain}`);
     return applyFaultDomain(headerResult.domain, itemKey, naItems, faultRouting);
@@ -121,7 +119,7 @@ export function triageFailure(
 
   // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
   console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON or DOMAIN header found)");
-  return triageByKeywords(itemKey, errorMessage, naItems, directories, ciWorkflowFilePatterns);
+  return triageByKeywords(itemKey, errorMessage, naItems, faultRouting, directories, ciWorkflowFilePatterns);
 }
 
 /**
@@ -184,44 +182,6 @@ export function parseDomainHeader(message: string): { domain: FaultDomain; hasSc
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Default directory-path signals used when no APM directories config is provided */
-const DEFAULT_DIR_SIGNALS: { backend: string[]; frontend: string[] } = {
-  backend: ["/backend/"],
-  frontend: ["/frontend/", "/e2e/"],
-};
-
-/**
- * Build directory-path triage signals from APM config.directories.
- * Maps APM directory keys to triage domains:
- *   - backend, infra → backend domain
- *   - frontend, e2e → frontend domain
- * Schemas are intentionally excluded — handled by schemaSignals which
- * correctly cascades to ALL downstream (not just one domain).
- */
-function buildDirectoryPathSignals(
-  directories?: Record<string, string | null>,
-): { backend: string[]; frontend: string[] } {
-  if (!directories) return DEFAULT_DIR_SIGNALS;
-
-  const backendKeys = ["backend", "infra"];
-  const frontendKeys = ["frontend", "e2e"];
-
-  const toPatterns = (keys: string[]): string[] =>
-    keys
-      .map((k) => directories[k])
-      .filter((v): v is string => v != null && v.length > 0)
-      .map((v) => `/${v}/`);
-
-  const backend = toPatterns(backendKeys);
-  const frontend = toPatterns(frontendKeys);
-
-  // Fall back to defaults if APM config yields empty arrays (misconfigured manifest)
-  return {
-    backend: backend.length > 0 ? backend : DEFAULT_DIR_SIGNALS.backend,
-    frontend: frontend.length > 0 ? frontend : DEFAULT_DIR_SIGNALS.frontend,
-  };
-}
-
 /**
  * Map a validated `FaultDomain` to the set of pipeline item keys that need reset.
  *
@@ -254,32 +214,6 @@ function applyFaultDomain(
 // Keyword domain detection — shared between Tier 1 validation and Tier 3
 // ---------------------------------------------------------------------------
 
-/** Keyword signals grouped by domain */
-const BACKEND_SIGNALS = [
-  "api", "endpoint", "500", "502", "503", "504", "function",
-  "timeout", "backend",
-  "cosmos", "storage", "queue", "apim", "gateway",
-  "empty response", "response format", "data mapping", "404",
-];
-const FRONTEND_SIGNALS = [
-  "ui", "frontend", "component", "page", "render", "selector",
-  "testid", "element", "visible", "screenshot", "html", "css",
-  "navigation", "route", "display", "button", "form", "modal",
-  "handler", "event binding", "javascript error", "console error",
-  "click", "data mapping",
-];
-const INFRA_SIGNALS = [
-  "terraform", "tfstate", "state lock", "provider registry",
-  ".tf", "resource already exists", "azurerm_", "azapi_",
-  "terraform plan", "terraform apply", "terraform init",
-  "hcl", "provider configuration",
-  "cors", "access-control-allow-origin",
-];
-const SCHEMA_SIGNALS = [
-  "packages/schemas", "@branded/schemas", "schema-dev",
-  "schema validation", "schema build",
-];
-
 /** Build the CI/CD keyword signal list (includes dynamic workflow patterns) */
 function buildCicdSignals(ciWorkflowFilePatterns?: string[]): string[] {
   return [
@@ -301,13 +235,12 @@ export interface ValidationResult {
   augmentWithDeploy: boolean;
 }
 
-/** Result of keyword-based domain detection */
+/** Result of keyword-based domain detection — dynamic map from fault_routing keyword_signals */
 export interface KeywordDomainResult {
-  hasBackend: boolean;
-  hasFrontend: boolean;
+  /** Dynamic domain hits from fault_routing keyword_signals. */
+  matchedDomains: Record<string, boolean>;
+  /** Operational signal flags (not domain-specific). */
   hasCicd: boolean;
-  hasInfra: boolean;
-  hasSchema: boolean;
   hasEnv: boolean;
   hasDeploymentStale: boolean;
 }
@@ -316,14 +249,18 @@ export interface KeywordDomainResult {
  * Detect which fault domains are signalled by keywords in the error message.
  * Pure function — no side effects. Used by both `validateFaultDomain()`
  * (Tier 1 sanity check) and `triageByKeywords()` (Tier 3 fallback).
+ *
+ * Domain-specific signals are driven entirely by `faultRouting[domain].keyword_signals`
+ * from workflows.yml. Operational signals (env, deployment-stale, cicd) remain inline
+ * because they trigger special routing that bypasses fault_routing.
  */
 export function detectKeywordDomains(
   errorMessage: string,
+  faultRouting?: Record<string, ApmFaultRoute>,
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
 ): KeywordDomainResult {
   const msg = errorMessage.toLowerCase();
-  const directoryPathSignals = buildDirectoryPathSignals(directories);
   const cicdSignals = buildCicdSignals(ciWorkflowFilePatterns);
 
   const envSignals = [
@@ -342,14 +279,20 @@ export function detectKeywordDomains(
     ...(ciWorkflowFilePatterns ?? []).map((f) => `${f} never`),
   ];
 
+  // Dynamic domain matching from fault_routing keyword_signals
+  const matchedDomains: Record<string, boolean> = {};
+  if (faultRouting) {
+    for (const [domain, route] of Object.entries(faultRouting)) {
+      const signals = route.keyword_signals;
+      if (signals && signals.length > 0) {
+        matchedDomains[domain] = signals.some((s) => msg.includes(s));
+      }
+    }
+  }
+
   return {
-    hasBackend: BACKEND_SIGNALS.some((s) => msg.includes(s))
-      || directoryPathSignals.backend.some((s) => msg.includes(s)),
-    hasFrontend: FRONTEND_SIGNALS.some((s) => msg.includes(s))
-      || directoryPathSignals.frontend.some((s) => msg.includes(s)),
+    matchedDomains,
     hasCicd: cicdSignals.some((s) => msg.includes(s)),
-    hasInfra: INFRA_SIGNALS.some((s) => msg.includes(s)),
-    hasSchema: SCHEMA_SIGNALS.some((s) => msg.includes(s)),
     hasEnv: envSignals.some((s) => msg.includes(s)),
     hasDeploymentStale: deploymentStaleSignals.some((s) => msg.includes(s)),
   };
@@ -390,6 +333,7 @@ const CICD_ROOT_CAUSE_INDICATORS = [
 export function validateFaultDomain(
   agentDomain: FaultDomain,
   errorMessage: string,
+  faultRouting?: Record<string, ApmFaultRoute>,
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
 ): ValidationResult {
@@ -397,7 +341,7 @@ export function validateFaultDomain(
   const NO_AUGMENT: Set<FaultDomain> = new Set(["cicd", "deployment-stale", "deployment-stale-backend", "deployment-stale-frontend", "blocked", "environment"]);
   if (NO_AUGMENT.has(agentDomain)) return { domain: agentDomain, augmentWithDeploy: false };
 
-  const keywords = detectKeywordDomains(errorMessage, directories, ciWorkflowFilePatterns);
+  const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
 
   // Signal deploy augmentation when BOTH conditions are met:
   // 1. Keyword detection finds cicd signals in the error message
@@ -418,19 +362,22 @@ export function validateFaultDomain(
 }
 
 /**
- * Legacy keyword-based triage preserved as a fallback for unstructured error
- * messages (e.g. SDK session crashes the agent cannot instrument).
+ * Keyword-based triage fallback for unstructured error messages
+ * (e.g. SDK session crashes the agent cannot instrument).
+ *
+ * Domain routing is fully driven by fault_routing keyword_signals from
+ * workflows.yml. Operational signals (env, deployment-stale, cicd) remain
+ * as inline short-circuits since they bypass fault_routing entirely.
  */
 function triageByKeywords(
   itemKey: string,
   errorMessage: string,
   naItems: Set<string>,
+  faultRouting?: Record<string, ApmFaultRoute>,
   directories?: Record<string, string | null>,
   ciWorkflowFilePatterns?: string[],
 ): string[] {
-  const resetKeys: string[] = [];
-
-  const keywords = detectKeywordDomains(errorMessage, directories, ciWorkflowFilePatterns);
+  const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
 
   // Environment / auth signals — NOT code bugs, redevelopment won't help.
   if (keywords.hasEnv) {
@@ -439,38 +386,29 @@ function triageByKeywords(
   }
 
   // Deployment-stale signals — deployed artifact is outdated, code is correct.
-  // Must be checked BEFORE backend/frontend signals to avoid misrouting.
+  // Must be checked BEFORE domain signals to avoid misrouting.
   if (keywords.hasDeploymentStale) {
     console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
     return ["push-app", "poll-app-ci", itemKey].filter((k) => !naItems.has(k));
   }
 
-  // Infrastructure issues route to infra-architect (never to app dev agents)
-  if (keywords.hasInfra && !keywords.hasBackend && !keywords.hasFrontend && !keywords.hasSchema && !keywords.hasCicd) {
-    resetKeys.push("infra-architect");
+  // Collect all matched fault_routing domains and merge their reset_nodes
+  const matchedDomainKeys = Object.entries(keywords.matchedDomains)
+    .filter(([, hit]) => hit)
+    .map(([domain]) => domain);
+
+  const resetKeys: string[] = [];
+  for (const domain of matchedDomainKeys) {
+    const domainResets = applyFaultDomain(domain as FaultDomain, itemKey, naItems, faultRouting);
+    for (const k of domainResets) {
+      if (!resetKeys.includes(k)) resetKeys.push(k);
+    }
   }
-  // CI/CD workflow issues take priority — dev agents can't fix .github/ files
-  else if (keywords.hasCicd && !keywords.hasBackend && !keywords.hasFrontend && !keywords.hasSchema) {
-    resetKeys.push("push-app", "poll-app-ci");
-  } else {
-    if (keywords.hasSchema) {
-      // Schema failures cascade to both backend and frontend
-      resetKeys.push("schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test");
-    } else {
-      if (keywords.hasBackend) {
-        resetKeys.push("backend-dev", "backend-unit-test");
-      }
-      if (keywords.hasFrontend) {
-        resetKeys.push("frontend-dev", "frontend-unit-test");
-      }
-    }
-    // If CI/CD signals co-occur with backend/frontend, also reset deploy items
-    if (keywords.hasCicd) {
-      resetKeys.push("push-app", "poll-app-ci");
-    }
-    // If infra signals co-occur with app signals, also reset infra
-    if (keywords.hasInfra) {
-      resetKeys.push("infra-architect");
+
+  // If CI/CD signals detected, also reset deploy items
+  if (keywords.hasCicd) {
+    for (const k of ["push-app", "poll-app-ci"]) {
+      if (!naItems.has(k) && !resetKeys.includes(k)) resetKeys.push(k);
     }
   }
 
@@ -481,6 +419,8 @@ function triageByKeywords(
     return [itemKey].filter((k) => !naItems.has(k));
   }
 
-  resetKeys.push(itemKey);
+  if (!resetKeys.includes(itemKey) && !naItems.has(itemKey)) {
+    resetKeys.push(itemKey);
+  }
   return resetKeys.filter((k) => !naItems.has(k));
 }

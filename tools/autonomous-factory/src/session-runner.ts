@@ -237,8 +237,8 @@ export async function runItemSession(
 
   // ── Post-deploy readiness probe ────────────────────────────────────────
   // Replaces the fixed-duration sleep with a stack-agnostic readiness probe.
-  // Parses infra-interfaces.md for endpoint URLs and polls with exponential
-  // backoff until the data plane responds (HTTP 200/401/403) or timeout.
+  // Delegates to the validateApp hook with exponential backoff, or falls
+  // back to a 60s propagation delay if no hook is configured.
   const node = getWorkflowNode(config.apmContext, next.key);
   if (node?.requires_data_plane_ready) {
     await pollReadiness(config);
@@ -274,8 +274,8 @@ export async function runItemSession(
 // Auto-skip logic
 // ---------------------------------------------------------------------------
 
-/** Cache for live-ui infra change detection, used by agent context */
-let liveUiInfraChanges: boolean | undefined;
+/** Tracks whether force_run_if_changed directories had changes (set during auto-skip, consumed by agent context) */
+let forceRunChangesDetected: boolean | undefined;
 
 async function tryAutoSkip(
   next: NextAction & { key: string },
@@ -288,7 +288,7 @@ async function tryAutoSkip(
   const { pipelineSummaries, preStepRefs } = state;
 
   // Reset per-item
-  liveUiInfraChanges = undefined;
+  forceRunChangesDetected = undefined;
 
   const node = getWorkflowNode(apmContext, next.key);
   if (!node) return null; // No workflow node → no auto-skip
@@ -334,18 +334,19 @@ async function tryAutoSkip(
 
       const hasChanges = gitChanged.some((f) => allPrefixes.some((p) => f.startsWith(p)));
 
-      // Special case: nodes that require data plane readiness and check infra changes
-      // (e.g., live-ui checks CORS/APIM/IAM changes even when frontend didn't change)
-      if (node.requires_data_plane_ready && node.auto_skip_if_no_changes_in.includes("infra")) {
-        const infraPrefixes = dirPrefixes["infra"] || [];
-        const hasInfraChanges = gitChanged.some((f) => infraPrefixes.some((p) => f.startsWith(p)));
-        liveUiInfraChanges = hasInfraChanges;
-        // Find the non-infra directory keys this node watches
-        const nonInfraKeys = node.auto_skip_if_no_changes_in.filter((k) => k !== "infra");
-        const nonInfraPrefixes = nonInfraKeys.flatMap((k) => dirPrefixes[k] || []);
-        if (hasInfraChanges && !gitChanged.some((f) => nonInfraPrefixes.some((p) => f.startsWith(p)))) {
-          console.log(`  ▶ Running ${next.key} — infra changes detected (forcing verification for CORS/APIM/IAM)`);
-          return null; // Do NOT auto-skip
+      // Dynamic force-run: if force_run_if_changed dirs have changes but primary dirs don't,
+      // force the node to run anyway (e.g., live-ui checks CORS/APIM when infra/ changes)
+      if (node.force_run_if_changed && node.force_run_if_changed.length > 0) {
+        const forceRunPrefixes = node.force_run_if_changed.flatMap((k: string) => dirPrefixes[k] || []);
+        const hasForceRunChanges = gitChanged.some((f) => forceRunPrefixes.some((p) => f.startsWith(p)));
+        forceRunChangesDetected = hasForceRunChanges;
+        if (hasForceRunChanges) {
+          const nonForceKeys = node.auto_skip_if_no_changes_in.filter((k: string) => !node.force_run_if_changed!.includes(k));
+          const nonForcePrefixes = nonForceKeys.flatMap((k: string) => dirPrefixes[k] || []);
+          if (!gitChanged.some((f) => nonForcePrefixes.some((p) => f.startsWith(p)))) {
+            console.log(`  ▶ Running ${next.key} — force_run_if_changed dirs [${node.force_run_if_changed.join(", ")}] have changes`);
+            return null; // Do NOT auto-skip
+          }
         }
       }
 
@@ -397,7 +398,7 @@ async function runAgentSession(
     appRoot,
     itemKey: next.key,
     baseBranch,
-    ...(liveUiInfraChanges && { infraChanges: true }),
+    ...(forceRunChangesDetected && { forceRunChanges: true }),
     environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
     commitScopes: apmContext.config?.commitScopes,

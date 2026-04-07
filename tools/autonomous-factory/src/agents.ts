@@ -24,8 +24,8 @@ export interface AgentContext {
   appRoot: string;
   itemKey: string;
   baseBranch: string;
-  /** True when infra/ files changed — forces live-ui to run CORS/APIM verification even without frontend changes. */
-  infraChanges?: boolean;
+  /** True when force_run_if_changed directories have changes — forces the node to run even without primary changes. */
+  forceRunChanges?: boolean;
   /** Generic environment dictionary from apm.yml config.environment — cloud-agnostic key-value pairs.
    *  Keys are app-defined (e.g. FRONTEND_URL, BACKEND_URL, FUNC_APP_NAME, RESOURCE_GROUP, APIM_URL). */
   environment?: Record<string, string>;
@@ -192,7 +192,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     appRoot: ctx.appRoot,
     itemKey: ctx.itemKey,
     baseBranch: ctx.baseBranch,
-    infraChanges: ctx.infraChanges ?? false,
+    forceRunChanges: ctx.forceRunChanges ?? false,
     environment: ctx.environment,
     testCommands: ctx.testCommands,
     commitScopes: ctx.commitScopes,
@@ -203,10 +203,10 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     frontendUrl: ctx.environment?.FRONTEND_URL ?? "YOUR_FRONTEND_URL",
     backendUrl: ctx.environment?.BACKEND_URL ?? "YOUR_BACKEND_URL",
 
-    // Boolean flags for template branching
-    isPostDeploy: ctx.itemKey === "integration-test" || ctx.itemKey === "live-ui",
-    isLiveUi: ctx.itemKey === "live-ui",
-    isIntegrationTest: ctx.itemKey === "integration-test",
+    // Boolean flags for template branching — driven by workflow manifest template_flags
+    ...((apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.template_flags ?? []) as string[]).reduce(
+      (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
+    ),
     jsonGated: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.triage_json_gated ?? false,
 
     // APM rules for this agent

@@ -27,16 +27,17 @@ function makeJsonMsg(faultDomain: string, trace: string): string {
  * WYSIWYG: the kernel returns exactly what is declared. "$SELF" → itemKey at runtime.
  */
 const FAULT_ROUTING: Record<string, ApmFaultRoute> = {
-  backend:                    { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"] },
-  frontend:                   { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"] },
+  backend:                    { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"], keyword_signals: ["api", "endpoint", "500", "502", "503", "504", "function", "timeout", "backend", "cosmos", "storage", "queue", "apim", "gateway", "empty response", "response format", "data mapping", "404", "/backend/", "/infra/"] },
+  frontend:                   { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["ui", "frontend", "component", "page", "render", "selector", "testid", "element", "visible", "screenshot", "html", "css", "navigation", "route", "display", "button", "form", "modal", "handler", "event binding", "javascript error", "console error", "click", "/frontend/", "/e2e/"] },
   both:                       { reset_nodes: ["backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", "$SELF"] },
+  schemas:                    { reset_nodes: ["schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["packages/schemas", "@branded/schemas", "schema-dev", "schema validation", "schema build"] },
   "frontend+infra":           { reset_nodes: ["infra-architect", "frontend-dev", "frontend-unit-test", "$SELF"] },
   "backend+infra":            { reset_nodes: ["infra-architect", "backend-dev", "backend-unit-test", "$SELF"] },
   cicd:                       { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale":         { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale-backend": { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale-frontend":{ reset_nodes: ["push-app", "poll-app-ci"] },
-  infra:                      { reset_nodes: ["infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr", "await-infra-approval", "infra-handoff", "$SELF"] },
+  infra:                      { reset_nodes: ["infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr", "await-infra-approval", "infra-handoff", "$SELF"], keyword_signals: ["terraform", "tfstate", "state lock", "provider registry", ".tf", "resource already exists", "azurerm_", "azapi_", "terraform plan", "terraform apply", "terraform init", "hcl", "provider configuration", "cors", "access-control-allow-origin"] },
   "test-code":                { reset_nodes: ["$SELF"] },
   environment:                { reset_nodes: ["$SELF"] },
   blocked:                    { reset_nodes: [] },
@@ -245,40 +246,40 @@ describe("triageFailure (structured JSON)", () => {
 
 describe("triageFailure (keyword fallback)", () => {
   it("backend keywords → resets backend items", () => {
-    const keys = triageFailure("live-ui", "API endpoint /api/jobs returns 500", NO_NA);
+    const keys = triageFailure("live-ui", "API endpoint /api/jobs returns 500", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("backend-unit-test"));
     assert.ok(keys.includes("live-ui"));
   });
 
   it("frontend keywords → resets frontend items", () => {
-    const keys = triageFailure("live-ui", "UI component render failure", NO_NA);
+    const keys = triageFailure("live-ui", "UI component render failure", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("frontend-dev"));
     assert.ok(keys.includes("frontend-unit-test"));
     assert.ok(keys.includes("live-ui"));
   });
 
   it("mixed keywords → resets both domains", () => {
-    const keys = triageFailure("live-ui", "API endpoint 500 and UI component broken", NO_NA);
+    const keys = triageFailure("live-ui", "API endpoint 500 and UI component broken", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("frontend-dev"));
     assert.ok(keys.includes("live-ui"));
   });
 
   it("no matching keywords → only resets the failing item (safe default)", () => {
-    const keys = triageFailure("live-ui", "something totally unknown broke", NO_NA);
+    const keys = triageFailure("live-ui", "something totally unknown broke", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, ["live-ui"]);
   });
 
   it("environment keywords → only resets itemKey", () => {
-    const keys = triageFailure("live-ui", "az login required, credentials missing", NO_NA);
+    const keys = triageFailure("live-ui", "az login required, credentials missing", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, ["live-ui"]);
   });
 
   it("poll timeout keywords → only resets itemKey (not a code bug)", () => {
     // "exiting poll to prevent" is kept as defense-in-depth for exit code 2 leaks.
     // "ci is still running" was REMOVED to prevent triage poisoning (see below).
-    const keys = triageFailure("poll-ci", "⏳ Exiting poll to prevent Copilot timeout.", NO_NA);
+    const keys = triageFailure("poll-ci", "⏳ Exiting poll to prevent Copilot timeout.", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
@@ -287,13 +288,13 @@ describe("triageFailure (keyword fallback)", () => {
     // boundary and never reaches triage. This test verifies that even if
     // the cancellation message leaks through, the safe fallback only resets
     // the failing item — not every dev item.
-    const keys = triageFailure("poll-ci", "\u274c ERROR: One or more CI workflows were manually cancelled.", NO_NA);
+    const keys = triageFailure("poll-ci", "\u274c ERROR: One or more CI workflows were manually cancelled.", NO_NA, undefined, undefined, FAULT_ROUTING);
     // No keyword match → safe fallback: only reset the failing item
     assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
   it("schema keywords → resets schema-dev + all downstream dev/test items", () => {
-    const keys = triageFailure("poll-ci", "FAIL packages/schemas/src/__tests__/auth.test.ts", NO_NA);
+    const keys = triageFailure("poll-ci", "FAIL packages/schemas/src/__tests__/auth.test.ts", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("schema-dev"));
     assert.ok(keys.includes("infra-architect"));
     assert.ok(keys.includes("backend-dev"));
@@ -306,14 +307,14 @@ describe("triageFailure (keyword fallback)", () => {
   it("poll-ci.sh status line 'workflows' does NOT trigger cicd path", () => {
     // poll-ci.sh prints "All CI workflows completed" — must not match cicdSignals.
     // "CI Integration" contains "ci failed" substring match → routes via cicd path.
-    const keys = triageFailure("poll-ci", "✔ All CI workflows completed.\n❌ FAILED: CI Integration (run 123)\nFAIL some unknown test error", NO_NA);
+    const keys = triageFailure("poll-ci", "✔ All CI workflows completed.\n❌ FAILED: CI Integration (run 123)\nFAIL some unknown test error", NO_NA, undefined, undefined, FAULT_ROUTING);
     // "ci" + "failed" in the status line triggers cicdSignals → push-app + poll-app-ci + poll-ci
     assert.ok(keys.includes("poll-ci"));
   });
 
   it("filters out N/A items in keyword fallback", () => {
     const naItems = new Set(["backend-dev", "backend-unit-test"]);
-    const keys = triageFailure("live-ui", "API endpoint 500 and UI component broken", naItems);
+    const keys = triageFailure("live-ui", "API endpoint 500 and UI component broken", naItems, undefined, undefined, FAULT_ROUTING);
     assert.ok(!keys.includes("backend-dev"));
     assert.ok(!keys.includes("backend-unit-test"));
     assert.ok(keys.includes("frontend-dev"));
@@ -321,14 +322,14 @@ describe("triageFailure (keyword fallback)", () => {
   });
 
   it("infra keywords → resets infra-architect", () => {
-    const keys = triageFailure("poll-infra-plan", "terraform plan failed with azurerm provider error", NO_NA);
+    const keys = triageFailure("poll-infra-plan", "terraform plan failed with azurerm provider error", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
     assert.ok(keys.includes("poll-infra-plan"));
     assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in: ${keys}`);
   });
 
   it("infra + backend co-occurring keywords → resets both", () => {
-    const keys = triageFailure("poll-app-ci", "terraform azurerm_function_app and API endpoint 500", NO_NA);
+    const keys = triageFailure("poll-app-ci", "terraform azurerm_function_app and API endpoint 500", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-app-ci"));
@@ -373,21 +374,21 @@ describe("parseTriageDiagnostic (Zod edge cases)", () => {
 describe("triageFailure (malformed JSON → keyword fallback)", () => {
   it("valid JSON but missing fault_domain → falls back to keywords", () => {
     const msg = JSON.stringify({ diagnostic_trace: "API endpoint 500 error" });
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     // Should still detect backend keywords in the stringified JSON
     assert.ok(keys.includes("live-ui"));
   });
 
   it("valid JSON with invalid fault_domain → falls back to keywords", () => {
     const msg = makeJsonMsg("database", "connection refused, backend issue");
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("live-ui"));
     // Keyword matching on the full stringified message should pick up "backend"
     assert.ok(keys.includes("backend-dev"));
   });
 
   it("JSON array → falls back to keywords", () => {
-    const keys = triageFailure("live-ui", '[{"error": "frontend component missing"}]', NO_NA);
+    const keys = triageFailure("live-ui", '[{"error": "frontend component missing"}]', NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("frontend-dev"));
     assert.ok(keys.includes("live-ui"));
   });
@@ -399,24 +400,24 @@ describe("triageFailure (malformed JSON → keyword fallback)", () => {
 
 describe("triageFailure (IAM/permission env signals)", () => {
   it("routes authorization_requestdenied as blocked (unfixable — Tier 0)", () => {
-    const result = triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA);
+    const result = triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA, undefined, undefined, FAULT_ROUTING);
     // Unfixable IAM error → empty array (blocked), not environment retry
     assert.deepStrictEqual(result, []);
   });
 
   it("routes insufficient privileges as blocked (unfixable — Tier 0)", () => {
-    const result = triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA);
+    const result = triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA, undefined, undefined, FAULT_ROUTING);
     // "Insufficient privileges" is an unfixable signal
     assert.deepStrictEqual(result, []);
   });
 
   it("routes 'does not have authorization' as blocked (unfixable — Tier 0)", () => {
-    const result = triageFailure("integration-test", "Principal does not have authorization to perform this action", NO_NA);
+    const result = triageFailure("integration-test", "Principal does not have authorization to perform this action", NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(result, []);
   });
 
   it("does NOT route CORS 403 as unfixable (should route as backend)", () => {
-    const result = triageFailure("live-ui", "CORS error: 403 Forbidden on OPTIONS /api/endpoint", NO_NA);
+    const result = triageFailure("live-ui", "CORS error: 403 Forbidden on OPTIONS /api/endpoint", NO_NA, undefined, undefined, FAULT_ROUTING);
     // CORS 403 is fixable (code/infra issue) — should match backend signals (cors, api, endpoint)
     assert.ok(result.includes("backend-dev"), `Expected backend-dev in: ${result}`);
     assert.ok(!result.every(k => k === "live-ui"), "Should not be environment-only");
@@ -462,7 +463,7 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
       "Backend — Lint, Test & Build\tType-check (tsc --noEmit)\t##[error]Process completed with exit code 2.",
       "── End Run 12345 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("backend-unit-test"), `Expected backend-unit-test in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -475,7 +476,7 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
       "Frontend — Lint, Test & Build\tLint\tESLint couldn't find an eslint.config file.",
       "── End Run 12345 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-unit-test"), `Expected frontend-unit-test in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -490,7 +491,7 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
       "Frontend — Lint, Test & Build\tLint\tnpm error path /apps/sample-app/frontend",
       "── End Run 67890 ──────────────────────────────────────────",
     ].join("\n");
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -498,40 +499,45 @@ describe("triageFailure (directory-path routing)", () => {  // Default APM direc
 
   it("no recognizable directory paths → only resets the failing item (safe default)", () => {
     const ciLog = "Some completely opaque error with no file paths at all";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 
   it("schema directory path → routes to schema-dev + all downstream", () => {
     const ciLog = "FAIL /packages/schemas/src/__tests__/auth.test.ts";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, SAMPLE_DIRS, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
     assert.ok(keys.includes("frontend-dev"));
     assert.ok(keys.includes("poll-ci"));
   });
 
-  it("custom APM directories \u2192 routes using app-specific paths", () => {
-    const customDirs = { backend: "server", frontend: "client", infra: "terraform", e2e: "tests" };
-    // Use a message that only matches via directory path, not runtime keywords
+  it("custom fault_routing keyword_signals \u2192 routes using app-specific paths", () => {
+    const customFR: Record<string, ApmFaultRoute> = {
+      backend: { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"], keyword_signals: ["/server/", "/terraform/"] },
+      frontend: { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["/client/", "/tests/"] },
+    };
     const ciLog = "##[error]/server/src/utils.ts(10,5): TS2304: Cannot find name 'foo'.";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, customDirs);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, undefined, undefined, customFR);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(!keys.includes("frontend-dev"), `Unexpected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
   });
 
-  it("custom APM directories \u2192 frontend path from custom e2e dir", () => {
-    const customDirs = { backend: "api", frontend: "web", infra: "infra", e2e: "integration" };
+  it("custom fault_routing keyword_signals \u2192 frontend path from custom e2e dir", () => {
+    const customFR: Record<string, ApmFaultRoute> = {
+      backend: { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"], keyword_signals: ["/api/"] },
+      frontend: { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["/web/", "/integration/"] },
+    };
     const ciLog = "FAIL /integration/login.spec.ts";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, customDirs);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, undefined, undefined, customFR);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
   });
 
-  it("undefined directories \u2192 falls back to hardcoded defaults", () => {
+  it("undefined directories \u2192 keyword_signals match path patterns", () => {
     const ciLog = "##[error]src/functions/fn-demo-login.ts error in /backend/src";
-    const keys = triageFailure("poll-ci", ciLog, NO_NA, undefined);
+    const keys = triageFailure("poll-ci", ciLog, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
   });
@@ -569,7 +575,7 @@ describe("triageFailure (triage poisoning regression)", () => {
       "── End Run 23656485030 ──────────────────────────────────────────",
     ].join("\n");
 
-    const keys = triageFailure("poll-ci", fullPollOutput, NO_NA);
+    const keys = triageFailure("poll-ci", fullPollOutput, NO_NA, undefined, undefined, FAULT_ROUTING);
 
     // MUST route to dev agents — NOT just ["poll-ci"]
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
@@ -591,7 +597,7 @@ describe("triageFailure (triage poisoning regression)", () => {
       "── End Run 23656485030 ──────────────────────────────────────────",
     ].join("\n");
 
-    const keys = triageFailure("poll-ci", pureDiagContent, NO_NA);
+    const keys = triageFailure("poll-ci", pureDiagContent, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected backend-dev in: ${keys}`);
     assert.ok(keys.includes("frontend-dev"), `Expected frontend-dev in: ${keys}`);
     assert.ok(keys.includes("poll-ci"));
@@ -605,7 +611,7 @@ describe("triageFailure (triage poisoning regression)", () => {
     // in practice, but if it does, retrying the item is safer than
     // resetting everything.
     const pollingOnly = "⏳ CI is still running... sleeping 30 seconds.\n⏳ CI is still running... sleeping 30 seconds.";
-    const keys = triageFailure("poll-ci", pollingOnly, NO_NA);
+    const keys = triageFailure("poll-ci", pollingOnly, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, ["poll-ci"]);
   });
 });
@@ -708,13 +714,13 @@ describe("triageFailure with DOMAIN: header (Tier 2)", () => {
     // "unknown" should NOT be treated as a domain — fall through.
     // The keyword "backend" in the logs should route to backend.
     const msg = "DOMAIN: unknown\n── Run 123 ──\n/backend/ error TS2591";
-    const keys = triageFailure("poll-ci", msg, NO_NA);
+    const keys = triageFailure("poll-ci", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected keyword fallback to find backend: ${keys}`);
   });
 
   it("no DOMAIN: header falls through to keyword matching (backward compat)", () => {
     const msg = "── Run 123 ──\nerror TS2591 in /backend/src/functions/fn-demo.ts";
-    const keys = triageFailure("poll-ci", msg, NO_NA);
+    const keys = triageFailure("poll-ci", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("backend-dev"), `Expected keyword fallback to find backend: ${keys}`);
   });
 
@@ -812,20 +818,20 @@ describe("isUnfixableError", () => {
 describe("triageFailure with unfixable errors (Tier 0)", () => {
   it("returns empty array for Authorization_RequestDenied (blocked)", () => {
     const msg = "Authorization_RequestDenied: cannot access resource";
-    const keys = triageFailure("poll-ci", msg, NO_NA);
+    const keys = triageFailure("poll-ci", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, []);
   });
 
   it("returns empty array for Authorization_RequestDenied even with backend keywords", () => {
     // The error mentions "backend" and "API", but unfixable takes priority
     const msg = "Authorization_RequestDenied: Backend API principal does not have permission";
-    const keys = triageFailure("integration-test", msg, NO_NA);
+    const keys = triageFailure("integration-test", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, []);
   });
 
   it("returns empty array for subscription not found", () => {
     const msg = "Error: subscription not found — check Azure portal configuration";
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.deepStrictEqual(keys, []);
   });
 
@@ -837,14 +843,14 @@ describe("triageFailure with unfixable errors (Tier 0)", () => {
 
   it("CORS 403 is NOT unfixable (routes normally to backend)", () => {
     const msg = "CORS error: 403 Forbidden on OPTIONS /api/endpoint";
-    const keys = triageFailure("poll-ci", msg, NO_NA);
+    const keys = triageFailure("poll-ci", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
   });
 
   it("fixable errors still route normally (not blocked)", () => {
     const msg = "error TS2591: Cannot find name 'crypto' in /backend/src/functions/fn-demo.ts";
-    const keys = triageFailure("poll-ci", msg, NO_NA);
+    const keys = triageFailure("poll-ci", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
   });
@@ -882,7 +888,7 @@ describe("triageFailure (deployment-stale)", () => {
 
   it("keyword 'SWA deployment stale' → deployment-stale route (no dev reset)", () => {
     const msg = "SWA deployment stale — feature code NOT in deployed build. All 46 JS chunks searched.";
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(keys.includes("poll-app-ci"), `Expected poll-app-ci in: ${keys}`);
     assert.ok(keys.includes("live-ui"));
@@ -891,14 +897,14 @@ describe("triageFailure (deployment-stale)", () => {
 
   it("keyword 'not in deployed build' → deployment-stale route", () => {
     const msg = "HealthBadge code NOT in deployed build — commits after 3b96258 are [skip ci]";
-    const keys = triageFailure("live-ui", msg, NO_NA);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev for stale deployment");
   });
 
   it("keyword 'function not deployed' → deployment-stale route", () => {
     const msg = "fn-health function not deployed to Azure, code builds locally";
-    const keys = triageFailure("integration-test", msg, NO_NA);
+    const keys = triageFailure("integration-test", msg, NO_NA, undefined, undefined, FAULT_ROUTING);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(!keys.includes("backend-dev"), "Should NOT reset backend-dev for stale deployment");
   });
@@ -906,7 +912,7 @@ describe("triageFailure (deployment-stale)", () => {
   it("keyword 'deploy-frontend.yml never' → deployment-stale route (with config patterns)", () => {
     const msg = "All commits after 3b96258 are [skip ci] — deploy-frontend.yml never re-triggered";
     const patterns = ["deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml"];
-    const keys = triageFailure("live-ui", msg, NO_NA, undefined, patterns);
+    const keys = triageFailure("live-ui", msg, NO_NA, undefined, patterns, FAULT_ROUTING);
     assert.ok(keys.includes("push-app"), `Expected push-app in: ${keys}`);
     assert.ok(!keys.includes("frontend-dev"), "Should NOT reset frontend-dev");
   });
@@ -1040,33 +1046,33 @@ describe("triageFailure with cicd augmentation", () => {
 
 describe("detectKeywordDomains", () => {
   it("detects backend signals", () => {
-    const result = detectKeywordDomains("error TS2591 in /backend/src/functions/fn-demo.ts");
-    assert.equal(result.hasBackend, true);
-    assert.equal(result.hasFrontend, false);
+    const result = detectKeywordDomains("error TS2591 in /backend/src/functions/fn-demo.ts", FAULT_ROUTING);
+    assert.equal(result.matchedDomains.backend, true);
+    assert.equal(result.matchedDomains.frontend ?? false, false);
   });
 
   it("detects frontend signals", () => {
-    const result = detectKeywordDomains("Module not found in /frontend/src/components/Foo.tsx");
-    assert.equal(result.hasFrontend, true);
-    assert.equal(result.hasBackend, false);
+    const result = detectKeywordDomains("Module not found in /frontend/src/components/Foo.tsx", FAULT_ROUTING);
+    assert.equal(result.matchedDomains.frontend, true);
+    assert.equal(result.matchedDomains.backend ?? false, false);
   });
 
   it("detects cicd signals from .github/workflows", () => {
-    const result = detectKeywordDomains(".github/workflows/deploy-backend.yml artifact step mismatch");
+    const result = detectKeywordDomains(".github/workflows/deploy-backend.yml artifact step mismatch", FAULT_ROUTING);
     assert.equal(result.hasCicd, true);
   });
 
   it("detects infra signals", () => {
-    const result = detectKeywordDomains("terraform plan failed: azurerm_resource_group missing");
-    assert.equal(result.hasInfra, true);
+    const result = detectKeywordDomains("terraform plan failed: azurerm_resource_group missing", FAULT_ROUTING);
+    assert.equal(result.matchedDomains.infra, true);
   });
 
   it("returns all-false for unrecognized message", () => {
-    const result = detectKeywordDomains("everything is fine");
-    assert.equal(result.hasBackend, false);
-    assert.equal(result.hasFrontend, false);
+    const result = detectKeywordDomains("everything is fine", FAULT_ROUTING);
+    assert.equal(result.matchedDomains.backend ?? false, false);
+    assert.equal(result.matchedDomains.frontend ?? false, false);
     assert.equal(result.hasCicd, false);
-    assert.equal(result.hasInfra, false);
+    assert.equal(result.matchedDomains.infra ?? false, false);
   });
 });
 

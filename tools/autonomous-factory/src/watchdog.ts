@@ -185,7 +185,7 @@ function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: str
       fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
     }
 
-    // Clean up non-slug-prefixed feature files (infra-interfaces.md, etc.)
+    // Clean up non-slug-prefixed feature files
     // that shouldn't persist after the feature is archived.  Keep only README.md.
     const stragglers = fs.readdirSync(inProgress).filter((f) => {
       if (f.toLowerCase() === "readme.md") return false;

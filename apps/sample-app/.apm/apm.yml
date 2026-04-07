@@ -261,4 +261,5 @@ config:
     infra: "Deploy Infrastructure,Schema Drift Check"
     filePatterns: ["deploy-backend.yml", "deploy-frontend.yml", "deploy-infra.yml", "ci-integration.yml"]
     infraPlanFile: "deploy-infra.yml"
+    pr_comment_template: "> Comment `/dagent approve-infra` to apply this plan."
 

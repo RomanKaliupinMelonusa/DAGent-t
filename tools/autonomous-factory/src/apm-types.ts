@@ -110,6 +110,8 @@ export const ApmConfigSchema = z.object({
     filePatterns: z.array(z.string()).optional(),
     /** Exact workflow filename for `gh run list --workflow` when polling infra plan results. */
     infraPlanFile: z.string().optional(),
+    /** Template string for the PR comment that tells users how to approve (e.g. infra plan). */
+    pr_comment_template: z.string().optional(),
   }).optional(),
   /** Lifecycle hooks — shell commands that abstract cloud-specific operations.
    *  Hook scripts live in `.apm/hooks/` and receive config.environment as env vars.
@@ -167,6 +169,13 @@ export const ApmWorkflowNodeSchema = z.object({
   auto_skip_if_no_deletions: z.boolean().default(false),
   /** Whether `pipeline:fail` messages must be valid TriageDiagnostic JSON for triage routing. */
   triage_json_gated: z.boolean().default(false),
+  /** Handlebars template flags — injected as boolean `true` keys into the template context.
+   *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
+  template_flags: z.array(z.string()).default([]),
+  /** Directory keys (from config.directories) whose changes force this node to run
+   *  even when primary auto_skip_if_no_changes_in dirs have no changes.
+   *  Replaces the hardcoded live-ui infra change detection hack. */
+  force_run_if_changed: z.array(z.string()).default([]),
   /** Commit scope for `agent-commit.sh`. Defaults to "all" (no scope restriction). */
   commit_scope: z.string().default("all"),
   /** Directory keys (from config.directories) or literal path prefixes for scoped git-diff attribution.
@@ -225,6 +234,10 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
 export const ApmFaultRouteSchema = z.object({
   /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
   reset_nodes: z.array(z.string()),
+  /** Keyword signals for triage keyword matching. When present, these replace
+   *  hardcoded BACKEND_SIGNALS / FRONTEND_SIGNALS / INFRA_SIGNALS arrays.
+   *  Error messages are lowercased and checked for substring matches. */
+  keyword_signals: z.array(z.string()).optional(),
 });
 
 export const ApmWorkflowSchema = z.object({

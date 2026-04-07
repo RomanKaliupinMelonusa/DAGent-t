@@ -177,7 +177,7 @@ If tests fail, attempt to fix **test-only issues** (wrong selectors, timing). Ma
 ### Phase 5: Agent-Driven Functional UI Verification via Browser
 
 Use the Playwright MCP tools to drive a real browser and manually verify the UI works end-to-end. This is distinct from automated shell tests — you are acting as a human QA engineer to catch visual, logical, or infrastructure/permission bugs.
-{{#if infraChanges}}
+{{#if forceRunChanges}}
 
 > **⚠ INFRA-TRIGGERED RUN:** This live-ui session was force-triggered because `infra/` files changed (Terraform, APIM, CORS policies) even though no frontend source code was modified. Infrastructure changes silently break the frontend API connection (CORS rejections, missing APIM operations, IAM denials). **Focus your verification on API connectivity and CORS validation** — navigate key pages, confirm API calls succeed, and verify no error banners appear. You do NOT need to perform detailed visual regression testing.
 {{/if}}
