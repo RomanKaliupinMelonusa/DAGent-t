@@ -82,9 +82,8 @@ export function completeItem(slug: string, itemKey: string): PipelineState;
  * validate — it accepts any string to support SDK-level crash messages.
  */
 export function failItem(slug: string, itemKey: string, message: string): FailResult;
-export function resetCi(slug: string): ResetResult;
-export function resetInfraPlan(slug: string): ResetResult;
-export function redevelopInfra(slug: string, reason: string, maxCycles?: number): ResetResult;
+export function resetScripts(slug: string, phase: string): ResetResult;
+export function resetPhases(slug: string, phasesCsv: string, reason: string, maxCycles?: number): ResetResult;
 export function resetForDev(slug: string, itemKeys: string[], reason: string, maxCycles?: number): ResetResult;
 export function resetForRedeploy(slug: string, itemKeys: string[], reason: string, maxCycles?: number): ResetResult;
 export function salvageForDraft(slug: string, failedItemKey: string): PipelineState;

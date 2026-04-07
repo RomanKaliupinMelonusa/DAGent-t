@@ -180,9 +180,20 @@ export const ApmWorkflowNodeSchema = z.object({
   generates_change_manifest: z.boolean().default(false),
   /** When true, buildInfraRollbackContext() is injected into the agent prompt. */
   injects_infra_rollback: z.boolean().default(false),
+  /** Deterministic handler type for script nodes: push, poll, or publish. */
+  script_type: z.enum(["push", "poll", "publish"]).optional(),
+  /** For poll nodes — the key of the push node whose SHA to look up in state.lastPushedShas. */
+  poll_target: z.string().optional(),
+  /** For poll nodes — the key into config.ciWorkflows for CI_WORKFLOW_FILTER (e.g. "infra", "app"). */
+  ci_workflow_key: z.string().optional(),
+  /** Validation hook to run after the node completes successfully. */
+  post_run_hook: z.enum(["validateInfra", "validateApp"]).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },
+).refine(
+  (node) => node.script_type !== "poll" || typeof node.poll_target === "string",
+  { message: "Workflow node with script_type 'poll' must declare a 'poll_target' field." },
 );
 
 /**

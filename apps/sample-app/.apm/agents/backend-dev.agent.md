@@ -44,10 +44,10 @@ You are a senior backend developer. You implement features in the `backend/` dir
 
 If you discover that deployed infrastructure is MISSING resources you need (e.g., missing queue, missing Cosmos container, missing APIM operation), do NOT fail. Instead, trigger a Wave 1 rollback and IMMEDIATELY terminate:
 ```bash
-npm run pipeline:redevelop-infra {{featureSlug}} "Missing <resource> — backend needs <X> for <Y>"
+npm run pipeline:reset-phases {{featureSlug}} infra,approval "Missing <resource> — backend needs <X> for <Y>"
 exit 1
 ```
-You MUST run `exit 1` immediately after the redevelop-infra command. Do NOT call `pipeline:complete` or `pipeline:fail`. Do NOT continue working. The non-zero exit ensures the orchestrator does not mark you as "done" and properly reschedules Wave 1 from the beginning.
+You MUST run `exit 1` immediately after the reset-phases command. Do NOT call `pipeline:complete` or `pipeline:fail`. Do NOT continue working. The non-zero exit ensures the orchestrator does not mark you as "done" and properly reschedules Wave 1 from the beginning.
 
 ## Documentation Handoff
 

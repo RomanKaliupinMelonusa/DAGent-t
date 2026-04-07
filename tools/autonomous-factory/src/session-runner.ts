@@ -54,7 +54,7 @@ import {
   TOOL_LIMIT_FALLBACK_HARD,
   TOOL_CATEGORIES,
   wireToolLogging,
-  wirePlaywrightLogging,
+  wireMcpTelemetry,
   wireIntentLogging,
   wireMessageCapture,
   wireUsageTracking,
@@ -88,7 +88,7 @@ export interface PipelineRunState {
    */
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
   /**
-   * Last pushed commit SHA per push-item key ("push-infra" | "push-app").
+   * Last pushed commit SHA per push-item key (e.g. "push-infra", "push-app").
    * Captured by runPushCode(), consumed by runPollCi() for SHA-pinned CI polling.
    * Scoped per-item to prevent cross-contamination if multiple push items ever
    * run in the same batch.
@@ -247,25 +247,23 @@ export async function runItemSession(
   // ── Deterministic bypasses (no agent session) ─────────────────────────
   // Script-type items must NEVER create an LLM session. push-* and poll-*
   // are handled by shell scripts — zero tokens, deterministic, no hallucination.
-  if (node?.type === "script" && next.key !== "publish-pr") {
-    if (next.key === "push-infra" || next.key === "push-app") {
-      return runPushCode(next.key, config, state, itemSummary, stepStart);
-    }
-    if (next.key === "poll-infra-plan" || next.key === "poll-app-ci") {
-      return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable);
-    }
-    // Safety: if a new script item is added but not handled above, fail loudly
-    // rather than falling through to an LLM session.
-    throw new Error(
-      `BUG: Script item "${next.key}" has type "script" but no deterministic handler. ` +
-      `Never route script items to LLM sessions. Either add a handler or change its type.`,
-    );
+  if (node?.script_type === "push") {
+    return runPushCode(next.key, config, state, itemSummary, stepStart);
   }
-
-  // publish-pr is deterministic — reads artifacts, updates PR body, promotes
-  // draft to ready. Zero LLM tokens.
-  if (next.key === "publish-pr") {
+  if (node?.script_type === "poll") {
+    return runPollCi(next.key, config, state, itemSummary, stepStart, roamAvailable,
+      node.poll_target!, node.ci_workflow_key ?? "app", node.post_run_hook);
+  }
+  if (node?.script_type === "publish") {
     return runPublishPr(config, state, itemSummary, stepStart);
+  }
+  // Safety: if a script item has no script_type, fail loudly rather than
+  // falling through to an LLM session.
+  if (node?.type === "script") {
+    throw new Error(
+      `BUG: Script item "${next.key}" has type "script" but no script_type declared. ` +
+      `Never route script items to LLM sessions. Either add script_type or change its type.`,
+    );
   }
 
   // ── Agent session ─────────────────────────────────────────────────────
@@ -508,8 +506,8 @@ async function runAgentSession(
   };
 
   wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat, hardLimitRef);
-  const hasPlaywrightMcpForWire = !!(agentConfig.mcpServers as Record<string, unknown> | undefined)?.["playwright"];
-  const playwrightLog = wirePlaywrightLogging(session, hasPlaywrightMcpForWire, triggerHeartbeat);
+  const mcpServers = (agentConfig.mcpServers as Record<string, unknown>) ?? {};
+  const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
   wireMessageCapture(session, itemSummary);
   wireUsageTracking(session, itemSummary, triggerHeartbeat);
@@ -575,7 +573,7 @@ async function runAgentSession(
     const infraCtx = await buildInfraRollbackContext(slug);
     if (infraCtx) {
       taskPrompt += infraCtx;
-      console.log(`  🏗 Injected infra rollback context from redevelop-infra error log`);
+      console.log(`  🏗 Injected infra rollback context from reset-phases error log`);
     }
   }
 
@@ -680,13 +678,14 @@ async function runAgentSession(
   pipelineSummaries.push(itemSummary);
   flushReports(config, state);
 
-  const hasPlaywrightMcp = !!(agentConfig.mcpServers as Record<string, unknown> | undefined)?.["playwright"];
-  if (hasPlaywrightMcp && playwrightLog.length > 0) {
-    writePlaywrightLog(appRoot, repoRoot, slug, playwrightLog);
+  if (mcpTelemetryLog.length > 0) {
+    writePlaywrightLog(appRoot, repoRoot, slug, mcpTelemetryLog);
   }
 
-  // After publish-pr, signal the orchestrator to archive and exit
-  if (next.key === "publish-pr") {
+  // After a publish-type script, signal the orchestrator to archive and exit.
+  // (Defensive — publish scripts are normally handled by the deterministic bypass.)
+  const postNode = getWorkflowNode(apmContext, next.key);
+  if (postNode?.script_type === "publish") {
     return { summary: itemSummary, halt: false, createPr: true };
   }
 
@@ -708,11 +707,11 @@ async function runAgentSession(
     // Infra-architect permission escalation → route to elevated deploy
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   } else {
-    // ── Infra-handoff post-completion: validate infrastructure reachability ──
-    // Runs the self-mutating validateInfra hook after the agent successfully
-    // documents infra outputs. If newly provisioned resources are unreachable,
-    // fail with "infra" fault domain → triage resets ["infra-architect", "infra-handoff"].
-    if (next.key === "infra-handoff") {
+    // ── Declarative post-run validation hook ────────────────────────────
+    // Runs a validation hook after the agent successfully completes.
+    // Driven by post_run_hook in workflows.yml — no hardcoded item keys.
+    const completedNode = getWorkflowNode(apmContext, next.key);
+    if (completedNode?.post_run_hook === "validateInfra") {
       const infraFailure = runValidateInfra(config);
       if (infraFailure) {
         console.error(`  🚫 Infra validation failed after ${next.key}: ${infraFailure}`);

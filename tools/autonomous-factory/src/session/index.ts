@@ -23,7 +23,7 @@ export {
 export {
   appendToToolResult,
   wireToolLogging,
-  wirePlaywrightLogging,
+  wireMcpTelemetry,
   wireIntentLogging,
   wireMessageCapture,
   wireUsageTracking,
@@ -42,5 +42,4 @@ export {
   runPushCode,
   runPollCi,
   runPublishPr,
-  PUSH_TO_POLL,
 } from "./script-executor.js";

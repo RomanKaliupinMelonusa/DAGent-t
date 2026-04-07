@@ -50,9 +50,10 @@ default:
       depends_on: [infra-architect]
       run_if: [Backend, Frontend, Full-Stack, Infra]
       commit_scope: pipeline
+      script_type: push
 
     create-draft-pr:
-      type: script
+      type: agent
       category: deploy
       agent: "@pr-creator"
       phase: infra
@@ -71,6 +72,9 @@ default:
       triage_json_gated: true
       commit_scope: pipeline
       post_ci_artifact_to_pr: "plan-output"
+      script_type: poll
+      poll_target: push-infra
+      ci_workflow_key: infra
 
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
@@ -91,6 +95,7 @@ default:
       depends_on: [await-infra-approval]
       run_if: [Backend, Frontend, Full-Stack, Infra]
       commit_scope: pipeline
+      post_run_hook: validateInfra
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
@@ -151,6 +156,7 @@ default:
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
       commit_scope: pipeline
       writes_deploy_sentinel: true
+      script_type: push
 
     poll-app-ci:
       type: script
@@ -162,6 +168,10 @@ default:
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
       triage_json_gated: true
       commit_scope: pipeline
+      script_type: poll
+      poll_target: push-app
+      ci_workflow_key: app
+      post_run_hook: validateApp
 
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
@@ -232,6 +242,7 @@ default:
       timeout_minutes: 15
       depends_on: [doc-architect]
       commit_scope: pipeline
+      script_type: publish
 
   # ── Cycle Budgets ──────────────────────────────────────────────────
   max_redevelopment_cycles: 5
