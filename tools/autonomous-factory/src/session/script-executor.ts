@@ -23,12 +23,6 @@ import type { ItemSummary } from "../types.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Map push items to their poll counterparts for SHA lookup */
-export const PUSH_TO_POLL: Record<string, string> = {
-  "poll-infra-plan": "push-infra",
-  "poll-app-ci": "push-app",
-};
-
 /** Max retries for transient network errors (exit code 2) before giving up */
 const MAX_TRANSIENT_RETRIES = 5;
 /** Backoff between transient retries (ms) */
@@ -169,6 +163,9 @@ export async function runPollCi(
   itemSummary: ItemSummary,
   stepStart: number,
   roamAvailable: boolean,
+  pollTarget: string,
+  ciWorkflowKey: string,
+  postRunHook?: string,
 ): Promise<SessionResult> {
   const { slug, appRoot, repoRoot } = config;
   const { pipelineSummaries } = state;
@@ -177,8 +174,7 @@ export async function runPollCi(
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
 
   // Resolve the pushed SHA from the corresponding push item
-  const pushItemKey = PUSH_TO_POLL[itemKey];
-  const lastPushedSha = pushItemKey ? state.lastPushedShas[pushItemKey] ?? null : null;
+  const lastPushedSha = state.lastPushedShas[pollTarget] ?? null;
 
   // Build poll command args — pass commit SHA if available for pinned filtering
   const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
@@ -207,7 +203,7 @@ export async function runPollCi(
           ...(config.apmContext.config?.ciWorkflows
             ? {
                 CI_WORKFLOW_FILTER: (config.apmContext.config.ciWorkflows as Record<string, string>)[
-                  itemKey === "poll-infra-plan" ? "infra" : "app"
+                  ciWorkflowKey
                 ] ?? "",
               }
             : {}),
@@ -288,11 +284,11 @@ export async function runPollCi(
         }
       }
 
-      // ── poll-app-ci: validate deployed app endpoints ──────────────────
+      // ── Declarative post-run validation hook ─────────────────────────
       // Runs the self-mutating validateApp hook. If the app is dead despite
       // CI passing, fail immediately and trigger triage before expensive
       // post-deploy agents (live-ui, integration-test) boot up.
-      if (itemKey === "poll-app-ci") {
+      if (postRunHook === "validateApp") {
         const appFailure = runValidateApp(config);
         if (appFailure) {
           console.error(`  🚫 App validation failed after CI: ${appFailure}`);

@@ -134,11 +134,16 @@ export interface ShellEntry {
   isPipelineOp: boolean;
 }
 
-/** Detailed Playwright log entry */
-export interface PlaywrightLogEntry {
+/** Detailed MCP tool telemetry log entry */
+export interface McpToolLogEntry {
   timestamp: string;
   tool: string;
+  /** MCP server name that owns this tool (e.g. "playwright") */
+  server?: string;
   args?: Record<string, unknown>;
   success?: boolean;
   result?: string;
 }
+
+/** @deprecated Use McpToolLogEntry instead */
+export type PlaywrightLogEntry = McpToolLogEntry;

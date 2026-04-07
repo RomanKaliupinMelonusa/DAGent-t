@@ -129,13 +129,13 @@ export function buildRevertWarning(
 
 /**
  * Build infra rollback context when `@infra-architect` is re-invoked after
- * a Wave 2 app agent called `pipeline:redevelop-infra`.
+ * a Wave 2 app agent called `pipeline:reset-phases`.
  * Returns the rejection reason so the infra agent knows what to fix.
  */
 export async function buildInfraRollbackContext(slug: string): Promise<string> {
   try {
     const state = await readState(slug);
-    const infraEntries = state.errorLog.filter((e) => e.itemKey === "redevelop-infra");
+    const infraEntries = state.errorLog.filter((e) => e.itemKey === "reset-phases");
     if (infraEntries.length === 0) return "";
     const latest = infraEntries[infraEntries.length - 1];
     return (

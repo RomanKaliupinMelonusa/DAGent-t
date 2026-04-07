@@ -13,9 +13,8 @@
  *   init              <slug> <type>               — Create state + TRANS for a new feature
  *   complete          <slug> <item-key>           — Mark an item as done
  *   fail              <slug> <item-key> <message> — Record a failure
- *   reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push
- *   reset-infra-plan  <slug>                      — Reset push-infra + poll-infra-plan for re-push
- *   redevelop-infra   <slug> <reason>             — Reset Wave 1 infra items for redevelopment
+ *   reset-scripts     <slug> <phase>              — Reset script-type nodes in the given phase for re-push
+ *   reset-phases      <slug> <phases-csv> <reason> — Reset all nodes in the given phases for redevelopment
  *   resume            <slug>                      — Resume pipeline after elevated apply
  *   recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply
  *   status            <slug>                      — Print current state JSON to stdout
@@ -589,23 +588,24 @@ export function recoverElevated(slug, errorMessage) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function resetCi(slug) {
-  if (!slug) {
-    throw new Error("resetCi requires slug");
+export function resetScripts(slug, phase) {
+  if (!slug || !phase) {
+    throw new Error("resetScripts requires slug and phase");
   }
 
   return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-ci").length;
+  const logKey = `reset-scripts:${phase}`;
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
   if (cycleCount >= 10) {
     return { state, cycleCount, halted: true };
   }
 
-  // Derive app-CI script nodes from graph: script-type nodes in the deploy phase
+  // Derive script nodes in the specified phase from the persisted graph
   const resetKeys = new Set(
     state.items
-      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "deploy")
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === phase)
       .map((i) => i.key)
   );
   let resetCount = 0;
@@ -619,52 +619,8 @@ export function resetCi(slug) {
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
-    itemKey: "reset-ci",
-    message: `Re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
-  });
-
-  writeState(slug, state);
-  return { state, cycleCount: cycleCount + 1, halted: false };
-  }); // end withLock
-}
-
-/**
- * Reset push-infra + poll-infra-plan + create-draft-pr for a re-push cycle (infrastructure wave).
- * @returns {{ state: object, cycleCount: number, halted: boolean }}
- * @throws {Error} if slug missing or state file not found
- */
-export function resetInfraPlan(slug) {
-  if (!slug) {
-    throw new Error("resetInfraPlan requires slug");
-  }
-
-  return withLock(slug, () => {
-  const state = readStateOrThrow(slug);
-
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-infra-plan").length;
-  if (cycleCount >= 10) {
-    return { state, cycleCount, halted: true };
-  }
-
-  // Derive infra-CI script nodes from graph: script-type nodes in the infra phase
-  const resetKeys = new Set(
-    state.items
-      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "infra")
-      .map((i) => i.key)
-  );
-  let resetCount = 0;
-  for (const item of state.items) {
-    if (resetKeys.has(item.key) && item.status !== "na") {
-      item.status = "pending";
-      item.error = null;
-      resetCount++;
-    }
-  }
-
-  state.errorLog.push({
-    timestamp: new Date().toISOString(),
-    itemKey: "reset-infra-plan",
-    message: `Infra re-push cycle triggered (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
+    itemKey: logKey,
+    message: `Script re-push cycle for phase "${phase}" (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -800,35 +756,34 @@ export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
 }
 
 /**
- * Reset Wave 1 infrastructure items for a redevelopment cycle.
- * Called by application agents (backend-dev, frontend-dev) when they discover
- * that deployed infrastructure is missing required resources.
- *
- * Resets: infra-architect, push-infra, create-draft-pr, poll-infra-plan,
- *         await-infra-approval, infra-handoff back to "pending".
+ * Reset all nodes in the specified phases back to pending.
+ * Generalized replacement for the former `redevelopInfra` which was hardcoded
+ * to reset ["infra", "approval"] phases. Now accepts any comma-separated
+ * phase list.
  *
  * @param {string} slug - Feature slug
+ * @param {string} phasesCsv - Comma-separated phase names (e.g. "infra,approval")
  * @param {string} reason - Human-readable reason for the rollback
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
- * @throws {Error} if slug or reason missing, or state file not found
+ * @throws {Error} if slug, phases, or reason missing, or state file not found
  */
-export function redevelopInfra(slug, reason, maxCycles = 5) {
-  if (!slug || !reason) {
-    throw new Error("redevelopInfra requires slug and reason");
+export function resetPhases(slug, phasesCsv, reason, maxCycles = 5) {
+  if (!slug || !phasesCsv || !reason) {
+    throw new Error("resetPhases requires slug, phasesCsv, and reason");
   }
 
   return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "redevelop-infra").length;
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-phases").length;
   if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
-  // Reset all nodes in the infra and approval phases
-  const infraPhases = new Set(["infra", "approval"]);
+  // Parse phase list from CSV
+  const targetPhases = new Set(phasesCsv.split(",").map((p) => p.trim()).filter(Boolean));
   const resetItemKeys = new Set(
-    state.items.filter((i) => infraPhases.has(i.phase)).map((i) => i.key),
+    state.items.filter((i) => targetPhases.has(i.phase)).map((i) => i.key),
   );
   let resetCount = 0;
   for (const item of state.items) {
@@ -841,8 +796,8 @@ export function redevelopInfra(slug, reason, maxCycles = 5) {
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
-    itemKey: "redevelop-infra",
-    message: `Infra redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...resetItemKeys].join(", ")}`,
+    itemKey: "reset-phases",
+    message: `Phase reset cycle ${cycleCount + 1}/${maxCycles} for [${phasesCsv}]: ${reason}. Reset ${resetCount} items: ${[...resetItemKeys].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -1105,20 +1060,19 @@ function cmdFail(slug, itemKey, message) {
   }
 }
 
-function cmdResetCi(slug) {
-  if (!slug) {
-    console.error("Usage: pipeline-state.mjs reset-ci <slug>");
+function cmdResetScripts(slug, phase) {
+  if (!slug || !phase) {
+    console.error("Usage: pipeline-state.mjs reset-scripts <slug> <phase>");
     process.exit(1);
   }
 
   try {
-    const { cycleCount, halted } = resetCi(slug);
+    const { cycleCount, halted } = resetScripts(slug, phase);
     if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles. Requires human intervention.`);
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles for phase "${phase}". Requires human intervention.`);
       process.exit(2);  // Exit code 2 = halted
     } else {
-      const resetCount = 2; // push-app + poll-app-ci always reset
-      console.log(`🔄 Reset ${resetCount} deploy items for re-push cycle (${cycleCount}/10).`);
+      console.log(`🔄 Reset script items in phase "${phase}" for re-push cycle (${cycleCount}/10).`);
     }
   } catch (err) {
     console.error(`ERROR: ${err.message}`);
@@ -1126,40 +1080,19 @@ function cmdResetCi(slug) {
   }
 }
 
-function cmdResetInfraPlan(slug) {
-  if (!slug) {
-    console.error("Usage: pipeline-state.mjs reset-infra-plan <slug>");
+function cmdResetPhases(slug, phasesCsv, reason) {
+  if (!slug || !phasesCsv || !reason) {
+    console.error("Usage: pipeline-state.mjs reset-phases <slug> <phases-csv> <reason>");
     process.exit(1);
   }
 
   try {
-    const { cycleCount, halted } = resetInfraPlan(slug);
+    const { cycleCount, halted } = resetPhases(slug, phasesCsv, reason);
     if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} infra re-push cycles. Requires human intervention.`);
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} phase reset cycles. Requires human intervention.`);
       process.exit(2);
     } else {
-      const resetCount = 3; // push-infra + create-draft-pr + poll-infra-plan always reset
-      console.log(`🔄 Reset ${resetCount} infra deploy items for re-push cycle (${cycleCount}/10).`);
-    }
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdRedevelopInfra(slug, reason) {
-  if (!slug || !reason) {
-    console.error("Usage: pipeline-state.mjs redevelop-infra <slug> <reason>");
-    process.exit(1);
-  }
-
-  try {
-    const { cycleCount, halted } = redevelopInfra(slug, reason);
-    if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} infra redevelopment cycles. Requires human intervention.`);
-      process.exit(2);
-    } else {
-      console.log(`🔄 Infra redevelopment triggered (cycle ${cycleCount}/5). Wave 1 items reset to pending.`);
+      console.log(`🔄 Phase reset triggered for [${phasesCsv}] (cycle ${cycleCount}/5). Items reset to pending.`);
     }
   } catch (err) {
     console.error(`ERROR: ${err.message}`);
@@ -1300,18 +1233,28 @@ switch (command) {
   case "fail":
     cmdFail(args[0], args[1], args.slice(2).join(" "));
     break;
+  case "reset-scripts":
+    cmdResetScripts(args[0], args[1]);
+    break;
+  case "reset-phases":
+    cmdResetPhases(args[0], args[1], args.slice(2).join(" "));
+    break;
+  // ── Deprecation shims ──────────────────────────────────────────────
   case "reset-ci":
-    cmdResetCi(args[0]);
+    console.warn("⚠ Deprecated: use 'reset-scripts <slug> deploy' instead of 'reset-ci'");
+    cmdResetScripts(args[0], "deploy");
     break;
   case "reset-infra-plan":
-    cmdResetInfraPlan(args[0]);
+    console.warn("⚠ Deprecated: use 'reset-scripts <slug> infra' instead of 'reset-infra-plan'");
+    cmdResetScripts(args[0], "infra");
     break;
   case "reset-infra-ci":
-    console.warn("⚠ Deprecated: use 'reset-infra-plan' instead of 'reset-infra-ci'");
-    cmdResetInfraPlan(args[0]);
+    console.warn("⚠ Deprecated: use 'reset-scripts <slug> infra' instead of 'reset-infra-ci'");
+    cmdResetScripts(args[0], "infra");
     break;
   case "redevelop-infra":
-    cmdRedevelopInfra(args[0], args.slice(1).join(" "));
+    console.warn("⚠ Deprecated: use 'reset-phases <slug> infra,approval <reason>' instead of 'redevelop-infra'");
+    cmdResetPhases(args[0], "infra,approval", args.slice(1).join(" "));
     break;
   case "resume":
     cmdResume(args[0]);
@@ -1343,9 +1286,8 @@ switch (command) {
     console.error("  init         <slug> <type>               — Initialize pipeline state");
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
-    console.error("  reset-ci          <slug>                      — Reset push-app + poll-app-ci for re-push");
-    console.error("  reset-infra-plan  <slug>                      — Reset push-infra + poll-infra-plan for re-push");
-    console.error("  redevelop-infra   <slug> <reason>             — Reset Wave 1 infra items for redevelopment");
+    console.error("  reset-scripts    <slug> <phase>                — Reset script-type nodes in the given phase for re-push");
+    console.error("  reset-phases     <slug> <phases-csv> <reason>  — Reset all nodes in the given phases for redevelopment");
     console.error("  resume            <slug>                      — Resume pipeline after elevated apply");
     console.error("  recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply");
     console.error("  status            <slug>                      — Print state JSON");

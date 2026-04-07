@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "./apm-types.js";
-import type { ItemSummary, PlaywrightLogEntry } from "./types.js";
+import type { ItemSummary, McpToolLogEntry } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -131,7 +131,7 @@ export function writePlaywrightLog(
   appRoot: string,
   repoRoot: string,
   featureSlug: string,
-  log: PlaywrightLogEntry[],
+  log: McpToolLogEntry[],
 ): void {
   const logPath = path.join(appRoot, "in-progress", `${featureSlug}_PLAYWRIGHT-LOG.md`);
   const lines: string[] = [

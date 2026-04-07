@@ -2,13 +2,13 @@
  * session/session-events.ts — SDK session event wiring.
  *
  * Extracted from session-runner.ts for Single Responsibility.
- * Contains wireToolLogging, wirePlaywrightLogging, wireIntentLogging,
+ * Contains wireToolLogging, wireMcpTelemetry, wireIntentLogging,
  * wireMessageCapture, wireUsageTracking, appendToToolResult, and
  * tool label/category constants.
  */
 
 import path from "node:path";
-import type { ItemSummary, PlaywrightLogEntry } from "../types.js";
+import type { ItemSummary, McpToolLogEntry } from "../types.js";
 import { extractShellWrittenFiles } from "../tool-harness.js";
 
 // ---------------------------------------------------------------------------
@@ -254,34 +254,45 @@ export function wireToolLogging(
   });
 }
 
-export function wirePlaywrightLogging(session: any, hasPlaywright: boolean, triggerHeartbeat?: () => void): PlaywrightLogEntry[] {
-  const playwrightLog: PlaywrightLogEntry[] = [];
-  if (!hasPlaywright) return playwrightLog;
+/** Known MCP server emoji labels — extensible map */
+const MCP_SERVER_LABELS: Record<string, string> = {
+  playwright: "🎭",
+};
+
+export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknown>, triggerHeartbeat?: () => void): McpToolLogEntry[] {
+  const mcpLog: McpToolLogEntry[] = [];
+  const serverNames = Object.keys(mcpServers);
+  if (serverNames.length === 0) return mcpLog;
 
   session.on("tool.execution_start", (event: any) => {
     const name = event.data.toolName;
-    if (!name.startsWith("playwright-")) return;
+    // Match tool name against any active MCP server prefix
+    const server = serverNames.find((s) => name.startsWith(`${s}-`));
+    if (!server) return;
+
     const args = event.data.arguments as Record<string, unknown> | undefined;
-    const entry: PlaywrightLogEntry = {
+    const entry: McpToolLogEntry = {
       timestamp: new Date().toISOString(),
       tool: name,
+      server,
       args: args ? { ...args } : undefined,
     };
-    playwrightLog.push(entry);
+    mcpLog.push(entry);
 
-    const shortName = name.replace("playwright-", "");
+    const shortName = name.replace(`${server}-`, "");
+    const emoji = MCP_SERVER_LABELS[server] ?? "🔌";
     let detail = "";
     if (args?.url) detail = ` → ${args.url}`;
     else if (args?.selector) detail = ` → ${args.selector}`;
     else if (args?.code) detail = ` → ${String(args.code).split("\n")[0].slice(0, 80)}`;
-    console.log(`  🎭 ${shortName}${detail}`);
+    console.log(`  ${emoji} ${shortName}${detail}`);
   });
 
   session.on("tool.execution_complete", (event: any) => {
-    let last: PlaywrightLogEntry | undefined;
-    for (let i = playwrightLog.length - 1; i >= 0; i--) {
-      if (playwrightLog[i].success === undefined) {
-        last = playwrightLog[i];
+    let last: McpToolLogEntry | undefined;
+    for (let i = mcpLog.length - 1; i >= 0; i--) {
+      if (mcpLog[i].success === undefined) {
+        last = mcpLog[i];
         break;
       }
     }
@@ -291,14 +302,16 @@ export function wirePlaywrightLogging(session: any, hasPlaywright: boolean, trig
       if (content) {
         last.result = content.slice(0, 500);
       }
+      const server = last.server ?? "mcp";
+      const emoji = MCP_SERVER_LABELS[server] ?? "🔌";
       const status = event.data.success ? "✅" : "❌";
-      console.log(`  🎭 ${status} ${last.tool.replace("playwright-", "")} completed`);
+      console.log(`  ${emoji} ${status} ${last.tool.replace(`${server}-`, "")} completed`);
     }
 
     triggerHeartbeat?.();
   });
 
-  return playwrightLog;
+  return mcpLog;
 }
 
 export function wireIntentLogging(session: any, itemSummary: ItemSummary): void {

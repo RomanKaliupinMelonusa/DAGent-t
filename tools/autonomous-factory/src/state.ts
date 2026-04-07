@@ -24,9 +24,8 @@ interface PipelineStateMod {
   initState: (slug: string, workflowType: string, contextJsonPath?: string) => InitResult;
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
-  resetCi: (slug: string) => ResetResult;
-  resetInfraPlan: (slug: string) => ResetResult;
-  redevelopInfra: (slug: string, reason: string, maxCycles?: number) => ResetResult;
+  resetScripts: (slug: string, phase: string) => ResetResult;
+  resetPhases: (slug: string, phasesCsv: string, reason: string, maxCycles?: number) => ResetResult;
   resetForDev: (slug: string, itemKeys: string[], reason: string, maxCycles?: number) => ResetResult;
   resetForRedeploy: (slug: string, itemKeys: string[], reason: string, maxCycles?: number) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
@@ -65,19 +64,14 @@ export async function failItem(slug: string, itemKey: string, message: string): 
   return mod.failItem(slug, itemKey, message);
 }
 
-export async function resetCi(slug: string): Promise<ResetResult> {
+export async function resetScripts(slug: string, phase: string): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.resetCi(slug);
+  return mod.resetScripts(slug, phase);
 }
 
-export async function resetInfraPlan(slug: string): Promise<ResetResult> {
+export async function resetPhases(slug: string, phasesCsv: string, reason: string, maxCycles?: number): Promise<ResetResult> {
   const mod = await getMod();
-  return mod.resetInfraPlan(slug);
-}
-
-export async function redevelopInfra(slug: string, reason: string, maxCycles?: number): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.redevelopInfra(slug, reason, maxCycles);
+  return mod.resetPhases(slug, phasesCsv, reason, maxCycles);
 }
 
 export async function resetForDev(slug: string, itemKeys: string[], reason: string, maxCycles?: number): Promise<ResetResult> {
