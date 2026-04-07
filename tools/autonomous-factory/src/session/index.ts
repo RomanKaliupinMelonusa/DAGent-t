@@ -10,6 +10,7 @@ export {
   normalizeDiagnosticTrace,
   shouldSkipRetry,
   flushReports,
+  finishItem,
 } from "./shared.js";
 
 export {
@@ -27,6 +28,7 @@ export {
   wireIntentLogging,
   wireMessageCapture,
   wireUsageTracking,
+  SessionCircuitBreaker,
   TOOL_LIMIT_FALLBACK_SOFT,
   TOOL_LIMIT_FALLBACK_HARD,
   TOOL_LABELS,

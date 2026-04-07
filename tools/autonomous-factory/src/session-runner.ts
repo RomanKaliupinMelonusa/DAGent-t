@@ -38,6 +38,7 @@ import {
   writeChangeManifest,
 } from "./context-injection.js";
 import { buildSessionHooks, buildCustomTools } from "./tool-harness.js";
+import { resolveAgentSandbox } from "./agent-sandbox.js";
 
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
@@ -47,12 +48,14 @@ import {
   getAgentDirectoryPrefixes,
   shouldSkipRetry,
   flushReports,
+  finishItem,
 } from "./session/shared.js";
 import { pollReadiness, runValidateInfra } from "./session/readiness-probe.js";
 import {
   TOOL_LIMIT_FALLBACK_SOFT,
   TOOL_LIMIT_FALLBACK_HARD,
   TOOL_CATEGORIES,
+  SessionCircuitBreaker,
   wireToolLogging,
   wireMcpTelemetry,
   wireIntentLogging,
@@ -94,6 +97,8 @@ export interface PipelineRunState {
    * run in the same batch.
    */
   lastPushedShas: Record<string, string>;
+  /** Whether force_run_if_changed directories had changes (set during auto-skip, consumed by agent context) */
+  forceRunChangesDetected?: boolean;
 }
 
 /** Immutable config for the pipeline run */
@@ -274,8 +279,6 @@ export async function runItemSession(
 // Auto-skip logic
 // ---------------------------------------------------------------------------
 
-/** Tracks whether force_run_if_changed directories had changes (set during auto-skip, consumed by agent context) */
-let forceRunChangesDetected: boolean | undefined;
 
 async function tryAutoSkip(
   next: NextAction & { key: string },
@@ -288,7 +291,7 @@ async function tryAutoSkip(
   const { pipelineSummaries, preStepRefs } = state;
 
   // Reset per-item
-  forceRunChangesDetected = undefined;
+  state.forceRunChangesDetected = undefined;
 
   const node = getWorkflowNode(apmContext, next.key);
   if (!node) return null; // No workflow node → no auto-skip
@@ -299,14 +302,9 @@ async function tryAutoSkip(
 
   const completeSkip = async (intent: string): Promise<SessionResult> => {
     await completeItem(slug, next.key);
-    itemSummary.outcome = "completed";
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    itemSummary.intents.push(intent);
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
+    const result = finishItem(itemSummary, "completed", stepStart, config, state, { intents: [intent] });
     console.log(`  ✅ ${next.key} complete (auto-skipped)`);
-    return { summary: itemSummary, halt: false, createPr: false };
+    return result;
   };
 
   // ── Data-driven auto-skip: check directory changes ────────────────────
@@ -339,7 +337,7 @@ async function tryAutoSkip(
       if (node.force_run_if_changed && node.force_run_if_changed.length > 0) {
         const forceRunPrefixes = node.force_run_if_changed.flatMap((k: string) => dirPrefixes[k] || []);
         const hasForceRunChanges = gitChanged.some((f) => forceRunPrefixes.some((p) => f.startsWith(p)));
-        forceRunChangesDetected = hasForceRunChanges;
+        state.forceRunChangesDetected = hasForceRunChanges;
         if (hasForceRunChanges) {
           const nonForceKeys = node.auto_skip_if_no_changes_in.filter((k: string) => !node.force_run_if_changed!.includes(k));
           const nonForcePrefixes = nonForceKeys.flatMap((k: string) => dirPrefixes[k] || []);
@@ -398,7 +396,7 @@ async function runAgentSession(
     appRoot,
     itemKey: next.key,
     baseBranch,
-    ...(forceRunChangesDetected && { forceRunChanges: true }),
+    ...(state.forceRunChangesDetected && { forceRunChanges: true }),
     environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
     commitScopes: apmContext.config?.commitScopes,
@@ -416,48 +414,30 @@ async function runAgentSession(
     hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
   };
 
-  // Shared flag: the onDenial callback and wireToolLogging both need to
-  // read/write this to prevent duplicate disconnect attempts.
-  // Wrapped in an object so both closures reference the same mutable value.
-  const hardLimitRef = { fired: false };
+  // Cognitive circuit breaker — single object shared by wireToolLogging
+  // and the onDenial callback. Eliminates the fragile hardLimitRef pattern.
+  const breaker = new SessionCircuitBreaker(
+    resolvedToolLimits.soft,
+    resolvedToolLimits.hard,
+    (total) => {
+      console.error(
+        `\n  ✖ HARD LIMIT: Agent exceeded ${total} tool calls. ` +
+        `Force-disconnecting session to prevent runaway compute waste.\n`,
+      );
+      itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${total} tool calls`;
+      itemSummary.outcome = "error";
+      session.disconnect().catch(() => { /* best-effort */ });
+    },
+  );
 
-  // --- Zero-Trust tool allow-list extraction ---
-  const agentToolsCfg = apmContext.agents[next.key]?.tools;
-  const allowedCoreTools = new Set<string>(agentToolsCfg?.core ?? []);
-  const allowedMcpTools = new Set<string>();
-  const mcpToolConfig = agentToolsCfg?.mcp ?? {};
-  for (const tools of Object.values(mcpToolConfig)) {
-    if (tools === "*") allowedMcpTools.add("*");
-    else if (Array.isArray(tools)) tools.forEach((t: unknown) => allowedMcpTools.add(String(t)));
-  }
-
-  // --- Config-driven path sandbox & command blocking ---
-  // Migration guard: absent security block = no enforcement (matches Zero-Trust pattern).
-  // When security IS defined with allowedWritePaths: [], that means explicitly read-only.
-  const securityCfg = apmContext.agents[next.key]?.security;
-  const hasSecurityProfile = securityCfg !== undefined && securityCfg !== null;
-  const allowedWritePaths = hasSecurityProfile
-    ? (securityCfg.allowedWritePaths ?? []).map((p: string) => new RegExp(p))
-    : [/^.*/];  // No security profile = allow all writes (migration mode)
-  const blockedCommandRegexes = hasSecurityProfile
-    ? (securityCfg.blockedCommandRegexes ?? []).map((p: string) => new RegExp(p))
-    : [];  // No blocked commands in migration mode
-  if (!hasSecurityProfile) {
-    console.log(`  ⚠ Agent '${next.key}' has no security profile — RBAC enforcement skipped (migration mode)`);
-  }
-
-  // Build safeMcpPrefixes from resolved MCP configs (fsMutator: false = safe prefix)
-  const safeMcpPrefixes = new Set<string>();
-  const agentMcp = apmContext.agents[next.key]?.mcp ?? {};
-  for (const [serverName, mcpCfg] of Object.entries(agentMcp)) {
-    if ((mcpCfg as any).fsMutator === false) safeMcpPrefixes.add(serverName + "-");
-  }
+  // --- Resolve sandbox (RBAC, write paths, tool allow-lists) ---
+  const sandbox = resolveAgentSandbox(next.key, apmContext, appRoot);
 
   // Filter custom tools to the agent's allow-list (empty sets = migration fallback: allow all)
-  const allCustomTools = buildCustomTools(repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot);
-  const agentHasToolConfig = allowedCoreTools.size > 0 || allowedMcpTools.size > 0;
+  const allCustomTools = buildCustomTools(repoRoot, sandbox, appRoot);
+  const agentHasToolConfig = sandbox.allowedCoreTools.size > 0 || sandbox.allowedMcpTools.size > 0;
   const filteredTools = agentHasToolConfig
-    ? allCustomTools.filter((t) => allowedCoreTools.has(t.name))
+    ? allCustomTools.filter((t) => sandbox.allowedCoreTools.has(t.name))
     : allCustomTools;
 
   // Create SDK session
@@ -467,25 +447,12 @@ async function runAgentSession(
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: agentConfig.systemMessage },
     tools: filteredTools,
-    hooks: buildSessionHooks(repoRoot, allowedCoreTools, allowedMcpTools, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot, (toolName) => {
+    hooks: buildSessionHooks(repoRoot, sandbox, appRoot, (toolName) => {
       // Bridge denied tool calls into the circuit breaker counters.
       // SDK hooks that deny a tool may not fire tool.execution_start,
       // so we increment manually to prevent infinite denial loops.
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
-      itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
-
-      // Evaluate the hard limit killswitch — denied calls must also trigger it.
-      const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-      if (totalCalls >= resolvedToolLimits.hard && !hardLimitRef.fired) {
-        hardLimitRef.fired = true;
-        console.error(
-          `\n  ✖ HARD LIMIT: Agent exceeded ${resolvedToolLimits.hard} tool calls (via denied commands). ` +
-          `Force-disconnecting session to prevent runaway compute waste.\n`,
-        );
-        itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${resolvedToolLimits.hard} tool calls`;
-        itemSummary.outcome = "error";
-        session.disconnect().catch(() => { /* best-effort */ });
-      }
+      breaker.recordCall(category, itemSummary.toolCounts);
     }),
     ...(agentConfig.mcpServers
       ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
@@ -506,7 +473,7 @@ async function runAgentSession(
     writeFlightData(config.appRoot, config.slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, itemSummary, repoRoot, resolvedToolLimits, timeout, triggerHeartbeat, hardLimitRef);
+  wireToolLogging(session, itemSummary, repoRoot, breaker, timeout, triggerHeartbeat);
   const mcpServers = (agentConfig.mcpServers as Record<string, unknown>) ?? {};
   const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, triggerHeartbeat);
   wireIntentLogging(session, itemSummary);
@@ -605,11 +572,7 @@ async function runAgentSession(
     if (fatalPatterns.some((p) => message.toLowerCase().includes(p))) {
       console.error(`  ✖ FATAL: Non-retryable SDK/Auth error. Halting pipeline immediately.`);
       try { await failItem(slug, next.key, message); } catch { /* best-effort */ }
-      itemSummary.finishedAt = new Date().toISOString();
-      itemSummary.durationMs = Date.now() - stepStart;
-      pipelineSummaries.push(itemSummary);
-      flushReports(config, state);
-      return { summary: itemSummary, halt: true, createPr: false };
+      return finishItem(itemSummary, itemSummary.outcome, stepStart, config, state, { halt: true });
     }
 
     try {
@@ -618,11 +581,7 @@ async function runAgentSession(
         console.error(
           `  ✖ HALTED: ${next.key} failed ${result.failCount} times. Exiting.`,
         );
-        itemSummary.finishedAt = new Date().toISOString();
-        itemSummary.durationMs = Date.now() - stepStart;
-        pipelineSummaries.push(itemSummary);
-        flushReports(config, state);
-        return { summary: itemSummary, halt: true, createPr: false };
+        return finishItem(itemSummary, itemSummary.outcome, stepStart, config, state, { halt: true });
       }
     } catch {
       console.error("  ✖ Could not record failure in pipeline state. Exiting.");
