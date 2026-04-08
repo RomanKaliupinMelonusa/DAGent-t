@@ -75,11 +75,17 @@ export interface PipelineRunState {
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
   /**
    * Last pushed commit SHA per push-item key (e.g. "push-<scope>").
-   * Captured by runPushCode(), consumed by runPollCi() for SHA-pinned CI polling.
+   * Captured by git-push handler, consumed by github-ci-poll handler for SHA-pinned CI polling.
    * Scoped per-item to prevent cross-contamination if multiple push items ever
    * run in the same batch.
    */
   lastPushedShas: Record<string, string>;
+  /**
+   * Accumulated handler output from all preceding items in this pipeline run.
+   * Keyed by item key. The kernel propagates the full bag into handlerData
+   * so downstream handlers can access output from any upstream handler.
+   */
+  handlerOutputs: Record<string, Record<string, unknown>>;
   /** Per-item flag: whether force_run_if_changed dirs had changes (set by tryAutoSkip, consumed by runAgentSession). Keyed by item key to prevent cross-contamination in parallel batches. */
   forceRunChangesDetected: Record<string, boolean>;
 }
@@ -317,6 +323,12 @@ async function runViaHandler(
   for (const [k, v] of Object.entries(state.lastPushedShas)) {
     handlerData[`lastPushedSha:${k}`] = v;
   }
+  // Propagate all prior handler outputs for downstream access
+  for (const [itemKey, outputs] of Object.entries(state.handlerOutputs)) {
+    for (const [k, v] of Object.entries(outputs)) {
+      handlerData[`${itemKey}:${k}`] = v;
+    }
+  }
   // Propagate pre-step git ref for git-diff fallback in agent handler
   if (state.preStepRefs[next.key]) {
     handlerData["preStepRef"] = state.preStepRefs[next.key];
@@ -396,6 +408,12 @@ async function runViaHandler(
 
   // Store cross-handler output (e.g. lastPushedSha for downstream poll)
   if (result.handlerOutput) {
+    // Store full handler output for downstream access
+    state.handlerOutputs[next.key] = {
+      ...(state.handlerOutputs[next.key] ?? {}),
+      ...result.handlerOutput,
+    };
+    // Backward compat: also store lastPushedSha in dedicated map
     const sha = result.handlerOutput.lastPushedSha;
     if (typeof sha === "string") {
       state.lastPushedShas[next.key] = sha;

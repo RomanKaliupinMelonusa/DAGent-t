@@ -3,9 +3,15 @@
  *
  * Defines the contract between the orchestration kernel and handler
  * implementations. The kernel dispatches to handlers; handlers execute
- * feature logic and return results. Handlers are OBSERVERS — they never
- * mutate pipeline state (completeItem/failItem). The kernel is the sole
- * state mutator.
+ * feature logic and return results.
+ *
+ * State ownership model:
+ * - By default, handlers are OBSERVERS — they must NOT call
+ *   completeItem/failItem. The kernel is the sole state mutator.
+ * - Handlers that set `stateManaged: true` in NodeResult signal that
+ *   the handler (or the agent running inside it) already performed
+ *   state transitions. The kernel skips its own mutations to avoid
+ *   duplicates. Currently only copilot-agent uses this mode.
  *
  * Built-in handlers: copilot-agent, git-push, github-ci-poll, github-pr-publish
  * Custom handlers: local .ts files resolved via dynamic import (sandboxed to repo)
@@ -138,9 +144,10 @@ export interface SkipResult {
  * Contract:
  * - `execute()` performs the handler's work and returns a result
  * - `shouldSkip()` optionally checks if the item can be skipped before execution
- * - Handlers are OBSERVERS: they must NOT call completeItem/failItem/resetForDev
+ * - By default, handlers are OBSERVERS: they must NOT call completeItem/failItem
+ * - Handlers that need self-managed state (e.g. copilot-agent) set `stateManaged: true`
  * - Handlers may call shell commands, read/write files, and interact with external APIs
- * - The kernel is the sole owner of pipeline state transitions
+ * - The kernel is the default owner of pipeline state transitions
  */
 export interface NodeHandler {
   /** Unique handler identifier (e.g. "copilot-agent", "git-push") */
