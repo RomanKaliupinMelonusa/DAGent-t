@@ -3,4 +3,6 @@
  */
 
 export type { NodeHandler, NodeContext, NodeResult, SkipResult } from "./types.js";
+export type { AutoSkipDecision } from "./auto-skip-evaluator.js";
 export { resolveHandler, inferHandler, registerBuiltinHandler, clearHandlerCache } from "./registry.js";
+export { evaluateAutoSkip } from "./auto-skip-evaluator.js";

@@ -16,9 +16,7 @@
  *
  * Retained here:
  *   - PipelineRunState / PipelineRunConfig / SessionResult interfaces
- *   - runItemSession()  — Main dispatch (auto-skip, readiness, handler routing)
- *   - runViaHandler()   — Handler execution kernel (state transitions, triage)
- *   - tryAutoSkip()     — Data-driven auto-skip logic
+ *   - runItemSession()  — Unified dispatch (auto-skip, readiness, handler routing, state transitions)
  */
 
 import fs from "node:fs";
@@ -29,7 +27,6 @@ import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary } from "./types.js";
 import { parseTriageDiagnostic } from "./triage.js";
-import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "./auto-skip.js";
 import { writeFlightData } from "./reporting.js";
 import {
   computeEffectiveDevAttempts,
@@ -38,14 +35,13 @@ import {
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
   getWorkflowNode,
-  findUpstreamDevKeys,
   shouldSkipRetry,
   flushReports,
   finishItem,
 } from "./session/shared.js";
 import { pollReadiness, runValidateInfra } from "./session/readiness-probe.js";
 import { handleFailureReroute } from "./session/triage-dispatcher.js";
-import { resolveHandler } from "./handlers/index.js";
+import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
 import type { NodeContext, NodeResult } from "./handlers/index.js";
 
 // ── Backward-compatible re-exports ─────────────────────────────────────────
@@ -86,7 +82,7 @@ export interface PipelineRunState {
    * so downstream handlers can access output from any upstream handler.
    */
   handlerOutputs: Record<string, Record<string, unknown>>;
-  /** Per-item flag: whether force_run_if_changed dirs had changes (set by tryAutoSkip, consumed by runAgentSession). Keyed by item key to prevent cross-contamination in parallel batches. */
+  /** Per-item flag: whether force_run_if_changed dirs had changes (set by evaluateAutoSkip, consumed by copilot-agent handler via ctx.forceRunChanges). Keyed by item key to prevent cross-contamination in parallel batches. */
   forceRunChangesDetected: Record<string, boolean>;
 }
 
@@ -107,12 +103,14 @@ export interface SessionResult {
 }
 
 // ---------------------------------------------------------------------------
-// Main session runner
+// Unified dispatch — single entry point for all pipeline items
 // ---------------------------------------------------------------------------
 
 /**
  * Run a single pipeline item — the core of each DAG step.
- * Handles auto-skip, deterministic bypasses, SDK sessions, and triage.
+ *
+ * Flow: circuit breaker → auto-skip → readiness probe → infer handler →
+ *       resolve handler → build context → shouldSkip → execute → state transitions
  */
 export async function runItemSession(
   client: CopilotClient,
@@ -127,9 +125,6 @@ export async function runItemSession(
 
   // --- Circuit breaker: skip if identical error + no code changed since last attempt ---
   if (attemptCounts[next.key] > 2 && shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) {
-    // For DEV items, grant one bypass so the clean-slate revert warning can fire.
-    // The revert wipes ALL feature code (not just the delta between attempts),
-    // so it may resolve the root cause even when shouldSkipRetry sees no change.
     const nodeForBreaker = getWorkflowNode(apmContext, next.key);
     if (nodeForBreaker?.category === "dev" && !circuitBreakerBypassed.has(next.key)) {
       console.log(`\n  ⚡ Circuit breaker deferred for ${next.key} — granting clean-slate revert opportunity`);
@@ -162,8 +157,6 @@ export async function runItemSession(
       pipelineSummaries.push(skipSummary);
       flushReports(config, state);
 
-      // For DEV items stuck in timeout loops, salvage to Draft PR instead of
-      // halting — gives humans something to review rather than losing all work.
       const lastError = pipelineSummaries
         .filter((s) => s.key === next.key && s.outcome !== "completed")
         .pop()?.errorMessage ?? "";
@@ -191,8 +184,7 @@ export async function runItemSession(
     `\n${"═".repeat(70)}\n  Phase: ${next.phase} | Item: ${next.key} | Agent: ${next.agent}\n${"═".repeat(70)}`,
   );
 
-  // Snapshot HEAD before dev steps (for auto-skip change detection)
-  // Also snapshot before ALL items for accurate filesChanged tracking via git diff
+  // Snapshot HEAD before ALL items for accurate filesChanged tracking
   if (!preStepRefs[next.key]) {
     try {
       preStepRefs[next.key] = execSync("git rev-parse HEAD", {
@@ -201,7 +193,6 @@ export async function runItemSession(
     } catch { /* non-fatal */ }
   }
 
-  // Collect session-level summary
   const stepStart = Date.now();
   const itemSummary: ItemSummary = {
     key: next.key,
@@ -225,70 +216,32 @@ export async function runItemSession(
     cacheWriteTokens: 0,
   };
 
-  // --- Auto-skip no-op test/post-deploy items ---
-  const autoSkipResult = await tryAutoSkip(next, config, state, itemSummary, stepStart);
-  if (autoSkipResult) return autoSkipResult;
+  // --- Auto-skip evaluation ---
+  const node = getWorkflowNode(apmContext, next.key);
+  const skipDecision = evaluateAutoSkip(next.key, apmContext, repoRoot, baseBranch, appRoot, preStepRefs);
+  state.forceRunChangesDetected[next.key] = skipDecision.forceRunChanges;
+  if (skipDecision.skip) {
+    await completeItem(slug, next.key);
+    console.log(`  ✅ ${next.key} complete (auto-skipped)`);
+    return finishItem(itemSummary, "completed", stepStart, config, state, {
+      intents: [skipDecision.skip.reason],
+    });
+  }
 
-  // ── Post-deploy readiness probe ────────────────────────────────────────
-  // Replaces the fixed-duration sleep with a stack-agnostic readiness probe.
-  // Delegates to the validateApp hook with exponential backoff, or falls
-  // back to a 60s propagation delay if no hook is configured.
-  const node = getWorkflowNode(config.apmContext, next.key);
+  // --- Readiness probe ---
   if (node?.requires_data_plane_ready) {
     await pollReadiness(config);
   }
 
-  // ── Deterministic bypasses (no agent session) ─────────────────────────
-  // Script-type items must NEVER create an LLM session. push-* and poll-*
-  // are handled by shell scripts — zero tokens, deterministic, no hallucination.
-  if (node?.script_type === "push") {
-    return runViaHandler("git-push", next, config, state, itemSummary, stepStart, client);
-  }
-  if (node?.script_type === "poll") {
-    return runViaHandler("github-ci-poll", next, config, state, itemSummary, stepStart, client);
-  }
-  if (node?.script_type === "publish") {
-    return runViaHandler("github-pr-publish", next, config, state, itemSummary, stepStart, client);
-  }
-  // Safety: if a script item has no script_type, fail loudly rather than
-  // falling through to an LLM session.
-  if (node?.type === "script") {
+  // --- Resolve handler via manifest or inference ---
+  const handlerRef = node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type);
+  if (!handlerRef) {
     throw new Error(
-      `BUG: Script item "${next.key}" has type "script" but no script_type declared. ` +
-      `Never route script items to LLM sessions. Either add script_type or change its type.`,
+      node?.type === "script"
+        ? `BUG: Script item "${next.key}" has type "script" but no script_type or handler declared. Never route script items to LLM sessions.`
+        : `Could not resolve handler for "${next.key}" (type=${node?.type}, script_type=${node?.script_type})`,
     );
   }
-
-  // ── Agent session ─────────────────────────────────────────────────────
-  return runViaHandler("copilot-agent", next, config, state, itemSummary, stepStart, client);
-}
-
-// ---------------------------------------------------------------------------
-// Handler-based dispatch (kernel owns state transitions)
-// ---------------------------------------------------------------------------
-
-/**
- * Execute a pipeline item through the NodeHandler plugin interface.
- * The kernel assembles NodeContext, calls handler.execute(), and maps
- * the NodeResult back to pipeline state transitions and SessionResult.
- *
- * Handlers are OBSERVERS — they never call completeItem/failItem.
- * This function is the sole state mutator for handler-dispatched items.
- */
-async function runViaHandler(
-  handlerRef: string,
-  next: NextAction & { key: string },
-  config: PipelineRunConfig,
-  state: PipelineRunState,
-  itemSummary: ItemSummary,
-  stepStart: number,
-  client?: CopilotClient,
-): Promise<SessionResult> {
-  const { slug, appRoot, repoRoot, baseBranch, apmContext, roamAvailable } = config;
-  const { pipelineSummaries, attemptCounts } = state;
-  const node = getWorkflowNode(apmContext, next.key);
-
-  // --- Resolve handler ---
   const handler = await resolveHandler(handlerRef, appRoot, repoRoot);
 
   // --- Build handler context ---
@@ -297,18 +250,15 @@ async function runViaHandler(
     next.key, attemptCounts[next.key], slug, node?.category,
   );
 
-  // Previous attempt (for retry context)
   const previousAttempt = attemptCounts[next.key] > 1
     ? [...pipelineSummaries].reverse().find((s) => s.key === next.key)
     : undefined;
 
-  // Downstream failures (for redevelopment context)
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed" && s.key !== next.key &&
       getWorkflowNode(apmContext, s.key)?.category === "test",
   );
 
-  // Heartbeat callback (throttled)
   let lastHeartbeat = 0;
   const onHeartbeat = () => {
     if (Date.now() - lastHeartbeat < 1500) return;
@@ -317,21 +267,17 @@ async function runViaHandler(
     writeFlightData(appRoot, slug, liveSummaries, true);
   };
 
-  // Cross-handler data (e.g. lastPushedSha from push → poll)
   const handlerData: Record<string, unknown> = {};
-  // Propagate lastPushedShas for poll handlers
   for (const [k, v] of Object.entries(state.lastPushedShas)) {
     handlerData[`lastPushedSha:${k}`] = v;
   }
-  // Propagate all prior handler outputs for downstream access
   for (const [itemKey, outputs] of Object.entries(state.handlerOutputs)) {
     for (const [k, v] of Object.entries(outputs)) {
       handlerData[`${itemKey}:${k}`] = v;
     }
   }
-  // Propagate pre-step git ref for git-diff fallback in agent handler
-  if (state.preStepRefs[next.key]) {
-    handlerData["preStepRef"] = state.preStepRefs[next.key];
+  if (preStepRefs[next.key]) {
+    handlerData["preStepRef"] = preStepRefs[next.key];
   }
 
   const ctx: NodeContext = {
@@ -354,7 +300,7 @@ async function runViaHandler(
     client,
   };
 
-  // --- shouldSkip check ---
+  // --- Handler-specific shouldSkip ---
   if (handler.shouldSkip) {
     const skipResult = await handler.shouldSkip(ctx);
     if (skipResult) {
@@ -378,15 +324,10 @@ async function runViaHandler(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Handler "${handler.name}" threw: ${message}`);
-    result = {
-      outcome: "error",
-      errorMessage: message,
-      summary: {},
-    };
+    result = { outcome: "error", errorMessage: message, summary: {} };
   }
 
-  // --- Process result: kernel owns state transitions ---
-  // Merge handler summary into itemSummary
+  // --- Merge handler telemetry into kernel summary ---
   if (result.summary.intents) itemSummary.intents.push(...result.summary.intents);
   if (result.summary.filesChanged) {
     for (const f of result.summary.filesChanged) {
@@ -406,14 +347,12 @@ async function runViaHandler(
   if (result.summary.cacheWriteTokens) itemSummary.cacheWriteTokens += result.summary.cacheWriteTokens;
   if (result.summary.messages) itemSummary.messages.push(...result.summary.messages);
 
-  // Store cross-handler output (e.g. lastPushedSha for downstream poll)
+  // Store cross-handler output for downstream access
   if (result.handlerOutput) {
-    // Store full handler output for downstream access
     state.handlerOutputs[next.key] = {
       ...(state.handlerOutputs[next.key] ?? {}),
       ...result.handlerOutput,
     };
-    // Backward compat: also store lastPushedSha in dedicated map
     const sha = result.handlerOutput.lastPushedSha;
     if (typeof sha === "string") {
       state.lastPushedShas[next.key] = sha;
@@ -427,19 +366,13 @@ async function runViaHandler(
     }).trim();
   } catch { /* non-fatal */ }
 
-  // --- State transitions (kernel is sole mutator) ---
-  // When stateManaged is true, the handler (or agent running inside it)
-  // already called completeItem/failItem. The kernel skips its own calls
-  // to avoid duplicate state mutations.
+  // --- State transitions ---
   if (result.stateManaged) {
-    // Just log the observed outcome — state was already updated by the agent.
     if (result.outcome === "completed") {
       console.log(`  ✅ ${next.key} complete (state managed by handler)`);
     } else {
       itemSummary.outcome = result.outcome;
       itemSummary.errorMessage = result.errorMessage;
-
-      // Triage routing for test-category failures
       if (node?.category === "test") {
         const rawError = result.errorMessage ?? "Unknown failure";
         const diagnostic = parseTriageDiagnostic(rawError);
@@ -448,17 +381,14 @@ async function runViaHandler(
         flushReports(config, state);
         return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable);
       }
-
       console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
     }
   } else if (result.outcome === "completed") {
     await completeItem(slug, next.key);
     console.log(`  ✅ ${next.key} complete`);
   } else {
-    // Failed or error
     itemSummary.outcome = result.outcome;
     itemSummary.errorMessage = result.errorMessage;
-
     try {
       const failResult = await failItem(slug, next.key, result.errorMessage ?? "Unknown failure");
       if (failResult.halted) {
@@ -469,8 +399,6 @@ async function runViaHandler(
       console.error("  ✖ Could not record failure in pipeline state.");
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
-
-    // Triage routing for test-category failures
     if (node?.category === "test") {
       const rawError = result.errorMessage ?? "Unknown failure";
       const diagnostic = parseTriageDiagnostic(rawError);
@@ -479,7 +407,6 @@ async function runViaHandler(
       flushReports(config, state);
       return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable);
     }
-
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   }
 
@@ -517,99 +444,4 @@ async function runViaHandler(
   }
 
   return finishItem(itemSummary, result.outcome === "completed" ? "completed" : result.outcome, stepStart, config, state);
-}
-
-// ---------------------------------------------------------------------------
-// Auto-skip logic
-// ---------------------------------------------------------------------------
-
-
-async function tryAutoSkip(
-  next: NextAction & { key: string },
-  config: PipelineRunConfig,
-  state: PipelineRunState,
-  itemSummary: ItemSummary,
-  stepStart: number,
-): Promise<SessionResult | null> {
-  const { slug, appRoot, repoRoot, baseBranch, apmContext } = config;
-  const { pipelineSummaries, preStepRefs } = state;
-
-  // Reset per-item
-  delete state.forceRunChangesDetected[next.key];
-
-  const node = getWorkflowNode(apmContext, next.key);
-  if (!node) return null; // No workflow node → no auto-skip
-
-  const autoSkipRef = getAutoSkipBaseRef(repoRoot, baseBranch, preStepRefs);
-  const appRel = path.relative(repoRoot, appRoot);
-  const dirPrefixes = getDirectoryPrefixes(appRel, apmContext.config?.directories as Record<string, string | null> | undefined);
-
-  const completeSkip = async (intent: string): Promise<SessionResult> => {
-    await completeItem(slug, next.key);
-    const result = finishItem(itemSummary, "completed", stepStart, config, state, { intents: [intent] });
-    console.log(`  ✅ ${next.key} complete (auto-skipped)`);
-    return result;
-  };
-
-  // ── Data-driven auto-skip: check directory changes ────────────────────
-  if (node.auto_skip_if_no_changes_in && node.auto_skip_if_no_changes_in.length > 0) {
-    // Find the best base ref — walk DAG backward to find nearest upstream dev node
-    const workflow = apmContext.workflows?.default;
-    const upstreamDevKeys = workflow ? findUpstreamDevKeys(workflow.nodes, next.key) : [];
-    let devRef: string | null = null;
-    for (const dk of upstreamDevKeys) {
-      devRef = autoSkipRef(dk);
-      if (devRef) break;
-    }
-    if (devRef) {
-      const gitChanged = getGitChangedFiles(repoRoot, devRef);
-      if (gitChanged === null) return null; // Fail-closed: abort skip on git error
-
-      // Build union of prefixes from all declared directory keys
-      const allPrefixes: string[] = [];
-      for (const dirKey of node.auto_skip_if_no_changes_in) {
-        const prefixSet = dirPrefixes[dirKey];
-        if (prefixSet) {
-          allPrefixes.push(...prefixSet);
-        }
-      }
-
-      const hasChanges = gitChanged.some((f) => allPrefixes.some((p) => f.startsWith(p)));
-
-      // Dynamic force-run: if force_run_if_changed dirs have changes but primary dirs don't,
-      // force the node to run anyway (driven by workflow manifest)
-      if (node.force_run_if_changed && node.force_run_if_changed.length > 0) {
-        const forceRunPrefixes = node.force_run_if_changed.flatMap((k: string) => dirPrefixes[k] || []);
-        const hasForceRunChanges = gitChanged.some((f) => forceRunPrefixes.some((p) => f.startsWith(p)));
-        state.forceRunChangesDetected[next.key] = hasForceRunChanges;
-        if (hasForceRunChanges) {
-          const nonForceKeys = node.auto_skip_if_no_changes_in.filter((k: string) => !node.force_run_if_changed!.includes(k));
-          const nonForcePrefixes = nonForceKeys.flatMap((k: string) => dirPrefixes[k] || []);
-          if (!gitChanged.some((f) => nonForcePrefixes.some((p) => f.startsWith(p)))) {
-            console.log(`  ▶ Running ${next.key} — force_run_if_changed dirs [${node.force_run_if_changed.join(", ")}] have changes`);
-            return null; // Do NOT auto-skip
-          }
-        }
-      }
-
-      if (!hasChanges) {
-        console.log(`  ⏭ Auto-skipping ${next.key} — no changes in [${node.auto_skip_if_no_changes_in.join(", ")}] since ${devRef.slice(0, 8)}`);
-        return completeSkip(`Auto-skipped: no changes in [${node.auto_skip_if_no_changes_in.join(", ")}] detected (git diff)`);
-      }
-    }
-  }
-
-  // ── Data-driven auto-skip: check deletions ────────────────────────────
-  if (node.auto_skip_if_no_deletions) {
-    const deletions = getGitDeletions(repoRoot, baseBranch);
-    const deleted = hasDeletedFiles(repoRoot, baseBranch);
-    if (deletions === 0 && !deleted) {
-      console.log(`  ⏭ Auto-skipping ${next.key} — feature is purely additive (0 deletions, 0 deleted files)`);
-      return completeSkip(
-        "Auto-skipped: Feature is purely additive (0 deletions detected in git diff). No architectural dead code possible.",
-      );
-    }
-  }
-
-  return null; // No auto-skip — continue to session
 }
