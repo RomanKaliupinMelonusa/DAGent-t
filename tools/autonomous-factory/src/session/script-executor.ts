@@ -13,7 +13,7 @@ import { execSync } from "node:child_process";
 import { getStatus, failItem, completeItem } from "../state.js";
 import { getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "../auto-skip.js";
 import { parseTriageDiagnostic } from "../triage.js";
-import { getWorkflowNode, flushReports } from "./shared.js";
+import { getWorkflowNode, flushReports, finishItem } from "./shared.js";
 import { runValidateApp } from "./readiness-probe.js";
 import { handleFailureReroute } from "./triage-dispatcher.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
@@ -27,6 +27,82 @@ import type { ItemSummary } from "../types.js";
 const MAX_TRANSIENT_RETRIES = 5;
 /** Backoff between transient retries (ms) */
 const TRANSIENT_BACKOFF_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// CI artifact → PR comment
+// ---------------------------------------------------------------------------
+
+/**
+ * Download a CI artifact (e.g. Terraform plan output) and post it as a
+ * formatted comment on the Draft PR. Handles dedup, artifact download,
+ * Markdown formatting, and temp directory cleanup.
+ */
+async function postCiArtifactToPr(
+  config: PipelineRunConfig,
+  itemKey: string,
+  slug: string,
+): Promise<void> {
+  const { repoRoot, apmContext } = config;
+  const branch = `feature/${slug}`;
+  const infraPlanFile = apmContext.config?.ciWorkflows?.infraPlanFile ?? "deploy-infra.yml";
+  const runIdOutput = execSync(
+    `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
+    { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+  ).toString().trim();
+
+  if (!runIdOutput) return;
+
+  // Dedup: skip if we already posted a plan comment for this CI run
+  const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
+  let alreadyPosted = false;
+  try {
+    const existingComments = execSync(
+      `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
+      { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
+    ).toString();
+    alreadyPosted = existingComments.includes(marker);
+  } catch { /* ignore — proceed to post */ }
+
+  if (alreadyPosted) {
+    console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
+    return;
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
+  try {
+    execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
+      cwd: repoRoot, stdio: "pipe", timeout: 60_000,
+    });
+    const planFile = path.join(tmpDir, "plan-output.txt");
+    if (fs.existsSync(planFile)) {
+      const planText = fs.readFileSync(planFile, "utf-8").trim();
+      const prCommentTemplate = (apmContext.config?.ciWorkflows as Record<string, unknown> | undefined)?.pr_comment_template as string | undefined
+        ?? "> Comment `/dagent approve-infra` to apply this plan.";
+      const commentBody = [
+        marker,
+        "### Terraform Plan — `success`",
+        "",
+        "<details><summary>Click to expand plan output</summary>",
+        "",
+        "```",
+        planText,
+        "```",
+        "",
+        "</details>",
+        "",
+        prCommentTemplate,
+      ].join("\n");
+      const commentFile = path.join(tmpDir, "plan-comment.md");
+      fs.writeFileSync(commentFile, commentBody, "utf-8");
+      execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
+        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
+      });
+      console.log(`  📋 Posted Terraform plan to Draft PR`);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // runPushCode
@@ -129,26 +205,14 @@ export async function runPushCode(
     await completeItem(slug, itemKey);
     console.log(`  ✅ ${itemKey} complete (deterministic)`);
 
-    itemSummary.outcome = "completed";
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    itemSummary.intents.push("Deterministic push — no agent session");
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-    return { summary: itemSummary, halt: false, createPr: false };
+    return finishItem(itemSummary, "completed", stepStart, config, state, { intents: ["Deterministic push — no agent session"] });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Deterministic push failed: ${message}`);
     try {
       await failItem(slug, itemKey, `Deterministic push failed: ${message}`);
     } catch { /* best-effort */ }
-    itemSummary.outcome = "failed";
-    itemSummary.errorMessage = `Deterministic push failed: ${message}`;
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-    return { summary: itemSummary, halt: false, createPr: false };
+    return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: `Deterministic push failed: ${message}` });
   }
 }
 
@@ -223,62 +287,7 @@ export async function runPollCi(
       const pollNode = getWorkflowNode(config.apmContext, itemKey);
       if (pollNode?.post_ci_artifact_to_pr) {
         try {
-          const branch = `feature/${slug}`;
-          // Find the latest successful infra CI run on this branch
-          const infraPlanFile = config.apmContext.config?.ciWorkflows?.infraPlanFile ?? "deploy-infra.yml";
-          const runIdOutput = execSync(
-            `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
-            { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-          ).toString().trim();
-
-          if (runIdOutput) {
-            // Dedup: skip if we already posted a plan comment for this CI run
-            const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
-            let alreadyPosted = false;
-            try {
-              const existingComments = execSync(
-                `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
-                { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-              ).toString();
-              alreadyPosted = existingComments.includes(marker);
-            } catch { /* ignore — proceed to post */ }
-
-            if (alreadyPosted) {
-              console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
-            } else {
-              const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
-              execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
-                cwd: repoRoot, stdio: "pipe", timeout: 60_000,
-              });
-              const planFile = path.join(tmpDir, "plan-output.txt");
-              if (fs.existsSync(planFile)) {
-                const planText = fs.readFileSync(planFile, "utf-8").trim();
-                const prCommentTemplate = (config.apmContext.config?.ciWorkflows as Record<string, unknown> | undefined)?.pr_comment_template as string | undefined
-                  ?? "> Comment `/dagent approve-infra` to apply this plan.";
-                const commentBody = [
-                  marker,
-                  "### Terraform Plan — `success`",
-                  "",
-                  "<details><summary>Click to expand plan output</summary>",
-                  "",
-                  "```",
-                  planText,
-                  "```",
-                  "",
-                  "</details>",
-                  "",
-                  prCommentTemplate,
-                ].join("\n");
-                const commentFile = path.join(tmpDir, "plan-comment.md");
-                fs.writeFileSync(commentFile, commentBody, "utf-8");
-                execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
-                  cwd: repoRoot, stdio: "pipe", timeout: 30_000,
-                });
-                console.log(`  📋 Posted Terraform plan to Draft PR`);
-              }
-              fs.rmSync(tmpDir, { recursive: true, force: true });
-            }
-          }
+          await postCiArtifactToPr(config, itemKey, slug);
         } catch (planErr) {
           console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
         }
@@ -294,13 +303,7 @@ export async function runPollCi(
           console.error(`  🚫 App validation failed after CI: ${appFailure}`);
           const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
           try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
-          itemSummary.outcome = "failed";
-          itemSummary.errorMessage = failMsg;
-          itemSummary.finishedAt = new Date().toISOString();
-          itemSummary.durationMs = Date.now() - stepStart;
-          itemSummary.intents.push(`App validation failed — blocking before post-deploy agents`);
-          pipelineSummaries.push(itemSummary);
-          flushReports(config, state);
+          finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failMsg, intents: ["App validation failed — blocking before post-deploy agents"] });
           return handleFailureReroute(slug, itemKey, failMsg, appFailure, config, itemSummary, roamAvailable);
         }
       }
@@ -308,13 +311,7 @@ export async function runPollCi(
       await completeItem(slug, itemKey);
       console.log(`  ✅ ${itemKey} complete (all workflows passed)`);
 
-      itemSummary.outcome = "completed";
-      itemSummary.finishedAt = new Date().toISOString();
-      itemSummary.durationMs = Date.now() - stepStart;
-      itemSummary.intents.push("Deterministic CI poll — all workflows passed");
-      pipelineSummaries.push(itemSummary);
-      flushReports(config, state);
-      return { summary: itemSummary, halt: false, createPr: false };
+      return finishItem(itemSummary, "completed", stepStart, config, state, { intents: ["Deterministic CI poll — all workflows passed"] });
     } catch (err: unknown) {
       const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
       const ciLogs = execErr.stdout?.toString() ?? "";
@@ -340,13 +337,7 @@ export async function runPollCi(
         // Exhausted transient retries — treat as timeout
         console.warn(`  ⏳ Exhausted ${MAX_TRANSIENT_RETRIES} transient retries. Treating as timeout.`);
         await failItem(slug, itemKey, `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`);
-        itemSummary.outcome = "failed";
-        itemSummary.errorMessage = `CI polling transient errors exhausted — will retry`;
-        itemSummary.finishedAt = new Date().toISOString();
-        itemSummary.durationMs = Date.now() - stepStart;
-        pipelineSummaries.push(itemSummary);
-        flushReports(config, state);
-        return { summary: itemSummary, halt: false, createPr: false };
+        return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling transient errors exhausted — will retry" });
       }
 
       // Re-echo for terminal visibility
@@ -357,13 +348,7 @@ export async function runPollCi(
       if (execErr.status === 3) {
         console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
         await failItem(slug, itemKey, `CI polling was manually cancelled — will retry`);
-        itemSummary.outcome = "failed";
-        itemSummary.errorMessage = `CI polling was manually cancelled — will retry`;
-        itemSummary.finishedAt = new Date().toISOString();
-        itemSummary.durationMs = Date.now() - stepStart;
-        pipelineSummaries.push(itemSummary);
-        flushReports(config, state);
-        return { summary: itemSummary, halt: false, createPr: false };
+        return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling was manually cancelled — will retry" });
       }
 
       console.error(`  ✖ CI poll failed or had failures: ${message}`);
@@ -382,12 +367,7 @@ export async function runPollCi(
 
       await failItem(slug, itemKey, failureContext);
 
-      itemSummary.outcome = "failed";
-      itemSummary.errorMessage = failureContext;
-      itemSummary.finishedAt = new Date().toISOString();
-      itemSummary.durationMs = Date.now() - stepStart;
-      pipelineSummaries.push(itemSummary);
-      flushReports(config, state);
+      finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failureContext });
 
       const diagnostic = parseTriageDiagnostic(failureContext);
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : failureContext;
@@ -523,26 +503,14 @@ export async function runPublishPr(
     } catch { /* no changes to commit — OK */ }
 
     console.log(`  ✅ publish-pr complete (deterministic)`);
-    itemSummary.outcome = "completed";
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    itemSummary.intents.push("Deterministic PR publish — no agent session");
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-    return { summary: itemSummary, halt: false, createPr: true };
+    return finishItem(itemSummary, "completed", stepStart, config, state, { intents: ["Deterministic PR publish — no agent session"], createPr: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Deterministic PR publish failed: ${message}`);
     try {
       await failItem(slug, "publish-pr", `Deterministic PR publish failed: ${message}`);
     } catch { /* best-effort */ }
-    itemSummary.outcome = "failed";
-    itemSummary.errorMessage = `Deterministic PR publish failed: ${message}`;
-    itemSummary.finishedAt = new Date().toISOString();
-    itemSummary.durationMs = Date.now() - stepStart;
-    pipelineSummaries.push(itemSummary);
-    flushReports(config, state);
-    return { summary: itemSummary, halt: false, createPr: false };
+    return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: `Deterministic PR publish failed: ${message}` });
   } finally {
     if (tmpDir) {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }

@@ -51,6 +51,17 @@ const NO_CMD_BLOCK: RegExp[] = [];
 const NO_MCP_PREFIXES = new Set<string>();
 const PLAYWRIGHT_PREFIX = new Set(["playwright-"]);
 
+/** Default sandbox for migration-mode tests (all writes allowed, no restrictions) */
+import type { AgentSandbox } from "../agent-sandbox.js";
+const GLOBAL_SANDBOX: AgentSandbox = {
+  allowedWritePaths: GLOBAL_PATHS,
+  blockedCommandRegexes: NO_CMD_BLOCK,
+  safeMcpPrefixes: NO_MCP_PREFIXES,
+  allowedCoreTools: NO_CORE,
+  allowedMcpTools: NO_MCP,
+  hasSecurityProfile: false,
+};
+
 // ---------------------------------------------------------------------------
 // Regex constant smoke tests
 // ---------------------------------------------------------------------------
@@ -255,7 +266,7 @@ describe("checkShellCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPreToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const preHook = hooks.onPreToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -310,7 +321,7 @@ describe("buildSessionHooks.onPreToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSessionHooks.onPostToolUse", () => {
-  const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const postHook = hooks.onPostToolUse!;
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -384,7 +395,7 @@ describe("buildSessionHooks.onPostToolUse", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("is registered with correct name", () => {
@@ -498,7 +509,7 @@ describe("file_read tool handler", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell tool handler", () => {
-  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("is registered with correct name", () => {
@@ -611,7 +622,7 @@ describe("constants", () => {
 describe("buildSessionHooks onDenial callback", () => {
   it("invokes onDenial when a bash command is denied", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -626,7 +637,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("invokes onDenial for write_bash denials", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -641,7 +652,7 @@ describe("buildSessionHooks onDenial callback", () => {
 
   it("does NOT invoke onDenial for allowed commands", () => {
     const denied: string[] = [];
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (toolName) => denied.push(toolName));
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT, (toolName) => denied.push(toolName));
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -654,7 +665,7 @@ describe("buildSessionHooks onDenial callback", () => {
   });
 
   it("works without onDenial callback (backward compat)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
     const preHook = hooks.onPreToolUse!;
     const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
@@ -673,7 +684,7 @@ describe("buildSessionHooks onDenial callback", () => {
 // ---------------------------------------------------------------------------
 
 describe("file_read line range cap", () => {
-  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const fileReadTool = tools.find((t) => t.name === "file_read")!;
 
   it("caps end_line at FILE_READ_LINE_LIMIT lines from start", () => {
@@ -746,7 +757,7 @@ describe("file_read line range cap", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell env_vars type coercion", () => {
-  const tools = buildCustomTools(REPO_ROOT, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+  const tools = buildCustomTools(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
   const shellTool = tools.find((t) => t.name === "shell")!;
 
   it("coerces boolean env_vars to strings without crashing", () => {
@@ -785,7 +796,7 @@ describe("shell env_vars type coercion", () => {
 
 describe("onPostToolUse truncation with line range", () => {
   it("truncates built-in read_file even when startLine/endLine are set", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     // Simulate a read_file result with 700 lines
@@ -810,7 +821,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("does not truncate built-in read_file when within limit", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     const smallContent = Array.from({ length: 100 }, (_, i) => `line-${i + 1}`).join("\n");
@@ -830,7 +841,7 @@ describe("onPostToolUse truncation with line range", () => {
   });
 
   it("ignores non-read_file tools", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
     const postHook = hooks.onPostToolUse!;
 
     const result = postHook(
@@ -1067,7 +1078,7 @@ describe("Zero-Trust Gate", () => {
   const baseInput = { timestamp: Date.now(), cwd: REPO_ROOT };
 
   it("bypasses gate when both sets are empty (migration mode)", () => {
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "bash", toolArgs: { command: "npm test" }, ...baseInput },
       { sessionId: "test" },
@@ -1078,7 +1089,7 @@ describe("Zero-Trust Gate", () => {
 
   it("denies tool not in allowedCoreTools", () => {
     const coreOnly = new Set(["shell"]);
-    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedCoreTools: coreOnly }, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "file_read", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1090,7 +1101,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows tool in allowedCoreTools", () => {
     const coreOnly = new Set(["shell", "file_read"]);
-    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedCoreTools: coreOnly }, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "shell", toolArgs: { command: "npm test" }, ...baseInput },
       { sessionId: "test" },
@@ -1101,7 +1112,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows MCP tool when in allowedMcpTools", () => {
     const mcpTools = new Set(["roam_understand"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpTools, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedMcpTools: mcpTools }, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_understand", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1111,7 +1122,7 @@ describe("Zero-Trust Gate", () => {
 
   it("denies MCP tool NOT in allowedMcpTools", () => {
     const mcpTools = new Set(["roam_understand"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpTools, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedMcpTools: mcpTools }, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1123,7 +1134,7 @@ describe("Zero-Trust Gate", () => {
 
   it("allows all MCP tools when wildcard '*' is in allowedMcpTools", () => {
     const mcpWild = new Set(["*"]);
-    const hooks = buildSessionHooks(REPO_ROOT, NO_CORE, mcpWild, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT);
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedMcpTools: mcpWild }, APP_ROOT);
     const result = hooks.onPreToolUse!(
       { toolName: "roam_file_info", toolArgs: {}, ...baseInput },
       { sessionId: "test" },
@@ -1134,7 +1145,7 @@ describe("Zero-Trust Gate", () => {
   it("fires onDenial callback on Zero-Trust denial", () => {
     const denied: string[] = [];
     const coreOnly = new Set(["shell"]);
-    const hooks = buildSessionHooks(REPO_ROOT, coreOnly, NO_MCP, GLOBAL_PATHS, NO_CMD_BLOCK, NO_MCP_PREFIXES, APP_ROOT, (t) => denied.push(t));
+    const hooks = buildSessionHooks(REPO_ROOT, { ...GLOBAL_SANDBOX, allowedCoreTools: coreOnly }, APP_ROOT, (t) => denied.push(t));
     hooks.onPreToolUse!(
       { toolName: "write_file", toolArgs: {}, ...baseInput },
       { sessionId: "test" },

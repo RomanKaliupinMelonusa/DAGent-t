@@ -49,97 +49,43 @@ async function getMod(): Promise<PipelineStateMod> {
   return _mod;
 }
 
-export async function initState(slug: string, workflowType: string, contextJsonPath?: string): Promise<InitResult> {
-  const mod = await getMod();
-  return mod.initState(slug, workflowType, contextJsonPath);
-}
+// ---------------------------------------------------------------------------
+// Proxy-based auto-delegator — eliminates 19 identical wrapper functions.
+// Each property access returns an async function that lazily loads the .mjs
+// module and forwards to the corresponding function.
+// ---------------------------------------------------------------------------
 
-export async function completeItem(slug: string, itemKey: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.completeItem(slug, itemKey);
-}
+type AsyncPipelineStateMod = {
+  [K in keyof PipelineStateMod]: (...args: Parameters<PipelineStateMod[K]>) => Promise<ReturnType<PipelineStateMod[K]>>;
+};
 
-export async function failItem(slug: string, itemKey: string, message: string): Promise<FailResult> {
-  const mod = await getMod();
-  return mod.failItem(slug, itemKey, message);
-}
+const stateProxy = new Proxy({} as AsyncPipelineStateMod, {
+  get(_target, prop: string) {
+    return async (...args: unknown[]) => {
+      const mod = await getMod();
+      return (mod as unknown as Record<string, (...a: unknown[]) => unknown>)[prop](...args);
+    };
+  },
+});
 
-export async function resetScripts(slug: string, phase: string): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.resetScripts(slug, phase);
-}
-
-export async function resetPhases(slug: string, phasesCsv: string, reason: string, maxCycles?: number): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.resetPhases(slug, phasesCsv, reason, maxCycles);
-}
-
-export async function resetForDev(slug: string, itemKeys: string[], reason: string, maxCycles?: number): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.resetForDev(slug, itemKeys, reason, maxCycles);
-}
-
-export async function resetForRedeploy(slug: string, itemKeys: string[], reason: string, maxCycles?: number): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.resetForRedeploy(slug, itemKeys, reason, maxCycles);
-}
-
-export async function salvageForDraft(slug: string, failedItemKey: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.salvageForDraft(slug, failedItemKey);
-}
-
-export async function resumeAfterElevated(slug: string): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.resumeAfterElevated(slug);
-}
-
-export async function recoverElevated(slug: string, errorMessage: string): Promise<ResetResult> {
-  const mod = await getMod();
-  return mod.recoverElevated(slug, errorMessage);
-}
-
-export async function getStatus(slug: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.getStatus(slug);
-}
-
-export async function getNext(slug: string): Promise<NextAction> {
-  const mod = await getMod();
-  return mod.getNext(slug);
-}
-
-export async function getNextAvailable(slug: string): Promise<NextAction[]> {
-  const mod = await getMod();
-  return mod.getNextAvailable(slug);
-}
-
-export async function setNote(slug: string, note: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.setNote(slug, note);
-}
-
-export async function setDocNote(slug: string, itemKey: string, note: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.setDocNote(slug, itemKey, note);
-}
-
-export async function setUrl(slug: string, url: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.setUrl(slug, url);
-}
-
-export async function readState(slug: string): Promise<PipelineState> {
-  const mod = await getMod();
-  return mod.readState(slug);
-}
-
-export async function getDownstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
-  const mod = await getMod();
-  return mod.getDownstream(state, seedKeys);
-}
-
-export async function getUpstream(state: PipelineState, seedKeys: string[]): Promise<string[]> {
-  const mod = await getMod();
-  return mod.getUpstream(state, seedKeys);
-}
+// Named re-exports for backward compatibility — every consumer that imports
+// `import { completeItem } from "./state.js"` continues to work.
+export const initState = stateProxy.initState;
+export const completeItem = stateProxy.completeItem;
+export const failItem = stateProxy.failItem;
+export const resetScripts = stateProxy.resetScripts;
+export const resetPhases = stateProxy.resetPhases;
+export const resetForDev = stateProxy.resetForDev;
+export const resetForRedeploy = stateProxy.resetForRedeploy;
+export const salvageForDraft = stateProxy.salvageForDraft;
+export const resumeAfterElevated = stateProxy.resumeAfterElevated;
+export const recoverElevated = stateProxy.recoverElevated;
+export const getStatus = stateProxy.getStatus;
+export const getNext = stateProxy.getNext;
+export const getNextAvailable = stateProxy.getNextAvailable;
+export const setNote = stateProxy.setNote;
+export const setDocNote = stateProxy.setDocNote;
+export const setUrl = stateProxy.setUrl;
+export const readState = stateProxy.readState;
+export const getDownstream = stateProxy.getDownstream;
+export const getUpstream = stateProxy.getUpstream;

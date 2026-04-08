@@ -16,6 +16,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { defineTool } from "@github/copilot-sdk";
 import type { Tool, ToolResultObject } from "@github/copilot-sdk";
+import type { AgentSandbox } from "./agent-sandbox.js";
 
 // SessionHooks / PreToolUseHookOutput / PostToolUseHookOutput are not
 // re-exported from the SDK's main entry point, so we define minimal
@@ -350,14 +351,11 @@ export function checkShellCommand(cmd: string): string | null {
  */
 export function buildSessionHooks(
   repoRoot: string,
-  allowedCoreTools: Set<string>,
-  allowedMcpTools: Set<string>,
-  allowedWritePaths: RegExp[],
-  blockedCommandRegexes: RegExp[],
-  safeMcpPrefixes: Set<string>,
+  sandbox: AgentSandbox,
   appRoot: string,
   onDenial?: (toolName: string) => void,
 ): SessionHooks {
+  const { allowedCoreTools, allowedMcpTools, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
   ): PreToolUseHookOutput | void => {
@@ -453,11 +451,10 @@ export function buildSessionHooks(
  */
 export function buildCustomTools(
   repoRoot: string,
-  allowedWritePaths: RegExp[],
-  blockedCommandRegexes: RegExp[],
-  safeMcpPrefixes: Set<string>,
+  sandbox: AgentSandbox,
   appRoot: string,
 ): Tool<any>[] {
+  const { allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
   // -- file_read tool --
   const fileReadTool = defineTool("file_read", {
     description: "Read the contents of a file safely. Use this instead of 'cat'.",

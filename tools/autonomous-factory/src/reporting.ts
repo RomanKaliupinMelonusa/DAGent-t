@@ -193,54 +193,17 @@ export interface PreviousSummaryTotals {
 }
 
 /**
- * Parse the Overview table from an existing _SUMMARY.md.
- * Returns extracted totals or null if the file doesn't exist or can't be parsed.
- * Exported for unit testing.
+ * Load structured telemetry from a previous session's _SUMMARY-DATA.json sidecar.
+ * Returns null if the file doesn't exist (no Markdown fallback).
  */
-export function parsePreviousSummary(summaryPath: string): PreviousSummaryTotals | null {
-  let content: string;
+export function loadPreviousSummary(appRoot: string, slug: string): PreviousSummaryTotals | null {
+  const dataPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY-DATA.json`);
   try {
-    content = fs.readFileSync(summaryPath, "utf-8");
+    const raw = fs.readFileSync(dataPath, "utf-8");
+    return JSON.parse(raw) as PreviousSummaryTotals;
   } catch {
     return null;
   }
-
-  // Parse "| Total steps | 12 (10 passed, 2 failed/errored) |"
-  const stepsMatch = content.match(/\|\s*Total steps\s*\|\s*(\d+)\s*\((\d+)\s*passed,\s*(\d+)\s*failed/);
-  // Parse "| Total duration | 5m 30s |" — we stored this via formatDuration
-  const durationMatch = content.match(/\|\s*Total duration\s*\|\s*([^|]+)\|/);
-  // Parse "| Files changed | 42 |"
-  const filesMatch = content.match(/\|\s*Files changed\s*\|\s*(\d+)\s*\|/);
-  // Parse "| Total tokens | 1,234,567 |" (comma-formatted)
-  const tokensMatch = content.match(/\|\s*Total tokens\s*\|\s*([\d,]+)\s*\|/);
-  // Parse "| **Estimated cost** | **$12.3456** |"
-  const costMatch = content.match(/\|\s*\*\*Estimated cost\*\*\s*\|\s*\*\*\$(\d+\.\d+)\*\*\s*\|/);
-
-  if (!stepsMatch) return null;
-
-  // Parse duration string back to ms
-  let durationMs = 0;
-  if (durationMatch) {
-    const durStr = durationMatch[1].trim();
-    const minMatch = durStr.match(/(\d+)m/);
-    const secMatch = durStr.match(/(\d+)s/);
-    const msMatch = durStr.match(/(\d+)ms/);
-    if (msMatch) durationMs = parseInt(msMatch[1], 10);
-    else {
-      if (minMatch) durationMs += parseInt(minMatch[1], 10) * 60_000;
-      if (secMatch) durationMs += parseInt(secMatch[1], 10) * 1_000;
-    }
-  }
-
-  return {
-    steps: parseInt(stepsMatch[1], 10),
-    completed: parseInt(stepsMatch[2], 10),
-    failed: parseInt(stepsMatch[3], 10),
-    durationMs,
-    filesChanged: filesMatch ? parseInt(filesMatch[1], 10) : 0,
-    tokens: tokensMatch ? parseInt(tokensMatch[1].replace(/,/g, ""), 10) : 0,
-    costUsd: costMatch ? parseFloat(costMatch[1]) : 0,
-  };
 }
 
 /**
@@ -453,6 +416,24 @@ export function writePipelineSummary(
     console.log(`\n📋 Pipeline summary written to ${path.relative(repoRoot, summaryPath)}`);
   } catch {
     console.error("  ⚠ Could not write pipeline summary file");
+  }
+
+  // --- Structured JSON sidecar for cross-session telemetry merging ---
+  // Replaces regex-based parsing with deterministic JSON round-trip.
+  const dataPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY-DATA.json`);
+  const data: PreviousSummaryTotals = {
+    steps: mergedSteps,
+    completed: mergedCompleted,
+    failed: mergedFailed,
+    durationMs: mergedMs,
+    filesChanged: mergedFiles,
+    tokens: mergedTokens,
+    costUsd: mergedCost,
+  };
+  try {
+    fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    console.error("  ⚠ Could not write pipeline summary data file");
   }
 
   // --- Flight data JSON export (read-only API contract for external dashboards) ---

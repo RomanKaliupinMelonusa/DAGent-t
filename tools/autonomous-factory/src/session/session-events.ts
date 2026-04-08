@@ -23,6 +23,44 @@ import { extractShellWrittenFiles } from "../tool-harness.js";
 export const TOOL_LIMIT_FALLBACK_SOFT = 30;
 export const TOOL_LIMIT_FALLBACK_HARD = 40;
 
+// ---------------------------------------------------------------------------
+// Circuit breaker object
+// ---------------------------------------------------------------------------
+
+/**
+ * Encapsulates the cognitive circuit breaker state — soft warning
+ * and hard kill thresholds — in a single object that is shared between
+ * wireToolLogging, the onDenial callback, and any future trigger points.
+ */
+export class SessionCircuitBreaker {
+  private _tripped = false;
+  private _totalCalls = 0;
+  private _softFired = false;
+
+  constructor(
+    readonly soft: number,
+    readonly hard: number,
+    private onTrip: (total: number) => void,
+  ) {}
+
+  get tripped(): boolean { return this._tripped; }
+
+  recordCall(category: string, toolCounts: Record<string, number>): void {
+    toolCounts[category] = (toolCounts[category] ?? 0) + 1;
+    this._totalCalls = Object.values(toolCounts).reduce((a, b) => a + b, 0);
+    if (this._totalCalls >= this.hard && !this._tripped) {
+      this._tripped = true;
+      this.onTrip(this._totalCalls);
+    }
+  }
+
+  get shouldWarnSoft(): boolean {
+    if (this._softFired || this._totalCalls < this.soft) return false;
+    this._softFired = true;
+    return true;
+  }
+}
+
 /** Friendly labels for built-in SDK tools */
 export const TOOL_LABELS: Record<string, string> = {
   read_file:    "📄 Read",
@@ -120,24 +158,17 @@ export function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
   repoRoot: string,
-  toolLimits: { soft: number; hard: number },
+  breaker: SessionCircuitBreaker,
   sessionTimeout: number,
   triggerHeartbeat?: () => void,
-  hardLimitRef?: { fired: boolean },
 ): void {
-  const softLimit = toolLimits.soft;
-  const hardLimit = toolLimits.hard;
-  let softWarningFired = false;
-  // Use shared ref if provided (for synchronization with onDenial callback),
-  // otherwise create a local one for backward compatibility.
-  const hlRef = hardLimitRef ?? { fired: false };
   /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
   const preTimeoutThresholdMs = sessionTimeout * 0.8;
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
-    if (hlRef.fired) return;
+    if (breaker.tripped) return;
 
     const name = event.data.toolName;
     const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
@@ -146,21 +177,7 @@ export function wireToolLogging(
     console.log(`  ${label}${detail}`);
 
     const category = TOOL_CATEGORIES[name] ?? name;
-    itemSummary.toolCounts[category] = (itemSummary.toolCounts[category] ?? 0) + 1;
-
-    // Cognitive Circuit Breaker — hard kill (soft interception is on tool.execution_complete)
-    const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-    if (totalCalls >= hardLimit && !hlRef.fired) {
-      hlRef.fired = true;
-      console.error(
-        `\n  ✖ HARD LIMIT: Agent exceeded ${hardLimit} tool calls. ` +
-        `Force-disconnecting session to prevent runaway compute waste.\n`,
-      );
-      itemSummary.errorMessage = `Cognitive circuit breaker: exceeded ${hardLimit} tool calls`;
-      itemSummary.outcome = "error";
-      session.disconnect().catch(() => { /* best-effort */ });
-      return;
-    }
+    breaker.recordCall(category, itemSummary.toolCounts);
 
     const filePath = args?.filePath ? path.relative(repoRoot, String(args.filePath)) : null;
     if (filePath) {
@@ -205,16 +222,13 @@ export function wireToolLogging(
   // so the LLM actually reads it on its next turn. console.warn is invisible
   // to the agent — this mutates the content the SDK sends back to the model.
   session.on("tool.execution_complete", (event: any) => {
-    if (hlRef.fired) return;
+    if (breaker.tripped) return;
 
-    const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
-
-    if (!softWarningFired && totalCalls >= softLimit) {
-      softWarningFired = true;
-
+    if (breaker.shouldWarnSoft) {
+      const totalCalls = Object.values(itemSummary.toolCounts).reduce((a, b) => a + b, 0);
       const frustrationPrompt =
         `\n\n⚠️ SYSTEM NOTICE: You have executed ${totalCalls} tool calls in this session ` +
-        `(soft limit: ${softLimit}). You appear to be stuck in a debugging loop. ` +
+        `(soft limit: ${breaker.soft}). You appear to be stuck in a debugging loop. ` +
         `If you are fighting a persistent testing framework limitation, document it ` +
         `with pipeline:doc-note and test.skip() the test. If this is a real ` +
         `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
@@ -226,7 +240,7 @@ export function wireToolLogging(
       appendToToolResult(event.data, frustrationPrompt);
 
       console.warn(
-        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${softLimit} calls.\n`,
+        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${breaker.soft} calls.\n`,
       );
     }
 

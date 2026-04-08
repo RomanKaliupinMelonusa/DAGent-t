@@ -12,7 +12,7 @@ import type { ApmWorkflowNode } from "../apm-types.js";
 import type { ItemSummary } from "../types.js";
 import { parseTriageDiagnostic } from "../triage.js";
 import { writePipelineSummary, writeTerminalLog } from "../reporting.js";
-import type { PipelineRunConfig, PipelineRunState } from "../session-runner.js";
+import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helpers
@@ -185,4 +185,31 @@ export function flushReports(config: PipelineRunConfig, state: PipelineRunState)
   const { appRoot, repoRoot, baseBranch, slug, apmContext } = config;
   writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
   writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
+}
+
+// ---------------------------------------------------------------------------
+// Finish-item helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Finalize an item summary, push it to the pipeline summaries, flush reports,
+ * and return a SessionResult. Eliminates the repeated 6-line pattern across
+ * session-runner.ts and script-executor.ts.
+ */
+export function finishItem(
+  itemSummary: ItemSummary,
+  outcome: ItemSummary["outcome"],
+  stepStart: number,
+  config: PipelineRunConfig,
+  state: PipelineRunState,
+  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; intents?: string[] },
+): SessionResult {
+  itemSummary.outcome = outcome;
+  if (opts?.errorMessage) itemSummary.errorMessage = opts.errorMessage;
+  if (opts?.intents) itemSummary.intents.push(...opts.intents);
+  itemSummary.finishedAt = new Date().toISOString();
+  itemSummary.durationMs = Date.now() - stepStart;
+  state.pipelineSummaries.push(itemSummary);
+  flushReports(config, state);
+  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false };
 }
