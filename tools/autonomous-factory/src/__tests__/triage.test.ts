@@ -19,6 +19,25 @@ import { normalizeDiagnosticTrace } from "../session-runner.js";
 
 const NO_NA = new Set<string>();
 
+/**
+ * The canonical unfixable_signals fixture — mirrors apps/sample-app/.apm/workflows.yml.
+ * Passed to isUnfixableError() and triageFailure() in tests.
+ */
+const UNFIXABLE_SIGNALS = [
+  "authorization_requestdenied",
+  "aadsts700016",
+  "aadsts7000215",
+  "application.readwrite",
+  "insufficient privileges",
+  "does not have authorization",
+  "subscription not found",
+  "resource group not found",
+  "cannot apply incomplete plan",
+  "error acquiring the state lock",
+  "resource already exists",
+  "state blob is already locked",
+];
+
 function makeJsonMsg(faultDomain: string, trace: string): string {
   return JSON.stringify({ fault_domain: faultDomain, diagnostic_trace: trace });
 }
@@ -447,19 +466,19 @@ describe("triageFailure (malformed JSON → retriever fallback)", () => {
 
 describe("triageFailure (IAM/permission env signals)", () => {
   it("routes authorization_requestdenied as blocked (unfixable — Tier 0)", async () => {
-    const result = await triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const result = await triageFailure("poll-ci", "Authorization_RequestDenied: 403 on azuread_application.main", NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     // Unfixable IAM error → empty array (blocked), not environment retry
     assert.deepStrictEqual(result, []);
   });
 
   it("routes insufficient privileges as blocked (unfixable — Tier 0)", async () => {
-    const result = await triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const result = await triageFailure("poll-ci", "403 Forbidden: Insufficient privileges to register application", NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     // "Insufficient privileges" is an unfixable signal
     assert.deepStrictEqual(result, []);
   });
 
   it("routes 'does not have authorization' as blocked (unfixable — Tier 0)", async () => {
-    const result = await triageFailure("integration-test", "Principal does not have authorization to perform this action", NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const result = await triageFailure("integration-test", "Principal does not have authorization to perform this action", NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.deepStrictEqual(result, []);
   });
 
@@ -833,83 +852,83 @@ describe("triageFailure with DOMAIN: header (Tier 2)", () => {
 
 describe("isUnfixableError", () => {
   it("detects Insufficient privileges", () => {
-    assert.equal(isUnfixableError("Error: Insufficient privileges to perform operation"), "insufficient privileges");
+    assert.equal(isUnfixableError("Error: Insufficient privileges to perform operation", UNFIXABLE_SIGNALS), "insufficient privileges");
   });
 
   it("detects Authorization_RequestDenied", () => {
-    assert.equal(isUnfixableError("Authorization_RequestDenied: Caller does not have permission"), "authorization_requestdenied");
+    assert.equal(isUnfixableError("Authorization_RequestDenied: Caller does not have permission", UNFIXABLE_SIGNALS), "authorization_requestdenied");
   });
 
   it("detects AADSTS700016", () => {
-    assert.equal(isUnfixableError("AADSTS700016: Application not found in tenant"), "aadsts700016");
+    assert.equal(isUnfixableError("AADSTS700016: Application not found in tenant", UNFIXABLE_SIGNALS), "aadsts700016");
   });
 
   it("detects AADSTS7000215", () => {
-    assert.equal(isUnfixableError("AADSTS7000215: Invalid client secret provided"), "aadsts7000215");
+    assert.equal(isUnfixableError("AADSTS7000215: Invalid client secret provided", UNFIXABLE_SIGNALS), "aadsts7000215");
   });
 
   it("detects 'does not have authorization'", () => {
-    assert.equal(isUnfixableError("Principal does not have authorization to perform action"), "does not have authorization");
+    assert.equal(isUnfixableError("Principal does not have authorization to perform action", UNFIXABLE_SIGNALS), "does not have authorization");
   });
 
   it("detects 'subscription not found'", () => {
-    assert.equal(isUnfixableError("The subscription '...' could not be found — subscription not found"), "subscription not found");
+    assert.equal(isUnfixableError("The subscription '...' could not be found — subscription not found", UNFIXABLE_SIGNALS), "subscription not found");
   });
 
   it("detects 'resource group not found'", () => {
-    assert.equal(isUnfixableError("Resource group not found: rg-sample-dev"), "resource group not found");
+    assert.equal(isUnfixableError("Resource group not found: rg-sample-dev", UNFIXABLE_SIGNALS), "resource group not found");
   });
 
   it("returns null for fixable errors", () => {
-    assert.equal(isUnfixableError("error TS2591: Cannot find name 'crypto'"), null);
+    assert.equal(isUnfixableError("error TS2591: Cannot find name 'crypto'", UNFIXABLE_SIGNALS), null);
   });
 
   it("returns null for empty message", () => {
-    assert.equal(isUnfixableError(""), null);
+    assert.equal(isUnfixableError("", UNFIXABLE_SIGNALS), null);
   });
 
   it("returns null for CORS 403 (fixable — not IAM)", () => {
-    assert.equal(isUnfixableError("CORS error: 403 Forbidden on OPTIONS /api/endpoint"), null);
+    assert.equal(isUnfixableError("CORS error: 403 Forbidden on OPTIONS /api/endpoint", UNFIXABLE_SIGNALS), null);
   });
 
   it("is case-insensitive", () => {
-    assert.equal(isUnfixableError("AUTHORIZATION_REQUESTDENIED: no permission"), "authorization_requestdenied");
+    assert.equal(isUnfixableError("AUTHORIZATION_REQUESTDENIED: no permission", UNFIXABLE_SIGNALS), "authorization_requestdenied");
   });
 
   it("detects 'cannot apply incomplete plan' (Terraform)", () => {
-    assert.equal(isUnfixableError("Error: cannot apply incomplete plan"), "cannot apply incomplete plan");
+    assert.equal(isUnfixableError("Error: cannot apply incomplete plan", UNFIXABLE_SIGNALS), "cannot apply incomplete plan");
   });
 
   it("detects 'error acquiring the state lock' (Terraform)", () => {
-    assert.equal(isUnfixableError("Error: error acquiring the state lock"), "error acquiring the state lock");
+    assert.equal(isUnfixableError("Error: error acquiring the state lock", UNFIXABLE_SIGNALS), "error acquiring the state lock");
   });
 
   it("detects 'resource already exists' (Terraform)", () => {
-    assert.equal(isUnfixableError("A resource with the ID already exists - resource already exists"), "resource already exists");
+    assert.equal(isUnfixableError("A resource with the ID already exists - resource already exists", UNFIXABLE_SIGNALS), "resource already exists");
   });
 
   it("detects 'state blob is already locked' (Terraform)", () => {
-    assert.equal(isUnfixableError("Error locking state: state blob is already locked"), "state blob is already locked");
+    assert.equal(isUnfixableError("Error locking state: state blob is already locked", UNFIXABLE_SIGNALS), "state blob is already locked");
   });
 });
 
 describe("triageFailure with unfixable errors (Tier 0)", () => {
   it("returns empty array for Authorization_RequestDenied (blocked)", async () => {
     const msg = "Authorization_RequestDenied: cannot access resource";
-    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.deepStrictEqual(keys, []);
   });
 
   it("returns empty array for Authorization_RequestDenied even with backend keywords", async () => {
     // The error mentions "backend" and "API", but unfixable takes priority
     const msg = "Authorization_RequestDenied: Backend API principal does not have permission";
-    const keys = await triageFailure("integration-test", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const keys = await triageFailure("integration-test", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.deepStrictEqual(keys, []);
   });
 
   it("returns empty array for subscription not found", async () => {
     const msg = "Error: subscription not found — check Azure portal configuration";
-    const keys = await triageFailure("live-ui", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const keys = await triageFailure("live-ui", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, undefined, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.deepStrictEqual(keys, []);
   });
 
@@ -921,7 +940,7 @@ describe("triageFailure with unfixable errors (Tier 0)", () => {
 
   it("CORS 403 is NOT unfixable (routes normally via retriever)", async () => {
     const msg = "CORS error: 403 Forbidden on OPTIONS /api/endpoint";
-    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, TEST_KB);
+    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, TEST_KB, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
     // CORS routes via KB "403 forbidden" → infra (correct per safety rules)
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
@@ -929,7 +948,7 @@ describe("triageFailure with unfixable errors (Tier 0)", () => {
 
   it("fixable errors still route normally (not blocked)", async () => {
     const msg = "error TS2591: Cannot find name 'crypto' in /backend/src/functions/fn-demo.ts";
-    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, TEST_KB);
+    const keys = await triageFailure("poll-ci", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, TEST_KB, undefined, undefined, undefined, UNFIXABLE_SIGNALS);
     assert.ok(keys.length > 0, `Expected non-empty reset keys: ${keys}`);
     assert.ok(keys.includes("backend-dev"));
   });

@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { approveAll } from "@github/copilot-sdk";
-import type { TriageSignature } from "../apm-types.js";
+import type { ApmFaultRoute, TriageSignature } from "../apm-types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,11 +40,19 @@ function buildTriagePrompt(
   trace: string,
   domains: string[],
   topMatches: TriageSignature[],
+  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
     ? `\n\nPartial matches from the knowledge base (not confident enough for deterministic routing):\n${topMatches.map((m) => `- "${m.error_snippet}" → ${m.fault_domain}: ${m.reason}`).join("\n")}`
     : "";
+
+  const rules = domains
+    .map((d) => {
+      const desc = faultRouting[d]?.description;
+      return desc ? `- "${d}" = ${desc}` : `- "${d}"`;
+    })
+    .join("\n");
 
   return `You are a fault-domain classifier for an agentic CI/CD pipeline.
 
@@ -53,14 +61,7 @@ Given the error trace below, determine which fault domain owns the root cause.
 You MUST select exactly one of: ${domainList}
 
 Rules:
-- "infra" = missing cloud resources, CORS, auth config, Terraform errors, env vars
-- "backend" = application logic errors, 500s, import failures, API bugs
-- "frontend" = UI rendering, selectors, Playwright failures, CSS/HTML issues
-- "both" = error clearly spans backend and frontend
-- "cicd" = GitHub Actions workflow file errors, deploy pipeline config
-- "environment" = transient auth/credential glitch, not a code bug
-- "blocked" = unfixable without human intervention (permissions, subscriptions)
-- "test-code" = the test itself is wrong (bad locator, race condition, contradicts spec)
+${rules}
 - For stack-specific domains not listed above, use the closest match from the allowed list.
 
 Output ONLY valid JSON: {"fault_domain": "<domain>", "reason": "<one-sentence explanation>"}
@@ -98,6 +99,7 @@ function appendNovelTriageLog(
  * @param topMatches - Partial matches from the local retriever (injected as context)
  * @param slug     - Feature slug (for novel triage log)
  * @param appRoot  - App root path (for novel triage log)
+ * @param faultRouting - Fault routing config with optional descriptions for LLM prompt
  * @returns The classified fault domain and reason
  */
 export async function askLlmRouter(
@@ -107,6 +109,7 @@ export async function askLlmRouter(
   topMatches: TriageSignature[],
   slug: string,
   appRoot: string,
+  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
@@ -114,7 +117,7 @@ export async function askLlmRouter(
   };
 
   try {
-    const prompt = buildTriagePrompt(trace, domains, topMatches);
+    const prompt = buildTriagePrompt(trace, domains, topMatches, faultRouting);
     const session = await client.createSession({
       onPermissionRequest: approveAll,
       systemMessage: {

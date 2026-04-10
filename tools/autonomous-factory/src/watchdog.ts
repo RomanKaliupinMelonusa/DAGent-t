@@ -26,7 +26,7 @@ import { loadApmContext } from "./apm-context-loader.js";
 import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
-import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkAzureLogin, checkGitHubLogin, buildRoamIndex } from "./preflight.js";
+import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkGitHubLogin, buildRoamIndex } from "./preflight.js";
 import { writePipelineSummary, writeTerminalLog, loadPreviousSummary } from "./reporting.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
@@ -134,7 +134,6 @@ async function main(): Promise<void> {
 
   // --- Pre-flight checks ---
   console.log("\n  🔐 CLI Authentication Status:");
-  checkAzureLogin();
   checkGitHubLogin();
   console.log("");
 

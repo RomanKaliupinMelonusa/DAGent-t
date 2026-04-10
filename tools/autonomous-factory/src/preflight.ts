@@ -54,25 +54,6 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
 }
 
 /**
- * Validate that the Azure CLI (`az`) is logged in.
- * Non-fatal — logs ✔ or ✖ and returns the result.
- */
-export function checkAzureLogin(): boolean {
-  try {
-    const out = execSync("az account show --query name -o tsv", {
-      encoding: "utf-8",
-      timeout: 15_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-    console.log(`  ✔ Azure CLI logged in (${out})`);
-    return true;
-  } catch {
-    console.log("  ✖ Azure CLI not logged in — run 'az login' to authenticate");
-    return false;
-  }
-}
-
-/**
  * Validate that the GitHub CLI (`gh`) is logged in.
  * Non-fatal — logs ✔ or ✖ and returns the result.
  */

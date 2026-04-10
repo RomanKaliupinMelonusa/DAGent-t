@@ -292,11 +292,13 @@ export function initState(slug, workflowType, contextJsonPath) {
   const nodeTypes = {};
   const nodeCategories = {};
   const jsonGated = {};
+  const salvageSurvivors = [];
   for (const [key, node] of nodeEntries) {
     dependencies[key] = node.depends_on || [];
     nodeTypes[key] = node.type || "agent";
     nodeCategories[key] = node.category;
     jsonGated[key] = node.triage_json_gated ?? false;
+    if (node.salvage_survivor) salvageSurvivors.push(key);
   }
 
   // Compute N/A keys from run_if: if run_if is non-empty and workflowType is NOT in it, mark N/A
@@ -332,6 +334,7 @@ export function initState(slug, workflowType, contextJsonPath) {
     nodeCategories,
     jsonGated,
     naByType,
+    salvageSurvivors,
   };
 
   writeState(slug, state);
@@ -446,11 +449,14 @@ export function salvageForDraft(slug, failedItemKey) {
 
   // Cascade: mark the failed item + all transitive downstream dependents as na
   const skipKeys = new Set(getDownstream(state, [failedItemKey]));
-  // Force the docs+PR finalization pair to pending for draft PR creation.
-  // These are the minimum path: docs-archived writes the summary, publish-pr creates the PR.
-  // Other finalize nodes (code-cleanup, doc-architect) get na'd since their work is inapplicable
-  // in degraded mode. publish-pr still runs because na'd deps count as resolved.
-  const forcePendingKeys = new Set(["docs-archived", "publish-pr"]);
+  // Force salvage survivor nodes to pending for draft PR creation.
+  // These are the minimum path for degraded mode.
+  // If salvageSurvivors is not persisted (legacy state), fall back to finalize-phase nodes.
+  const forcePendingKeys = new Set(
+    (state.salvageSurvivors && state.salvageSurvivors.length > 0)
+      ? state.salvageSurvivors
+      : state.items.filter(i => i.phase === "finalize").map(i => i.key)
+  );
   const skippedKeys = [];
   for (const item of state.items) {
     if (forcePendingKeys.has(item.key)) {
@@ -596,7 +602,10 @@ export function recoverElevated(slug, errorMessage) {
 
     const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
     // Reset infra dev entry + all downstream dependents
-    const resetSeed = infraDevKey || "infra-architect";
+    if (!infraDevKey) {
+      throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
+    }
+    const resetSeed = infraDevKey;
     const keysToReset = new Set(getDownstream(state, [resetSeed]));
     let resetCount = 0;
     for (const it of state.items) {
@@ -1330,11 +1339,8 @@ switch (command) {
     console.error("  doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item");
     console.error("  set-url           <slug> <url>                — Set deployed URL");
     console.error("");
-    console.error("Item keys: schema-dev, infra-architect, push-infra, create-draft-pr, poll-infra-plan,");
-    console.error("           await-infra-approval, infra-handoff,");
-    console.error("           backend-dev, frontend-dev, backend-unit-test, frontend-unit-test,");
-    console.error("           push-app, poll-app-ci, integration-test, live-ui,");
-    console.error("           code-cleanup, docs-archived, publish-pr");
+    console.error("Item keys are dynamically defined in your app's workflows.yml");
+    console.error("");
     console.error("");
     console.error("Workflow types: Backend, Frontend, Full-Stack, Infra");
     process.exit(1);

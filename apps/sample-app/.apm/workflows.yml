@@ -226,6 +226,7 @@ default:
       depends_on: [code-cleanup]
       commit_scope: docs
       generates_change_manifest: true
+      salvage_survivor: true
 
     doc-architect:
       type: agent
@@ -246,10 +247,28 @@ default:
       depends_on: [doc-architect]
       commit_scope: pipeline
       script_type: publish
+      salvage_survivor: true
 
   # ── Cycle Budgets ──────────────────────────────────────────────────
   max_redevelopment_cycles: 5
   max_redeploy_cycles: 3
+
+  # ── Unfixable Signals ──────────────────────────────────────────────
+  # Error substrings that signal conditions no agent can fix.
+  # When any signal matches, the pipeline halts for human intervention.
+  unfixable_signals:
+    - "authorization_requestdenied"
+    - "aadsts700016"
+    - "aadsts7000215"
+    - "application.readwrite"
+    - "insufficient privileges"
+    - "does not have authorization"
+    - "subscription not found"
+    - "resource group not found"
+    - "cannot apply incomplete plan"
+    - "error acquiring the state lock"
+    - "resource already exists"
+    - "state blob is already locked"
 
   # ── Fault Routing (Triage-as-Code) ────────────────────────────────
   # Maps fault domains to the exact set of nodes to reset.
@@ -257,10 +276,13 @@ default:
   # Use "$SELF" to include the calling item (e.g. live-ui, integration-test).
   fault_routing:
     backend:
+      description: "application logic errors, 500s, import failures, API bugs"
       reset_nodes: [backend-dev, backend-unit-test, "$SELF"]
     frontend:
+      description: "UI rendering, selectors, Playwright failures, CSS/HTML issues"
       reset_nodes: [frontend-dev, frontend-unit-test, "$SELF"]
     both:
+      description: "error clearly spans backend and frontend"
       reset_nodes: [backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
     schemas:
       reset_nodes: [schema-dev, infra-architect, backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
@@ -269,6 +291,7 @@ default:
     "backend+infra":
       reset_nodes: [infra-architect, backend-dev, backend-unit-test, "$SELF"]
     cicd:
+      description: "GitHub Actions workflow file errors, deploy pipeline config"
       reset_nodes: [push-app, poll-app-ci]
     deployment-stale:
       reset_nodes: [push-app, poll-app-ci]
@@ -277,10 +300,14 @@ default:
     deployment-stale-frontend:
       reset_nodes: [push-app, poll-app-ci]
     infra:
+      description: "missing cloud resources, CORS, auth config, Terraform errors, env vars"
       reset_nodes: [infra-architect, push-infra, poll-infra-plan, create-draft-pr, await-infra-approval, infra-handoff, "$SELF"]
     test-code:
+      description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
       reset_nodes: ["$SELF"]
     environment:
+      description: "transient auth/credential glitch, not a code bug"
       reset_nodes: ["$SELF"]
     blocked:
+      description: "unfixable without human intervention (permissions, subscriptions)"
       reset_nodes: []
