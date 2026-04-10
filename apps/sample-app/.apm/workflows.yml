@@ -258,15 +258,12 @@ default:
   fault_routing:
     backend:
       reset_nodes: [backend-dev, backend-unit-test, "$SELF"]
-      keyword_signals: ["api", "endpoint", "500", "502", "503", "504", "function", "timeout", "backend", "cosmos", "storage", "queue", "apim", "gateway", "empty response", "response format", "data mapping", "404", "/backend/", "/infra/"]
     frontend:
       reset_nodes: [frontend-dev, frontend-unit-test, "$SELF"]
-      keyword_signals: ["ui", "frontend", "component", "page", "render", "selector", "testid", "element", "visible", "screenshot", "html", "css", "navigation", "route", "display", "button", "form", "modal", "handler", "event binding", "javascript error", "console error", "click", "/frontend/", "/e2e/"]
     both:
       reset_nodes: [backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
     schemas:
       reset_nodes: [schema-dev, infra-architect, backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
-      keyword_signals: ["packages/schemas", "@branded/schemas", "schema-dev", "schema validation", "schema build"]
     "frontend+infra":
       reset_nodes: [infra-architect, frontend-dev, frontend-unit-test, "$SELF"]
     "backend+infra":
@@ -281,7 +278,6 @@ default:
       reset_nodes: [push-app, poll-app-ci]
     infra:
       reset_nodes: [infra-architect, push-infra, poll-infra-plan, create-draft-pr, await-infra-approval, infra-handoff, "$SELF"]
-      keyword_signals: ["terraform", "tfstate", "state lock", "provider registry", ".tf", "resource already exists", "azurerm_", "azapi_", "terraform plan", "terraform apply", "terraform init", "hcl", "provider configuration", "cors", "access-control-allow-origin"]
     test-code:
       reset_nodes: ["$SELF"]
     environment:

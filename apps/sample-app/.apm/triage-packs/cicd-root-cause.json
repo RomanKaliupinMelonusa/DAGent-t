@@ -1,0 +1,36 @@
+{
+  "name": "cicd-root-cause",
+  "stack": "github-actions",
+  "signatures": [
+    {
+      "error_snippet": ".github/workflows",
+      "fault_domain": "cicd",
+      "reason": "Root cause involves GitHub Actions workflow files"
+    },
+    {
+      "error_snippet": "never committed",
+      "fault_domain": "cicd",
+      "reason": "Working-tree fix to workflow file was never committed"
+    },
+    {
+      "error_snippet": "working-tree fix",
+      "fault_domain": "cicd",
+      "reason": "Working-tree fix applied but not persisted to branch"
+    },
+    {
+      "error_snippet": "workflow file",
+      "fault_domain": "cicd",
+      "reason": "GitHub Actions workflow file error"
+    },
+    {
+      "error_snippet": "deploy artifact step",
+      "fault_domain": "cicd",
+      "reason": "CI/CD deploy artifact step misconfigured"
+    },
+    {
+      "error_snippet": "deploy package.json",
+      "fault_domain": "cicd",
+      "reason": "CI/CD deploy package.json step misconfigured"
+    }
+  ]
+}

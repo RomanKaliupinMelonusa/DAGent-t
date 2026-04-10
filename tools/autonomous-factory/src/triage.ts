@@ -248,16 +248,6 @@ function applyFaultDomain(
 // CI/CD deploy augmentation — Defense-in-Depth for Tier 1
 // ---------------------------------------------------------------------------
 
-/** CI/CD root-cause indicators — phrases proving the fix is in `.github/workflows/`. */
-const CICD_ROOT_CAUSE_INDICATORS = [
-  ".github/workflows",
-  "never committed",
-  "working-tree fix",
-  "workflow file",
-  "deploy artifact step",
-  "deploy package.json",
-];
-
 /** Result of fault domain validation — keeps the original domain but may signal
  *  that deploy items should be added to the reset list for cicd root causes. */
 export interface ValidationResult {
@@ -273,8 +263,9 @@ export interface ValidationResult {
  * Defense-in-Depth: detects when CI/CD root-cause indicators prove the fix
  * involves `.github/workflows/` files.
  *
- * Uses the local retriever to check for cicd-domain triage pack matches,
- * plus hardcoded CICD_ROOT_CAUSE_INDICATORS for defense-in-depth.
+ * Uses the local retriever to check for cicd-domain triage pack matches
+ * (signals migrated from the former hardcoded CICD_ROOT_CAUSE_INDICATORS array
+ * into `.apm/triage-packs/cicd-root-cause.json`).
  *
  * Never augments "cicd" (already routes to deploy), "deployment-stale*"
  * variants (code is correct), "blocked" (unfixable), or "environment" (not a code bug).
@@ -291,17 +282,12 @@ export function validateFaultDomain(
     return { domain: agentDomain, augmentWithDeploy: false };
   }
 
-  const msgLower = errorMessage.toLowerCase();
-
-  // Check hardcoded CI/CD root-cause indicators
-  const hasCicdRootCause = CICD_ROOT_CAUSE_INDICATORS.some((s) => msgLower.includes(s));
-
-  // Check triage KB for cicd-domain matches (if available)
+  // Check triage KB for cicd-domain matches (includes former CICD_ROOT_CAUSE_INDICATORS)
   const hasCicdKbMatch = triageKb
     ? retrieveTopMatches(errorMessage, triageKb).some((m) => m.fault_domain === "cicd")
     : false;
 
-  if (hasCicdRootCause || hasCicdKbMatch) {
+  if (hasCicdKbMatch) {
     console.log(`  ⚠ Triage validation: cicd root cause detected in ${agentDomain} error — augmenting with deploy items`);
     return { domain: agentDomain, augmentWithDeploy: true };
   }

@@ -303,7 +303,7 @@ When `poll-app-ci` or `poll-infra-plan` fails, the orchestrator handles triage *
 6. `resetForDev(slug, resetKeys, errorMsg)` resets the pipeline
 7. The function returns directly — no fall-through to the SDK session path
 
-**Cancelled runs** emit `CI_RUN_CANCELLED_MANUALLY`, which matches `envSignals` in `triageByKeywords()` → routes to environment fault domain (retry the poll item only, don't reset dev items).
+**Cancelled runs** emit `CI_RUN_CANCELLED_MANUALLY`, which is matched by an `environment`-domain signature in the triage knowledge base (or classified as `environment` by the LLM Router) → routes to environment fault domain (retry the poll item only, don't reset dev items).
 
 **Poll timeouts** (exit code 2) trigger a transient retry loop — the polling item is retried without resetting any dev items.
 

@@ -28,17 +28,17 @@ function makeJsonMsg(faultDomain: string, trace: string): string {
  * WYSIWYG: the kernel returns exactly what is declared. "$SELF" → itemKey at runtime.
  */
 const FAULT_ROUTING: Record<string, ApmFaultRoute> = {
-  backend:                    { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"], keyword_signals: ["api", "endpoint", "500", "502", "503", "504", "function", "timeout", "backend", "cosmos", "storage", "queue", "apim", "gateway", "empty response", "response format", "data mapping", "404", "/backend/", "/infra/"] },
-  frontend:                   { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["ui", "frontend", "component", "page", "render", "selector", "testid", "element", "visible", "screenshot", "html", "css", "navigation", "route", "display", "button", "form", "modal", "handler", "event binding", "javascript error", "console error", "click", "/frontend/", "/e2e/"] },
+  backend:                    { reset_nodes: ["backend-dev", "backend-unit-test", "$SELF"] },
+  frontend:                   { reset_nodes: ["frontend-dev", "frontend-unit-test", "$SELF"] },
   both:                       { reset_nodes: ["backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", "$SELF"] },
-  schemas:                    { reset_nodes: ["schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", "$SELF"], keyword_signals: ["packages/schemas", "@branded/schemas", "schema-dev", "schema validation", "schema build"] },
+  schemas:                    { reset_nodes: ["schema-dev", "infra-architect", "backend-dev", "backend-unit-test", "frontend-dev", "frontend-unit-test", "$SELF"] },
   "frontend+infra":           { reset_nodes: ["infra-architect", "frontend-dev", "frontend-unit-test", "$SELF"] },
   "backend+infra":            { reset_nodes: ["infra-architect", "backend-dev", "backend-unit-test", "$SELF"] },
   cicd:                       { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale":         { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale-backend": { reset_nodes: ["push-app", "poll-app-ci"] },
   "deployment-stale-frontend":{ reset_nodes: ["push-app", "poll-app-ci"] },
-  infra:                      { reset_nodes: ["infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr", "await-infra-approval", "infra-handoff", "$SELF"], keyword_signals: ["terraform", "tfstate", "state lock", "provider registry", ".tf", "resource already exists", "azurerm_", "azapi_", "terraform plan", "terraform apply", "terraform init", "hcl", "provider configuration", "cors", "access-control-allow-origin"] },
+  infra:                      { reset_nodes: ["infra-architect", "push-infra", "poll-infra-plan", "create-draft-pr", "await-infra-approval", "infra-handoff", "$SELF"] },
   "test-code":                { reset_nodes: ["$SELF"] },
   environment:                { reset_nodes: ["$SELF"] },
   blocked:                    { reset_nodes: [] },
@@ -286,8 +286,13 @@ const TEST_KB: TriageSignature[] = [
   { error_snippet: "azurerm", fault_domain: "infra", reason: "Azure RM error" },
   { error_snippet: "cors", fault_domain: "infra", reason: "CORS configuration error" },
   { error_snippet: "403 forbidden", fault_domain: "infra", reason: "CORS/auth config error" },
-  // CI/CD
+  // CI/CD (migrated from former hardcoded CICD_ROOT_CAUSE_INDICATORS)
   { error_snippet: ".github/workflows", fault_domain: "cicd", reason: "CI/CD workflow error" },
+  { error_snippet: "never committed", fault_domain: "cicd", reason: "Working-tree fix never committed" },
+  { error_snippet: "working-tree fix", fault_domain: "cicd", reason: "Working-tree fix not persisted" },
+  { error_snippet: "workflow file", fault_domain: "cicd", reason: "GitHub Actions workflow file error" },
+  { error_snippet: "deploy artifact step", fault_domain: "cicd", reason: "CI/CD deploy artifact step misconfigured" },
+  { error_snippet: "deploy package.json", fault_domain: "cicd", reason: "CI/CD deploy package.json step misconfigured" },
   // Deployment-stale
   { error_snippet: "deployment stale", fault_domain: "deployment-stale", reason: "Stale deployment" },
   { error_snippet: "not in deployed build", fault_domain: "deployment-stale", reason: "Code not deployed" },
@@ -1000,6 +1005,8 @@ describe("validateFaultDomain", () => {
     const result = validateFaultDomain(
       "backend+infra",
       "deploy-backend.yml sets type: pkg.type but .github/workflows/deploy-backend.yml never committed the fix",
+      undefined,
+      TEST_KB,
     );
     // Domain stays backend+infra (dev agent runs to fix workflow file)
     assert.equal(result.domain, "backend+infra");
@@ -1011,6 +1018,8 @@ describe("validateFaultDomain", () => {
     const result = validateFaultDomain(
       "backend",
       "Error in workflow file .github/workflows/deploy-backend.yml — artifact step fails",
+      undefined,
+      TEST_KB,
     );
     assert.equal(result.domain, "backend");
     assert.equal(result.augmentWithDeploy, true);
@@ -1065,6 +1074,8 @@ describe("validateFaultDomain", () => {
     const result = validateFaultDomain(
       "frontend",
       "working-tree fix applied to .github/workflows/deploy-frontend.yml but never committed",
+      undefined,
+      TEST_KB,
     );
     assert.equal(result.domain, "frontend");
     assert.equal(result.augmentWithDeploy, true);
@@ -1084,7 +1095,7 @@ describe("triageFailure with cicd augmentation", () => {
       "backend+infra",
       "deploy-backend.yml sets type: pkg.type but .github/workflows/deploy-backend.yml never committed the fix",
     );
-    const keys = await triageFailure("integration-test", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES);
+    const keys = await triageFailure("integration-test", msg, NO_NA, FAULT_ROUTING, WORKFLOW_NODES, TEST_KB);
     // Infra-architect included (Correction 2)
     assert.ok(keys.includes("infra-architect"), `Expected infra-architect in: ${keys}`);
     // Dev agent runs (can edit .github/ files with Fix C dual-commit instructions)

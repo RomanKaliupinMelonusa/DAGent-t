@@ -501,8 +501,10 @@ stateDiagram-v2
         StructuredJSON --> FaultRouting
         UnfixableCheck --> CIMetadata : DOMAIN header
         CIMetadata --> FaultRouting
-        UnfixableCheck --> KeywordFallback : no structure found
-        KeywordFallback --> FaultRouting
+        UnfixableCheck --> RAGRetriever : no structure found
+        RAGRetriever --> FaultRouting : triage pack match
+        RAGRetriever --> LLMRouter : no match
+        LLMRouter --> FaultRouting
     }
 
     Blocked --> Salvage : salvageForDraft
@@ -514,12 +516,13 @@ stateDiagram-v2
     Completed --> [*] : DAG advances
 ```
 
-The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4-tier evaluation:
+The triage system in `tools/autonomous-factory/src/triage.ts` evaluates failures through Tiers 0–4:
 
-1. **Unfixable signals** — halt immediately (Azure AD errors, state locks, permission denied)
-2. **Structured JSON** — agent emits `{"fault_domain":"backend","diagnostic_trace":"..."}`, routed by `fault_domain`. A **Defense-in-Depth validation layer** (`validateFaultDomain()` at L407) then checks keyword signals against `CICD_ROOT_CAUSE_INDICATORS` (L382) — if deterministic keywords prove the root cause involves `.github/workflows/` files, the original domain is *kept* (so the dev agent runs and can fix the workflow) but deploy items (`push-app`, `poll-app-ci`) are *augmented* into the reset list. Returns `ValidationResult { domain, augmentWithDeploy }`, not a domain override. Uses `detectKeywordDomains()` (L338) — a pure function shared with Tier 3.
-3. **CI `DOMAIN:` header** — job-based routing from `poll-ci.sh` metadata
-4. **Keyword fallback** — uses `detectKeywordDomains()` for consistent signal detection; legacy pattern matching for SDK crashes / malformed output
+0. **Unfixable signals** — halt immediately (Azure AD errors, state locks, permission denied)
+1. **Structured JSON** — agent emits `{"fault_domain":"backend","diagnostic_trace":"..."}`, routed by `fault_domain`. A **Defense-in-Depth validation layer** (`validateFaultDomain()`) checks the triage knowledge base via `retrieveTopMatches()` for cicd-domain matches — if deterministic signals prove the root cause involves `.github/workflows/` files, the original domain is *kept* (so the dev agent runs and can fix the workflow) but deploy items (`push-app`, `poll-app-ci`) are *augmented* into the reset list. Returns `ValidationResult { domain, augmentWithDeploy }`, not a domain override.
+2. **CI `DOMAIN:` header** — job-based routing from `poll-ci.sh` metadata
+3. **Local RAG retriever** — `retrieveTopMatches()` in `triage/retriever.ts` performs case-insensitive substring matching against pre-compiled triage pack signatures (`.apm/triage-packs/*.json`), ranked by specificity (longest `error_snippet` wins). Cost: $0, latency: <1ms.
+4. **LLM Router fallback** — `askLlmRouter()` in `triage/llm-router.ts` classifies novel errors via Copilot SDK with strict domain enum injection. Novel classifications are persisted to `_NOVEL_TRIAGE.jsonl` (Data Flywheel) for humans to generalize into triage pack signatures. Falls back to `{ fault_domain: "blocked" }` on timeout or hallucination.
 
 ### Fault Domain Routing
 
@@ -533,7 +536,7 @@ The triage system in `tools/autonomous-factory/src/triage.ts` L69–106 uses a 4
 | `deployment-stale` | `push-app` + `poll-app-ci` + failing item (code is correct — only re-deploy needed) |
 | `cicd` | `push-app` + `poll-app-ci` + failing item (workflow file issue — only used when agent itself classifies as cicd) |
 
-> **CI/CD Augmentation:** When validation detects CI/CD root-cause indicators in an error classified as another domain (e.g., `backend+infra`), the original domain's reset keys are kept *and* `push-app` + `poll-app-ci` are added. This ensures the dev agent runs to fix the `.github/workflows/` file (using dual-scope commit instructions from Fix C) and the deploy pipeline re-runs to verify. See `validateFaultDomain()` at `triage.ts` L407.
+> **CI/CD Augmentation:** When validation detects CI/CD root-cause indicators (via `CICD_ROOT_CAUSE_INDICATORS` or cicd-domain triage KB matches) in an error classified as another domain (e.g., `backend+infra`), the original domain's reset keys are kept *and* `push-app` + `poll-app-ci` are added. This ensures the dev agent runs to fix the `.github/workflows/` file (using dual-scope commit instructions from Fix C) and the deploy pipeline re-runs to verify.
 | `infra` | `infra-architect` + failing item |
 | `environment` | Failing item only (not a code bug — retry may resolve) |
 | `blocked` | Empty — pipeline halts, triggers Graceful Degradation to Draft PR |
