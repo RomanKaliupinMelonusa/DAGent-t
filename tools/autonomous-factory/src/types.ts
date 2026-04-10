@@ -85,6 +85,25 @@ export type FaultDomain = TriageDiagnostic["fault_domain"];
 /** Structured triage diagnostic — inferred from the Zod schema. */
 export type TriageDiagnostic = z.infer<typeof TriageDiagnosticSchema>;
 
+/**
+ * Attempt to parse a `TriageDiagnostic` from the raw error message.
+ * Returns `null` if the message is not valid JSON or fails Zod validation.
+ *
+ * Defined here (not in triage.ts) to break the circular dependency:
+ * triage.ts → triage/retriever.ts → session/shared.ts → triage.ts
+ */
+export function parseTriageDiagnostic(message: string): TriageDiagnostic | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+
+  const result = TriageDiagnosticSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
 // ---------------------------------------------------------------------------
 // Session telemetry — data structures collected by the orchestrator's
 // session runner and consumed by reporting functions.

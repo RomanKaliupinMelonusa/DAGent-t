@@ -1,0 +1,16 @@
+{
+  "name": "azure-functions-common",
+  "stack": "azure-functions",
+  "signatures": [
+    {
+      "error_snippet": "FUNCTIONS_WORKER_RUNTIME",
+      "fault_domain": "infra",
+      "reason": "Azure Functions runtime env var missing — infra provisioning issue"
+    },
+    {
+      "error_snippet": "Cannot find module",
+      "fault_domain": "backend",
+      "reason": "Node module import failure — backend build or dependency issue"
+    }
+  ]
+}

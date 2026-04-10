@@ -5,17 +5,21 @@
  * (live-ui, integration-test) reports a failure.
  *
  * Routing tiers (evaluated in order):
- *   1. Unfixable error detection → immediate pipeline halt ("blocked")
- *   2. Agent-emitted JSON `TriageDiagnostic` → deterministic fault_domain
- *   3. CI metadata `DOMAIN:` header → deterministic job-based routing
- *   4. Legacy keyword matching → fallback for SDK crashes
+ *   0. Unfixable error detection → immediate pipeline halt ("blocked")
+ *   1. Agent-emitted JSON `TriageDiagnostic` → deterministic fault_domain
+ *   2. CI metadata `DOMAIN:` header → deterministic job-based routing
+ *   3. Local RAG retriever → deterministic substring match from triage packs
+ *   4. LLM Router → cognitive classification of novel errors
  *
- * The LLM classifies the error; the DAG state machine controls execution.
+ * The retriever/LLM classifies the error; the DAG state machine controls execution.
  */
 
-import { TriageDiagnosticSchema } from "./types.js";
-import type { FaultDomain, TriageDiagnostic } from "./types.js";
-import type { ApmFaultRoute } from "./apm-types.js";
+import type { CopilotClient } from "@github/copilot-sdk";
+import { parseTriageDiagnostic } from "./types.js";
+import type { FaultDomain } from "./types.js";
+import type { ApmFaultRoute, TriageSignature } from "./apm-types.js";
+import { retrieveTopMatches } from "./triage/retriever.js";
+import { askLlmRouter } from "./triage/llm-router.js";
 
 // ---------------------------------------------------------------------------
 // Unfixable error signals — no agent can fix these
@@ -67,16 +71,22 @@ export function isUnfixableError(errorMessage: string): string | null {
  * Returns an empty array `[]` when the error is unfixable ("blocked") —
  * the caller must halt the pipeline immediately.
  */
-export function triageFailure(
+export async function triageFailure(
   itemKey: string,
   errorMessage: string,
   naItems: Set<string>,
-  directories?: Record<string, string | null>,
-  ciWorkflowFilePatterns?: string[],
   faultRouting?: Record<string, ApmFaultRoute>,
   /** Workflow nodes for dynamic deploy-augmentation lookup (script_type === "push"|"poll"). */
   nodes?: Record<string, { script_type?: string }>,
-): string[] {
+  /** Triage knowledge base — flattened signatures from .apm/triage-packs/. */
+  triageKb?: TriageSignature[],
+  /** Copilot SDK client for LLM fallback triage. */
+  client?: CopilotClient,
+  /** Feature slug (for novel triage log). */
+  slug?: string,
+  /** App root path (for novel triage log). */
+  appRoot?: string,
+): Promise<string[]> {
   // --- Tier 0: Unfixable error detection → immediate halt ---
   const unfixableReason = isUnfixableError(errorMessage);
   if (unfixableReason) {
@@ -85,20 +95,13 @@ export function triageFailure(
   }
 
   // --- Tier 1: structured JSON contract (agent-emitted) ---
-  // After parsing, run validateFaultDomain() as a Defense-in-Depth sanity check.
-  // If keyword signals prove the root cause involves CI/CD (.github/workflows/),
-  // augment the reset list with deploy items so the fix actually gets pushed.
-  // The dev agent keeps running (it can edit .github/ files) with Fix C's
-  // dual-commit instructions telling it to use `agent-commit.sh cicd`.
   const diagnostic = parseTriageDiagnostic(errorMessage);
   if (diagnostic) {
     const { domain: validated, augmentWithDeploy } = validateFaultDomain(
-      diagnostic.fault_domain, errorMessage, faultRouting, directories, ciWorkflowFilePatterns,
+      diagnostic.fault_domain, errorMessage, faultRouting, triageKb,
     );
     console.log(`  🎯 Structured triage: fault_domain=${validated}${augmentWithDeploy ? " (+cicd deploy augmentation)" : ""}`);
     const keys = applyFaultDomain(validated, itemKey, naItems, faultRouting);
-    // When cicd root cause is detected, ensure deploy items are in the reset
-    // list so the agent's cicd-scope commit gets pushed and verified by CI.
     if (augmentWithDeploy) {
       for (const k of getDeployAugmentationNodes(nodes, naItems)) {
         if (!keys.includes(k)) keys.push(k);
@@ -120,26 +123,43 @@ export function triageFailure(
     return keys;
   }
 
-  // --- Tier 3: legacy keyword matching (SDK crashes, malformed output) ---
-  console.log("  ⚙ Legacy triage: keyword fallback (no structured JSON or DOMAIN header found)");
-  return triageByKeywords(itemKey, errorMessage, naItems, faultRouting, directories, ciWorkflowFilePatterns, nodes);
-}
+  // --- Tier 3: Local RAG retriever (triage pack substring match) ---
+  const topMatches = triageKb && triageKb.length > 0
+    ? retrieveTopMatches(errorMessage, triageKb)
+    : [];
 
-/**
- * Attempt to parse a `TriageDiagnostic` from the raw error message.
- * Returns `null` if the message is not valid JSON or fails Zod validation.
- */
-export function parseTriageDiagnostic(message: string): TriageDiagnostic | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(message);
-  } catch {
-    return null;
+  if (topMatches.length > 0) {
+    const bestMatch = topMatches[0];
+    console.log(`  🔍 RAG triage: matched "${bestMatch.error_snippet}" → ${bestMatch.fault_domain} (${bestMatch.reason})`);
+    const keys = applyFaultDomain(bestMatch.fault_domain as FaultDomain, itemKey, naItems, faultRouting);
+    if (keys.length > 0) return keys;
+    // If applyFaultDomain returned empty (unknown domain in routing table),
+    // fall through to LLM for classification
+    console.log(`  ⚠ RAG match domain "${bestMatch.fault_domain}" not in fault_routing — falling through to LLM`);
   }
 
-  const result = TriageDiagnosticSchema.safeParse(parsed);
-  return result.success ? result.data : null;
+  // --- Tier 4: LLM Router (cognitive fallback for novel errors) ---
+  if (client && faultRouting && slug && appRoot) {
+    console.log("  🤖 LLM triage: classifying novel error via Copilot SDK");
+    const domains = Object.keys(faultRouting);
+    const result = await askLlmRouter(client, errorMessage, domains, topMatches, slug, appRoot);
+    console.log(`  🤖 LLM triage result: fault_domain=${result.fault_domain} (${result.reason})`);
+    const keys = applyFaultDomain(result.fault_domain as FaultDomain, itemKey, naItems, faultRouting);
+    if (keys.length > 0) return keys;
+    // "blocked" domain returns [] from applyFaultDomain — this is correct,
+    // it signals the caller to halt the pipeline.
+    return [];
+  }
+
+  // --- No retriever hits and no LLM available — retry the failing item only ---
+  console.warn(`  ⚠ Triage could not determine root cause (no RAG matches, no LLM). Retrying ${itemKey} only.`);
+  return [itemKey].filter((k) => !naItems.has(k));
 }
+
+// Re-export parseTriageDiagnostic from types.ts for backward compatibility.
+// The function lives in types.ts to break the circular dependency:
+// triage.ts → triage/retriever.ts → session/shared.ts → triage.ts
+export { parseTriageDiagnostic } from "./types.js";
 
 /**
  * Parse the `DOMAIN:` header from the first line of a CI diagnostic file.
@@ -225,19 +245,18 @@ function applyFaultDomain(
 }
 
 // ---------------------------------------------------------------------------
-// Keyword domain detection — shared between Tier 1 validation and Tier 3
+// CI/CD deploy augmentation — Defense-in-Depth for Tier 1
 // ---------------------------------------------------------------------------
 
-/** Build the CI/CD keyword signal list (includes dynamic workflow patterns) */
-function buildCicdSignals(ciWorkflowFilePatterns?: string[]): string[] {
-  return [
-    ...(ciWorkflowFilePatterns ?? []),
-    ".github/workflows", "workflow file",
-    "ci failed", "ci timeout",
-    "deploy artifact", "package.json type", "type:module",
-    "never committed", "working-tree fix",
-  ];
-}
+/** CI/CD root-cause indicators — phrases proving the fix is in `.github/workflows/`. */
+const CICD_ROOT_CAUSE_INDICATORS = [
+  ".github/workflows",
+  "never committed",
+  "working-tree fix",
+  "workflow file",
+  "deploy artifact step",
+  "deploy package.json",
+];
 
 /** Result of fault domain validation — keeps the original domain but may signal
  *  that deploy items should be added to the reset list for cicd root causes. */
@@ -249,96 +268,13 @@ export interface ValidationResult {
   augmentWithDeploy: boolean;
 }
 
-/** Result of keyword-based domain detection — dynamic map from fault_routing keyword_signals */
-export interface KeywordDomainResult {
-  /** Dynamic domain hits from fault_routing keyword_signals. */
-  matchedDomains: Record<string, boolean>;
-  /** Operational signal flags (not domain-specific). */
-  hasCicd: boolean;
-  hasEnv: boolean;
-  hasDeploymentStale: boolean;
-}
-
 /**
- * Detect which fault domains are signalled by keywords in the error message.
- * Pure function — no side effects. Used by both `validateFaultDomain()`
- * (Tier 1 sanity check) and `triageByKeywords()` (Tier 3 fallback).
+ * Validate an agent-emitted fault_domain against deterministic signals.
+ * Defense-in-Depth: detects when CI/CD root-cause indicators prove the fix
+ * involves `.github/workflows/` files.
  *
- * Domain-specific signals are driven entirely by `faultRouting[domain].keyword_signals`
- * from workflows.yml. Operational signals (env, deployment-stale, cicd) remain inline
- * because they trigger special routing that bypasses fault_routing.
- */
-export function detectKeywordDomains(
-  errorMessage: string,
-  faultRouting?: Record<string, ApmFaultRoute>,
-  directories?: Record<string, string | null>,
-  ciWorkflowFilePatterns?: string[],
-): KeywordDomainResult {
-  const msg = errorMessage.toLowerCase();
-  const cicdSignals = buildCicdSignals(ciWorkflowFilePatterns);
-
-  const envSignals = [
-    "az login", "credentials", "auth not available", "not authenticated",
-    "no credentials", "login required", "identity not found",
-    "managed identity", "devcontainer", "defaultazurecredential",
-    "interactive login", "device code",
-    "access is denied",
-    "exiting poll to prevent",
-  ];
-
-  const deploymentStaleSignals = [
-    "deployment stale", "not in deployed build", "never re-triggered",
-    "deployed build contains", "swa deployment stale",
-    "function not deployed", "not deployed to azure",
-    ...(ciWorkflowFilePatterns ?? []).map((f) => `${f} never`),
-  ];
-
-  // Dynamic domain matching from fault_routing keyword_signals
-  const matchedDomains: Record<string, boolean> = {};
-  if (faultRouting) {
-    for (const [domain, route] of Object.entries(faultRouting)) {
-      const signals = route.keyword_signals;
-      if (signals && signals.length > 0) {
-        matchedDomains[domain] = signals.some((s) => msg.includes(s));
-      }
-    }
-  }
-
-  return {
-    matchedDomains,
-    hasCicd: cicdSignals.some((s) => msg.includes(s)),
-    hasEnv: envSignals.some((s) => msg.includes(s)),
-    hasDeploymentStale: deploymentStaleSignals.some((s) => msg.includes(s)),
-  };
-}
-
-/**
- * CI/CD root-cause indicators — phrases in the diagnostic trace that prove
- * the fix is in `.github/workflows/`, not in application code.
- * When these appear AND keyword detection finds cicd signals, the orchestrator
- * overrides the agent's fault_domain to `cicd`.
- */
-const CICD_ROOT_CAUSE_INDICATORS = [
-  ".github/workflows",
-  "never committed",
-  "working-tree fix",
-  "workflow file",
-  "deploy artifact step",
-  "deploy package.json",
-];
-
-/**
- * Validate an agent-emitted fault_domain against deterministic keyword signals.
- * This is a Defense-in-Depth mechanism: the LLM classifies by symptoms, but the
- * orchestrator detects when CI/CD root-cause indicators prove the fix involves
- * `.github/workflows/` files.
- *
- * IMPORTANT: Does NOT override the domain to "cicd". The "cicd" domain in
- * applyFaultDomain only resets deploy-scope script nodes (which can't
- * edit files). Instead, the function keeps the original domain (so the dev agent
- * runs and can fix the workflow file using Fix C's dual-commit instructions)
- * and signals `augmentWithDeploy: true` so the caller adds deploy items to
- * the reset list.
+ * Uses the local retriever to check for cicd-domain triage pack matches,
+ * plus hardcoded CICD_ROOT_CAUSE_INDICATORS for defense-in-depth.
  *
  * Never augments "cicd" (already routes to deploy), "deployment-stale*"
  * variants (code is correct), "blocked" (unfixable), or "environment" (not a code bug).
@@ -347,97 +283,28 @@ export function validateFaultDomain(
   agentDomain: FaultDomain,
   errorMessage: string,
   faultRouting?: Record<string, ApmFaultRoute>,
-  directories?: Record<string, string | null>,
-  ciWorkflowFilePatterns?: string[],
+  triageKb?: TriageSignature[],
 ): ValidationResult {
-  // Domains that should never be augmented — operational domains where deploy augmentation is wrong
   const domainStr = agentDomain as string;
   const NO_AUGMENT = new Set(["cicd", "blocked", "environment"]);
   if (NO_AUGMENT.has(domainStr) || domainStr.startsWith("deployment-stale")) {
     return { domain: agentDomain, augmentWithDeploy: false };
   }
 
-  const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
+  const msgLower = errorMessage.toLowerCase();
 
-  // Signal deploy augmentation when BOTH conditions are met:
-  // 1. Keyword detection finds cicd signals in the error message
-  // 2. The raw error message contains root-cause indicators proving the fix
-  //    involves .github/workflows/ (not just a symptom mention)
-  // The dev agent keeps its original domain so it can edit the workflow file,
-  // and the caller adds deploy-augmentation nodes to ensure the fix gets deployed.
-  if (keywords.hasCicd) {
-    const msgLower = errorMessage.toLowerCase();
-    const hasCicdRootCause = CICD_ROOT_CAUSE_INDICATORS.some((s) => msgLower.includes(s));
-    if (hasCicdRootCause) {
-      console.log(`  ⚠ Triage validation: cicd root cause detected in ${agentDomain} error — augmenting with deploy items`);
-      return { domain: agentDomain, augmentWithDeploy: true };
-    }
+  // Check hardcoded CI/CD root-cause indicators
+  const hasCicdRootCause = CICD_ROOT_CAUSE_INDICATORS.some((s) => msgLower.includes(s));
+
+  // Check triage KB for cicd-domain matches (if available)
+  const hasCicdKbMatch = triageKb
+    ? retrieveTopMatches(errorMessage, triageKb).some((m) => m.fault_domain === "cicd")
+    : false;
+
+  if (hasCicdRootCause || hasCicdKbMatch) {
+    console.log(`  ⚠ Triage validation: cicd root cause detected in ${agentDomain} error — augmenting with deploy items`);
+    return { domain: agentDomain, augmentWithDeploy: true };
   }
 
   return { domain: agentDomain, augmentWithDeploy: false };
-}
-
-/**
- * Keyword-based triage fallback for unstructured error messages
- * (e.g. SDK session crashes the agent cannot instrument).
- *
- * Domain routing is fully driven by fault_routing keyword_signals from
- * workflows.yml. Operational signals (env, deployment-stale, cicd) remain
- * as inline short-circuits since they bypass fault_routing entirely.
- */
-function triageByKeywords(
-  itemKey: string,
-  errorMessage: string,
-  naItems: Set<string>,
-  faultRouting?: Record<string, ApmFaultRoute>,
-  directories?: Record<string, string | null>,
-  ciWorkflowFilePatterns?: string[],
-  nodes?: Record<string, { script_type?: string }>,
-): string[] {
-  const keywords = detectKeywordDomains(errorMessage, faultRouting, directories, ciWorkflowFilePatterns);
-
-  // Environment / auth signals — NOT code bugs, redevelopment won't help.
-  if (keywords.hasEnv) {
-    console.log(`  ⚠ Environment/auth issue detected — skipping ${itemKey} (not a code bug)`);
-    return [itemKey].filter((k) => !naItems.has(k));
-  }
-
-  // Deployment-stale signals — deployed artifact is outdated, code is correct.
-  // Must be checked BEFORE domain signals to avoid misrouting.
-  if (keywords.hasDeploymentStale) {
-    console.log("  📦 Deployment-stale detected — routing to re-deploy only (no dev reset)");
-    return [...getDeployAugmentationNodes(nodes, naItems), itemKey].filter((k) => !naItems.has(k));
-  }
-
-  // Collect all matched fault_routing domains and merge their reset_nodes
-  const matchedDomainKeys = Object.entries(keywords.matchedDomains)
-    .filter(([, hit]) => hit)
-    .map(([domain]) => domain);
-
-  const resetKeys: string[] = [];
-  for (const domain of matchedDomainKeys) {
-    const domainResets = applyFaultDomain(domain as FaultDomain, itemKey, naItems, faultRouting);
-    for (const k of domainResets) {
-      if (!resetKeys.includes(k)) resetKeys.push(k);
-    }
-  }
-
-  // If CI/CD signals detected, also reset deploy items
-  if (keywords.hasCicd) {
-    for (const k of getDeployAugmentationNodes(nodes, naItems)) {
-      if (!resetKeys.includes(k)) resetKeys.push(k);
-    }
-  }
-
-  // Can't determine root cause → only reset the failing item and let it retry,
-  // rather than destroying 45 minutes of completed agent work.
-  if (resetKeys.length === 0) {
-    console.warn(`  ⚠ Triage could not determine root cause. Retrying ${itemKey} only.`);
-    return [itemKey].filter((k) => !naItems.has(k));
-  }
-
-  if (!resetKeys.includes(itemKey) && !naItems.has(itemKey)) {
-    resetKeys.push(itemKey);
-  }
-  return resetKeys.filter((k) => !naItems.has(k));
 }

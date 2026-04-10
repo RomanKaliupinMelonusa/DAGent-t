@@ -379,7 +379,7 @@ export async function runItemSession(
         const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
         pipelineSummaries.push(itemSummary);
         flushReports(config, state);
-        return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable);
+        return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable, client);
       }
       console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
     }
@@ -405,7 +405,7 @@ export async function runItemSession(
       const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
       pipelineSummaries.push(itemSummary);
       flushReports(config, state);
-      return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable);
+      return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable, client);
     }
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   }
@@ -439,7 +439,7 @@ export async function runItemSession(
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
-      return handleFailureReroute(slug, next.key, failMsg, infraFailure, config, itemSummary, roamAvailable);
+      return handleFailureReroute(slug, next.key, failMsg, infraFailure, config, itemSummary, roamAvailable, client);
     }
   }
 

@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm-types.js";
 import type { ApmWorkflowNode } from "../apm-types.js";
 import type { ItemSummary } from "../types.js";
-import { parseTriageDiagnostic } from "../triage.js";
+import { parseTriageDiagnostic } from "../types.js";
 import { writePipelineSummary, writeTerminalLog } from "../reporting.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 

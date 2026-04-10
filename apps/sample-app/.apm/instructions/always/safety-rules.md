@@ -27,3 +27,15 @@ Each check must:
 1. Read connection details from environment variables (set in `config.environment` of `apm.yml`)
 2. Echo a diagnostic message to stdout if the check fails
 3. `exit 1` on first failure
+
+## Structured Failure Contract
+
+If you cannot complete a task due to a bug, you **MUST** fail by calling your shell tool with:
+
+```bash
+npm run pipeline:fail <item-key> '{"fault_domain": "...", "diagnostic_trace": "..."}'
+```
+
+- `fault_domain` must be one of the valid domains declared in `workflows.yml` `fault_routing` (e.g., `backend`, `frontend`, `infra`, `both`, `cicd`, `environment`, `blocked`, `test-code`).
+- `diagnostic_trace` must contain the relevant stack trace, error message, URL, or status code that explains the failure.
+- **Do not** output raw markdown errors or unstructured failure messages. The orchestrator uses structured JSON to route failures deterministically.

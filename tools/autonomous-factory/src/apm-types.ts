@@ -300,6 +300,27 @@ export const ApmWorkflowSchema = z.object({
   { message: "fault_routing reset_nodes references an undefined node key (use \"$SELF\" for the calling item)." },
 );
 
+// ---------------------------------------------------------------------------
+// Triage Knowledge Base schemas (RAG triage packs)
+// ---------------------------------------------------------------------------
+
+/** A single triage signature — maps an error snippet to a fault domain. */
+export const TriageSignatureSchema = z.object({
+  /** The exact substring to fast-match against error traces. */
+  error_snippet: z.string(),
+  /** Target fault domain for routing (must exist in fault_routing). */
+  fault_domain: z.string(),
+  /** Human-readable explanation of why this snippet maps to this domain. */
+  reason: z.string(),
+});
+
+/** A triage pack — a named collection of signatures for a specific stack. */
+export const TriagePackSchema = z.object({
+  name: z.string(),
+  stack: z.string(),
+  signatures: z.array(TriageSignatureSchema),
+});
+
 export const ApmCompiledOutputSchema = z.object({
   version: z.literal("1.0.0"),
   compiledAt: z.string(),
@@ -308,6 +329,8 @@ export const ApmCompiledOutputSchema = z.object({
   config: ApmConfigSchema.optional(),
   /** Workflow DAG definitions (keyed by workflow name, e.g. "default"). */
   workflows: z.record(z.string(), ApmWorkflowSchema).default({}),
+  /** Flattened triage knowledge base — compiled from .apm/triage-packs/*.json. */
+  triage_kb: z.array(TriageSignatureSchema).default([]),
 });
 
 // ---------------------------------------------------------------------------
@@ -402,6 +425,8 @@ export type ApmManifest = z.infer<typeof ApmManifestSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;
 export type ApmGeneratedInstruction = z.infer<typeof ApmGeneratedInstructionSchema>;
+export type TriageSignature = z.infer<typeof TriageSignatureSchema>;
+export type TriagePack = z.infer<typeof TriagePackSchema>;
 
 // ---------------------------------------------------------------------------
 // Errors

@@ -396,6 +396,15 @@ export function failItem(slug, itemKey, message) {
       throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
     }
 
+    // Soft enforcement: warn when dev/test items fail without structured JSON
+    const category = state.nodeCategories?.[itemKey];
+    if ((category === "dev" || category === "test") && message) {
+      const parsed = TriageDiagnosticSchema.safeParse((() => { try { return JSON.parse(message); } catch { return null; } })());
+      if (!parsed.success) {
+        console.warn(`  ⚠ pipeline:fail for ${category} item "${itemKey}" did not include valid TriageDiagnostic JSON. Structured failures improve triage accuracy.`);
+      }
+    }
+
     item.status = "failed";
     item.error = message || "Unknown failure";
 
