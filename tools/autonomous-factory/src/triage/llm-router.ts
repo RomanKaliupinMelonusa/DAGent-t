@@ -80,18 +80,9 @@ function appendNovelTriageLog(
   appRoot: string,
   entry: NovelTriageEntry,
 ): void {
-  const logPath = path.join(appRoot, "in-progress", `${slug}_NOVEL_TRIAGE.json`);
-  let entries: NovelTriageEntry[] = [];
-  try {
-    if (fs.existsSync(logPath)) {
-      entries = JSON.parse(fs.readFileSync(logPath, "utf-8"));
-      if (!Array.isArray(entries)) entries = [];
-    }
-  } catch {
-    entries = [];
-  }
-  entries.push(entry);
-  fs.writeFileSync(logPath, JSON.stringify(entries, null, 2));
+  const logPath = path.join(appRoot, "in-progress", `${slug}_NOVEL_TRIAGE.jsonl`);
+  const line = JSON.stringify(entry) + "\n";
+  fs.appendFileSync(logPath, line, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
