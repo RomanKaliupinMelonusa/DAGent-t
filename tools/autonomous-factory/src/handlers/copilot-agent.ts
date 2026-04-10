@@ -366,11 +366,13 @@ const copilotAgentHandler: NodeHandler = {
     if (item?.status === "failed") {
       telemetry.outcome = "failed";
       telemetry.errorMessage = item.error ?? "Unknown failure";
+      const diagnostic = parseTriageDiagnostic(item.error ?? "");
       return {
         outcome: "failed",
         errorMessage: item.error ?? "Unknown failure",
         summary: telemetry,
         stateManaged: true,
+        ...(diagnostic ? { diagnosticTrace: diagnostic.diagnostic_trace } : {}),
       };
     }
 

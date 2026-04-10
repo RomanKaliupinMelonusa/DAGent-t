@@ -14,6 +14,7 @@ import {
   ApmMcpFileSchema,
   ApmSkillFrontmatterSchema,
   ApmWorkflowSchema,
+  TriagePackSchema,
   ApmBudgetExceededError,
   ApmCompileError,
   type ApmCompiledOutput,
@@ -21,6 +22,7 @@ import {
   type ApmMcpConfig,
   type ApmManifest,
   type ApmWorkflow,
+  type TriageSignature,
 } from "./apm-types.js";
 
 // ---------------------------------------------------------------------------
@@ -196,6 +198,31 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
   const agents: Record<string, ApmCompiledAgent> = {};
   const agentsDir = path.join(apmDir, "agents");
 
+  // --- 5b. Load triage packs ---
+  const triagePacksDir = path.join(apmDir, "triage-packs");
+  const triageKb: TriageSignature[] = [];
+  if (fs.existsSync(triagePacksDir)) {
+    const packFiles = fs.readdirSync(triagePacksDir).filter((f) => f.endsWith(".json"));
+    for (const file of packFiles) {
+      const filePath = path.join(triagePacksDir, file);
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      const result = TriagePackSchema.safeParse(raw);
+      if (!result.success) {
+        throw new ApmCompileError(
+          `Invalid triage pack ${file}: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
+        );
+      }
+      triageKb.push(...result.data.signatures.map((sig) => ({
+        ...sig,
+        // Normalize snippets at compile time: trim + collapse whitespace.
+        // KB snippets are static strings authored by humans — they should never
+        // contain dynamic entropy (SHAs, timestamps), but whitespace normalization
+        // ensures consistent matching against normalizeDiagnosticTrace() output.
+        error_snippet: sig.error_snippet.trim().replace(/\s+/g, " "),
+      })));
+    }
+  }
+
   for (const [agentKey, agentDecl] of Object.entries(manifest.agents)) {
     // Resolve instructions
     const parts: string[] = [];
@@ -294,6 +321,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     agents,
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
     workflows,
+    triage_kb: triageKb,
   };
 
   // --- 8. Write to .compiled/context.json ---

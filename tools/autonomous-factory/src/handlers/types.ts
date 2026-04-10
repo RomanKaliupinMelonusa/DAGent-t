@@ -107,6 +107,12 @@ export interface NodeResult {
    */
   handlerOutput?: Record<string, unknown>;
   /**
+   * Extracted diagnostic trace from a structured TriageDiagnostic JSON failure.
+   * Populated by the copilot-agent handler when the agent's failure message
+   * is valid TriageDiagnostic JSON.
+   */
+  diagnosticTrace?: string;
+  /**
    * If true, the handler (or the agent running inside it) already managed
    * pipeline state transitions (completeItem/failItem). The kernel will
    * skip its own state mutation calls to avoid duplicates.

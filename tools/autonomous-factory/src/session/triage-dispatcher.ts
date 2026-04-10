@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, resetForDev, resetForRedeploy, salvageForDraft } from "../state.js";
 import { triageFailure } from "../triage.js";
 import { getWorkflowNode } from "./shared.js";
@@ -28,6 +29,7 @@ export async function handleFailureReroute(
   config: PipelineRunConfig,
   itemSummary: ItemSummary,
   roamAvailable: boolean,
+  client?: CopilotClient,
 ): Promise<SessionResult> {
   const { repoRoot } = config;
 
@@ -35,14 +37,16 @@ export async function handleFailureReroute(
   const naItems = new Set(
     pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
   );
-  const dirs = config.apmContext.config?.directories as Record<string, string | null> | undefined;
-  const ciFilePatterns = config.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined;
   const workflow = config.apmContext.workflows?.default;
   const faultRouting = workflow?.fault_routing;
   const workflowNodes = workflow?.nodes as Record<string, { script_type?: string }> | undefined;
   const maxDevCycles = workflow?.max_redevelopment_cycles ?? 5;
   const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
-  const resetKeys = triageFailure(itemKey, rawError, naItems, dirs, ciFilePatterns, faultRouting, workflowNodes);
+  const triageKb = config.apmContext.triage_kb;
+  const resetKeys = await triageFailure(
+    itemKey, rawError, naItems, faultRouting, workflowNodes,
+    triageKb, client, slug, config.appRoot,
+  );
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
