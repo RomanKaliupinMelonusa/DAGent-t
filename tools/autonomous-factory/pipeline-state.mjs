@@ -603,6 +603,7 @@ export function recoverElevated(slug, errorMessage) {
     const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
     // Reset infra dev entry + all downstream dependents
     if (!infraDevKey) {
+      writeState(slug, state);
       throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
     }
     const resetSeed = infraDevKey;
