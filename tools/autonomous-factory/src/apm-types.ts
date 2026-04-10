@@ -146,6 +146,13 @@ export const ApmWorkflowNodeSchema = z.object({
   category: z.enum(["dev", "test", "deploy", "finalize"]),
   /** Agent key from the agents section (required when type is "agent"). */
   agent: z.string().optional(),
+  /**
+   * Handler reference for this node. Determines which NodeHandler implementation executes it.
+   * Built-in keys: "copilot-agent", "git-push", "github-ci-poll", "github-pr-publish".
+   * Local paths: "./handlers/my-handler.ts" (resolved against appRoot, sandboxed to repo).
+   * If omitted, inferred from `type` + `script_type` for backward compatibility.
+   */
+  handler: z.string().optional(),
   /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
   phase: z.string(),
   /** Session timeout in minutes. */
