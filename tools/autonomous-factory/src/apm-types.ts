@@ -234,10 +234,6 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
 export const ApmFaultRouteSchema = z.object({
   /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
   reset_nodes: z.array(z.string()),
-  /** Keyword signals for triage keyword matching. When present, these replace
-   *  hardcoded domain-specific keyword signal arrays.
-   *  Error messages are lowercased and checked for substring matches. */
-  keyword_signals: z.array(z.string()).optional(),
 });
 
 export const ApmWorkflowSchema = z.object({

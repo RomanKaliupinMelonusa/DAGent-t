@@ -301,9 +301,10 @@ classDiagram
 | `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
 | `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
 | `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | `runAgentSession()` |
-| `triageFailure()` | triage.ts | Multi-tier routing of post-deploy failures to dev items. Tier 1 runs `validateFaultDomain()` to detect CI/CD root causes and augment reset keys with deploy items | `handleFailureReroute()` |
-| `validateFaultDomain()` | triage.ts | Defense-in-Depth: detect CI/CD root-cause indicators in agent-classified errors and augment reset list with deploy items (keeps original domain so dev agent can fix `.github/` files) | `triageFailure()` Tier 1 |
-| `detectKeywordDomains()` | triage.ts | Pure keyword signal detection shared by Tier 1 validation and Tier 3 keyword fallback | `validateFaultDomain()`, `triageByKeywords()` |
+| `triageFailure()` | triage.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router). Tier 1 runs `validateFaultDomain()` to detect CI/CD root causes and augment reset keys with deploy items | `handleFailureReroute()` |
+| `validateFaultDomain()` | triage.ts | Defense-in-Depth: detect CI/CD root-cause indicators in agent-classified errors and augment reset list with deploy items (keeps original domain so dev agent can fix `.github/` files). Uses `retrieveTopMatches()` for cicd KB matching + hardcoded `CICD_ROOT_CAUSE_INDICATORS` | `triageFailure()` Tier 1 |
+| `retrieveTopMatches()` | triage/retriever.ts | Local substring matcher against pre-compiled triage pack signatures. Normalizes trace via `normalizeDiagnosticTrace()`, returns top 3 hits ranked by snippet length (Tier 4) | `triageFailure()`, `validateFaultDomain()` |
+| `askLlmRouter()` | triage/llm-router.ts | LLM-based fault domain classification fallback for novel errors. Persists novel classifications to `_NOVEL_TRIAGE.jsonl` (Data Flywheel) (Tier 5) | `triageFailure()` |
 
 ---
 

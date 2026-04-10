@@ -220,12 +220,13 @@ sequenceDiagram
 
 ### Triage routing: how errors map to fixes
 
-`triageFailure()` uses a 4-tier evaluation:
+`triageFailure()` evaluates failures through Tiers 0–4:
 
-1. **Unfixable signals** (Azure AD, permission denied) → pipeline halts, opens a Draft PR for human remediation
-2. **Structured JSON** with `fault_domain` → deterministic routing by domain. A **validation layer** (`validateFaultDomain()`) checks keyword signals against `CICD_ROOT_CAUSE_INDICATORS` — if the root cause proves to involve `.github/workflows/` files, the original domain is kept (dev agent runs to fix the workflow) and deploy items are *augmented* into the reset list. Uses `detectKeywordDomains()` — shared with Tier 3.
-3. **CI `DOMAIN:` header** → job-based routing from poll-ci metadata
-4. **Keyword fallback** → pattern matching via `detectKeywordDomains()` ("terraform" → infra, "build" → app)
+0. **Unfixable signals** (Azure AD, permission denied) → pipeline halts, opens a Draft PR for human remediation
+1. **Structured JSON** with `fault_domain` → deterministic routing by domain. A **validation layer** (`validateFaultDomain()`) checks the triage knowledge base via `retrieveTopMatches()` for cicd-domain matches — if the root cause proves to involve `.github/workflows/` files, the original domain is kept (dev agent runs to fix the workflow) and deploy items are *augmented* into the reset list.
+2. **CI `DOMAIN:` header** → job-based routing from poll-ci metadata
+3. **Local RAG retriever** → `retrieveTopMatches()` performs case-insensitive substring matching against pre-compiled triage pack signatures (`.apm/triage-packs/*.json`), ranked by specificity (longest snippet wins)
+4. **LLM Router fallback** → `askLlmRouter()` classifies novel errors via Copilot SDK with strict domain enum injection. Novel classifications are persisted to `_NOVEL_TRIAGE.jsonl` (Data Flywheel) for humans to generalize into triage pack signatures
 
 | `fault_domain` | Items reset |
 |---|---|
@@ -237,7 +238,7 @@ sequenceDiagram
 | `deployment-stale` | push-app + poll-app-ci + failing item (code correct — re-deploy only) |
 | `cicd` | push-app + poll-app-ci + failing item (only when agent itself classifies as cicd) |
 
-> **CI/CD Augmentation:** When the validation layer detects CI/CD root-cause indicators in an error classified as another domain (e.g., `backend+infra` with `.github/workflows` in the trace), the original domain's items stay in the reset list *and* `push-app` + `poll-app-ci` are added. The dev agent runs to fix the workflow file using dual-scope commit instructions (`backend` + `cicd` scopes), and the deploy pipeline re-runs.
+> **CI/CD Augmentation:** When the validation layer detects CI/CD root-cause indicators (via `CICD_ROOT_CAUSE_INDICATORS` or cicd-domain triage KB matches) in an error classified as another domain (e.g., `backend+infra` with `.github/workflows` in the trace), the original domain's items stay in the reset list *and* `push-app` + `poll-app-ci` are added. The dev agent runs to fix the workflow file using dual-scope commit instructions (`backend` + `cicd` scopes), and the deploy pipeline re-runs.
 | `infra` | infra-architect + failing item |
 | `environment` | Failing item only (retry may resolve) |
 | `blocked` | Empty — pipeline halts, opens Draft PR |
@@ -279,13 +280,14 @@ Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-depl
 >   - `buildInfraRollbackContext()` — [L115](tools/autonomous-factory/src/context-injection.ts#L115)
 >   - `computeEffectiveDevAttempts()` — [L137](tools/autonomous-factory/src/context-injection.ts#L137) — merges in-memory + persisted cycle counts
 >   - `writeChangeManifest()` — [L155](tools/autonomous-factory/src/context-injection.ts#L155) — writes `_CHANGES.json` for docs-archived
-> - Triage — all in [triage.ts](tools/autonomous-factory/src/triage.ts):
->   - `triageFailure()` — [L69](tools/autonomous-factory/src/triage.ts#L69) — 4-tier evaluation with validation layer
->   - `validateFaultDomain()` — [L407](tools/autonomous-factory/src/triage.ts#L407) — Defense-in-Depth cicd augmentation
->   - `detectKeywordDomains()` — [L338](tools/autonomous-factory/src/triage.ts#L338) — shared keyword detection (Tier 1 + Tier 3)
->   - `applyFaultDomain()` — [L226](tools/autonomous-factory/src/triage.ts#L226) — maps domain → item keys
->   - `UNFIXABLE_SIGNALS` — [L23](tools/autonomous-factory/src/triage.ts#L23) — Azure AD, permission denied, etc.
->   - `parseTriageDiagnostic()` — [L129](tools/autonomous-factory/src/triage.ts#L129) — extracts structured JSON from error strings
+> - Triage — [triage.ts](tools/autonomous-factory/src/triage.ts) + [triage/](tools/autonomous-factory/src/triage/):
+>   - `triageFailure()` — 5-tier evaluation (unfixable → JSON → DOMAIN: header → RAG retriever → LLM router)
+>   - `validateFaultDomain()` — Defense-in-Depth cicd augmentation (uses `retrieveTopMatches()` + `CICD_ROOT_CAUSE_INDICATORS`)
+>   - `retrieveTopMatches()` — [triage/retriever.ts](tools/autonomous-factory/src/triage/retriever.ts) — local substring matcher against triage KB (Tier 4)
+>   - `askLlmRouter()` — [triage/llm-router.ts](tools/autonomous-factory/src/triage/llm-router.ts) — LLM-based fault domain classification fallback (Tier 5)
+>   - `applyFaultDomain()` — maps domain → item keys via `fault_routing` from workflows.yml
+>   - `UNFIXABLE_SIGNALS` — Azure AD, permission denied, state locks, etc.
+>   - `parseTriageDiagnostic()` — extracts structured JSON from error strings
 > - Failure rerouting: `handleFailureReroute()` — [session-runner.ts#L1246](tools/autonomous-factory/src/session-runner.ts#L1246)
 > - State mutations:
 >   - `resetForDev()` — [pipeline-state.mjs#L627](tools/autonomous-factory/pipeline-state.mjs#L627) — resets items for redevelopment
