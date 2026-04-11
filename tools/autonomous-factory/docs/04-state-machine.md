@@ -1,12 +1,12 @@
 # Pipeline State Machine — DAG & Lifecycle
 
-> 20 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
-> Source: `tools/autonomous-factory/pipeline-state.mjs` (~468 lines) · `tools/autonomous-factory/src/state.ts` (~110 lines)
+> 19 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
+> Source: `tools/autonomous-factory/pipeline-state.mjs` · `tools/autonomous-factory/src/state.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
 
-## Full DAG — 20 Pipeline Items (Two-Wave Architecture)
+## Full DAG — 19 Pipeline Items (Two-Wave Architecture)
 
 > This is the **dependency-level** view — which items depend on which and what can run in parallel. For the system-level architecture showing how the orchestrator, MCP servers, and state management connect, see [00-overview.md](00-overview.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
 
@@ -107,7 +107,7 @@ Each workflow type prunes irrelevant items at `pipeline:init`. All types run Wav
 
 ```mermaid
 flowchart TB
-    subgraph FS["Full-Stack (all 20 items)"]
+    subgraph FS["Full-Stack (all 19 items)"]
         direction LR
         FS1["schema-dev"] --> FS_IA["infra-architect"] --> FS_PI["push-infra"] --> FS_DPR["create-draft-pr"] --> FS_PIP["poll-infra-plan"] --> FS_AIA["⏸ approval"] --> FS_IH["infra-handoff"]
         FS1 & FS_IH --> FS2["backend-dev"] & FS3["frontend-dev"]
@@ -382,7 +382,7 @@ classDiagram
 flowchart TD
     subgraph LIMITS["Safety Limits"]
         L1["10 retry attempts\nper failing item"]
-        L2["10 CI re-deploy cycles\nper feature"]
+        L2["3 CI re-deploy cycles\nper feature"]
         L3["5 redevelopment cycles\nper feature"]
         L4["Phase gating:\nitems blocked until\ndeps are 'done'"]
     end

@@ -12,7 +12,7 @@
 flowchart TD
     subgraph COMPILE["Compile Phase (one-time, eager)"]
         direction TB
-        M["Read .apm/apm.yml\n· 20 pipeline items\n· token budget: 6000"]
+        M["Read .apm/apm.yml\n· 19 pipeline items\n· token budget: 8000"]
         R["Read all .md files\nfrom .apm/instructions/\n(17 files, 5 categories)"]
         MCP["Read .apm/mcp/*.mcp.yml\n(3 MCP declarations)"]
         SK["Read .apm/skills/*.skill.md\n(5 skill declarations)"]
@@ -74,7 +74,7 @@ The APM manifest is the **single source of truth** for context delivery. It live
 # Example from sample-app
 name: sample-app
 version: 1.0.0
-tokenBudget: 6000
+tokenBudget: 8000
 
 agents:
   backend-dev:
@@ -284,7 +284,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph BUDGET["Token Budget: 6000 per agent"]
+    subgraph BUDGET["Token Budget: 8000 per agent"]
         direction TB
         B1["backend-dev\n18 files ≈ 4800 tokens\n████████████████░░░░ 80%"]
         B2["frontend-dev\n16 files ≈ 4100 tokens\n██████████████░░░░░░ 68%"]
@@ -297,11 +297,11 @@ flowchart LR
 
 | Agent | Est. Tokens | Budget Used | Headroom |
 |-------|------------|-------------|----------|
-| `backend-dev` | ~4,800 | 80% | ~1,200 tokens |
-| `frontend-dev` | ~4,100 | 68% | ~1,900 tokens |
-| `schema-dev` / `infra-architect` | ~1,500 | 25% | ~4,500 tokens |
-| `test agents` | ~800–1,200 | 13–20% | ~4,800+ tokens |
-| `create-draft-pr` / `infra-handoff` | ~800 | 13% | ~5,200 tokens |
+| `backend-dev` | ~4,800 | 60% | ~3,200 tokens |
+| `frontend-dev` | ~4,100 | 51% | ~3,900 tokens |
+| `schema-dev` / `infra-architect` | ~1,500 | 19% | ~6,500 tokens |
+| `test agents` | ~800–1,200 | 10–15% | ~6,800+ tokens |
+| `create-draft-pr` / `infra-handoff` | ~800 | 10% | ~7,200 tokens |
 | Script bypasses (push/poll) | 0 | 0% | N/A (no LLM session) |
 
 **Estimation formula:** `Math.ceil(text.length / 3.5)` — conservative estimate matching Claude's tokenization pattern.
@@ -460,7 +460,7 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **Eager compile + validate** (all rules at startup) | Fail fast on budget violations before any agent runs |
 | **Cached compiled output** (`.compiled/context.json`) | Zero disk I/O during agent sessions — load once, read from memory |
 | **Same resolution for both paths** | Eliminates drift between agent prompts and IDE `.instructions.md` |
-| **Global token budget** (6,000) | Prevents prompt bloat that degrades agent reasoning quality |
+| **Global token budget** (8,000) | Prevents prompt bloat that degrades agent reasoning quality |
 | **Alphabetical sort for directories** | Deterministic include order across environments |
 | **MCP `availability` field** | `optional` = graceful degradation (roam), `required` = fail fast (playwright) |
 | **Skill declarations separate from instructions** | Skills are capabilities (commands + descriptions), not governance rules |
