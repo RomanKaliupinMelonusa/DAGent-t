@@ -1300,3 +1300,272 @@ describe("triageFailure (domain-specific deployment-stale)", () => {
   });
 });
 
+// ===========================================================================
+// Commerce Storefront (PWA Kit) — SFCC-specific triage fixtures
+// ===========================================================================
+//
+// The triage engine is app-agnostic. These tests prove the commerce-storefront
+// fault_routing table (from apps/commerce-storefront/.apm/workflows.yml) routes
+// correctly through the same kernel used by sample-app.
+// ===========================================================================
+
+/**
+ * Commerce-storefront fault_routing fixture — mirrors
+ * apps/commerce-storefront/.apm/workflows.yml fault_routing section.
+ */
+const SFCC_FAULT_ROUTING: Record<string, ApmFaultRoute> = {
+  frontend:         { reset_nodes: ["storefront-dev", "storefront-unit-test", "$SELF"] },
+  schemas:          { reset_nodes: ["schema-dev", "storefront-dev", "storefront-unit-test", "$SELF"] },
+  cicd:             { reset_nodes: ["push-app", "poll-app-ci"] },
+  "deployment-stale": { reset_nodes: ["push-app", "poll-app-ci"] },
+  "test-code":      { reset_nodes: ["$SELF"] },
+  environment:      { reset_nodes: ["$SELF"] },
+  blocked:          { reset_nodes: [] },
+};
+
+/** Commerce-storefront unfixable signals — from workflows.yml. */
+const SFCC_UNFIXABLE_SIGNALS = [
+  "unauthorized_client",
+  "invalid_client",
+  "account_suspended",
+  "organization not found",
+  "slas client not found",
+];
+
+/** Commerce-storefront workflow nodes — matches the 11-node DAG. */
+const SFCC_WORKFLOW_NODES: Record<string, { script_type?: string }> = {
+  "schema-dev":            {},
+  "storefront-dev":        {},
+  "storefront-unit-test":  {},
+  "create-draft-pr":       {},
+  "live-ui":               {},
+  "code-cleanup":          {},
+  "docs-archived":         {},
+  "doc-architect":         {},
+  "push-app":              { script_type: "push" },
+  "poll-app-ci":           { script_type: "poll" },
+  "publish-pr":            { script_type: "publish" },
+};
+
+/** Commerce-storefront triage KB for retriever tests. */
+const SFCC_KB: TriageSignature[] = [
+  { error_snippet: "chakra", fault_domain: "frontend", reason: "Chakra UI component error" },
+  { error_snippet: "commerce-sdk-react", fault_domain: "frontend", reason: "SCAPI hook error" },
+  { error_snippet: "useProduct", fault_domain: "frontend", reason: "commerce-sdk-react hook error" },
+  { error_snippet: "useBasket", fault_domain: "frontend", reason: "commerce-sdk-react hook error" },
+  { error_snippet: "render failure", fault_domain: "frontend", reason: "React render error" },
+  { error_snippet: "hydration", fault_domain: "frontend", reason: "SSR hydration mismatch" },
+  { error_snippet: "overrides/app", fault_domain: "frontend", reason: "PWA Kit override path" },
+  { error_snippet: "/config/", fault_domain: "schemas", reason: "Commerce config error" },
+  { error_snippet: "slas", fault_domain: "environment", reason: "SLAS auth error" },
+  { error_snippet: "deployment stale", fault_domain: "deployment-stale", reason: "Stale Managed Runtime deployment" },
+  { error_snippet: ".github/workflows", fault_domain: "cicd", reason: "CI/CD workflow error" },
+];
+
+// ---------------------------------------------------------------------------
+// Commerce Storefront — structured JSON triage (Tier 1)
+// ---------------------------------------------------------------------------
+
+describe("commerce-storefront: triageFailure (structured JSON)", () => {
+  it("frontend fault_domain → resets storefront-dev + storefront-unit-test + $SELF", async () => {
+    const msg = makeJsonMsg("frontend", "Chakra Button not rendering after hydration");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["storefront-dev", "storefront-unit-test", "live-ui"]);
+  });
+
+  it("schemas fault_domain → resets schema-dev + storefront-dev + storefront-unit-test + $SELF", async () => {
+    const msg = makeJsonMsg("schemas", "Config schema mismatch in default.js");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["schema-dev", "storefront-dev", "storefront-unit-test", "live-ui"]);
+  });
+
+  it("cicd fault_domain → resets push-app + poll-app-ci only (no dev items)", async () => {
+    const msg = makeJsonMsg("cicd", "deploy-storefront.yml missing npm run build step");
+    const keys = await triageFailure("poll-app-ci", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci"]);
+    assert.ok(!keys.includes("storefront-dev"));
+  });
+
+  it("deployment-stale → resets push-app + poll-app-ci (no dev, no $SELF)", async () => {
+    const msg = makeJsonMsg("deployment-stale", "Managed Runtime serving stale bundle");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["push-app", "poll-app-ci"]);
+    assert.ok(!keys.includes("storefront-dev"));
+    assert.ok(!keys.includes("live-ui"));
+  });
+
+  it("test-code fault_domain → resets only $SELF (bad Playwright locator)", async () => {
+    const msg = makeJsonMsg("test-code", "Playwright timeout on data-testid=pdp-add-to-cart — locator wrong");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["live-ui"]);
+  });
+
+  it("environment fault_domain → resets only $SELF (SLAS token failure)", async () => {
+    const msg = makeJsonMsg("environment", "SLAS refresh token expired — transient auth failure");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["live-ui"]);
+  });
+
+  it("blocked fault_domain → returns [] (halt for human)", async () => {
+    const msg = makeJsonMsg("blocked", "SFCC sandbox access revoked — contact admin");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("filters N/A items from frontend domain", async () => {
+    const msg = makeJsonMsg("frontend", "Component render error");
+    const naItems = new Set(["storefront-unit-test"]);
+    const keys = await triageFailure("live-ui", msg, naItems, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.deepStrictEqual(keys, ["storefront-dev", "live-ui"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Commerce Storefront — unfixable signals (Tier 0)
+// ---------------------------------------------------------------------------
+
+describe("commerce-storefront: isUnfixableError (SFCC signals)", () => {
+  it("detects unauthorized_client", () => {
+    assert.equal(isUnfixableError("Error: unauthorized_client — SLAS client ID not recognized", SFCC_UNFIXABLE_SIGNALS), "unauthorized_client");
+  });
+
+  it("detects invalid_client", () => {
+    assert.equal(isUnfixableError("OAuth error: invalid_client — client secret mismatch", SFCC_UNFIXABLE_SIGNALS), "invalid_client");
+  });
+
+  it("detects account_suspended", () => {
+    assert.equal(isUnfixableError("SFCC sandbox account_suspended — contact Salesforce support", SFCC_UNFIXABLE_SIGNALS), "account_suspended");
+  });
+
+  it("detects 'organization not found'", () => {
+    assert.equal(isUnfixableError("SCAPI error: organization not found for org ID f_ecom_zzrf_001", SFCC_UNFIXABLE_SIGNALS), "organization not found");
+  });
+
+  it("detects 'slas client not found'", () => {
+    assert.equal(isUnfixableError("Error during auth: slas client not found — verify client ID in config/default.js", SFCC_UNFIXABLE_SIGNALS), "slas client not found");
+  });
+
+  it("returns null for fixable SFCC errors (Chakra render failure)", () => {
+    assert.equal(isUnfixableError("ChakraProvider: theme is missing required tokens", SFCC_UNFIXABLE_SIGNALS), null);
+  });
+
+  it("returns null for SCAPI 404 (fixable endpoint misconfiguration)", () => {
+    assert.equal(isUnfixableError("SCAPI 404: /search/shopper-search/v1/organizations/undefined/product-search", SFCC_UNFIXABLE_SIGNALS), null);
+  });
+});
+
+describe("commerce-storefront: triageFailure with unfixable signals (Tier 0)", () => {
+  it("unauthorized_client halts pipeline (returns [])", async () => {
+    const msg = "OAuth error: unauthorized_client — check SLAS client configuration";
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, undefined, undefined, undefined, undefined, SFCC_UNFIXABLE_SIGNALS);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("slas client not found halts pipeline even with frontend keywords", async () => {
+    const msg = "slas client not found when rendering storefront homepage — commerce-sdk-react useProduct failed";
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB, undefined, undefined, undefined, SFCC_UNFIXABLE_SIGNALS);
+    assert.deepStrictEqual(keys, []);
+  });
+
+  it("fixable SCAPI error routes normally (not blocked)", async () => {
+    const msg = "commerce-sdk-react useProduct hook returned 400 — invalid product ID";
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB, undefined, undefined, undefined, SFCC_UNFIXABLE_SIGNALS);
+    assert.ok(keys.length > 0, "Expected non-empty reset keys for fixable error");
+    assert.ok(keys.includes("storefront-dev"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Commerce Storefront — RAG retriever (Tier 3)
+// ---------------------------------------------------------------------------
+
+describe("commerce-storefront: triageFailure (RAG retriever)", () => {
+  it("Chakra UI error → routes to storefront-dev", async () => {
+    const keys = await triageFailure("live-ui", "ChakraProvider error: chakra theme token missing for Button", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("storefront-dev"), `Expected storefront-dev in: ${keys}`);
+    assert.ok(keys.includes("storefront-unit-test"), `Expected storefront-unit-test in: ${keys}`);
+  });
+
+  it("commerce-sdk-react hook error → routes to storefront-dev", async () => {
+    const keys = await triageFailure("live-ui", "Error in commerce-sdk-react useBasket: cannot read property 'basketId'", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("storefront-dev"), `Expected storefront-dev in: ${keys}`);
+  });
+
+  it("SSR hydration mismatch → routes to frontend (storefront-dev)", async () => {
+    const keys = await triageFailure("live-ui", "Warning: Text content did not match during hydration. Server: 'Home' Client: ''", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("storefront-dev"), `Expected storefront-dev in: ${keys}`);
+  });
+
+  it("overrides/app path → routes to frontend (storefront-dev)", async () => {
+    const keys = await triageFailure("storefront-unit-test", "FAIL overrides/app/pages/home/index.test.jsx — component snapshot mismatch", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("storefront-dev"), `Expected storefront-dev in: ${keys}`);
+  });
+
+  it("config/ path → routes to schemas (schema-dev)", async () => {
+    const keys = await triageFailure("live-ui", "Error reading /config/default.js — missing siteId property", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("schema-dev"), `Expected schema-dev in: ${keys}`);
+    assert.ok(keys.includes("storefront-dev"), `Expected storefront-dev in schemas cascade: ${keys}`);
+  });
+
+  it("no KB match → retries only the failing item", async () => {
+    const keys = await triageFailure("live-ui", "completely unknown PWA Kit error", NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.deepStrictEqual(keys, ["live-ui"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Commerce Storefront — DOMAIN: header (Tier 2)
+// ---------------------------------------------------------------------------
+
+describe("commerce-storefront: triageFailure with DOMAIN: header (Tier 2)", () => {
+  it("DOMAIN: frontend routes to storefront-dev + storefront-unit-test", async () => {
+    const msg = "DOMAIN: frontend\nPlaywright error: page.click failed for #add-to-cart";
+    const keys = await triageFailure("poll-app-ci", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.ok(keys.includes("storefront-dev"));
+    assert.ok(keys.includes("storefront-unit-test"));
+    assert.ok(keys.includes("poll-app-ci"));
+  });
+
+  it("DOMAIN: schemas cascades through all storefront nodes", async () => {
+    const msg = "DOMAIN: schemas\nconfig validation failed";
+    const keys = await triageFailure("poll-app-ci", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("storefront-dev"));
+    assert.ok(keys.includes("storefront-unit-test"));
+  });
+
+  it("DOMAIN: unknown falls through to retriever", async () => {
+    const msg = "DOMAIN: unknown\ncommerce-sdk-react useProduct failed";
+    const keys = await triageFailure("poll-app-ci", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES, SFCC_KB);
+    assert.ok(keys.includes("storefront-dev"), `Expected retriever to route: ${keys}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Commerce Storefront — cross-check: no sample-app node leakage
+// ---------------------------------------------------------------------------
+
+describe("commerce-storefront: no sample-app node leakage", () => {
+  it("frontend domain never resets backend-dev or infra-architect", async () => {
+    const msg = makeJsonMsg("frontend", "Chakra UI render failure on PDP");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.ok(!keys.includes("backend-dev"), `Unexpected backend-dev in SFCC: ${keys}`);
+    assert.ok(!keys.includes("frontend-dev"), `Unexpected frontend-dev in SFCC: ${keys}`);
+    assert.ok(!keys.includes("infra-architect"), `Unexpected infra-architect in SFCC: ${keys}`);
+    assert.ok(!keys.includes("frontend-unit-test"), `Unexpected frontend-unit-test in SFCC: ${keys}`);
+    // Only SFCC nodes
+    assert.ok(keys.includes("storefront-dev"));
+    assert.ok(keys.includes("storefront-unit-test"));
+  });
+
+  it("schemas domain resets storefront nodes, not sample-app nodes", async () => {
+    const msg = makeJsonMsg("schemas", "Config type mismatch");
+    const keys = await triageFailure("live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES);
+    assert.ok(!keys.includes("backend-dev"));
+    assert.ok(!keys.includes("frontend-dev"));
+    assert.ok(!keys.includes("infra-architect"));
+    assert.ok(keys.includes("schema-dev"));
+    assert.ok(keys.includes("storefront-dev"));
+  });
+});
+

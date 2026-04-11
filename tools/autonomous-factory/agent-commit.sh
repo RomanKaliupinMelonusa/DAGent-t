@@ -38,6 +38,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # App root: defaults to "." (repo root) unless APP_ROOT is set
 AR="${APP_ROOT:-.}"
+ALL_SCOPE=false
 
 # Determine paths to stage
 if [ $# -gt 0 ]; then
@@ -69,7 +70,11 @@ else
       PATHS=("${AR}/e2e/" "${AR}/in-progress/")
       ;;
     all)
-      PATHS=("${AR}/backend/" "${AR}/frontend/" "${AR}/packages/" "${AR}/infra/" "${AR}/e2e/" "${AR}/.apm/hooks/" "${AR}/in-progress/" ".github/")
+      # Stage the entire app root, excluding heavy/generated dirs.
+      # Works with any app layout (sample-app's backend/frontend/infra
+      # or commerce-storefront's flat overrides/config/worker structure).
+      PATHS=("${AR}/")
+      ALL_SCOPE=true
       ;;
     *)
       echo "ERROR: Unknown scope '${SCOPE}'. Use: backend, frontend, infra, cicd, docs, pipeline, pr, e2e, all" >&2
@@ -87,6 +92,14 @@ for p in "${PATHS[@]}"; do
     git add "$p"
   fi
 done
+
+# For `all` scope: also stage .github/ (CI workflows) and unstage heavy/generated dirs.
+if [ "$ALL_SCOPE" = true ]; then
+  [ -d ".github/" ] && git add .github/
+  for _excl in "${AR}/node_modules" "${AR}/build" "${AR}/.apm/.compiled"; do
+    git reset HEAD -- "$_excl" 2>/dev/null || true
+  done
+fi
 
 # Exclude pipeline state files from in-progress/ — committed exclusively by the
 # orchestrator (mutex).  Only reset files under in-progress/, NOT archive/ where

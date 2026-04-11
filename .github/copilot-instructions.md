@@ -11,12 +11,12 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 
 | Layer | Technology |
 |---|---|
-| Monorepo | npm workspaces · `apps/sample-app/` (skeleton) · `tools/autonomous-factory/` (engine) |
+| Monorepo | npm workspaces · `apps/sample-app/` (skeleton) · `apps/commerce-storefront/` (PWA Kit) · `tools/autonomous-factory/` (engine) |
 | Orchestrator | TypeScript · `@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod v4 · Node 22 |
 | State Machine | DAG scheduler · `pipeline-state.mjs` · JSON state files |
 | APM Compiler | `apm-compiler.ts` · per-agent token budgets · modular `.md` instruction fragments |
 | Structural Intelligence | roam-code v11.2 · Python 3.11 · AST semantic graph · MCP server |
-| CI/CD | GitHub Actions · OIDC federated credentials · 9 workflows |
+| CI/CD | GitHub Actions · OIDC federated credentials · 10 workflows |
 | Testing | Playwright (live browser) · Jest (unit) · integration tests against live endpoints |
 | Infra (sample) | Terraform (azurerm + azapi) · Azure Functions · Azure Static Web Apps |
 
@@ -55,6 +55,12 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
 | APM compiler & context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Active feature workspace | `apps/sample-app/in-progress/` |
+| Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
+| Commerce storefront instruction fragments | `apps/commerce-storefront/.apm/instructions/**/*.md` |
+| Commerce storefront lifecycle hooks | `apps/commerce-storefront/.apm/hooks/*.sh` |
+| Commerce storefront skill declarations | `apps/commerce-storefront/.apm/skills/*.skill.md` |
+| Commerce storefront MCP declarations | `apps/commerce-storefront/.apm/mcp/*.mcp.yml` |
+| Commerce storefront active workspace | `apps/commerce-storefront/in-progress/` |
 | CI/CD: Integration tests & builds | `.github/workflows/ci-integration.yml` |
 | CI/CD: Backend deploy | `.github/workflows/deploy-backend.yml` |
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
@@ -62,6 +68,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | CI/CD: Regression tests | `.github/workflows/regression-tests.yml` |
 | CI/CD: Schema drift check | `.github/workflows/schema-drift.yml` |
 | CI/CD: Agentic feature pipeline | `.github/workflows/agentic-feature.yml` |
+| CI/CD: Storefront deploy (Managed Runtime) | `.github/workflows/deploy-storefront.yml` |
 | ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
 | ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
 | Pipeline state script | `tools/autonomous-factory/pipeline-state.mjs` |
@@ -93,7 +100,8 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 **Locally (devcontainer):**
 ```bash
 npm run pipeline:init <slug> <type>   # Initialize pipeline state
-npm run agent:run -- --app apps/sample-app <slug>   # Run the headless orchestrator
+npm run agent:run -- --app apps/sample-app <slug>   # Run for sample-app
+npm run agent:run -- --app apps/commerce-storefront <slug>   # Run for commerce-storefront
 # Optional: BASE_BRANCH=develop npm run agent:run -- --app apps/sample-app <slug>
 ```
 

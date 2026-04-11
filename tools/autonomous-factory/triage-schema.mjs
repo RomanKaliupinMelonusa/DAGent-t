@@ -23,7 +23,7 @@ export const TriageDiagnosticSchema = z.object({
     "backend", "frontend", "both", "environment",
     "frontend+infra", "backend+infra", "cicd", "blocked",
     "infra", "deployment-stale", "deployment-stale-backend",
-    "deployment-stale-frontend", "test-code",
+    "deployment-stale-frontend", "test-code", "schemas",
   ]).describe(
     "The root cause domain of the failure. " +
     "CRITICAL RULES: " +

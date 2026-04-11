@@ -141,13 +141,17 @@ function renderTrans(slug, state) {
 
   // Group items by phase (use state.phases if available, else derive from items)
   const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
+  /** Map well-known phase slugs to human-readable headings; unknown phases are title-cased. */
+  const PHASE_HEADINGS = {
+    infra: "Infrastructure (Wave 1)",
+    approval: "Approval Gate",
+    "pre-deploy": "Pre-Deploy (Wave 2)",
+    deploy: "Deploy",
+    "post-deploy": "Post-Deploy",
+    finalize: "Finalize",
+  };
   for (const phase of phases) {
-    const heading = phase === "infra" ? "Infrastructure (Wave 1)"
-      : phase === "approval" ? "Approval Gate"
-      : phase === "pre-deploy" ? "Pre-Deploy (Wave 2)"
-      : phase === "deploy" ? "Deploy"
-      : phase === "post-deploy" ? "Post-Deploy"
-      : "Finalize";
+    const heading = PHASE_HEADINGS[phase] ?? phase.replace(/(^|\-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
     lines.push(`### ${heading}`);
     for (const item of state.items.filter((i) => i.phase === phase)) {
       const box =

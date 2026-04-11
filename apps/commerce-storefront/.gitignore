@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+
+# APM compiled context
+.apm/.compiled/
+
+# Managed Runtime credentials
+.mobify
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pipeline state (generated)
+*_STATE.json
+*_TRANS.md
