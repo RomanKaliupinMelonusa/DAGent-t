@@ -264,7 +264,30 @@ export function initState(slug, workflowType, contextJsonPath) {
     contextJsonPath = join(APP_ROOT, ".apm", ".compiled", "context.json");
   }
   if (!existsSync(contextJsonPath)) {
-    throw new Error(`APM compiled context not found: ${contextJsonPath}. Run the APM compiler first.`);
+    // Auto-compile APM context if missing (same as loadApmContext in the orchestrator)
+    const apmYml = join(APP_ROOT, ".apm", "apm.yml");
+    if (!existsSync(apmYml)) {
+      throw new Error(
+        `No APM manifest found at ${apmYml}. Each app must have .apm/apm.yml.`
+      );
+    }
+    console.log("ℹ  APM compiled context not found — compiling automatically…");
+    try {
+      const compilerScript = `import{compileApm}from"./src/apm-compiler.ts";compileApm(${JSON.stringify(APP_ROOT)});`;
+      execSync(`npx tsx -e '${compilerScript}'`, {
+        cwd: __dirname,
+        stdio: "inherit",
+        timeout: 60_000,
+      });
+    } catch (err) {
+      throw new Error(
+        `APM auto-compilation failed: ${err.message}\n` +
+        `You can compile manually: cd tools/autonomous-factory && npx tsx -e 'import{compileApm}from"./src/apm-compiler.ts";compileApm("${APP_ROOT}");'`
+      );
+    }
+    if (!existsSync(contextJsonPath)) {
+      throw new Error(`APM compiled context still not found after auto-compilation: ${contextJsonPath}`);
+    }
   }
 
   const context = JSON.parse(readFileSync(contextJsonPath, "utf-8"));

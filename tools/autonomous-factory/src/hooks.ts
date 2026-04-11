@@ -122,7 +122,7 @@ export function runResolveEnvironment(
     throw new Error(`resolveEnvironment hook failed (exit ${result?.exitCode ?? "??"})${detail}`);
   }
 
-  const KV_RE = /^([A-Z_][A-Z0-9_]*)=(.+)$/;
+  const KV_RE = /^([A-Z_][A-Z0-9_]*)=(.*)$/;
   let count = 0;
 
   for (const line of result.stdout.split("\n")) {
