@@ -66,7 +66,7 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const SHELL_OUTPUT_LIMIT = 64_000;
 
 /** Timeout for shell executions (ms). */
-const SHELL_TIMEOUT_MS = 120_000;
+const SHELL_TIMEOUT_MS = 600_000;
 
 // --- Bouncer regexes ---
 
