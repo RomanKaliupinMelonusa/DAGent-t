@@ -1,7 +1,7 @@
 # Specialist Agents — Catalog & Configuration
 
-> 20 pipeline items across 6 phases (two-wave architecture). 14 LLM-driven agents, 4 deterministic script bypasses, one human gate, and one deterministic handler. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
-> Source: `tools/autonomous-factory/src/agents.ts` (~1600 lines)
+> 19 pipeline items across 6 phases (two-wave architecture). 13 LLM-driven agents, 5 deterministic script bypasses, and one human approval gate. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
+> Source: `tools/autonomous-factory/src/agents.ts`
 
 ---
 
@@ -74,21 +74,23 @@ flowchart TB
 | 4 | `create-draft-pr` | infra | LLM | — | 15 min | claude-opus-4.6 | (always only) |
 | 5 | `poll-infra-plan` | infra | **Script** | — | 15 min | — | (deterministic bypass) |
 | 6 | `await-infra-approval` | approval | **Human gate** | — | ∞ | — | (no agent — pipeline pauses) |
-| 7 | `infra-handoff` | approval | LLM | — | 15 min | claude-opus-4.6 | (always only) |
+| 7 | `infra-handoff` | approval | LLM | — | 20 min | claude-opus-4.6 | (always only) |
 | 8 | `backend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
 | 9 | `frontend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
 | 10 | `backend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
 | 11 | `frontend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
 | 12 | `push-app` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
 | 13 | `poll-app-ci` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
-| 14 | `integration-test` | post-deploy | LLM | — | 15 min | claude-opus-4.6 | integration-testing |
-| 15 | `live-ui` | post-deploy | LLM | playwright, roam | 15 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
-| 16 | `code-cleanup` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
-| 17 | `docs-archived` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
+| 14 | `integration-test` | post-deploy | LLM | — | 20 min | claude-opus-4.6 | integration-testing |
+| 15 | `live-ui` | post-deploy | LLM | playwright, roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
+| 16 | `code-cleanup` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 17 | `docs-archived` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
 | 18 | `doc-architect` | finalize | LLM | roam, mermaid | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 19 | `publish-pr` | finalize | LLM | roam | 15 min | claude-opus-4.6 | roam-tool-rules |
+| 19 | `publish-pr` | finalize | **Script** | — | 15 min | — | (deterministic bypass) |
 
 > **Script** items execute deterministic shell commands — zero LLM tokens consumed. **Human gate** pauses the orchestrator and logs a message prompting for `/dagent approve-infra` on the Draft PR.
+>
+> **Scripts:** `push-infra`, `poll-infra-plan`, `push-app`, `poll-app-ci`, `publish-pr`
 
 ---
 
@@ -114,7 +116,6 @@ flowchart LR
     R --> A16["code-cleanup"]
     R --> A17["docs-archived"]
     R --> A17B["doc-architect"]
-    R --> A18["publish-pr"]
 
     P --> A15
 
@@ -133,6 +134,7 @@ flowchart LR
         A12["push-app"]
         A13["poll-app-ci"]
         A14["integration-test"]
+        A18["publish-pr"]
     end
 
     style ROAM_SERVER fill:#e8f5e9,stroke:#2e7d32

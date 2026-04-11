@@ -197,6 +197,8 @@ export const ApmWorkflowNodeSchema = z.object({
   ci_workflow_key: z.string().optional(),
   /** Validation hook to run after the node completes successfully. */
   post_run_hook: z.enum(["validateInfra", "validateApp"]).optional(),
+  /** When true, this node survives graceful degradation (salvageForDraft). */
+  salvage_survivor: z.boolean().optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },
@@ -234,6 +236,8 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
 export const ApmFaultRouteSchema = z.object({
   /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
   reset_nodes: z.array(z.string()),
+  /** Human-readable description of this fault domain (injected into LLM triage prompt). */
+  description: z.string().optional(),
 });
 
 export const ApmWorkflowSchema = z.object({
@@ -249,6 +253,9 @@ export const ApmWorkflowSchema = z.object({
    *  WYSIWYG: the kernel returns exactly what is declared here. No hidden appending.
    *  Use "$SELF" to include the calling item in the reset list. */
   fault_routing: z.record(z.string(), ApmFaultRouteSchema).default({}),
+  /** Error substrings that signal unfixable conditions — no agent can fix these.
+   *  When any signal matches, the pipeline halts immediately for human intervention. */
+  unfixable_signals: z.array(z.string()).default([]),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key

@@ -168,7 +168,7 @@ flowchart LR
     style FIN fill:#f3e5f5
 ```
 
-**20 pipeline items · 6 phases · Two-wave DAG with infra-first approval gate · 6 workflow types (Backend, Frontend, Full-Stack, Infra, App-Only, Backend-Only)**
+**19 pipeline items · 6 phases · Two-wave DAG with infra-first approval gate · 6 workflow types (Backend, Frontend, Full-Stack, Infra, App-Only, Backend-Only)**
 
 ### Session Timeouts
 
@@ -179,18 +179,18 @@ flowchart LR
 | Unit Tests | 10 min | backend-unit-test, frontend-unit-test |
 | Infra Deploy | 15 min | push-infra, poll-infra-plan, create-draft-pr |
 | Approval Gate | ∞ | await-infra-approval (human gate — no timeout) |
-| Infra Handoff | 15 min | infra-handoff |
+| Infra Handoff | 20 min | infra-handoff |
 | App Deploy | 15 min | push-app, poll-app-ci |
-| Post-Deploy | 15 min | integration-test, live-ui |
+| Post-Deploy | 20 min | integration-test, live-ui |
 | Finalization | 20 min | code-cleanup, docs-archived, doc-architect, publish-pr |
 
 ### Workflow Type Filtering
 
-Not all 20 items run for every workflow type. Items marked **skip** are set to `na` at init:
+Not all 19 items run for every workflow type. Items marked **skip** are set to `na` at init:
 
 | Item | Full-Stack | Backend | Frontend | Infra | App-Only | Backend-Only |
 |------|:----------:|:-------:|:--------:|:-----:|:--------:|:------------:|
-| schema-dev | run | run | **skip** | **skip** | **skip** | **skip** |
+| schema-dev | run | run | **skip** | run | run | run |
 | infra-architect | run | run | run | run | **skip** | **skip** |
 | push-infra | run | run | run | run | **skip** | **skip** |
 | create-draft-pr | run | run | run | run | run | run |
@@ -210,7 +210,7 @@ Not all 20 items run for every workflow type. Items marked **skip** are set to `
 | doc-architect | run | run | run | **skip** | run | run |
 | publish-pr | run | run | run | run | run | run |
 
-> **Note:** Wave 1 infra items (`schema-dev` through `infra-handoff`), `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for all workflow types that include them. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items.
+> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` run for all workflow types. `schema-dev` runs for all except Frontend. Other Wave 1 infra items (`infra-architect` through `infra-handoff`) skip for App-Only and Backend-Only. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run.
 
 ### Auto-Skip Optimization
 
@@ -595,11 +595,11 @@ Entra: MSAL JWT     → APIM validate-jwt → Function Key → Function authLeve
 | Rule | Enforcement |
 |---|---|
 | **10 retries per item** | `pipeline:fail` returns `halted: true` / exits with code 2 after 10 failures |
-| **10 re-deploy cycles per feature** | `pipeline:reset-ci` returns `halted: true` / exits with code 2 after 10 cycles |
+| **3 re-deploy cycles per feature** | `resetForRedeploy` returns `halted: true` after 3 cycles (configurable via `max_redeploy_cycles` in `workflows.yml`) |
 | **5 redevelopment cycles per feature** | `resetForDev` halts after 5 post-deploy→dev reroute cycles |
 | **E2E test gate** | `frontend-unit-test` verifies Playwright tests compile; `live-ui` verifies they exist and runs them |
 | **Session timeouts** | Orchestrator enforces 10/15/20/30 min timeouts per specialist session |
-| **Cognitive circuit breaker** | Per-agent tool call limits declared in `apm.yml` (`toolLimits: { soft, hard }`). Soft limit injects a frustration prompt into the tool result via `tool.execution_complete` so the LLM can self-correct. Hard limit force-disconnects the session. Defaults: soft=30, hard=40. Overrides: `live-ui` 50/65, scripted agents 10/15, read-heavy agents 15/20 |
+| **Cognitive circuit breaker** | Per-agent tool call limits declared in `apm.yml` (`toolLimits: { soft, hard }`). Soft limit injects a frustration prompt into the tool result via `tool.execution_complete` so the LLM can self-correct. Hard limit force-disconnects the session. Resolution: per-agent `toolLimits` → `config.defaultToolLimits` (60/80) → code fallback (30/40) |
 | **Cross-session summary merge** | `_SUMMARY.md` telemetry parsed once at boot (`parsePreviousSummary`) and unconditionally added to current session totals — monotonic accumulation across restarts |
 | **Phase gating** | `pipeline:complete` programmatically rejects if prior phases are incomplete |
 | **No cross-agent delegation** | Specialist system prompts prohibit invoking other agents; orchestrator controls sequencing |

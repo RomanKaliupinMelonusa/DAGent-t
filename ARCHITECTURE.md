@@ -2,7 +2,7 @@
 
 ## 1. The DAG: Structure and Purpose
 
-The pipeline is a **Directed Acyclic Graph** of 20 items defined in `tools/autonomous-factory/pipeline-state.mjs` (L52–75), organized into a **Two-Wave model** (infra first, app second) with 6 phases.
+The pipeline is a **Directed Acyclic Graph** of 19 items defined in `tools/autonomous-factory/pipeline-state.mjs`, organized into a **Two-Wave model** (infra first, app second) with 6 phases.
 
 ```mermaid
 graph TD
@@ -185,7 +185,7 @@ This is the **single most important layer**. The APM compiler (`tools/autonomous
 
 1. Resolves instruction references — a directory ref like `backend` loads ALL `.md` files in `.apm/instructions/backend/` alphabetically; a file ref like `tooling/roam-tool-rules.md` loads that single file
 2. Concatenates them into a single `rulesBlock` prefixed with `## Coding Rules\n\n`
-3. Validates token count against the budget (6000 tokens for sample-app)
+3. Validates token count against the budget (8000 tokens for sample-app)
 
 From `apps/sample-app/.apm/apm.yml` L8–9:
 
@@ -549,7 +549,7 @@ The triage system in `tools/autonomous-factory/src/triage.ts` evaluates failures
   - `runValidateApp()` (`session-runner.ts`) — runs after `poll-app-ci` succeeds. Delegates to `hooks.validateApp` (`.apm/hooks/validate-app.sh`). If the hook exits `1`, the item fails with `deployment-stale` fault domain and triggers triage reroute — blocking expensive post-deploy agents from booting up. `@backend-dev` and `@frontend-dev` append endpoint checks to this hook as they create new routes
   - `runValidateInfra()` (`session-runner.ts`) — runs after `infra-handoff` agent session completes. Delegates to `hooks.validateInfra` (`.apm/hooks/validate-infra.sh`). If the hook exits `1`, the item fails with `infra` fault domain → triage resets `["infra-architect", "infra-handoff"]`. `@infra-architect` appends resource reachability checks to this hook as it provisions new data-plane resources
 - **Post-deploy propagation delay** — 60-second wait before all post-deploy items on every attempt. Deployments can take 30–90s to propagate after workflow success
-- **Max limits** — 10 retries per item, 5 redevelopment cycles, 10 re-deploy cycles
+- **Max limits** — 10 retries per item, 5 redevelopment cycles, 3 re-deploy cycles (configurable via `max_redeploy_cycles` in `workflows.yml`)
 
 ## 6. What Matters Most vs. Least
 

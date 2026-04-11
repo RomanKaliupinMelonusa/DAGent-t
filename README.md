@@ -153,10 +153,10 @@ When post-deploy verification fails, the pipeline doesn't stop — it triages th
 
 ## Key Capabilities
 
-1. **DAG-Scheduled Parallel Execution** — 20 pipeline items across 6 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification items (`integration-test` and `live-ui`) run in parallel after `poll-app-ci` completes. Deploy-phase items (`push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Six workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) prune irrelevant items at init.
+1. **DAG-Scheduled Parallel Execution** — 19 pipeline items across 6 phases, scheduled by an explicit dependency graph. Independent agents fire concurrently. Post-deploy verification items (`integration-test` and `live-ui`) run in parallel after `poll-app-ci` completes. Deploy-phase items (`push-infra`, `push-app`, `poll-infra-plan`, `poll-app-ci`, `publish-pr`) execute as deterministic shell bypasses — no LLM session, with agent fallback only on failure. Six workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) prune irrelevant items at init.
    → *Deep dive: [04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md)*
 
-2. **APM: Agent Package Manager** — Each agent receives *only* the rules relevant to its domain from modular `.md` instruction fragments. Token budget enforcement (`6,000 tokens`) prevents context degradation as rules grow. Built on [Microsoft's APM](https://github.com/microsoft/apm) standard.
+2. **APM: Agent Package Manager** — Each agent receives *only* the rules relevant to its domain from modular `.md` instruction fragments. Token budget enforcement (`8,000 tokens`) prevents context degradation as rules grow. Built on [Microsoft's APM](https://github.com/microsoft/apm) standard.
    → *Deep dive: [03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md)*
 
 3. **Self-Healing Recovery Loop** — Post-deploy test failures produce a structured `TriageDiagnostic` with compound fault domain routing (`backend+infra`, `frontend+infra`) that targets only the responsible layers. A deduplication circuit breaker halts retries when the same error repeats with no code changes. Shift-left validation in dev agents catches deployment-blocking errors (missing deps, CJS/ESM mismatches) before code leaves the pre-deploy phase.

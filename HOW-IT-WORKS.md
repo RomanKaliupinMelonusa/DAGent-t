@@ -31,7 +31,7 @@ That's the whole system. Everything below zooms deeper into each part.
 
 You already know the system has 3 parts. Now: what does the DAG actually look like?
 
-20 items across 6 phases, organized as a **Two-Wave model** — infrastructure deploys first, then application code builds on top of it.
+19 items across 6 phases, organized as a **Two-Wave model** — infrastructure deploys first, then application code builds on top of it.
 
 ```mermaid
 graph TD
@@ -155,7 +155,7 @@ backend-dev:
   instructions: [always, backend, tooling/roam-tool-rules.md]
 ```
 
-The APM compiler resolves this: `always` → all `.md` files in `.apm/instructions/always/`, `backend` → all `.md` files in `.apm/instructions/backend/`, etc. Concatenated, validated against a 6000-token budget, then injected as `## Coding Rules` in the system message.
+The APM compiler resolves this: `always` → all `.md` files in `.apm/instructions/always/`, `backend` → all `.md` files in `.apm/instructions/backend/`, etc. Concatenated, validated against an 8000-token budget, then injected as `## Coding Rules` in the system message.
 
 > **Key code at this level:**
 > - Prompt factory: [agents.ts](tools/autonomous-factory/src/agents.ts) — all prompt builders live here
@@ -270,7 +270,7 @@ graph TD
 
 **Self-mutating validation hooks**: The orchestrator delegates deployment verification to bash scripts that agents dynamically extend. After `poll-app-ci` succeeds, `runValidateApp()` executes `hooks.validateApp` — if it fails, triggers `deployment-stale` reroute before expensive post-deploy agents boot up. After `infra-handoff` completes, `runValidateInfra()` executes `hooks.validateInfra` — if it fails, triggers `infra` fault domain reroute to `infra-architect`. Agents MUST append new validation checks to these hooks when they provision new resources or endpoints.
 
-Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 10 re-deploy cycles.
+Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 3 re-deploy cycles (configurable via `max_redeploy_cycles` in `workflows.yml`).
 
 > **Key code at this level:**
 > - Context injection builders — all in [context-injection.ts](tools/autonomous-factory/src/context-injection.ts):

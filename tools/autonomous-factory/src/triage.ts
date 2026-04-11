@@ -22,29 +22,6 @@ import { retrieveTopMatches } from "./triage/retriever.js";
 import { askLlmRouter } from "./triage/llm-router.js";
 
 // ---------------------------------------------------------------------------
-// Unfixable error signals — no agent can fix these
-// ---------------------------------------------------------------------------
-
-const UNFIXABLE_SIGNALS = [
-  // Azure AD/Entra specific error codes — definitively non-code-fixable
-  "authorization_requestdenied",
-  "aadsts700016",
-  "aadsts7000215",
-  "application.readwrite",
-  // Azure resource-level permission errors
-  "insufficient privileges",
-  "does not have authorization",
-  // Azure resource existence errors
-  "subscription not found",
-  "resource group not found",
-  // Terraform state/plan errors — require human intervention (/dagent apply-elevated)
-  "cannot apply incomplete plan",
-  "error acquiring the state lock",
-  "resource already exists",
-  "state blob is already locked",
-] as const;
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -52,9 +29,9 @@ const UNFIXABLE_SIGNALS = [
  * Check whether an error contains signals that no agent can fix.
  * Returns the matching signal reason, or `null` if fixable.
  */
-export function isUnfixableError(errorMessage: string): string | null {
+export function isUnfixableError(errorMessage: string, unfixableSignals: string[]): string | null {
   const msg = errorMessage.toLowerCase();
-  for (const signal of UNFIXABLE_SIGNALS) {
+  for (const signal of unfixableSignals) {
     if (msg.includes(signal)) return signal;
   }
   return null;
@@ -86,9 +63,11 @@ export async function triageFailure(
   slug?: string,
   /** App root path (for novel triage log). */
   appRoot?: string,
+  /** Error substrings that signal unfixable conditions (from workflows.yml). */
+  unfixableSignals?: string[],
 ): Promise<string[]> {
   // --- Tier 0: Unfixable error detection → immediate halt ---
-  const unfixableReason = isUnfixableError(errorMessage);
+  const unfixableReason = isUnfixableError(errorMessage, unfixableSignals ?? []);
   if (unfixableReason) {
     console.log(`  🛑 Unfixable error detected: "${unfixableReason}" — pipeline must halt`);
     return [];
@@ -142,7 +121,7 @@ export async function triageFailure(
   if (client && faultRouting && slug && appRoot) {
     console.log("  🤖 LLM triage: classifying novel error via Copilot SDK");
     const domains = Object.keys(faultRouting);
-    const result = await askLlmRouter(client, errorMessage, domains, topMatches, slug, appRoot);
+    const result = await askLlmRouter(client, errorMessage, domains, topMatches, slug, appRoot, faultRouting);
     console.log(`  🤖 LLM triage result: fault_domain=${result.fault_domain} (${result.reason})`);
     const keys = applyFaultDomain(result.fault_domain as FaultDomain, itemKey, naItems, faultRouting);
     if (keys.length > 0) return keys;

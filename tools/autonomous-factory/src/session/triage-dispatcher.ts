@@ -43,9 +43,10 @@ export async function handleFailureReroute(
   const maxDevCycles = workflow?.max_redevelopment_cycles ?? 5;
   const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
   const triageKb = config.apmContext.triage_kb;
+  const unfixableSignals = workflow?.unfixable_signals ?? [];
   const resetKeys = await triageFailure(
     itemKey, rawError, naItems, faultRouting, workflowNodes,
-    triageKb, client, slug, config.appRoot,
+    triageKb, client, slug, config.appRoot, unfixableSignals,
   );
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation

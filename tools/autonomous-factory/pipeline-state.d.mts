@@ -38,6 +38,8 @@ interface PipelineState {
   jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
+  /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
+  salvageSurvivors: string[];
 }
 
 interface NextAction {

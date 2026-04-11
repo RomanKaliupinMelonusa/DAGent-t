@@ -94,9 +94,9 @@ Context pollution kills agent quality silently. When you stuff a single system p
 
 | Without APM (monolithic prompt) | With APM (compiled per-agent context) |
 |---|---|
-| One giant `.cursorrules` or `CLAUDE.md` for all agents | 28 modular `.md` files organized by domain |
+| One giant `.cursorrules` or `CLAUDE.md` for all agents | 17 modular `.md` files organized by domain |
 | Backend agent sees frontend rules it can't use | Backend-dev gets `[always, backend, infra, tooling/roam-tool-rules.md]` — 4,800 tokens of relevant context |
-| No limit on prompt size — degrades silently | 6,000-token budget enforced at compile time — `ApmBudgetExceededError` fails the build |
+| No limit on prompt size — degrades silently | 8,000-token budget enforced at compile time — `ApmBudgetExceededError` fails the build |
 | Adding a new convention bloats every agent | Adding `infra/cors-rules.md` only affects agents that include `infra` |
 | Switching projects requires rewriting everything | Point `--app` at a new directory with its own `apm.yml` — same engine, different project |
 
