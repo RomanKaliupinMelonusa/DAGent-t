@@ -20,9 +20,11 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 fi
 
 # Extract Commerce API parameters from config/default.js using Node.js
+# Use require(path.resolve(...)) to handle both relative and absolute APP_ROOT
 node -e "
+  const path = require('path');
   try {
-    const config = require('./${CONFIG_FILE}');
+    const config = require(path.resolve('${CONFIG_FILE}'));
     const api = config?.app?.commerceAPI?.parameters || {};
     if (api.clientId) console.log('COMMERCE_CLIENT_ID=' + api.clientId);
     if (api.organizationId) console.log('COMMERCE_ORG_ID=' + api.organizationId);
@@ -33,8 +35,9 @@ node -e "
   }
 
   // Extract project name from package.json
+  const appRoot = '${APP_ROOT:-apps/commerce-storefront}';
   try {
-    const pkg = require('./${APP_ROOT:-apps/commerce-storefront}/package.json');
+    const pkg = require(path.resolve(appRoot, 'package.json'));
     if (pkg.name) console.log('MRT_PROJECT_ID=' + pkg.name);
   } catch (e) {}
 
