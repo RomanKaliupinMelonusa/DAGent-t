@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-08T02:51:54.476Z",
+  "compiledAt": "2026-04-11T23:05:11.557Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -70,5 +70,6 @@
       ]
     }
   },
-  "workflows": {}
+  "workflows": {},
+  "triage_kb": []
 }

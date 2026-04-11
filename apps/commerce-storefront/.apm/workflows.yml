@@ -70,7 +70,7 @@ default:
       category: test
       agent: "@storefront-ui-test"
       phase: validation
-      timeout_minutes: 20
+      timeout_minutes: 10
       depends_on: [storefront-unit-test]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
@@ -90,6 +90,7 @@ default:
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_deletions: true
       commit_scope: pipeline
+      salvage_survivor: true
 
     docs-archived:
       type: agent

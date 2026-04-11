@@ -54,11 +54,11 @@ agents:
     tools:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   live-ui:
-    instructions: [always, storefront/testing-mandate.md, tooling/roam-tool-rules.md]
+    instructions: [always, storefront/testing-mandate.md, storefront/qa-mindset.md, tooling/roam-tool-rules.md]
     promptFile: live-ui.agent.md
     mcp: [roam-code, playwright]
     skills: []
-    toolLimits: { soft: 100, hard: 130 }
+    toolLimits: { soft: 50, hard: 70 }
     security:
       allowedWritePaths: ["(^|/)e2e/", "\\.spec\\."]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]

@@ -593,6 +593,19 @@ export function buildCustomTools(
         }
         return stdout;
       } catch (err: unknown) {
+        // Smart Tool Timeout: detect forcefully killed commands (SIGTERM from timeout)
+        // and return partial output with a system directive instead of a generic exit code.
+        if (err && typeof err === "object" && "killed" in err && (err as Record<string, unknown>).killed === true) {
+          const e = err as { stderr?: string; stdout?: string };
+          const partialStdout = String(e.stdout ?? "").slice(0, 4000);
+          const partialStderr = String(e.stderr ?? "").slice(0, 4000);
+          return (
+            `${partialStdout}\n${partialStderr}\n\n` +
+            `[SYSTEM ENFORCED: Command forcefully terminated after ${SHELL_TIMEOUT_MS / 1000}s ` +
+            `to prevent hanging. Assess the partial output above. ` +
+            `DO NOT retry this exact command. Call pipeline:fail or pipeline:complete.]`
+          );
+        }
         if (err && typeof err === "object" && "stderr" in err) {
           const e = err as { stderr?: string; stdout?: string; status?: number };
           const stderr = String(e.stderr ?? "").slice(0, 4000);
