@@ -1599,15 +1599,17 @@ describe("isOrchestratorTimeout", () => {
 // ---------------------------------------------------------------------------
 
 describe("triageFailure (SDK timeout bypass — Tier -1)", () => {
-  it("SDK timeout → retries itemKey (not blocked)", async () => {
+  it("SDK timeout → graceful degradation (empty array), not retry", async () => {
     const keys = await triageFailure(
       "live-ui",
       "Timeout after 1200000ms waiting for session.idle",
       NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES,
     );
-    assert.deepEqual(keys, ["live-ui"]);
+    // Empty array triggers salvageForDraft in triage-dispatcher
+    // (NOT [itemKey] which would burn redevelopment cycles then hard-halt)
+    assert.deepEqual(keys, []);
   });
-  it("SDK timeout on N/A item → returns empty (cannot retry)", async () => {
+  it("SDK timeout on N/A item → also empty (same graceful degradation path)", async () => {
     const naSet = new Set(["live-ui"]);
     const keys = await triageFailure(
       "live-ui",
