@@ -62,7 +62,7 @@ test.describe('Storefront Smoke Tests', () => {
     const navLink = page.locator('nav a, [role="navigation"] a').first();
     if (await navLink.isVisible()) {
       await navLink.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       // PLP should show product tiles
       await expect(page.locator('[data-testid="product-tile"], .product-tile, article').first()).toBeVisible({ timeout: 15_000 });
     }
@@ -74,7 +74,7 @@ test.describe('Storefront Smoke Tests', () => {
     const productLink = page.locator('a[href*="/product/"], a[href*="/products/"]').first();
     if (await productLink.isVisible({ timeout: 10_000 })) {
       await productLink.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       // PDP should have product name and price
       await expect(page.locator('h1, [data-testid="product-name"]').first()).toBeVisible({ timeout: 15_000 });
     }
