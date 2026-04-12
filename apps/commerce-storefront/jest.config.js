@@ -11,7 +11,7 @@ const base = require('@salesforce/pwa-kit-dev/configs/jest/jest.config.js')
 module.exports = {
     ...base,
     // To support extensibility, jest needs to transform the underlying templates/extensions
-    transformIgnorePatterns: ['/node_modules/(?!@salesforce/retail-react-app/.*)'],
+    transformIgnorePatterns: ['/node_modules/(?!(@salesforce/retail-react-app|@salesforce/cc-datacloud-typescript)/.*)'],
     moduleNameMapper: {
         ...base.moduleNameMapper,
         // pulled from @salesforce/retail-react-app jest.config.js
