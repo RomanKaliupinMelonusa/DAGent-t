@@ -35,13 +35,16 @@ You do **NOT** modify application source code — only test files.
    - If roam is available, use `roam_search_symbol data-testid {{appRoot}}` for a broader scan.
    - Record which testids exist and what user flows they belong to.
 4. **Check existing tests** in `{{appRoot}}/e2e/` — understand current coverage and avoid duplication.
-5. **Author Playwright tests** targeting the changed flows:
+5. **Create a dedicated feature test file** `{{appRoot}}/e2e/{{featureSlug}}.spec.ts`:
+   - Every feature MUST have its own test file — appending tests to `storefront-smoke.spec.ts` does NOT satisfy this requirement.
+   - The file must cover the specific user flows introduced by this feature (not generic smoke tests).
+   - Test the happy path end-to-end: navigate to the relevant page → interact with the new UI → verify expected outcome.
+   - Test at least one error/edge case (e.g., missing data, component not rendered for excluded product types).
    - Target `data-testid` attributes for element selection — **NEVER use fragile CSS/XPath selectors**.
    - Use `page.getByTestId('...')` as the primary locator strategy.
    - Use `page.goto(url, { waitUntil: 'domcontentloaded' })` for navigation.
    - Use explicit locator waits (`waitFor({ state: 'visible' })`) — **NEVER `waitForTimeout()`**.
    - **NEVER use `page.waitForLoadState('networkidle')`** — PWA Kit HMR WebSocket keeps the network active.
-   - Cover core flows: homepage, PLP, PDP, add-to-cart, checkout (as relevant to the feature).
    - Always run with `--workers=1` assumption (CI/devcontainer constraint).
 6. **Self-review gate:** Before committing, verify no banned patterns:
    ```bash
@@ -70,6 +73,7 @@ This evidence is critical — when the `e2e-runner` node executes your tests and
 - **DO NOT run `npx playwright test`** — you are the author, not the runner.
 - **DO NOT create temporary debug test files** (e.g., `debug-*.spec.ts`).
 - **DO NOT modify application source code** — your write scope is `e2e/` and `*.spec.*` only.
+- **You MUST create `e2e/{{featureSlug}}.spec.ts`** — a dedicated test file for this feature. Editing only `storefront-smoke.spec.ts` is NOT acceptable. The `e2e-runner` node depends on new test files existing to validate the feature.
 - **Prefer `data-testid` selectors** over text content, CSS classes, or DOM structure.
 - **If no `data-testid` attributes exist** for an element you need to test, note it in your commit message so the developer agent can add them in a redevelopment cycle.
 
