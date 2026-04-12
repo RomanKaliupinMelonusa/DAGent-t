@@ -54,7 +54,7 @@ agents:
     tools:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   live-ui:
-    instructions: [always, storefront/testing-mandate.md, storefront/qa-mindset.md, tooling/roam-tool-rules.md]
+    instructions: [always, storefront/testing-mandate.md, storefront/qa-mindset.md, storefront/e2e-guidelines.md, tooling/roam-tool-rules.md]
     promptFile: live-ui.agent.md
     mcp: [roam-code, playwright]
     skills: []

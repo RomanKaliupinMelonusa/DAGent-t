@@ -83,14 +83,17 @@ export async function triageFailure(
   // These are infrastructure timeouts (session.idle), not codebase errors.
   // Sending them to the RAG/LLM router causes misclassification as "blocked".
   //
-  // Returns [] (graceful degradation) rather than [itemKey] (retry) because:
-  // 1. Retries burn redevelopment cycles then hard-halt via circuit breaker
-  //    (test-category items lack the dev-only salvageForDraft fallback)
-  // 2. [] triggers salvageForDraft → salvage survivors (docs, cleanup, PR) still run
-  // 3. The Tier -1 log gives operators the correct "SDK Timeout" diagnostic
+  // Returns [itemKey] (transient retry) for active items — lets the
+  // deterministic circuit breaker (max_redevelopment_cycles) handle
+  // endless loops rather than dropping the build on a single timeout.
+  // Returns [] (graceful degradation) only for items already marked N/A.
   if (isOrchestratorTimeout(errorMessage)) {
-    console.log(`  ⚠ SDK Timeout detected in ${itemKey}. Bypassing semantic triage — triggering graceful degradation.`);
-    return [];
+    if (naItems.has(itemKey)) {
+      console.log(`  ⚠ SDK Timeout detected in ${itemKey} (N/A). Bypassing semantic triage — graceful degradation.`);
+      return [];
+    }
+    console.log(`  ⚠ SDK Timeout detected in ${itemKey}. Bypassing semantic triage — transient retry.`);
+    return [itemKey];
   }
 
   // --- Tier 0: Unfixable error detection → immediate halt ---
