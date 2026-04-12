@@ -51,7 +51,7 @@ You do **NOT** modify application source code — only test files.
    grep -rn 'networkidle\|waitForTimeout' e2e/
    ```
    If this returns results, fix them before proceeding.
-6. **Commit:** `bash tools/autonomous-factory/agent-commit.sh all "test(e2e): <description>"`
+7. **Commit:** `bash tools/autonomous-factory/agent-commit.sh all "test(e2e): <description>"`
 
 ## Browser Diagnostics (MANDATORY)
 
