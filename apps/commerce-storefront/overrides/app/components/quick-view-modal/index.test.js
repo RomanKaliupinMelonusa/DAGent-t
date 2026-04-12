@@ -16,45 +16,50 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
 }))
 
 // Mock ProductView to avoid deep dependency chains
+const mockProductViewFn = jest.fn()
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
+    const MockProductView = (props) => {
+        // Track calls for prop assertions
+        const {mockProductViewFn} = require('./index.test.js')
+        if (typeof mockProductViewFn === 'function') mockProductViewFn(props)
+        return React.createElement(
+            'div',
+            {'data-testid': 'product-view', 'data-image-size': props.imageSize || ''},
+            props.product?.name &&
+                React.createElement(
+                    'h2',
+                    {'data-testid': 'product-name'},
+                    props.product.name
+                ),
+            props.product?.price &&
+                React.createElement(
+                    'span',
+                    {'data-testid': 'product-price'},
+                    `$${props.product.price}`
+                ),
+            props.showFullLink &&
+                React.createElement(
+                    'a',
+                    {'data-testid': 'full-details-link', href: '#'},
+                    'View Full Details'
+                ),
+            props.isProductLoading &&
+                React.createElement(
+                    'div',
+                    {'data-testid': 'product-view-loading'},
+                    'Loading...'
+                ),
+            React.createElement(
+                'button',
+                {'data-testid': 'add-to-cart-btn'},
+                'Add to Cart'
+            )
+        )
+    }
     return {
         __esModule: true,
-        default: (props) => {
-            return React.createElement(
-                'div',
-                {'data-testid': 'product-view'},
-                props.product?.name &&
-                    React.createElement(
-                        'h2',
-                        {'data-testid': 'product-name'},
-                        props.product.name
-                    ),
-                props.product?.price &&
-                    React.createElement(
-                        'span',
-                        {'data-testid': 'product-price'},
-                        `$${props.product.price}`
-                    ),
-                props.showFullLink &&
-                    React.createElement(
-                        'a',
-                        {'data-testid': 'full-details-link', href: '#'},
-                        'View Full Details'
-                    ),
-                props.isProductLoading &&
-                    React.createElement(
-                        'div',
-                        {'data-testid': 'product-view-loading'},
-                        'Loading...'
-                    ),
-                React.createElement(
-                    'button',
-                    {'data-testid': 'add-to-cart-btn'},
-                    'Add to Cart'
-                )
-            )
-        }
+        default: MockProductView
     }
 })
 
@@ -197,6 +202,13 @@ test('passes isProductLoading to ProductView when fetching but product exists', 
 
     // Our component shows the spinner when isFetching is true
     expect(screen.getByTestId('quick-view-spinner')).toBeInTheDocument()
+})
+
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const productView = screen.getByTestId('product-view')
+    expect(productView.getAttribute('data-image-size')).toBe('sm')
 })
 
 // --- Accessibility & Focus ---

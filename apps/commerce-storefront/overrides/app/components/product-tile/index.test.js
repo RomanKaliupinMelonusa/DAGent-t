@@ -212,3 +212,45 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Edge Cases ---
+
+test('handles undefined product prop gracefully', () => {
+    renderWithProviders(<ProductTile product={undefined} />)
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+})
+
+test('uses product.name fallback when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'fallback-name-123',
+        name: 'Fallback Name Product',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name Product')
+})
+
+test('aria-label uses empty string when both productName and name missing', () => {
+    const productNoName = {
+        productId: 'no-name-456',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('does NOT render bar when product has standard type but no productId', () => {
+    const productStandardNoId = {
+        productName: 'Standard No ID',
+        type: {item: true},
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productStandardNoId} />)
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
