@@ -151,4 +151,39 @@ describe("getDirectoryPrefixes", () => {
     assert.ok(!result.frontend.some((p) => p.startsWith("/")), "no prefix should start with /");
     assert.ok(!result.infra.some((p) => p.startsWith("/")), "no prefix should start with /");
   });
+
+  it("normalises dot directory to app root prefix (commerce-storefront pattern)", () => {
+    const result = getDirectoryPrefixes("apps/commerce-storefront", {
+      storefront: ".",
+      e2e: "e2e",
+    });
+    // "." means the entire app root — prefix must be "apps/commerce-storefront/"
+    // NOT "apps/commerce-storefront/./" which would never match real git paths
+    assert.deepStrictEqual(result.storefront, ["apps/commerce-storefront/"]);
+    assert.deepStrictEqual(result.e2e, ["apps/commerce-storefront/e2e/"]);
+    // Verify the storefront prefix actually matches real override paths
+    const overridePath = "apps/commerce-storefront/overrides/app/components/quick-view-modal/index.jsx";
+    assert.ok(overridePath.startsWith(result.storefront[0]), "storefront prefix must match override paths");
+  });
+
+  it("normalises dot directory when appRel is empty (root-level app with dot)", () => {
+    const result = getDirectoryPrefixes("", {
+      storefront: ".",
+      e2e: "e2e",
+    });
+    // Root-level app with "." → empty string prefix (matches everything)
+    assert.deepStrictEqual(result.storefront, [""]);
+    assert.deepStrictEqual(result.e2e, ["e2e/"]);
+  });
+
+  it("strips leading dot-slash from directory values", () => {
+    const result = getDirectoryPrefixes("apps/foo", {
+      src: "./src",
+      tests: "./tests",
+      plain: "lib",
+    });
+    assert.deepStrictEqual(result.src, ["apps/foo/src/"]);
+    assert.deepStrictEqual(result.tests, ["apps/foo/tests/"]);
+    assert.deepStrictEqual(result.plain, ["apps/foo/lib/"]);
+  });
 });

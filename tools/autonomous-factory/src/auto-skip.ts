@@ -85,14 +85,20 @@ export function getDirectoryPrefixes(
   // avoid a leading slash that would never match git diff output paths.
   const basePrefix = appRel ? `${appRel}/` : "";
   const pfx = (key: string) => {
-    const val = d[key];
-    return val ? `${basePrefix}${val}/` : null;
+    const raw = d[key];
+    if (!raw) return null;
+    // Normalize "." (app root) and "./" prefixes — e.g. commerce-storefront
+    // declares `storefront: "."` meaning "the entire app directory".
+    // Without this, the prefix becomes "apps/commerce-storefront/./" which
+    // never matches real git paths like "apps/commerce-storefront/overrides/...".
+    const val = raw === "." ? "" : raw.replace(/^\.\//, "");
+    return val ? `${basePrefix}${val}/` : basePrefix;
   };
   // Build a prefix set for every directory key declared in config.directories
   const result: Record<string, string[]> = {};
   for (const key of Object.keys(d)) {
     const p = pfx(key);
-    result[key] = p ? [p] : [];
+    result[key] = p !== null ? [p] : [];
   }
   return result;
 }
