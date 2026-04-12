@@ -1,5 +1,5 @@
 name: playwright
-description: "Playwright browser automation for live-ui E2E testing against the storefront"
+description: "Playwright browser automation for E2E testing against the storefront"
 type: local
 command: "{repoRoot}/tools/autonomous-factory/node_modules/.bin/playwright-mcp"
 args:

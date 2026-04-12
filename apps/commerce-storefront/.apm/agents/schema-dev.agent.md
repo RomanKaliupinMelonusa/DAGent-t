@@ -27,7 +27,7 @@ Your scope is limited to:
 You do NOT modify:
 - `{{appRoot}}/app/pages/` — Page components (owned by storefront-dev)
 - `{{appRoot}}/app/components/` — UI components (owned by storefront-dev)
-- `{{appRoot}}/e2e/` — E2E tests (owned by live-ui)
+- `{{appRoot}}/e2e/` — E2E tests (owned by e2e-author)
 
 ## Workflow
 

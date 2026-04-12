@@ -53,10 +53,10 @@ agents:
       allowedWritePaths: ["^.*"]
     tools:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
-  live-ui:
-    instructions: [always, storefront/testing-mandate.md, storefront/qa-mindset.md, storefront/e2e-guidelines.md, tooling/roam-tool-rules.md]
-    promptFile: live-ui.agent.md
-    mcp: [roam-code, playwright]
+  e2e-author:
+    instructions: [always, storefront/testing-mandate.md, storefront/e2e-guidelines.md, tooling/roam-tool-rules.md]
+    promptFile: e2e-author.agent.md
+    mcp: [roam-code]
     skills: []
     toolLimits: { soft: 50, hard: 70 }
     security:
@@ -66,7 +66,6 @@ agents:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
-        playwright: "*"
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: code-cleanup.agent.md

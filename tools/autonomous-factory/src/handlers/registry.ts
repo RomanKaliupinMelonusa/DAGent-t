@@ -27,6 +27,7 @@ const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
   "github-ci-poll": async () => (await import("./github-ci-poll.js")).default,
   "github-pr-publish": async () => (await import("./github-pr-publish.js")).default,
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
+  "local-exec": async () => (await import("./local-exec.js")).default,
 };
 
 /** Cache to avoid re-importing handlers on every dispatch */
@@ -56,6 +57,7 @@ export function inferHandler(
       case "push": return "git-push";
       case "poll": return "github-ci-poll";
       case "publish": return "github-pr-publish";
+      case "local-exec": return "local-exec";
       default: return null;
     }
   }

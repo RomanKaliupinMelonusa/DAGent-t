@@ -1,10 +1,10 @@
 # workflows.yml — Declarative DAG for the commerce-storefront pipeline.
 #
-# 11-node DAG: no infra wave (Managed Runtime is SaaS),
+# 12-node DAG: no infra wave (Managed Runtime is SaaS),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
-# PWA Kit runs locally via `npm start`, so Playwright live-ui tests
+# PWA Kit runs locally via `npm start`, so Playwright E2E tests
 # execute BEFORE code push — the deploy phase is the final step.
 #
 # Workflow types: Storefront, Full-Stack (future: with backend extensions)
@@ -64,20 +64,29 @@ default:
       depends_on: [storefront-unit-test]
       commit_scope: pipeline
 
-    # ── Validation (local Playwright — no deploy needed) ───────────────
-    live-ui:
+    # ── Validation (Author/Runner — SDET writes, native exec runs) ────
+    e2e-author:
       type: agent
       category: test
-      agent: "@storefront-ui-test"
+      agent: "@sdet-expert"
       phase: validation
-      timeout_minutes: 15
+      timeout_minutes: 10
       depends_on: [storefront-unit-test]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
-      triage_json_gated: true
-      template_flags: ["isLiveUi"]
-      commit_scope: pipeline
-      diff_attribution_dirs: [storefront, e2e]
+      commit_scope: all
+      diff_attribution_dirs: [e2e]
+
+    e2e-runner:
+      type: script
+      category: test
+      script_type: local-exec
+      command: "npx playwright test --workers=1"
+      phase: validation
+      depends_on: [e2e-author]
+      run_if: [Storefront, Full-Stack]
+      auto_skip_if_no_changes_in: [storefront, e2e]
+      triage_json_gated: false
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
@@ -86,7 +95,7 @@ default:
       agent: "@code-cleanup"
       phase: finalize
       timeout_minutes: 15
-      depends_on: [live-ui]
+      depends_on: [e2e-runner]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_deletions: true
       commit_scope: pipeline
@@ -180,7 +189,7 @@ default:
       reset_nodes: [push-app, poll-app-ci]
     test-code:
       description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
-      reset_nodes: ["$SELF"]
+      reset_nodes: [e2e-author]
     test-code-from-dev:
       description: "Test code is broken, but it was written by the upstream developer agent, not the current QA agent."
       reset_nodes:

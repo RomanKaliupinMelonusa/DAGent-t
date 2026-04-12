@@ -189,8 +189,10 @@ export const ApmWorkflowNodeSchema = z.object({
   generates_change_manifest: z.boolean().default(false),
   /** When true, buildInfraRollbackContext() is injected into the agent prompt. */
   injects_infra_rollback: z.boolean().default(false),
-  /** Deterministic handler type for script nodes: push, poll, or publish. */
-  script_type: z.enum(["push", "poll", "publish"]).optional(),
+  /** Deterministic handler type for script nodes: push, poll, publish, or local-exec. */
+  script_type: z.enum(["push", "poll", "publish", "local-exec"]).optional(),
+  /** Shell command to execute (required when script_type is "local-exec"). */
+  command: z.string().optional(),
   /** For poll nodes — the key of the push node whose SHA to look up in state.lastPushedShas. */
   poll_target: z.string().optional(),
   /** For poll nodes — the key into config.ciWorkflows for CI_WORKFLOW_FILTER (e.g. "infra", "app"). */
@@ -205,6 +207,9 @@ export const ApmWorkflowNodeSchema = z.object({
 ).refine(
   (node) => node.script_type !== "poll" || typeof node.poll_target === "string",
   { message: "Workflow node with script_type 'poll' must declare a 'poll_target' field." },
+).refine(
+  (node) => node.script_type !== "local-exec" || typeof node.command === "string",
+  { message: "Workflow node with script_type 'local-exec' must declare a 'command' field." },
 );
 
 /**
