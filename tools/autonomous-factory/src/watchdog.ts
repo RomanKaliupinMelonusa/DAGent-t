@@ -27,6 +27,7 @@ import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
 import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkGitHubLogin, checkStateContextDrift, buildRoamIndex } from "./preflight.js";
+import { getWorkflowNode } from "./session/shared.js";
 import { writePipelineSummary, writeTerminalLog, loadPreviousSummary } from "./reporting.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
@@ -438,8 +439,14 @@ async function main(): Promise<void> {
       }
 
       // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
-      const approvalGateItems = available.filter((i) => i.agent === null);
-      if (approvalGateItems.length > 0 && available.every((i) => i.agent === null)) {
+      // Only `type: approval` nodes are true human gates. Script nodes (local-exec, push, poll)
+      // have agent=null but are executed by handlers and must NOT trigger the approval pause.
+      const approvalGateItems = available.filter(
+        (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
+      );
+      if (approvalGateItems.length > 0 && available.every(
+        (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
+      )) {
         console.log(`\n${"─".repeat(70)}`);
         console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra on the Draft PR to continue.");
         console.log(`     Pending gate items: ${approvalGateItems.map((i) => i.key).join(", ")}`);
@@ -455,9 +462,10 @@ async function main(): Promise<void> {
       }
 
       // Run items in parallel (or sequentially if only one)
-      // Filter out agent-null items (e.g. await-infra-approval) — they are completed externally
+      // Filter out approval-gate items — they are completed externally via ChatOps
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } => item.key !== null && item.agent !== null,
+        (item): item is NextAction & { key: string } =>
+          item.key !== null && getWorkflowNode(apmContext, item.key)?.type !== "approval",
       );
 
       // Pre-batch sync: single pull before parallel execution
