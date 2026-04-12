@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-12T21:21:12.473Z",
+  "generatedAt": "2026-04-12T21:21:17.990Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -999,6 +999,29 @@
       "cacheWriteTokens": 0,
       "headAfterAttempt": "c529bc5905f38e50f93ff382ce77a6ca71cf9617",
       "errorMessage": "Deterministic PR publish failed: Command failed: gh pr edit 71 --body-file \"/tmp/publish-pr-YNDKP8/combined.md\"\nGraphQL: Body is too long (updatePullRequest)\n"
+    },
+    {
+      "key": "publish-pr",
+      "label": "publish-pr",
+      "agent": "@pr-creator",
+      "phase": "deploy",
+      "attempt": 7,
+      "startedAt": "2026-04-12T21:21:14.552Z",
+      "finishedAt": "2026-04-12T21:21:17.988Z",
+      "durationMs": 3436,
+      "outcome": "failed",
+      "intents": [],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "5a01e2a72710662c2b6c2931cdc9efa8f9b637ad",
+      "errorMessage": "Deterministic PR publish failed: Command failed: gh pr edit 71 --body-file \"/tmp/publish-pr-Dc8QrT/combined.md\"\nGraphQL: Body is too long (updatePullRequest)\n"
     }
   ]
 }
