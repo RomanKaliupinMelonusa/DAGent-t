@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-10T05:29:15.007Z",
+  "compiledAt": "2026-04-11T23:10:32.358Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1434,7 +1434,8 @@
           "diff_attribution_dirs": [],
           "writes_deploy_sentinel": false,
           "generates_change_manifest": true,
-          "injects_infra_rollback": false
+          "injects_infra_rollback": false,
+          "salvage_survivor": true
         },
         "doc-architect": {
           "type": "agent",
@@ -1486,7 +1487,8 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "script_type": "publish"
+          "script_type": "publish",
+          "salvage_survivor": true
         }
       },
       "max_redevelopment_cycles": 5,
@@ -1497,14 +1499,16 @@
             "backend-dev",
             "backend-unit-test",
             "$SELF"
-          ]
+          ],
+          "description": "application logic errors, 500s, import failures, API bugs"
         },
         "frontend": {
           "reset_nodes": [
             "frontend-dev",
             "frontend-unit-test",
             "$SELF"
-          ]
+          ],
+          "description": "UI rendering, selectors, Playwright failures, CSS/HTML issues"
         },
         "both": {
           "reset_nodes": [
@@ -1513,7 +1517,8 @@
             "frontend-dev",
             "frontend-unit-test",
             "$SELF"
-          ]
+          ],
+          "description": "error clearly spans backend and frontend"
         },
         "schemas": {
           "reset_nodes": [
@@ -1546,7 +1551,8 @@
           "reset_nodes": [
             "push-app",
             "poll-app-ci"
-          ]
+          ],
+          "description": "GitHub Actions workflow file errors, deploy pipeline config"
         },
         "deployment-stale": {
           "reset_nodes": [
@@ -1575,22 +1581,40 @@
             "await-infra-approval",
             "infra-handoff",
             "$SELF"
-          ]
+          ],
+          "description": "missing cloud resources, CORS, auth config, Terraform errors, env vars"
         },
         "test-code": {
           "reset_nodes": [
             "$SELF"
-          ]
+          ],
+          "description": "the test itself is wrong (bad locator, race condition, contradicts spec)"
         },
         "environment": {
           "reset_nodes": [
             "$SELF"
-          ]
+          ],
+          "description": "transient auth/credential glitch, not a code bug"
         },
         "blocked": {
-          "reset_nodes": []
+          "reset_nodes": [],
+          "description": "unfixable without human intervention (permissions, subscriptions)"
         }
-      }
+      },
+      "unfixable_signals": [
+        "authorization_requestdenied",
+        "aadsts700016",
+        "aadsts7000215",
+        "application.readwrite",
+        "insufficient privileges",
+        "does not have authorization",
+        "subscription not found",
+        "resource group not found",
+        "cannot apply incomplete plan",
+        "error acquiring the state lock",
+        "resource already exists",
+        "state blob is already locked"
+      ]
     }
   },
   "triage_kb": [

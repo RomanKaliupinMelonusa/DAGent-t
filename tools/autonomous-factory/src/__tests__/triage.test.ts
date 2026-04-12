@@ -7,7 +7,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError, validateFaultDomain } from "../triage.js";
+import { triageFailure, parseTriageDiagnostic, parseDomainHeader, isUnfixableError, isOrchestratorTimeout, validateFaultDomain } from "../triage.js";
 import type { ValidationResult } from "../triage.js";
 import type { ApmFaultRoute } from "../apm-types.js";
 import type { TriageSignature } from "../apm-types.js";
@@ -1566,6 +1566,65 @@ describe("commerce-storefront: no sample-app node leakage", () => {
     assert.ok(!keys.includes("infra-architect"));
     assert.ok(keys.includes("schema-dev"));
     assert.ok(keys.includes("storefront-dev"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isOrchestratorTimeout — SDK session timeout detection (Tier -1)
+// ---------------------------------------------------------------------------
+
+describe("isOrchestratorTimeout", () => {
+  it("matches SDK session timeout (full message)", () => {
+    assert.equal(isOrchestratorTimeout("Timeout after 1200000ms waiting for session.idle"), true);
+  });
+  it("matches shorter SDK timeout", () => {
+    assert.equal(isOrchestratorTimeout("Timeout after 900000ms waiting for session.idle"), true);
+  });
+  it("does NOT match Playwright timeout (no session.idle)", () => {
+    assert.equal(isOrchestratorTimeout("Playwright timeout on data-testid=modal"), false);
+  });
+  it("does NOT match generic TypeError", () => {
+    assert.equal(isOrchestratorTimeout("TypeError: Cannot read properties of undefined"), false);
+  });
+  it("does NOT match poll timeout (no session.idle)", () => {
+    assert.equal(isOrchestratorTimeout("⏳ Exiting poll to prevent Copilot timeout."), false);
+  });
+  it("does NOT match partial match — only 'timeout after' without 'session.idle'", () => {
+    assert.equal(isOrchestratorTimeout("Timeout after 600000ms waiting for build"), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triageFailure — SDK timeout bypass (Tier -1 integration)
+// ---------------------------------------------------------------------------
+
+describe("triageFailure (SDK timeout bypass — Tier -1)", () => {
+  it("SDK timeout → graceful degradation (empty array), not retry", async () => {
+    const keys = await triageFailure(
+      "live-ui",
+      "Timeout after 1200000ms waiting for session.idle",
+      NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES,
+    );
+    // Empty array triggers salvageForDraft in triage-dispatcher
+    // (NOT [itemKey] which would burn redevelopment cycles then hard-halt)
+    assert.deepEqual(keys, []);
+  });
+  it("SDK timeout on N/A item → also empty (same graceful degradation path)", async () => {
+    const naSet = new Set(["live-ui"]);
+    const keys = await triageFailure(
+      "live-ui",
+      "Timeout after 1200000ms waiting for session.idle",
+      naSet, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES,
+    );
+    assert.deepEqual(keys, []);
+  });
+  it("Playwright timeout is NOT intercepted — falls through to structured triage", async () => {
+    const msg = '{"fault_domain":"test-code","diagnostic_trace":"Playwright timeout on data-testid=modal — locator is incorrect"}';
+    const keys = await triageFailure(
+      "live-ui", msg, NO_NA, SFCC_FAULT_ROUTING, SFCC_WORKFLOW_NODES,
+    );
+    // test-code domain resets $SELF → ["live-ui"]
+    assert.deepEqual(keys, ["live-ui"]);
   });
 });
 

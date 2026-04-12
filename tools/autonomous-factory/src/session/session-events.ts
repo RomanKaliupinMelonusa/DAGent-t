@@ -166,6 +166,13 @@ export function wireToolLogging(
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
   const preTimeoutThresholdMs = sessionTimeout * 0.8;
+
+  /** Write-density circuit breaker — detects file thrashing */
+  const fileWriteCounts = new Map<string, number>();
+  const writeDensityWarned = new Set<string>();
+  /** Threshold: inject warning after this many writes to the same file */
+  const WRITE_DENSITY_THRESHOLD = 3;
+
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
     if (breaker.tripped) return;
@@ -183,6 +190,7 @@ export function wireToolLogging(
     if (filePath) {
       if (name === "write_file" || name === "edit_file" || name === "create_file" || name === "create") {
         if (!itemSummary.filesChanged.includes(filePath)) itemSummary.filesChanged.push(filePath);
+        fileWriteCounts.set(filePath, (fileWriteCounts.get(filePath) ?? 0) + 1);
       } else if (name === "read_file" || name === "view") {
         if (!itemSummary.filesRead.includes(filePath)) itemSummary.filesRead.push(filePath);
       }
@@ -205,6 +213,7 @@ export function wireToolLogging(
           if (!itemSummary.filesChanged.includes(sf)) {
             itemSummary.filesChanged.push(sf);
           }
+          fileWriteCounts.set(sf, (fileWriteCounts.get(sf) ?? 0) + 1);
         }
       }
     }
@@ -242,6 +251,23 @@ export function wireToolLogging(
       console.warn(
         `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${breaker.soft} calls.\n`,
       );
+    }
+
+    // Write-density circuit breaker — detect file thrashing.
+    // If an agent rewrites the same file 3+ times, it is likely stuck in
+    // a debug loop against an upstream bug it cannot fix.
+    for (const [file, count] of fileWriteCounts) {
+      if (count >= WRITE_DENSITY_THRESHOLD && !writeDensityWarned.has(file)) {
+        writeDensityWarned.add(file);
+        const writeDensityPrompt =
+          `\n\n⚠️ SYSTEM NOTICE: You have edited "${file}" ${count} times. You are thrashing. ` +
+          `If failures persist due to upstream component issues, STOP editing and escalate ` +
+          `immediately via pipeline:fail with a TriageDiagnostic JSON ` +
+          `(e.g. {"fault_domain":"frontend","diagnostic_trace":"<test output>"}).`;
+
+        appendToToolResult(event.data, writeDensityPrompt);
+        console.warn(`\n  ⚠️  WRITE-DENSITY BREAKER: "${file}" written ${count} times.\n`);
+      }
     }
 
     // Pre-timeout wrap-up signal — at 80% of session timeout, inject a

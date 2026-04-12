@@ -38,6 +38,19 @@ export function isUnfixableError(errorMessage: string, unfixableSignals: string[
 }
 
 /**
+ * Check whether the error is an SDK/orchestrator session timeout.
+ * These must be intercepted BEFORE semantic triage — they are infrastructure
+ * errors, not codebase errors, and must never reach the RAG/LLM router.
+ *
+ * Requires BOTH "timeout after Nms" AND "session.idle" to avoid matching
+ * Playwright test timeouts (which route to `test-code` domain instead).
+ */
+export function isOrchestratorTimeout(errorMessage: string): boolean {
+  return /timeout after \d+ms/i.test(errorMessage)
+      && /waiting for session\.idle/i.test(errorMessage);
+}
+
+/**
  * Examine the failure message from a post-deploy item and determine which
  * dev items + test items need to be reset.
  *
@@ -66,6 +79,20 @@ export async function triageFailure(
   /** Error substrings that signal unfixable conditions (from workflows.yml). */
   unfixableSignals?: string[],
 ): Promise<string[]> {
+  // --- Tier -1: SDK/orchestrator timeout bypass — NEVER send to semantic triage ---
+  // These are infrastructure timeouts (session.idle), not codebase errors.
+  // Sending them to the RAG/LLM router causes misclassification as "blocked".
+  //
+  // Returns [] (graceful degradation) rather than [itemKey] (retry) because:
+  // 1. Retries burn redevelopment cycles then hard-halt via circuit breaker
+  //    (test-category items lack the dev-only salvageForDraft fallback)
+  // 2. [] triggers salvageForDraft → salvage survivors (docs, cleanup, PR) still run
+  // 3. The Tier -1 log gives operators the correct "SDK Timeout" diagnostic
+  if (isOrchestratorTimeout(errorMessage)) {
+    console.log(`  ⚠ SDK Timeout detected in ${itemKey}. Bypassing semantic triage — triggering graceful degradation.`);
+    return [];
+  }
+
   // --- Tier 0: Unfixable error detection → immediate halt ---
   const unfixableReason = isUnfixableError(errorMessage, unfixableSignals ?? []);
   if (unfixableReason) {
