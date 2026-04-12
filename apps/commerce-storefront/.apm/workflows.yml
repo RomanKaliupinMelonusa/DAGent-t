@@ -46,7 +46,7 @@ default:
       type: agent
       category: deploy
       agent: "@pr-creator"
-      phase: pre-deploy
+      phase: validation
       timeout_minutes: 15
       depends_on: [storefront-unit-test]
       commit_scope: pipeline
