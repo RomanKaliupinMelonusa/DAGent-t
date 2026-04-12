@@ -1618,6 +1618,9 @@
   "promocode.accordion.button.have_promocode": {
     "defaultMessage": "Do you have a promo code?"
   },
+  "quick_view_modal.aria_label": {
+    "defaultMessage": "Quick view for {productName}"
+  },
   "recent_searches.action.clear_searches": {
     "defaultMessage": "Clear recent searches"
   },
