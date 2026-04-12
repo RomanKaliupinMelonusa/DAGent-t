@@ -70,7 +70,7 @@ default:
       category: test
       agent: "@storefront-ui-test"
       phase: validation
-      timeout_minutes: 10
+      timeout_minutes: 15
       depends_on: [storefront-unit-test]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
@@ -181,6 +181,12 @@ default:
     test-code:
       description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
       reset_nodes: ["$SELF"]
+    test-code-from-dev:
+      description: "Test code is broken, but it was written by the upstream developer agent, not the current QA agent."
+      reset_nodes:
+        - storefront-dev
+        - storefront-unit-test
+        - "$SELF"
     environment:
       description: "transient auth/credential glitch, SLAS token failure, not a code bug"
       reset_nodes: ["$SELF"]
