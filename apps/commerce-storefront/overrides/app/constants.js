@@ -15,4 +15,35 @@
 
 export const CUSTOM_HOME_TITLE = '🎉 Hello Extensible React Template!'
 
+// ---------------------------------------------------------------------------
+// Quick View feature constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Centralized test IDs for the Quick View feature.
+ * Used by both component implementations and test assertions (unit + E2E).
+ */
+export const QUICK_VIEW_TEST_IDS = {
+    /** The "Quick View" button rendered on each eligible ProductTile */
+    button: 'quick-view-btn',
+    /** The Chakra Modal container for the quick view */
+    modal: 'quick-view-modal',
+    /** The loading spinner shown while product data is being fetched */
+    spinner: 'quick-view-spinner'
+}
+
+/**
+ * Chakra UI Modal size for the Quick View dialog.
+ * '4xl' provides enough room for ProductView (image gallery + variant selectors)
+ * without overtaking the entire viewport.
+ */
+export const QUICK_VIEW_MODAL_SIZE = '4xl'
+
+/**
+ * Product types that are excluded from Quick View.
+ * Sets and bundles require specialized modal handling (BundleProductViewModal)
+ * that is out of scope for v1.
+ */
+export const QUICK_VIEW_EXCLUDED_PRODUCT_TYPES = ['set', 'bundle']
+
 export * from '@salesforce/retail-react-app/app/constants'
