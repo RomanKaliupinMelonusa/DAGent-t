@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-12T21:20:38.488Z",
+  "generatedAt": "2026-04-12T21:20:50.118Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -733,21 +733,52 @@
       "headAfterAttempt": "673cbe00299109d3e2f54b7cbf9a1ae099d2deaf"
     },
     {
+      "key": "publish-pr",
+      "label": "publish-pr",
+      "agent": "@pr-creator",
+      "phase": "deploy",
+      "attempt": 2,
+      "startedAt": "2026-04-12T21:16:10.100Z",
+      "finishedAt": "2026-04-12T21:16:13.456Z",
+      "durationMs": 3356,
+      "outcome": "failed",
+      "intents": [],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "4892c0b8fb14132c0f66328d9eefe61c69648025",
+      "errorMessage": "Deterministic PR publish failed: Command failed: gh pr edit 71 --body-file \"/tmp/publish-pr-CjpXlj/combined.md\"\nGraphQL: Body is too long (updatePullRequest)\n"
+    },
+    {
       "key": "docs-archived",
       "label": "docs-archived",
-      "agent": "docs-archived",
-      "phase": "",
+      "agent": "@docs-expert",
+      "phase": "finalize",
       "attempt": 1,
-      "outcome": "in-progress",
-      "startedAt": "2026-04-12T21:16:10.110Z",
-      "finishedAt": "",
-      "durationMs": 0,
+      "startedAt": "2026-04-12T21:16:10.099Z",
+      "finishedAt": "2026-04-12T21:20:50.116Z",
+      "durationMs": 280017,
+      "outcome": "completed",
       "intents": [],
+      "messages": [
+        "Now I have a clear picture of the changes. Let me check if any docs already exist in the target locations and examine the existing archive folder.",
+        "Now I have all the context I need. The existing `_CHANGES.json` uses an orchestrator format, not the schema specified in my instructions. I need to generate properly-formatted docs. Let me also check the test modifications.",
+        "Now I have everything I need. Let me check the test results from the transition log and then create the properly formatted docs.",
+        "Now I have all the data. Let me create the properly-formatted change manifest and summary. The existing files use the orchestrator's auto-generated format — I need to replace them with the specified schema.",
+        "Good. Now let me commit and complete the pipeline.",
+        "The `docs-archived` phase is complete. Here's what was done:  ## Summary  **Feature:** `product-quick-view` | **Phase:** `docs-archived` | **Status:** ✅ Complete  ### Deliverables  1. **`_CHANGES.json`** — Change manifest following the specified schema with:    - 10 file entries categorized as `storefront`, `test`, `e2e`, and `docs`    - Test results: 31 unit tests passed, 20 E2E tests authored (skipped at runtime due to sandbox 403s)  2. **`_SUMMARY.md`** — Human-readable summary covering:    - Feature overview and architecture (override pattern, component hierarchy)    - All files changed with descriptions    - Pipeline execution timeline (5 passed, salvage on e2e-runner)    - Test results breakdown (31/31 unit, 0/20 E2E runtime)    - Risk assessment (LOW — all changes via override pattern, 100% unit coverage)    - PR #71 reference"
+      ],
+      "filesRead": [],
       "filesChanged": [
         "apps/commerce-storefront/in-progress/product-quick-view_CHANGES.json",
         "apps/commerce-storefront/in-progress/product-quick-view_SUMMARY.md"
       ],
-      "filesRead": [],
       "shellCommands": [
         {
           "command": "cat /workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view_SPEC.md",
@@ -853,24 +884,29 @@
           "command": "cat > /workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view_SUMMARY.md << 'SUMMARY_EOF' ↵ # Change Summary — product-quick-view ↵ > Generated: 2026-04-12T21:16:15.686Z ↵ ## Feat",
           "timestamp": "2026-04-12T21:20:28.994Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh docs \"docs(feature): generate change manifest and summary for product-quick-view\"",
+          "timestamp": "2026-04-12T21:20:38.491Z",
+          "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && npm run pipeline:complete product-quick-view docs-archived",
+          "timestamp": "2026-04-12T21:20:42.862Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 2,
-        "shell": 23,
+        "shell": 25,
         "read_bash": 2,
         "stop_bash": 2
       },
-      "messages": [
-        "Now I have a clear picture of the changes. Let me check if any docs already exist in the target locations and examine the existing archive folder.",
-        "Now I have all the context I need. The existing `_CHANGES.json` uses an orchestrator format, not the schema specified in my instructions. I need to generate properly-formatted docs. Let me also check the test modifications.",
-        "Now I have everything I need. Let me check the test results from the transition log and then create the properly formatted docs.",
-        "Now I have all the data. Let me create the properly-formatted change manifest and summary. The existing files use the orchestrator's auto-generated format — I need to replace them with the specified schema."
-      ],
-      "inputTokens": 379803,
-      "outputTokens": 7305,
-      "cacheReadTokens": 349716,
-      "cacheWriteTokens": 0
+      "inputTokens": 450562,
+      "outputTokens": 7670,
+      "cacheReadTokens": 420012,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "3fcac0d253100661028e6c150b2e2dcde773f3a1"
     }
   ]
 }
