@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "./apm-types.js";
+import type { PipelineState } from "./types.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 
 /**
@@ -138,4 +139,53 @@ export function buildRoamIndex(repoRoot: string): boolean {
   }
 
   return roamAvailable;
+}
+
+/**
+ * Validate that the pipeline state file's nodes match the compiled context's
+ * workflow nodes. Detects state-context drift caused by APM config changes
+ * (e.g. removing/renaming agents or DAG nodes) without re-initializing state.
+ *
+ * FATAL: throws if the state contains nodes not in the context, or the context
+ * contains nodes missing from the state. The user must re-run `pipeline:init`.
+ */
+export async function checkStateContextDrift(
+  slug: string,
+  apmContext: ApmCompiledOutput,
+  readStateFn: (slug: string) => Promise<PipelineState>,
+): Promise<void> {
+  let state: PipelineState;
+  try {
+    state = await readStateFn(slug);
+  } catch {
+    // No state file — first run, will be initialized later or by the user.
+    return;
+  }
+
+  const contextNodes = new Set(
+    Object.keys(apmContext.workflows?.default?.nodes ?? {}),
+  );
+  const stateNodes = new Set(state.items.map((i) => i.key));
+
+  const inStateOnly = [...stateNodes].filter((k) => !contextNodes.has(k));
+  const inContextOnly = [...contextNodes].filter((k) => !stateNodes.has(k));
+
+  if (inStateOnly.length === 0 && inContextOnly.length === 0) return;
+
+  const lines: string[] = [
+    `State-context drift detected for "${slug}":`,
+  ];
+  if (inStateOnly.length > 0) {
+    lines.push(`  Nodes in _STATE.json but NOT in compiled context: ${inStateOnly.join(", ")}`);
+  }
+  if (inContextOnly.length > 0) {
+    lines.push(`  Nodes in compiled context but NOT in _STATE.json: ${inContextOnly.join(", ")}`);
+  }
+  lines.push(
+    `  The APM config (apm.yml / workflows.yml) was modified after pipeline:init.`,
+    `  Fix: re-run pipeline:init to regenerate state from the current config:`,
+    `    APP_ROOT=<app-path> npm run pipeline:init -- ${slug} <workflowType>`,
+  );
+
+  throw new Error(lines.join("\n"));
 }
