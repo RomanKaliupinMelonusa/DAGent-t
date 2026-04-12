@@ -1,8 +1,8 @@
 {
-  "steps": 10,
+  "steps": 11,
   "completed": 6,
-  "failed": 4,
-  "durationMs": 1371652,
+  "failed": 5,
+  "durationMs": 1375006,
   "filesChanged": 3,
   "tokens": 3527337,
   "costUsd": 60.52599899999999
