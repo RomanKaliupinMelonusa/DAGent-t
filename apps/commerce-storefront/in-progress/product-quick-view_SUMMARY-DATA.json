@@ -1,9 +1,9 @@
 {
-  "steps": 3,
-  "completed": 3,
-  "failed": 0,
-  "durationMs": 789697,
+  "steps": 5,
+  "completed": 4,
+  "failed": 1,
+  "durationMs": 994893,
   "filesChanged": 8,
-  "tokens": 3362334,
-  "costUsd": 57.351657
+  "tokens": 4488536,
+  "costUsd": 76.4311875
 }
