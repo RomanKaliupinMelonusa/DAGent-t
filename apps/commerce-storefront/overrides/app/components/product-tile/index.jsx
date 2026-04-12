@@ -8,7 +8,7 @@ import {Box, Button, useDisclosure} from '@salesforce/retail-react-app/app/compo
 import OriginalProductTile, {
     Skeleton
 } from '@salesforce/retail-react-app/app/components/product-tile'
-import QuickViewModal from '@salesforce/retail-react-app/app/components/quick-view-modal'
+import QuickViewModal from '../quick-view-modal'
 
 /**
  * Enhanced ProductTile with Quick View support.
