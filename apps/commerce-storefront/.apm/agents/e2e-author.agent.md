@@ -26,11 +26,16 @@ You do **NOT** modify application source code — only test files.
 ## Workflow
 
 1. **Read the feature spec:** `{{specPath}}`
-2. **Analyze the codebase** using roam-code to discover `data-testid` attributes on components:
-   - Search for `data-testid` in the app source to build a contract map.
-   - Identify all interactive elements, buttons, and critical DOM nodes.
-3. **Check existing tests** in `{{appRoot}}/e2e/` — understand current coverage.
-4. **Author Playwright tests:**
+2. **Discover what changed** — you must understand the feature's code footprint before writing tests:
+   a. Run `roam_affected_tests {{appRoot}}` — returns test files that map to changed source files.
+   b. Run `git diff --name-only $(git merge-base origin/{{baseBranch}} HEAD)..HEAD -- {{appRoot}}` to see the full list of changed files (ignore `in-progress/` paths).
+   c. For each changed page/component file, run `roam_context <exported_symbol> {{appRoot}}` to understand its role and dependencies.
+3. **Build the `data-testid` contract map** — for every changed component:
+   - Search for `data-testid` in the changed files: `grep -rn 'data-testid' <file>`.
+   - If roam is available, use `roam_search_symbol data-testid {{appRoot}}` for a broader scan.
+   - Record which testids exist and what user flows they belong to.
+4. **Check existing tests** in `{{appRoot}}/e2e/` — understand current coverage and avoid duplication.
+5. **Author Playwright tests** targeting the changed flows:
    - Target `data-testid` attributes for element selection — **NEVER use fragile CSS/XPath selectors**.
    - Use `page.getByTestId('...')` as the primary locator strategy.
    - Use `page.goto(url, { waitUntil: 'domcontentloaded' })` for navigation.
@@ -38,7 +43,7 @@ You do **NOT** modify application source code — only test files.
    - **NEVER use `page.waitForLoadState('networkidle')`** — PWA Kit HMR WebSocket keeps the network active.
    - Cover core flows: homepage, PLP, PDP, add-to-cart, checkout (as relevant to the feature).
    - Always run with `--workers=1` assumption (CI/devcontainer constraint).
-5. **Self-review gate:** Before committing, verify no banned patterns:
+6. **Self-review gate:** Before committing, verify no banned patterns:
    ```bash
    grep -rn 'networkidle\|waitForTimeout' e2e/
    ```

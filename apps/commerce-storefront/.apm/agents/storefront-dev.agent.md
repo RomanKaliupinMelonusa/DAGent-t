@@ -23,7 +23,9 @@ Your scope is:
 - `{{appRoot}}/app/components/` — Shared UI components
 - `{{appRoot}}/app/hooks/` — Custom React hooks
 - `{{appRoot}}/app/utils/` — Utility functions
+- `{{appRoot}}/app/constants.js` — Shared constants
 - `{{appRoot}}/app/routes.jsx` — Route definitions (add new pages here)
+- `{{appRoot}}/config/` — Commerce API configuration, site definitions, SSR settings
 - `{{appRoot}}/translations/` — Localization messages
 - `{{appRoot}}/app/static/` — Static assets (images, icons)
 
@@ -48,12 +50,13 @@ Your scope is:
    e. Register new routes in `app/routes.jsx`.
 5. Use `roam_preflight <symbol> {{appRoot}}` before modifying any existing component.
 6. Verify locally: `cd {{appRoot}} && npm start` then check `http://localhost:3000`.
-7. Run unit tests: `cd {{appRoot}} && npx jest --verbose`
-8. **MANDATORY — Security & Performance Audit:** Call `roam_check_rules {{appRoot}}` on all modified files.
+7. If you modified `config/`, validate syntax: `cd {{appRoot}} && node -e "require('./config/default')"` (must not throw).
+8. Run unit tests: `cd {{appRoot}} && npx jest --verbose`
+9. **MANDATORY — Security & Performance Audit:** Call `roam_check_rules {{appRoot}}` on all modified files.
    - **SEC** / **PERF** / **COR** violations are **BLOCKING**.
    - **ARCH** violations are advisory.
-9. If you created new critical pages/routes, append a reachability check to `{{appRoot}}/.apm/hooks/validate-app.sh`.
-10. Commit: `bash tools/autonomous-factory/agent-commit.sh all "feat(storefront): <description>"`
+10. If you created new critical pages/routes, append a reachability check to `{{appRoot}}/.apm/hooks/validate-app.sh`.
+11. Commit: `bash tools/autonomous-factory/agent-commit.sh all "feat(storefront): <description>"`
 
 ## SSR Safety Checklist
 

@@ -1,6 +1,6 @@
 # workflows.yml — Declarative DAG for the commerce-storefront pipeline.
 #
-# 12-node DAG: no infra wave (Managed Runtime is SaaS),
+# 11-node DAG: no infra wave (Managed Runtime is SaaS),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
@@ -11,25 +11,12 @@
 
 default:
   phases:
-    - setup
     - pre-deploy
     - validation
     - finalize
     - deploy
 
   nodes:
-    # ── Setup ──────────────────────────────────────────────────────────
-    schema-dev:
-      type: agent
-      category: dev
-      agent: "@schema-dev"
-      phase: setup
-      timeout_minutes: 15
-      depends_on: []
-      run_if: [Storefront, Full-Stack]
-      commit_scope: all
-      diff_attribution_dirs: [storefront]
-
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
       type: agent
@@ -37,10 +24,10 @@ default:
       agent: "@storefront-dev"
       phase: pre-deploy
       timeout_minutes: 25
-      depends_on: [schema-dev]
+      depends_on: []
       run_if: [Storefront, Full-Stack]
       commit_scope: all
-      diff_attribution_dirs: [storefront, e2e]
+      diff_attribution_dirs: [storefront]
 
     storefront-unit-test:
       type: agent
@@ -177,11 +164,8 @@ default:
   # Simplified: no backend/infra domains. Storefront is the primary domain.
   fault_routing:
     frontend:
-      description: "UI rendering, Chakra components, commerce-sdk-react hook errors, Playwright failures"
+      description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
       reset_nodes: [storefront-dev, storefront-unit-test, "$SELF"]
-    schemas:
-      description: "Shared schema/type contract errors"
-      reset_nodes: [schema-dev, storefront-dev, storefront-unit-test, "$SELF"]
     cicd:
       description: "GitHub Actions workflow file errors, deploy pipeline config"
       reset_nodes: [push-app, poll-app-ci]

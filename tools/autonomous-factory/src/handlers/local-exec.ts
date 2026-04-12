@@ -19,6 +19,7 @@ import { getWorkflowNode } from "../session/shared.js";
 const execAsync = promisify(exec);
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
+const DEFAULT_TIMEOUT_MINUTES = 15;
 
 const localExecHandler: NodeHandler = {
   name: "local-exec",
@@ -36,13 +37,15 @@ const localExecHandler: NodeHandler = {
       };
     }
 
-    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot}`);
+    const timeoutMs = (node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+
+    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot} (timeout: ${node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES}m)`);
 
     try {
       const { stdout, stderr } = await execAsync(command, {
         cwd: appRoot,
         maxBuffer: MAX_BUFFER,
-        timeout: 0, // No handler-level timeout — kernel session timeout governs lifecycle
+        timeout: timeoutMs,
         env: { ...process.env, ...environment },
       });
 
@@ -59,12 +62,27 @@ const localExecHandler: NodeHandler = {
     } catch (err: unknown) {
       onHeartbeat();
 
-      // child_process.exec rejects with an ExecException on non-zero exit
-      const execErr = err as { stdout?: string; stderr?: string; code?: number; message?: string };
+      // child_process.exec rejects with an ExecException on non-zero exit or timeout
+      const execErr = err as { stdout?: string; stderr?: string; code?: number; killed?: boolean; signal?: string; message?: string };
 
       const stdout = typeof execErr.stdout === "string" ? execErr.stdout : "";
       const stderr = typeof execErr.stderr === "string" ? execErr.stderr : "";
-      const output = (stdout + stderr).trim() || execErr.message || "Unknown execution error";
+      const combinedOutput = (stdout + stderr).trim();
+
+      // Timeout kill — child_process sends SIGTERM when timeout expires
+      if (execErr.killed && execErr.signal === "SIGTERM") {
+        const timeoutMsg = `local-exec: Process killed after ${node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES}m timeout (SIGTERM). ` +
+          `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
+        console.error(`  ✖ ${timeoutMsg}`);
+        return {
+          outcome: "failed",
+          errorMessage: timeoutMsg,
+          summary: { intents: ["Native script execution — timeout killed"] },
+          handlerOutput: { scriptOutput: combinedOutput, exitCode: null, timedOut: true },
+        };
+      }
+
+      const output = combinedOutput || execErr.message || "Unknown execution error";
       const exitCode = typeof execErr.code === "number" ? execErr.code : 1;
 
       console.error(`  ✖ local-exec: Command failed (exit code ${exitCode})`);

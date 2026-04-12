@@ -4,19 +4,6 @@ description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless Reac
 tokenBudget: 8000
 
 agents:
-  schema-dev:
-    instructions: [always, storefront/config-management.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
-    promptFile: schema-dev.agent.md
-    mcp: [roam-code]
-    skills: [test-storefront-unit]
-    toolLimits: { soft: 60, hard: 80 }
-    security:
-      allowedWritePaths: ["^app/", "^config/"]
-      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
-    tools:
-      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
-      mcp:
-        roam-code: "*"
   storefront-dev:
     instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: storefront-dev.agent.md
