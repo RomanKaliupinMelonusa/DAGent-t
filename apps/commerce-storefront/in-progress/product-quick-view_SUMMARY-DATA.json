@@ -1,7 +1,7 @@
 {
-  "steps": 9,
+  "steps": 10,
   "completed": 4,
-  "failed": 5,
+  "failed": 6,
   "durationMs": 796305,
   "filesChanged": 4,
   "tokens": 2349385,
