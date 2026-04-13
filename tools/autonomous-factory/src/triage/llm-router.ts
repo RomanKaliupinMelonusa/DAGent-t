@@ -134,9 +134,10 @@ export async function askLlmRouter(
     await session.disconnect();
 
     // Extract the last assistant message text
+    // SDK returns AssistantMessageEvent: { type: "assistant.message", data: { content: string } }
     const text = typeof response === "string"
       ? response
-      : (response as { message?: string })?.message ?? "";
+      : (response as { data?: { content?: string } })?.data?.content ?? "";
 
     // Parse JSON from the response (handle markdown code fences)
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
