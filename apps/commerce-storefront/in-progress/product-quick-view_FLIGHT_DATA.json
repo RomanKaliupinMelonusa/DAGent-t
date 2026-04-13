@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-13T23:46:34.871Z",
+  "generatedAt": "2026-04-13T23:46:48.282Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -1648,6 +1648,30 @@
       "cacheReadTokens": 0,
       "cacheWriteTokens": 0,
       "headAfterAttempt": "fb92e33d66edf952c082d564503d0b9f6538b14a"
+    },
+    {
+      "key": "poll-app-ci",
+      "label": "poll-app-ci",
+      "agent": "@deploy-manager",
+      "phase": "deploy",
+      "attempt": 1,
+      "startedAt": "2026-04-13T23:46:36.655Z",
+      "finishedAt": "2026-04-13T23:46:48.281Z",
+      "durationMs": 11626,
+      "outcome": "completed",
+      "intents": [
+        "Deterministic CI poll — all workflows passed"
+      ],
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "bec0751326c2ce25c5963d8466de6810660e3ba9"
     }
   ]
 }
