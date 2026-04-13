@@ -3867,6 +3867,28 @@
       "value": "Do you have a promo code?"
     }
   ],
+  "quick_view_modal.aria_label": [
+    {
+      "type": 0,
+      "value": "Quick view for "
+    },
+    {
+      "type": 1,
+      "value": "productName"
+    }
+  ],
+  "quick_view_modal.fallback_product_name": [
+    {
+      "type": 0,
+      "value": "product"
+    }
+  ],
+  "quick_view_modal.product_unavailable": [
+    {
+      "type": 0,
+      "value": "This product is no longer available"
+    }
+  ],
   "recent_searches.action.clear_searches": [
     {
       "type": 0,

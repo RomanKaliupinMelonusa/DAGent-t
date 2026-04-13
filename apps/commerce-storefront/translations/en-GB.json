@@ -1618,6 +1618,15 @@
   "promocode.accordion.button.have_promocode": {
     "defaultMessage": "Do you have a promo code?"
   },
+  "quick_view_modal.aria_label": {
+    "defaultMessage": "Quick view for {productName}"
+  },
+  "quick_view_modal.fallback_product_name": {
+    "defaultMessage": "product"
+  },
+  "quick_view_modal.product_unavailable": {
+    "defaultMessage": "This product is no longer available"
+  },
   "recent_searches.action.clear_searches": {
     "defaultMessage": "Clear recent searches"
   },

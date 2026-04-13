@@ -202,6 +202,32 @@ test('closing modal hides QuickViewModal', () => {
     // The closing is handled by Chakra's useDisclosure internally.
 })
 
+
+// --- Name Fallback Branches ---
+
+test('aria-label uses name when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'name-only-123',
+        name: 'Fallback Name Ring',
+        image: {alt: 'Ring', disBaseLink: 'https://example.com/ring.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name Ring')
+})
+
+test('aria-label uses empty string when both productName and name are missing', () => {
+    const productNoName = {
+        productId: 'no-name-456',
+        image: {alt: 'Unknown', disBaseLink: 'https://example.com/unknown.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
 // --- Visual States ---
 
 test('container has role="group" for hover pseudo', () => {
