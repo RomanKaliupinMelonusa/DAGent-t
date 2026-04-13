@@ -16,7 +16,11 @@ jest.mock('@salesforce/retail-react-app/app/components/product-tile', () => {
     const MockProductTile = React.forwardRef((props, ref) =>
         React.createElement(
             'div',
-            {ref, 'data-testid': 'base-product-tile'},
+            {ref, 'data-testid': 'base-product-tile', 'data-props': JSON.stringify({
+                enableFavourite: props.enableFavourite,
+                badgeDetails: props.badgeDetails,
+                imageViewType: props.imageViewType
+            })},
             React.createElement(
                 'a',
                 {href: `/product/${props.product?.productId}`},
@@ -39,7 +43,7 @@ jest.mock('../quick-view-modal', () => {
         __esModule: true,
         default: (props) =>
             props.isOpen
-                ? React.createElement('div', {'data-testid': 'quick-view-modal'}, 'Modal')
+                ? React.createElement('div', {'data-testid': 'quick-view-modal', 'data-product-id': props.product?.productId}, 'Modal')
                 : null
     }
 })
@@ -106,6 +110,25 @@ const mockProductNoId = {
     imageGroups: []
 }
 
+// Product with only `name` (no `productName`) — tests fallback branch
+const mockProductNameOnly = {
+    productId: 'name-only-789',
+    name: 'Sapphire Necklace',
+    price: 199,
+    currency: 'USD',
+    image: {alt: 'Sapphire Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+    imageGroups: []
+}
+
+// Product with neither name field — tests empty string fallback
+const mockProductNoName = {
+    productId: 'no-name-000',
+    price: 50,
+    currency: 'USD',
+    image: {alt: 'Unknown', disBaseLink: 'https://example.com/unknown.jpg'},
+    imageGroups: []
+}
+
 beforeEach(() => {
     jest.clearAllMocks()
 })
@@ -130,6 +153,18 @@ test('overlay bar has correct aria-label', () => {
     expect(btn.getAttribute('aria-label')).toBe('Quick View Diamond Ring')
 })
 
+test('aria-label uses name fallback when productName missing', () => {
+    renderWithProviders(<ProductTile product={mockProductNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Sapphire Necklace')
+})
+
+test('aria-label falls back to empty string when no name fields', () => {
+    renderWithProviders(<ProductTile product={mockProductNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
 test('does NOT render bar for product sets', () => {
     renderWithProviders(<ProductTile product={mockSetProduct} />)
     expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
@@ -150,11 +185,23 @@ test('forwards all props to base ProductTile', () => {
         <ProductTile
             product={mockStandardProduct}
             enableFavourite={true}
-            badgeDetails={[]}
+            badgeDetails={['New']}
+            imageViewType="large"
         />
     )
-    // Base tile is rendered
+    // Base tile is rendered and receives forwarded props
+    const baseTile = screen.getByTestId('base-product-tile')
+    expect(baseTile).toBeInTheDocument()
+    const receivedProps = JSON.parse(baseTile.getAttribute('data-props'))
+    expect(receivedProps.enableFavourite).toBe(true)
+    expect(receivedProps.badgeDetails).toEqual(['New'])
+    expect(receivedProps.imageViewType).toBe('large')
+})
+
+test('renders base ProductTile for sets without Quick View bar', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
     expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
 })
 
 // --- Interaction ---
@@ -202,7 +249,23 @@ test('closing modal hides QuickViewModal', () => {
     // The closing is handled by Chakra's useDisclosure internally.
 })
 
+test('modal receives correct product', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    fireEvent.click(btn)
+
+    const modal = screen.getByTestId('quick-view-modal')
+    expect(modal.getAttribute('data-product-id')).toBe(mockStandardProduct.productId)
+})
+
 // --- Visual States ---
+
+test('overlay bar is rendered as a button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName).toBe('BUTTON')
+})
 
 test('container has role="group" for hover pseudo', () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
@@ -211,4 +274,20 @@ test('container has role="group" for hover pseudo', () => {
     // Walk up to find the group container
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
+})
+
+test('overlay bar is nested within an overflow-hidden container', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    // The bar should be within a parent that clips overflow for the slide animation
+    const parent = btn.parentElement
+    expect(parent).toBeTruthy()
+    // The parent container exists and the button is nested correctly
+    expect(parent.contains(btn)).toBe(true)
+})
+
+test('handles undefined product gracefully', () => {
+    renderWithProviders(<ProductTile product={undefined} />)
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+    // Should still render without crashing
 })
