@@ -119,6 +119,7 @@ export async function askLlmRouter(
   try {
     const prompt = buildTriagePrompt(trace, domains, topMatches, faultRouting);
     const session = await client.createSession({
+      model: "claude-sonnet-4",
       onPermissionRequest: approveAll,
       systemMessage: {
         mode: "replace",

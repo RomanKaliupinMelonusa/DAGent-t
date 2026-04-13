@@ -69,13 +69,21 @@ function shouldInvokeLlm(
 // LLM call
 // ---------------------------------------------------------------------------
 
+/** Map APM model tier to Copilot SDK model ID. */
+function resolveModelId(tier?: "fast" | "default"): string {
+  return tier === "default" ? "claude-opus-4.6" : "claude-sonnet-4";
+}
+
 async function callLlm(
   client: CopilotClient,
   condensed: string,
   systemPrompt: string,
+  modelTier?: "fast" | "default",
 ): Promise<CognitiveDiagnosis | undefined> {
   try {
+    const model = resolveModelId(modelTier);
     const session = await client.createSession({
+      model,
       onPermissionRequest: approveAll,
       systemMessage: {
         mode: "replace",
@@ -155,8 +163,8 @@ export function createCognitiveProcessor(client?: CopilotClient): ResultProcesso
 
       // Step 3: Invoke LLM with project-specific or default prompt
       const systemPrompt = promptContent?.trim() || DEFAULT_BUILTIN_PROMPT;
-      console.log("  🤖 Cognitive processor: invoking LLM diagnosis");
-      const diagnosis = await callLlm(client, regexResult.condensed, systemPrompt);
+      console.log(`  🤖 Cognitive processor: invoking LLM diagnosis (model=${config.model ?? "fast"})`);
+      const diagnosis = await callLlm(client, regexResult.condensed, systemPrompt, config.model);
 
       if (!diagnosis || !diagnosis.fault_domain_hint) {
         console.log("  ⚠ Cognitive processor: LLM produced no usable diagnosis — using regex result only");
