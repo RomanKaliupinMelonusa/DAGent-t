@@ -6,10 +6,610 @@ Running 17 tests using 1 worker
 
 
 
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:172:9 › Product Quick View › Quick View button appears on product tiles on PLP
+
+--- Browser Diagnostics for "Quick View button appears on product tiles on PLP" ---
+
+[1A[2KConsole errors: [
+  [32m'Warning: The result of getServerSnapshot should be cached to avoid an infinite loop%s \n'[39m +
+    [32m'    at App (http://localhost:3000/mobify/bundle/development/main.js:212:5)\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(App)))\n'[39m +
+    [32m'    at AppErrorBoundary (http://localhost:3000/mobify/bundle/development/vendor.js:22665:5)\n'[39m +
+    [32m'    at WrappedComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23518:42)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at UIDReset (http://localhost:3000/mobify/bundle/development/vendor.js:96020:23)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:23410:5)\n'[39m +
+    [32m'    at EnvironmentProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116747:11)\n'[39m +
+    [32m'    at ColorModeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:108885:5)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:733:50)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:119861:11)\n'[39m +
+    [32m'    at ChakraProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116039:5)\n'[39m +
+    [32m'    at ChakraProvider2 (http://localhost:3000/mobify/bundle/development/vendor.js:117460:5)\n'[39m +
+    [32m'    at StoreLocatorProvider (http://localhost:3000/mobify/bundle/development/main.js:17828:3)\n'[39m +
+    [32m'    at MultiSiteProvider (http://localhost:3000/mobify/bundle/development/main.js:20292:9)\n'[39m +
+    [32m'    at CommerceApiProvider (http://localhost:3000/mobify/bundle/development/vendor.js:22072:5)\n'[39m +
+    [32m'    at AppConfig (http://localhost:3000/mobify/bundle/development/main.js:36215:3)\n'[39m +
+    [32m'    at Hydrate (http://localhost:3000/mobify/bundle/development/vendor.js:24880:3)\n'[39m +
+    [32m'    at QueryClientProvider (http://localhost:3000/mobify/bundle/development/vendor.js:24948:3)\n'[39m +
+    [32m'    at WithReactQuery (http://localhost:3000/mobify/bundle/development/vendor.js:23695:3)\n'[39m +
+    [32m'    at CorrelationIdProvider (http://localhost:3000/mobify/bundle/development/vendor.js:23840:3)\n'[39m +
+    [32m'    at Router (http://localhost:3000/mobify/bundle/development/vendor.js:93592:30)\n'[39m +
+    [32m'    at BrowserRouter (http://localhost:3000/mobify/bundle/development/vendor.js:93022:35)\n'[39m +
+    [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m,
+  [32m'Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider \n'[39m +
+    [32m'    at PageDesignerProvider (http://localhost:3000/mobify/bundle/development/vendor.js:140177:33)\n'[39m +
+    [32m'    at OfflineBoundary (http://localhost:3000/mobify/bundle/development/main.js:6473:5)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at main\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at SkipNavContent2 (http://localhost:3000/mobify/bundle/development/vendor.js:117933:13)\n'[39m +
+    [32m'    at BonusProductSelectionModalProvider (http://localhost:3000/mobify/bundle/development/main.js:22294:3)\n'[39m +
+    [32m'    at AddToCartModalProvider (http://localhost:3000/mobify/bundle/development/main.js:20678:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at CurrencyProvider (http://localhost:3000/mobify/bundle/development/main.js:20343:13)\n'[39m +
+    [32m'    at IntlProvider (http://localhost:3000/mobify/bundle/development/vendor.js:87245:47)\n'[39m +
+    [32m'    at StorefrontPreview (http://localhost:3000/mobify/bundle/development/vendor.js:13134:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at App (http://localhost:3000/mobify/bundle/development/main.js:212:5)\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(App)))\n'[39m +
+    [32m'    at AppErrorBoundary (http://localhost:3000/mobify/bundle/development/vendor.js:22665:5)\n'[39m +
+    [32m'    at WrappedComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23518:42)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at UIDReset (http://localhost:3000/mobify/bundle/development/vendor.js:96020:23)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:23410:5)\n'[39m +
+    [32m'    at EnvironmentProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116747:11)\n'[39m +
+    [32m'    at ColorModeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:108885:5)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:733:50)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:119861:11)\n'[39m +
+    [32m'    at ChakraProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116039:5)\n'[39m +
+    [32m'    at ChakraProvider2 (http://localhost:3000/mobify/bundle/development/vendor.js:117460:5)\n'[39m +
+    [32m'    at StoreLocatorProvider (http://localhost:3000/mobify/bundle/development/main.js:17828:3)\n'[39m +
+    [32m'    at MultiSiteProvider (http://localhost:3000/mobify/bundle/development/main.js:20292:9)\n'[39m +
+    [32m'    at CommerceApiProvider (http://localhost:3000/mobify/bundle/development/vendor.js:22072:5)\n'[39m +
+    [32m'    at AppConfig (http://localhost:3000/mobify/bundle/development/main.js:36215:3)\n'[39m +
+    [32m'    at Hydrate (http://localhost:3000/mobify/bundle/development/vendor.js:24880:3)\n'[39m +
+    [32m'    at QueryClientProvider (http://localhost:3000/mobify/bundle/development/vendor.js:24948:3)\n'[39m +
+    [32m'    at WithReactQuery (http://localhost:3000/mobify/bundle/development/vendor.js:23695:3)\n'[39m +
+    [32m'    at CorrelationIdProvider (http://localhost:3000/mobify/bundle/development/vendor.js:23840:3)\n'[39m +
+    [32m'    at Router (http://localhost:3000/mobify/bundle/development/vendor.js:93592:30)\n'[39m +
+    [32m'    at BrowserRouter (http://localhost:3000/mobify/bundle/development/vendor.js:93022:35)\n'[39m +
+    [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m,
+  [32m'Warning: Expected server HTML to contain a matching <%s> in <%s>.%s div div \n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:117792:32\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:112462:5\n'[39m +
+    [32m'    at PricingAndPromotionsSkeleton\n'[39m +
+    [32m'    at a\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:93119:23\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:93167:31\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at Link2 (http://localhost:3000/mobify/bundle/development/vendor.js:112629:83)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/main.js:4827:7\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at ProductTile (http://localhost:3000/mobify/bundle/development/main.js:7597:7)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at ProductTile (http://localhost:3000/mobify/bundle/development/main.js:36417:7)\n'[39m +
+    [32m'    at Island (http://localhost:3000/mobify/bundle/development/main.js:4647:5)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at Grid2 (http://localhost:3000/mobify/bundle/development/vendor.js:111646:5)\n'[39m +
+    [32m'    at SimpleGrid2 (http://localhost:3000/mobify/bundle/development/vendor.js:112240:13)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at Grid2 (http://localhost:3000/mobify/bundle/development/vendor.js:111646:5)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at ProductList (http://localhost:3000/mobify/bundle/development/pages-product-list.js:1158:18)\n'[39m +
+    [32m'    at InnerLoadable (http://localhost:3000/mobify/bundle/development/vendor.js:127901:34)\n'[39m +
+    [32m'    at LoadableWithChunkExtractor\n'[39m +
+    [32m'    at Loadable\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(Loadable)))\n'[39m +
+    [32m'    at UIDFork (http://localhost:3000/mobify/bundle/development/vendor.js:96030:23)\n'[39m +
+    [32m'    at Route (http://localhost:3000/mobify/bundle/development/vendor.js:93973:29)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:94175:29)\n'[39m +
+    [32m'    at PageDesignerProvider (http://localhost:3000/mobify/bundle/development/vendor.js:140177:33)\n'[39m +
+    [32m'    at OfflineBoundary (http://localhost:3000/mobify/bundle/development/main.js:6473:5)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at main\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at SkipNavContent2 (http://localhost:3000/mobify/bundle/development/vendor.js:117933:13)\n'[39m +
+    [32m'    at BonusProductSelectionModalProvider (http://localhost:3000/mobify/bundle/development/main.js:22294:3)\n'[39m +
+    [32m'    at AddToCartModalProvider (http://localhost:3000/mobify/bundle/development/main.js:20678:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at CurrencyProvider (http://localhost:3000/mobify/bundle/development/main.js:20343:13)\n'[39m +
+    [32m'    at IntlProvider (http://localhost:3000/mobify/bundle/development/vendor.js:87245:47)\n'[39m +
+    [32m'    at StorefrontPreview (http://localhost:3000/mobify/bundle/development/vendor.js:13134:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at App (http://localhost:3000/mobify/bundle/development/main.js:212:5)\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(App)))\n'[39m +
+    [32m'    at AppErrorBoundary (http://localhost:3000/mobify/bundle/development/vendor.js:22665:5)\n'[39m +
+    [32m'    at WrappedComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23518:42)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at UIDReset (http://localhost:3000/mobify/bundle/development/vendor.js:96020:23)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:23410:5)\n'[39m +
+    [32m'    at EnvironmentProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116747:11)\n'[39m +
+    [32m'    at ColorModeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:108885:5)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:733:50)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:119861:11)\n'[39m +
+    [32m'    at ChakraProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116039:5)\n'[39m +
+    [32m'    at ChakraProvider2 (http://localhost:3000/mobify/bundle/development/vendor.js:117460:5)\n'[39m +
+    [32m'    at StoreLocatorProvider (http://localhost:3000/mobify/bundle/development/main.js:17828:3)\n'[39m +
+    [32m'    at MultiSiteProvider (http://localhost:3000/mobify/bundle/development/main.js:20292:9)\n'[39m +
+    [32m'    at CommerceApiProvider (http://localhost:3000/mobify/bundle/development/vendor.js:22072:5)\n'[39m +
+    [32m'    at AppConfig (http://localhost:3000/mobify/bundle/development/main.js:36215:3)\n'[39m +
+    [32m'    at Hydrate (http://localhost:3000/mobify/bundle/development/vendor.js:24880:3)\n'[39m +
+    [32m'    at QueryClientProvider (http://localhost:3000/mobify/bundle/development/vendor.js:24948:3)\n'[39m +
+    [32m'    at WithReactQuery (http://localhost:3000/mobify/bundle/development/vendor.js:23695:3)\n'[39m +
+    [32m'    at CorrelationIdProvider (http://localhost:3000/mobify/bundle/development/vendor.js:23840:3)\n'[39m +
+    [32m'    at Router (http://localhost:3000/mobify/bundle/development/vendor.js:93592:30)\n'[39m +
+    [32m'    at BrowserRouter (http://localhost:3000/mobify/bundle/development/vendor.js:93022:35)\n'[39m +
+    [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m,
+  [32m'Warning: An error occurred during hydration. The server HTML was replaced with client content in <%s>. div'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'TypeError: Failed to fetch\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48232\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20297\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:20176\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48575'[39m,
+  [32m'Warning: The result of getServerSnapshot should be cached to avoid an infinite loop%s \n'[39m +
+    [32m'    at App (http://localhost:3000/mobify/bundle/development/main.js:212:5)\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(App)))\n'[39m +
+    [32m'    at AppErrorBoundary (http://localhost:3000/mobify/bundle/development/vendor.js:22665:5)\n'[39m +
+    [32m'    at WrappedComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23518:42)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at UIDReset (http://localhost:3000/mobify/bundle/development/vendor.js:96020:23)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:23410:5)\n'[39m +
+    [32m'    at EnvironmentProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116747:11)\n'[39m +
+    [32m'    at ColorModeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:108885:5)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:733:50)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:119861:11)\n'[39m +
+    [32m'    at ChakraProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116039:5)\n'[39m +
+    [32m'    at ChakraProvider2 (http://localhost:3000/mobify/bundle/development/vendor.js:117460:5)\n'[39m +
+    [32m'    at StoreLocatorProvider (http://localhost:3000/mobify/bundle/development/main.js:17828:3)\n'[39m +
+    [32m'    at MultiSiteProvider (http://localhost:3000/mobify/bundle/development/main.js:20292:9)\n'[39m +
+    [32m'    at CommerceApiProvider (http://localhost:3000/mobify/bundle/development/vendor.js:22072:5)\n'[39m +
+    [32m'    at AppConfig (http://localhost:3000/mobify/bundle/development/main.js:36215:3)\n'[39m +
+    [32m'    at Hydrate (http://localhost:3000/mobify/bundle/development/vendor.js:24880:3)\n'[39m +
+    [32m'    at QueryClientProvider (http://localhost:3000/mobify/bundle/development/vendor.js:24948:3)\n'[39m +
+    [32m'    at WithReactQuery (http://localhost:3000/mobify/bundle/development/vendor.js:23695:3)\n'[39m +
+    [32m'    at CorrelationIdProvider (http://localhost:3000/mobify/bundle/development/vendor.js:23840:3)\n'[39m +
+    [32m'    at Router (http://localhost:3000/mobify/bundle/development/vendor.js:93592:30)\n'[39m +
+    [32m'    at BrowserRouter (http://localhost:3000/mobify/bundle/development/vendor.js:93022:35)\n'[39m +
+    [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m,
+  [32m'Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider \n'[39m +
+    [32m'    at PageDesignerProvider (http://localhost:3000/mobify/bundle/development/vendor.js:140177:33)\n'[39m +
+    [32m'    at OfflineBoundary (http://localhost:3000/mobify/bundle/development/main.js:6473:5)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at main\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at SkipNavContent2 (http://localhost:3000/mobify/bundle/development/vendor.js:117933:13)\n'[39m +
+    [32m'    at BonusProductSelectionModalProvider (http://localhost:3000/mobify/bundle/development/main.js:22294:3)\n'[39m +
+    [32m'    at AddToCartModalProvider (http://localhost:3000/mobify/bundle/development/main.js:20678:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at CurrencyProvider (http://localhost:3000/mobify/bundle/development/main.js:20343:13)\n'[39m +
+    [32m'    at IntlProvider (http://localhost:3000/mobify/bundle/development/vendor.js:87245:47)\n'[39m +
+    [32m'    at StorefrontPreview (http://localhost:3000/mobify/bundle/development/vendor.js:13134:3)\n'[39m +
+    [32m'    at div\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:682:66\n'[39m +
+    [32m'    at ChakraComponent (http://localhost:3000/mobify/bundle/development/vendor.js:120030:102)\n'[39m +
+    [32m'    at App (http://localhost:3000/mobify/bundle/development/main.js:212:5)\n'[39m +
+    [32m'    at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at WithErrorHandling(withRouter(routeComponent(App)))\n'[39m +
+    [32m'    at AppErrorBoundary (http://localhost:3000/mobify/bundle/development/vendor.js:22665:5)\n'[39m +
+    [32m'    at WrappedComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23518:42)\n'[39m +
+    [32m'    at C (http://localhost:3000/mobify/bundle/development/vendor.js:94230:37)\n'[39m +
+    [32m'    at UIDReset (http://localhost:3000/mobify/bundle/development/vendor.js:96020:23)\n'[39m +
+    [32m'    at Switch (http://localhost:3000/mobify/bundle/development/vendor.js:23410:5)\n'[39m +
+    [32m'    at EnvironmentProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116747:11)\n'[39m +
+    [32m'    at ColorModeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:108885:5)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:733:50)\n'[39m +
+    [32m'    at ThemeProvider (http://localhost:3000/mobify/bundle/development/vendor.js:119861:11)\n'[39m +
+    [32m'    at ChakraProvider (http://localhost:3000/mobify/bundle/development/vendor.js:116039:5)\n'[39m +
+    [32m'    at ChakraProvider2 (http://localhost:3000/mobify/bundle/development/vendor.js:117460:5)\n'[39m +
+    [32m'    at StoreLocatorProvider (http://localhost:3000/mobify/bundle/development/main.js:17828:3)\n'[39m +
+    [32m'    at MultiSiteProvider (http://localhost:3000/mobify/bundle/development/main.js:20292:9)\n'[39m +
+    [32m'    at CommerceApiProvider (http://localhost:3000/mobify/bundle/development/vendor.js:22072:5)\n'[39m +
+    [32m'    at AppConfig (http://localhost:3000/mobify/bundle/development/main.js:36215:3)\n'[39m +
+    [32m'    at Hydrate (http://localhost:3000/mobify/bundle/development/vendor.js:24880:3)\n'[39m +
+    [32m'    at QueryClientProvider (http://localhost:3000/mobify/bundle/development/vendor.js:24948:3)\n'[39m +
+    [32m'    at WithReactQuery (http://localhost:3000/mobify/bundle/development/vendor.js:23695:3)\n'[39m +
+    [32m'    at CorrelationIdProvider (http://localhost:3000/mobify/bundle/development/vendor.js:23840:3)\n'[39m +
+    [32m'    at Router (http://localhost:3000/mobify/bundle/development/vendor.js:93592:30)\n'[39m +
+    [32m'    at BrowserRouter (http://localhost:3000/mobify/bundle/development/vendor.js:93022:35)\n'[39m +
+    [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m
+]
+
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/__mrt/hmr - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/mobify/proxy/api/shopper/auth/v1/organizations/f_ecom_aaia_prd/oauth2/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback&response_type=code&client_id=44cfcf31-d64d-4227-9cce-1d9b0716c321&hint=guest&channel_id=RefArch&code_challenge=eOm8b8uZ2tck7fLh6IiUzMtQOtKiFnm-rsRTalecxeE - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/mobify/bundle/development/vendors-node_modules_salesforce_retail-react-app_app_assets_js_active-data_js.js - net::ERR_ABORTED'[39m
+]
+
+[1A[2K  1) [chromium] › e2e/product-quick-view.spec.ts:172:9 › Product Quick View › Quick View button appears on product tiles on PLP 
+
+    TimeoutError: locator.waitFor: Timeout 15000ms exceeded.
+    Call log:
+    [2m  - waiting for getByTestId('quick-view-btn').first()[22m
+
+
+      87 |             .getByTestId('quick-view-btn')
+      88 |             .first()
+    > 89 |             .waitFor({state: 'attached', timeout: ELEMENT_TIMEOUT})
+         |              ^
+      90 |     }
+      91 | }
+      92 |
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:89:14)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:173:9
+
+    Error Context: test-results/product-quick-view-Product-cdade-ars-on-product-tiles-on-PLP-chromium/error-context.md
+
+
 [1A[2K[2/17] [chromium] › e2e/product-quick-view.spec.ts:185:9 › Product Quick View › Quick View button contains "Quick View" text
 [1A[2K[3/17] [chromium] › e2e/product-quick-view.spec.ts:196:9 › Product Quick View › clicking Quick View opens the modal with product data
-
-
 [1A[2K[4/17] [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content
 
 
@@ -222,11 +822,11 @@ Running 17 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=765b8071-712c-47a8-a981-a3b38902e11e&code=ilqgai4EWCqbU8eYUA6j3rE1PVRk8bvmCXyAJQoZeWQ - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=fdaccb12-3504-49ad-96b9-c109f6dcca0a&code=Zq7CuzfY4wJ0ZskvU9qb-ev56cfe48cqB877gsspmbs - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
-[1A[2K  1) [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content 
+[1A[2K  2) [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content 
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
 
@@ -252,7 +852,10 @@ Running 17 tests using 1 worker
 
 
 [1A[2K[6/17] [chromium] › e2e/product-quick-view.spec.ts:291:9 › Product Quick View › modal can be closed with Escape key
+
 [1A[2K[7/17] [chromium] › e2e/product-quick-view.spec.ts:307:9 › Product Quick View › Quick View does not navigate away from PLP
+
+
 [1A[2K[8/17] [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains "View Full Details" link to PDP
 
 
@@ -465,11 +1068,11 @@ Running 17 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=f44fbadf-8447-48ca-a508-0b0c0b488d57&code=8vSS3_A0JXYRcr-yVj0HCFA7pqMjg14A2oJQrZHwJP4 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=ab5b4b63-74fe-425c-b8ed-011c19173324&code=Bi1gW6K1L3fmpXxCwOrOaNSSItZ2nJAWM-Jy7RMhGjE - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
-[1A[2K  2) [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains "View Full Details" link to PDP 
+[1A[2K  3) [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains "View Full Details" link to PDP 
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -503,6 +1106,8 @@ Running 17 tests using 1 worker
 [1A[2K[10/17] [chromium] › e2e/product-quick-view.spec.ts:377:9 › Product Quick View › Quick View modal has accessible aria-label with product name
 [1A[2K[11/17] [chromium] › e2e/product-quick-view.spec.ts:391:9 › Product Quick View › multiple Quick View buttons exist for multiple products
 [1A[2K[12/17] [chromium] › e2e/product-quick-view.spec.ts:412:9 › Product Quick View › opening Quick View for different products shows correct data
+
+
 [1A[2K[13/17] [chromium] › e2e/product-quick-view.spec.ts:455:9 › Product Quick View — Edge Cases › Quick View overlay bar is not shown for product sets/bundles
 [1A[2K[14/17] [chromium] › e2e/product-quick-view.spec.ts:477:9 › Product Quick View — Edge Cases › PLP remains functional after Quick View close
 
@@ -590,7 +1195,11 @@ Running 17 tests using 1 worker
     [32m'    at OuterApp (http://localhost:3000/mobify/bundle/development/vendor.js:22499:3)'[39m
 ]
 
-[1A[2K  3) [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/callback?usid=180bc876-360f-46bb-aedd-b9dd118af53d&code=mvAIKI-xNN9yttbQyutd44J66CcHUvNK31X8lCHxCe8 - net::ERR_ABORTED'[39m
+]
+
+[1A[2K  4) [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -622,8 +1231,6 @@ Running 17 tests using 1 worker
 
 
 [1A[2K[16/17] [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page
-
-
 
 
 
@@ -734,6 +1341,14 @@ Running 17 tests using 1 worker
     [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
+  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
+  [32m'r: 400 Bad Request\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
   [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
   [32m'r: 403 Forbidden\n'[39m +
     [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
@@ -742,24 +1357,8 @@ Running 17 tests using 1 worker
     [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
-  [32m'r: 400 Bad Request\n'[39m +
-    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
-    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
-    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
-    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
-    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
-    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
-  [32m'r: 400 Bad Request\n'[39m +
-    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
-    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
-    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
-    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
-    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
-    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
-  [32m'r: 400 Bad Request\n'[39m +
+  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
+  [32m'r: 403 Forbidden\n'[39m +
     [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
     [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
     [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
@@ -767,25 +1366,17 @@ Running 17 tests using 1 worker
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
   [32m'Failed to load resource: net::ERR_NAME_NOT_RESOLVED'[39m,
-  [32m'retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event {}'[39m,
-  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
-  [32m'r: 403 Forbidden\n'[39m +
-    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
-    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
-    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
-    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
-    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
-    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m
+  [32m'retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event {}'[39m
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=b9d99df5-b78d-41b4-98ad-7278ae5d5831&code=BSrcrzcuQn1QKxv4WBMlmcYhXTTtiklCTuttcW5kUCA - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=c4fd8982-629d-40ce-ba46-540c4c449119&code=WaWPZewHo9-gXTO5OmNu3XFeMcicT1o5EOLuthy1Y1c - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=aa6cdb00-1401-4cbf-a62e-6fdcea239c9a&code=0CMYHa-BmNJ1ti_gqiZpxJfH0bypgoCkcBIt4RFWHtE - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=3d2d9c81-800c-4a81-97bf-f188c69cea62&code=FjbjvpjEl3c0Zi6p9m6oNsn0KmzzDEZsb229QnlP888 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=3dfd0d4b-127f-49b5-a675-b24d3ff191f9&code=ZJ-FzBvnpbI6AOhFFIL3N6uApgcah0RNum72qBj4nvs - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=92603cbe-2736-4f3e-9049-982a910f67c1&code=v25k9KE5ajhu0ySie7ysDYOqSwQriIkEYGiWw7newgk - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
-[1A[2K  4) [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
+[1A[2K  5) [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -816,17 +1407,18 @@ Running 17 tests using 1 worker
 
 
 [1A[2K[17/17] [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info
-[1A[2K  4 failed
+[1A[2K  5 failed
+    [chromium] › e2e/product-quick-view.spec.ts:172:9 › Product Quick View › Quick View button appears on product tiles on PLP 
     [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content 
     [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains "View Full Details" link to PDP 
     [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
     [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
-  13 passed (2.3m)
-[1A[2K[2m[WebServer] [22m(node:4757) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+  12 passed (3.2m)
+[1A[2K[2m[WebServer] [22m(node:6921) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:4805) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[1A[2K[2m[WebServer] [22m(node:6967) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:4805) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[1A[2K[2m[WebServer] [22m(node:6967) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
 [1A[2K[2m[WebServer] [22mWarning: PageDesignerProvider: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.
 [2m[WebServer] [22m    at PageDesignerProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:308686:33)
 [2m[WebServer] [22m    at OfflineBoundary (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:9619:5)
@@ -883,39 +1475,41 @@ Running 17 tests using 1 worker
 [2m[WebServer] [22m    at head
 [2m[WebServer] [22m    at html
 [2m[WebServer] [22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133145:5)
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (26c04943-b60f-4ee0-a4d5-e14a8f124acc) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 577.998 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c3b71454-85e4-4686-bdc9-7dfcc72029fc) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 121.405 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (81ce0acd-75e9-405d-a612-b8dbf1e91199) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/7c324d0e-78b4-4525-9089-f158bbcf387b?siteId=RefArch 403 731.601 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (e59aa76d-5001-48a1-9d84-63a3433455b0) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/fdaccb12-3504-49ad-96b9-c109f6dcca0a?siteId=RefArch 403 125.149 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (51497941-831e-4b40-8ab7-358bc80126e4) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 106.239 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (51b7c2c8-8c3b-401f-87b5-21b3827b9f68) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 165.091 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (955d1aca-b2cc-45da-91f2-0d81b8b7d8dc) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/765b8071-712c-47a8-a981-a3b38902e11e?siteId=RefArch 403 116.496 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (58bd1235-5e08-445a-83bb-97ef46bd91e4) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/b4b90b51-d4c7-48af-bf0b-544a72d52362?siteId=RefArch 403 623.816 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (7616f11f-a4c8-43f8-9dff-df9c33c28849) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ee040995-7423-426c-ad9a-f3337c4ce107?siteId=RefArch 403 206.021 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c7e9b2bd-8c10-480a-8dcf-0612fc3c5abb) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 159.330 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (39ff7aca-d558-4e9b-8b82-28f7681830a7) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 529.159 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (527b8886-d102-4c03-9620-ba87916c79b3) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 138.787 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (fe925b3e-9500-4205-bc44-c5ff8f6cb5fd) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 478.458 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (74c7116f-296d-488a-a827-66a36d75101e) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/6c370126-0ed2-4324-a115-7d8e20aa5db8?siteId=RefArch 403 155.387 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (51949768-be79-4e7a-8eb5-fceb300d0622) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/f44fbadf-8447-48ca-a508-0b0c0b488d57?siteId=RefArch 403 518.487 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (abfdb33d-676b-4c5e-861d-55815a84c809) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ab5b4b63-74fe-425c-b8ed-011c19173324?siteId=RefArch 403 129.470 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (3afbef3b-d124-48b3-bd39-fdaf356a3bc6) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 241.961 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (3f9e3398-21e0-42c6-bcbb-3b064674da59) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 584.940 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (67bcd644-a8cd-4b7f-aa8e-cd505be451c0) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/1460007e-b82e-4e07-88d0-afee1c33ce0a?siteId=RefArch 403 154.181 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (ca6e65c7-a51d-4cfb-950b-73ff5158690d) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ee64c084-bf25-420c-9297-904c9e43f73d?siteId=RefArch 403 144.553 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (1061fa95-cfd6-4a37-80bf-128d7ca84932) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 120.006 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c2dddfb9-c847-4ef5-be8b-8e9b64ea4d60) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 483.323 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (3d081761-8374-40a3-87ef-2c50f018eed5) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/b9d99df5-b78d-41b4-98ad-7278ae5d5831?siteId=RefArch 403 246.950 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (f44df8ba-eb1e-438f-919b-2170b5a0a048) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 186.574 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (10867cdc-5e0e-42a2-8928-d590b85f249a) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abwHJImrJIxHsRwHA2xaYYkugY/baskets?siteId=RefArch 400 604.989 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (7b657cd8-6778-4b85-aa10-adfd0b0b43c6) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/e7428556-8765-4984-87a2-7dc37c02ce8c?siteId=RefArch 403 183.449 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (699cdb31-dfa1-4230-bad4-75c27f4f5f8d) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/c4fd8982-629d-40ce-ba46-540c4c449119?siteId=RefArch 403 276.433 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (7be59de3-cdb8-4d7e-8e85-5f0a8c95090c) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 191.809 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (4b1b5899-e565-4659-9c58-148077fb5503) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abwHJImrJIxHsRwHA2xaYYkugY/product-lists?siteId=RefArch 400 743.668 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (6397d032-f474-4e44-be5f-2b74ed896f62) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/3d2d9c81-800c-4a81-97bf-f188c69cea62?siteId=RefArch 403 161.573 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (78c1d9d9-1f58-4f8d-b10f-e50f8de0b483) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abwXpKxbE3mbgRlHg3xaYYkelJ/baskets?siteId=RefArch 400 706.534 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (919569ec-12b3-49d9-aea3-66713ce6fda1) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bck0oWxbJHmbcRmbaUwWYYwrEV/product-lists?siteId=RefArch 400 340.936 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (22d51974-1459-41c7-bad6-a5b923a633c2) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abwXpKxbE3mbgRlHg3xaYYkelJ/product-lists?siteId=RefArch 400 374.901 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c4201a0a-5c14-44db-87bb-2e420095db95) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bck0oWxbJHmbcRmbaUwWYYwrEV/baskets?siteId=RefArch 400 376.230 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (4901c671-a233-4265-a7f7-33d6c9fab7f4) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/aa6cdb00-1401-4cbf-a62e-6fdcea239c9a?siteId=RefArch 403 573.316 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c6ce68ae-3646-4b30-9f1c-6510b67ae100) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/92603cbe-2736-4f3e-9049-982a910f67c1?siteId=RefArch 403 283.596 ms - 161
+[2m[WebServer] [22m
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (782e722b-4a37-4701-a475-e8b7e5e67597) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/3dfd0d4b-127f-49b5-a675-b24d3ff191f9?siteId=RefArch 403 189.050 ms - 161
 [2m[WebServer] [22m
