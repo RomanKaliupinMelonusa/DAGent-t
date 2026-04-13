@@ -50,8 +50,6 @@ Running 3 tests using 1 worker
 
 
 
-
-
 [1A[2K[chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page
 
 --- Browser Diagnostics for "can navigate to a category/PLP page" ---
@@ -148,26 +146,24 @@ Running 3 tests using 1 worker
     [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
+  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
+  [32m'r: 403 Forbidden\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
+  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
+  [32m'r: 403 Forbidden\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
   [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
   [32m'r: 400 Bad Request\n'[39m +
-    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
-    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
-    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
-    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
-    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
-    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
-  [32m'r: 403 Forbidden\n'[39m +
-    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
-    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
-    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
-    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
-    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
-    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: net::ERR_NAME_NOT_RESOLVED'[39m,
-  [32m'retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event {}'[39m,
-  [32m'Failed to load resource: the server responded with a status of 403 (Forbidden)'[39m,
-  [32m'r: 403 Forbidden\n'[39m +
     [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
     [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
     [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
@@ -185,11 +181,10 @@ Running 3 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=f20a4d53-f8d6-4d50-b59d-49ab434be542&code=wBBY_FBDWPpuPprxnz3gSgDj4_GM4U-p11dmdmXkUxc - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=ff843e17-e90f-47dd-b855-c8fb3e4f8bfc&code=zR0mt857feZmDujg6fA5cYC_6grC6DJyKxTv2ke6Nw4 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=5defeafc-97a3-4c92-9e4e-3ad169ddc6f3&code=kABZW8V2sKiebOo-tieFupLbIOdvsn0grtyjyRuznzE - net::ERR_ABORTED'[39m,
-  [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m,
-  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m
+  [32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=61776e90-7074-4e91-8b35-1461dd3163a7&code=8oxG2wAzBC_npgP1Bsqt9_Mjii8Wr9krHyauwItiFNI - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=4cde0430-c45d-4731-812a-bd336439b59b&code=y6wHXO5JbdyTcOBjLxXaqVxc58hK1a-DPqpd96y_qaQ - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=dc898303-415d-4189-97ae-dfdd42c63f08&code=Dma4zh-S6OBoPyn2OG_vOAElLAySOfWYm0b_JNWwH2g - net::ERR_ABORTED'[39m
 ]
 
 [1A[2K  2) [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
@@ -226,12 +221,12 @@ Running 3 tests using 1 worker
 [1A[2K  2 failed
     [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
     [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
-  1 passed (31.8s)
-[1A[2K[2m[WebServer] [22m(node:34286) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+  1 passed (32.1s)
+[1A[2K[2m[WebServer] [22m(node:35252) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:34310) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[1A[2K[2m[WebServer] [22m(node:35276) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:34310) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[1A[2K[2m[WebServer] [22m(node:35276) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
 [1A[2K[2m[WebServer] [22mWarning: PageDesignerProvider: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.
 [2m[WebServer] [22m    at PageDesignerProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:308646:33)
 [2m[WebServer] [22m    at OfflineBoundary (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:9619:5)
@@ -283,19 +278,15 @@ Running 3 tests using 1 worker
 [2m[WebServer] [22m    at ChunkExtractorManager (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:288765:24)
 [1A[2K[2m[WebServer] [22mWarning: Document: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.
 [2m[WebServer] [22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133105:5)
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (7665a9f0-be43-439e-8dfa-6c3de1b8015a) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/f20a4d53-f8d6-4d50-b59d-49ab434be542?siteId=RefArch 403 125.036 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (60bb558e-1677-4e38-8b47-db9917dd5dd7) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/4cde0430-c45d-4731-812a-bd336439b59b?siteId=RefArch 403 117.704 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (893c26f4-6293-45b9-b9a0-7f573694d7a9) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abxHgUwrpIlrkRxHFIlGYYxbsU/baskets?siteId=RefArch 400 302.844 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (18084f31-1999-4ac9-9f1e-228f73c96b6a) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bdlelIxraYkXaRwXoZxbYYlXkV/product-lists?siteId=RefArch 400 278.874 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (f2ba052b-8020-44fe-bb0d-2d50cb011538) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abxHgUwrpIlrkRxHFIlGYYxbsU/product-lists?siteId=RefArch 400 760.418 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (632c86a8-5811-4875-9693-aa13d397e4e9) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/dc898303-415d-4189-97ae-dfdd42c63f08?siteId=RefArch 403 135.701 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (482f793e-2f2a-40c7-96e6-0481fac50138) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ff843e17-e90f-47dd-b855-c8fb3e4f8bfc?siteId=RefArch 403 686.596 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (b62b5d76-1ad2-422c-9b04-7f14035081a9) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 568.599 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (ff92a513-d2be-48d2-a72a-9224c52af448) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/5defeafc-97a3-4c92-9e4e-3ad169ddc6f3?siteId=RefArch 403 683.646 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (15cef209-b99b-4b66-a2b5-ff8585c4ec15) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bdlelIxraYkXaRwXoZxbYYlXkV/baskets?siteId=RefArch 400 630.827 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (cb5dd245-d690-46c7-be44-25622e72e2e4) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 447.650 ms - 161
-[2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (edbcdeed-06a3-4e30-939e-47d219f5e4f9) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 114.063 ms - 161
-[2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (2397ef07-a2a0-4ab4-a0b1-25fc3f728a36) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/55af0b95-1208-4b6a-884f-c535a0dcc309?siteId=RefArch 403 453.070 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (28d0c609-93cf-4f36-adae-ff96b3eac36c) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/61776e90-7074-4e91-8b35-1461dd3163a7?siteId=RefArch 403 106.599 ms - 161
 [2m[WebServer] [22m
