@@ -99,8 +99,20 @@ const githubPrPublishHandler: NodeHandler = {
       }
 
       // 4. Combine and update PR body (never overwrite — always append)
+      // GitHub enforces a 65535-char limit on PR bodies. If the combined body
+      // exceeds 60000 chars, truncate each Wave 2 section proportionally.
       const combinedFile = path.join(tmpDir, "combined.md");
-      const combinedBody = existingBody + appendixParts.join("\n");
+      const MAX_BODY = 60_000; // leave headroom below GitHub's 65535 hard limit
+      let combinedBody = existingBody + appendixParts.join("\n");
+      if (combinedBody.length > MAX_BODY) {
+        const existingLen = existingBody.length;
+        const budgetForAppendix = Math.max(MAX_BODY - existingLen - 200, 2000);
+        const fullAppendix = appendixParts.join("\n");
+        const truncatedAppendix = fullAppendix.slice(0, budgetForAppendix) +
+          `\n\n> ⚠️ Truncated (${fullAppendix.length} → ${budgetForAppendix} chars) — full logs in \`in-progress/${slug}_*.md\`\n`;
+        combinedBody = existingBody + truncatedAppendix;
+        console.log(`     PR body truncated: ${existingBody.length + fullAppendix.length} → ${combinedBody.length} chars`);
+      }
       fs.writeFileSync(combinedFile, combinedBody, "utf-8");
       execSync(`gh pr edit ${prNumber} --body-file "${combinedFile}"`, {
         cwd: repoRoot, stdio: "pipe", timeout: 30_000,

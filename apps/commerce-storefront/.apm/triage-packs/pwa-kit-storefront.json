@@ -1,0 +1,26 @@
+{
+  "name": "pwa-kit-storefront",
+  "stack": "PWA Kit / SFCC",
+  "signatures": [
+    {
+      "error_snippet": "This page isn't working",
+      "fault_domain": "test-code-from-dev",
+      "reason": "PWA Kit crash page rendered — component threw without local ErrorBoundary. The upstream dev code is missing error handling, not an env issue."
+    },
+    {
+      "error_snippet": "error occurred in the <",
+      "fault_domain": "test-code-from-dev",
+      "reason": "React ErrorBoundary caught a component crash — upstream dev code threw during render."
+    },
+    {
+      "error_snippet": "net::ERR_NAME_NOT_RESOLVED",
+      "fault_domain": "environment",
+      "reason": "DNS resolution failure — transient network/infrastructure issue, not a code bug."
+    },
+    {
+      "error_snippet": "ECONNREFUSED",
+      "fault_domain": "environment",
+      "reason": "Connection refused — dev server or external service not reachable. Transient infrastructure issue."
+    }
+  ]
+}

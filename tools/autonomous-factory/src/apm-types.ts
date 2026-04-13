@@ -201,6 +201,18 @@ export const ApmWorkflowNodeSchema = z.object({
   post_run_hook: z.enum(["validateInfra", "validateApp"]).optional(),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
+  /** Result processor config for post-processing handler output before triage.
+   *  Only applicable to script-type nodes (e.g. local-exec test runners). */
+  result_processor: z.object({
+    /** Processor type: "regex" = deterministic only, "cognitive" = regex + LLM, "none" = disabled. */
+    type: z.enum(["regex", "cognitive", "none"]),
+    /** Maximum chars for condensed output (default: 8192). */
+    max_chars: z.number().positive().default(8192),
+    /** LLM model tier for cognitive pass: "fast" or "default" (default: "fast"). */
+    model: z.enum(["fast", "default"]).default("fast"),
+    /** Path to .md instruction fragment for LLM system prompt (relative to .apm/). */
+    prompt: z.string().optional(),
+  }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },
