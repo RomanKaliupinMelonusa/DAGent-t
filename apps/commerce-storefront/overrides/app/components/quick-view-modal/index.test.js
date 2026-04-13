@@ -220,3 +220,29 @@ test('aria-label falls back to generic text when product name missing', () => {
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
 })
+
+// --- Error Boundary Tests ---
+
+test('error boundary catches render errors and shows fallback UI', () => {
+    // Suppress React error boundary console output
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    // Temporarily make the ProductView mock throw
+    const mod = require('@salesforce/retail-react-app/app/components/product-view')
+    const origDefault = mod.default
+    mod.default = () => {
+        throw new Error('Test render error')
+    }
+
+    useProductViewModal.mockReturnValue({product: mockProduct, isFetching: false})
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(screen.getByTestId('quick-view-render-error')).toBeInTheDocument()
+    expect(screen.getByTestId('quick-view-render-error')).toHaveTextContent(
+        'Unable to load product details'
+    )
+
+    // Restore
+    mod.default = origDefault
+    consoleSpy.mockRestore()
+})

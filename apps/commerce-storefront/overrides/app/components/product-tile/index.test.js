@@ -212,3 +212,36 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Additional edge cases ---
+
+test('overlay bar aria-label uses name when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'name-only-123',
+        name: 'Emerald Necklace',
+        image: {alt: 'Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Emerald Necklace')
+})
+
+test('overlay bar aria-label is empty suffix when no name fields exist', () => {
+    const productNoNames = {
+        productId: 'no-name-456',
+        image: {alt: 'Product', disBaseLink: 'https://example.com/product.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoNames} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('renders base ProductTile even without Quick View bar for product without id', () => {
+    renderWithProviders(<ProductTile product={mockProductNoId} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
