@@ -212,3 +212,39 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Additional spec coverage ---
+
+test('overlay bar uses product.name as fallback when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'fallback-123',
+        name: 'Fallback Name Product',
+        image: {alt: 'Fallback', disBaseLink: 'https://example.com/fallback.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name Product')
+})
+
+test('overlay bar aria-label uses empty string when no name available', () => {
+    const productNoName = {
+        productId: 'noname-123',
+        image: {alt: 'No Name', disBaseLink: 'https://example.com/noname.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('renders base ProductTile component inside the wrapper', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+})
+
+test('quick view bar is rendered as a button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName.toLowerCase()).toBe('button')
+})
