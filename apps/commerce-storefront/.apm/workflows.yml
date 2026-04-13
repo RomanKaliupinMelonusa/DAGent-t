@@ -92,29 +92,13 @@ default:
       commit_scope: all
       diff_attribution_dirs: [e2e]
 
-    smoke-runner:
-      type: script
-      category: test
-      script_type: local-exec
-      command: "npx playwright test e2e/storefront-smoke.spec.ts --workers=1"
-      phase: validation
-      depends_on: [storefront-dev]
-      run_if: [Storefront, Full-Stack]
-      triage_json_gated: false
-      cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
-      result_processor:
-        type: cognitive
-        max_chars: 12288
-        model: fast
-        prompt: instructions/triage/e2e-diagnosis.md
-
     e2e-runner:
       type: script
       category: test
       script_type: local-exec
       command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1"
       phase: validation
-      depends_on: [e2e-author, smoke-runner]
+      depends_on: [e2e-author]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
       triage_json_gated: false
