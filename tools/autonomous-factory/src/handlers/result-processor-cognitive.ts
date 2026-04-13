@@ -70,8 +70,10 @@ function shouldInvokeLlm(
 // ---------------------------------------------------------------------------
 
 /** Map APM model tier to Copilot SDK model ID. */
-function resolveModelId(tier?: "fast" | "default"): string {
-  return tier === "default" ? "claude-opus-4.6" : "claude-sonnet-4";
+function resolveModelId(_tier?: "fast" | "default"): string {
+  // All tiers use claude-opus-4.6 — the only model confirmed working
+  // with the Copilot SDK. Swap in a cheaper model once validated.
+  return "claude-opus-4.6";
 }
 
 async function callLlm(
