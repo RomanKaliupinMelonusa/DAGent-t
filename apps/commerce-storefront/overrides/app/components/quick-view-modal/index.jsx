@@ -21,6 +21,38 @@ import {useIntl} from 'react-intl'
 import {WarningIcon} from '@chakra-ui/icons'
 
 /**
+ * ErrorBoundary for ProductView inside the modal.
+ * Prevents render errors from escaping the portal and crashing the entire page.
+ * The route-level AppErrorBoundary does NOT catch errors inside portals (modals),
+ * so a local boundary is mandatory.
+ */
+class ProductViewErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props)
+        this.state = {hasError: false}
+    }
+    static getDerivedStateFromError() {
+        return {hasError: true}
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <Center py={10} flexDirection="column" data-testid="quick-view-render-error">
+                    <WarningIcon boxSize={8} color="red.400" mb={3} />
+                    <Text fontSize="lg" fontWeight="semibold">
+                        Unable to load product details.
+                    </Text>
+                </Center>
+            )
+        }
+        return this.props.children
+    }
+}
+ProductViewErrorBoundary.propTypes = {
+    children: PropTypes.node
+}
+
+/**
  * QuickViewModal — renders a Chakra modal that fetches full product
  * data via useProductViewModal and renders ProductView inside it.
  */
@@ -80,12 +112,14 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             </Text>
                         </Center>
                     ) : (
-                        <ProductView
-                            product={fetchedProduct}
-                            isProductLoading={isFetching}
-                            showFullLink={true}
-                            imageSize="sm"
-                        />
+                        <ProductViewErrorBoundary>
+                            <ProductView
+                                product={fetchedProduct}
+                                isProductLoading={isFetching}
+                                showFullLink={true}
+                                imageSize="sm"
+                            />
+                        </ProductViewErrorBoundary>
                     )}
                 </ModalBody>
             </ModalContent>
