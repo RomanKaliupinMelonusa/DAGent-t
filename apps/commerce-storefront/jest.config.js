@@ -12,6 +12,11 @@ module.exports = {
     ...base,
     // To support extensibility, jest needs to transform the underlying templates/extensions
     transformIgnorePatterns: ['/node_modules/(?!@salesforce/retail-react-app/.*)'],
+    // Exclude e2e/ directory — Playwright tests are not compatible with Jest
+    testPathIgnorePatterns: [
+        ...(base.testPathIgnorePatterns || []),
+        '<rootDir>/e2e/'
+    ],
     moduleNameMapper: {
         ...base.moduleNameMapper,
         // pulled from @salesforce/retail-react-app jest.config.js
