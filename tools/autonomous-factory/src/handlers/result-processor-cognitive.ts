@@ -33,8 +33,22 @@ const DEFAULT_BUILTIN_PROMPT =
   '{ "root_cause": "<one sentence>", "fault_domain_hint": "<domain>", "error_type": "<category>", "evidence": "<key excerpts>" }';
 
 /** Determine whether the condensed output warrants an LLM diagnosis. */
-function shouldInvokeLlm(condensed: string, stats?: { passed: number; failed: number; total: number }): boolean {
-  // Condition 1: majority failures
+function shouldInvokeLlm(
+  condensed: string,
+  stats?: { passed: number; failed: number; total: number },
+  crashIndicators?: string[],
+): boolean {
+  // Condition A (priority): project-declared crash indicators always warrant
+  // LLM diagnosis, regardless of fail rate. Runtime crashes need accurate
+  // fault-domain classification even when most tests still pass.
+  if (crashIndicators && crashIndicators.length > 0) {
+    const hasMatch = crashIndicators.some((pattern) => {
+      try { return new RegExp(pattern, "i").test(condensed); } catch { return false; }
+    });
+    if (hasMatch) return true;
+  }
+
+  // Condition B: majority failures (>50% fail rate)
   if (stats && stats.total > 0) {
     const failRate = stats.failed / stats.total;
     if (failRate <= 0.5) return false;
@@ -44,18 +58,14 @@ function shouldInvokeLlm(condensed: string, stats?: { passed: number; failed: nu
     console.log("  ℹ Cognitive processor: test stats unavailable — relying on error pattern analysis");
   }
 
-  // Condition 2: concentrated error patterns (≤3 unique error snippets)
+  // Condition C: concentrated error patterns (≤3 unique error snippets)
   const errorLines = condensed
     .split("\n")
     .filter((l) => /error|fail|timeout|crash|threw|exception/i.test(l));
   const uniqueErrors = new Set(errorLines.map((l) => l.replace(/\d+/g, "N").trim()));
   if (uniqueErrors.size > 3) return false;
 
-  // Condition 3 (bonus): crash indicators boost confidence
-  const hasCrashIndicator = /error occurred in the <|crash page|isn't working|ErrorBoundary/i.test(condensed);
-  if (hasCrashIndicator) return true;
-
-  // Default: invoke if conditions 1+2 passed
+  // Default: invoke if conditions B+C passed
   return true;
 }
 
@@ -78,7 +88,7 @@ async function callLlm(
     });
 
     const response = await session.sendAndWait(
-      { prompt: condensed.slice(0, 6000) }, // cap input to avoid token overrun
+      { prompt: condensed.slice(0, 8000) }, // cap input — priority sections lead, so critical evidence survives
       30_000, // 30s — diagnosis should be fast
     );
     await session.disconnect();
@@ -142,7 +152,7 @@ export function createCognitiveProcessor(client?: CopilotClient): ResultProcesso
         return regexResult;
       }
 
-      if (!shouldInvokeLlm(regexResult.condensed, regexResult.stats)) {
+      if (!shouldInvokeLlm(regexResult.condensed, regexResult.stats, config.crashIndicators)) {
         console.log("  ℹ Cognitive processor: trigger conditions not met — skipping LLM pass");
         return regexResult;
       }

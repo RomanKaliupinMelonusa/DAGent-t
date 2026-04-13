@@ -52,6 +52,44 @@ export interface ResultProcessorConfig {
   model?: "fast" | "default";
   /** Path to .md instruction fragment for LLM system prompt (relative to .apm/). */
   prompt?: string;
+  /**
+   * Regex patterns matching console/log noise lines to strip BEFORE truncation.
+   * Each pattern is compiled as a case-insensitive regex and tested against
+   * individual lines. Matching lines are removed from the output before
+   * dedup/extraction/capping — freeing budget for actual diagnostic evidence.
+   *
+   * Declared per-project in workflows.yml → result_processor.noise_patterns.
+   * The kernel applies them generically — no framework knowledge needed.
+   */
+  noisePatterns?: string[];
+  /**
+   * Regex patterns matching high-signal diagnostic lines to extract BEFORE
+   * truncation. Matched sections are placed at the top of the condensed
+   * output so the triage LLM always sees critical evidence regardless of
+   * where it appears in the raw output.
+   *
+   * Each pattern is compiled as a case-insensitive regex with global+multiline
+   * flags and executed against the full output. The kernel captures the match
+   * plus continuation lines (until a blank-line pair or next test marker).
+   *
+   * When empty or omitted, `capOutput` falls back to plain head/tail truncation.
+   *
+   * Declared per-project in workflows.yml → result_processor.priority_patterns.
+   */
+  priorityPatterns?: string[];
+  /**
+   * Regex patterns that indicate a runtime crash in the test output.
+   * When ANY pattern matches the condensed output, the cognitive processor
+   * always invokes the LLM — bypassing the fail-rate gate. This ensures
+   * component crashes get accurate fault-domain classification even when
+   * the majority of tests still pass.
+   *
+   * When empty or omitted, the cognitive processor relies solely on
+   * fail-rate and error-pattern-concentration heuristics.
+   *
+   * Declared per-project in workflows.yml → result_processor.crash_indicators.
+   */
+  crashIndicators?: string[];
 }
 
 // ---------------------------------------------------------------------------

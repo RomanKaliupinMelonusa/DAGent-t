@@ -212,6 +212,15 @@ export const ApmWorkflowNodeSchema = z.object({
     model: z.enum(["fast", "default"]).default("fast"),
     /** Path to .md instruction fragment for LLM system prompt (relative to .apm/). */
     prompt: z.string().optional(),
+    /** Regex patterns matching console/log noise lines to strip before truncation.
+     *  Declared per-project — the kernel applies them generically. */
+    noise_patterns: z.array(z.string()).optional(),
+    /** Regex patterns for high-signal diagnostic lines to extract before truncation.
+     *  Matched sections are placed at the top of condensed output for triage. */
+    priority_patterns: z.array(z.string()).optional(),
+    /** Regex patterns indicating runtime crashes — bypasses fail-rate gate
+     *  to always invoke LLM diagnosis when matched. */
+    crash_indicators: z.array(z.string()).optional(),
   }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
