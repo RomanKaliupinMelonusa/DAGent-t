@@ -46,7 +46,7 @@ const VOLATILE_RE = [
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
   [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],
   [/(?:\/[\w@.+-]+){2,}(?:\/[^\s'")]*)?/g, "<PATH>"],
-  [/[A-Z]:\\/[^\s'")]+/g, "<PATH>"],
+  [new RegExp("[A-Z]:\\\\[^\\s'\")]+", "g"), "<PATH>"],
   [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
   [/:\d+:\d+/g, ":<L>:<C>"],
 ];
@@ -847,7 +847,11 @@ export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
     timestamp: new Date().toISOString(),
     itemKey: "reset-for-dev",
     message: `Redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
-      errorSignature: reason ? computeErrorSignature(reason) : null,
+    errorSignature: reason ? computeErrorSignature(reason) : null,
+  });
+
+  writeState(slug, state);
+  return { state, cycleCount: cycleCount + 1, halted: false };
   }); // end withLock
 }
 
