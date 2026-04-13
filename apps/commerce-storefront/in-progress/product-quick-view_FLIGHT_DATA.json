@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-13T04:12:56.840Z",
+  "generatedAt": "2026-04-13T04:14:30.488Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -316,19 +316,25 @@
     {
       "key": "create-draft-pr",
       "label": "create-draft-pr",
-      "agent": "create-draft-pr",
-      "phase": "",
+      "agent": "@pr-creator",
+      "phase": "validation",
       "attempt": 1,
-      "outcome": "in-progress",
-      "startedAt": "2026-04-13T04:09:29.672Z",
-      "finishedAt": "",
-      "durationMs": 0,
+      "startedAt": "2026-04-13T04:09:29.662Z",
+      "finishedAt": "2026-04-13T04:13:03.674Z",
+      "durationMs": 214014,
+      "outcome": "completed",
       "intents": [],
-      "filesChanged": [],
+      "messages": [
+        "Now I have all the context. Let me check for any uncommitted changes before creating the PR.",
+        "Now let me create the draft PR with a comprehensive, structured body.",
+        "Draft PR #78 created successfully. Now let me complete the pipeline.",
+        "The draft PR has been created and the pipeline phase is complete. Here's a summary:  **PR #78**: [feat(commerce): add comprehensive test coverage for Product Quick View](https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/78)  **What was delivered:** - **Draft PR** targeting `project/pwa-kit` from `feature/product-quick-view` - **8 files changed**, 1,159 additions across test files and pipeline artifacts - **32 unit tests** with 100% coverage on both `ProductTile` and `QuickViewModal` - **15 E2E tests** across 4 test groups (overlay bar, modal lifecycle, variant selection, add-to-cart) - **Risk: 🟢 Low** — all changes are additive test files with no runtime impact  **Pipeline status:** `create-draft-pr` marked complete and committed."
+      ],
       "filesRead": [
         "apps/commerce-storefront/in-progress/product-quick-view_SPEC.md",
         "apps/commerce-storefront/in-progress/product-quick-view_SUMMARY.md"
       ],
+      "filesChanged": [],
       "shellCommands": [
         {
           "command": "cd /workspaces/DAGent-t && git diff project/pwa-kit...HEAD -- apps/commerce-storefront --stat",
@@ -449,24 +455,50 @@
           "command": "npm run pipeline:complete product-quick-view create-draft-pr 2>&1",
           "timestamp": "2026-04-13T04:12:52.372Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark create-draft-pr complete for product-quick-view\" 2>&1",
+          "timestamp": "2026-04-13T04:12:56.845Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
         "file-read": 2,
-        "shell": 24,
+        "shell": 25,
         "read_bash": 2,
         "stop_bash": 2
       },
-      "messages": [
-        "Now I have all the context. Let me check for any uncommitted changes before creating the PR.",
-        "Now let me create the draft PR with a comprehensive, structured body.",
-        "Draft PR #78 created successfully. Now let me complete the pipeline."
+      "inputTokens": 467522,
+      "outputTokens": 7069,
+      "cacheReadTokens": 443563,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "7fc6b5c72b1f97e2665ecdf1fad26b3febe4c268"
+    },
+    {
+      "key": "e2e-runner",
+      "label": "e2e-runner",
+      "agent": "unknown",
+      "phase": "validation",
+      "attempt": 1,
+      "startedAt": "2026-04-13T04:09:29.664Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "failed",
+      "intents": [
+        "Native script execution — failed"
       ],
-      "inputTokens": 444146,
-      "outputTokens": 6850,
-      "cacheReadTokens": 420397,
-      "cacheWriteTokens": 0
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "7fc6b5c72b1f97e2665ecdf1fad26b3febe4c268",
+      "errorMessage": "--- PRIORITY EVIDENCE (12 sections) ---\n\nError: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\n    Locator: getByTestId('quick-view-modal')\n    Expected: visible\n    Timeout: 15000ms\n    Error: element(s) not found\n\n    Call log:\n    \u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n    \u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n      226 |       // Modal should appear\n      227 |       const modal = page.getByTestId('quick-view-modal');\n    > 228 |       await expect(modal).toBeVisible({ timeout: 15_000 });\n          |                           ^\n      229 |     });\n      230 |\n      231 |     test('modal shows spinner while loading then resolves to content or error', async ({\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:228:27\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[7/19] [chromium] › e2e/product-quick-view.spec.ts:231:9 › Product Quick View › Quick View Modal — Opening & Content › modal shows spinner while loading then resolves to content or error\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:231:9 › Product Quick View › Quick View Modal — Opening & Content › modal shows spinner while loading then resolves to content or error\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2KFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=a41350f4-3e6c-432f-bc67-ee45ba15b4ca&code=6iO8qTl-zxYk5uhvGI0N7IUTdU2sJmhXnaszPr6Fuv4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m\n  ... [section truncated]\n\n---\n\nError: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\n    Locator: getByTestId('quick-view-modal')\n    Expected: visible\n    Timeout: 15000ms\n    Error: element(s) not found\n\n    Call log:\n    \u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n    \u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n      226 |       // Modal should appear\n      227 |       const modal = page.getByTestId('quick-view-modal');\n    > 228 |       await expect(modal).toBeVisible({ timeout: 15_000 });\n          |                           ^\n      229 |     });\n      230 |\n      231 |     test('modal shows spinner while loading then resolves to content or error', async ({\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:228:27\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[7/19] [chromium] › e2e/product-quick-view.spec.ts:231:9 › Product Quick View › Quick View Modal — Opening & Content › modal shows spinner while loading then resolves to content or error\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:231:9 › Product Quick View › Quick View Modal — Opening & Content › modal shows spinner while loading then resolves to content or error\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2KFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=a41350f4-3e6c-432f-bc67-ee45ba15b4ca&code=6iO8qTl-zxYk5uhvGI0N7IUTdU2sJmhXnaszPr6Fuv4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m\n  ... [section truncated]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=1513a52f-0bdd-4b35-8708-bff1f4900c85&code=cvleSp-A713fClVyZA_CqfKRSHlcoO8QX6yD1JOAI_c - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=a41350f4-3e6c-432f-bc67-ee45ba15b4ca&code=6iO8qTl-zxYk5uhvGI0N7IUTdU2sJmhXnaszPr6Fuv4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=49656051-6154-4c88-b492-5e4473335fe1&code=S2TDlCKPZE83Nu6RBrwqzSqOzcj_dokA4IY2SpW3rSU - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=6be93ee5-b5be-4a1c-bb36-aab9329c0d8e&code=y0raqSb3uLOM25dQgSqnqovjgve8d9DFUfrqbX53828 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=6ce3b48e-1a85-4ca4-86ef-f89853ebd066&code=9HLz22WQdMhcjSO8n3IWyvUIxS2m6wvkyjw_XjRP85o - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=0acda682-8019-4f16-8986-8bd18b0a2374&code=tB0VaCvuTUF66pVHwnQpGjDgGG641qbTq5yN82Dtrvk - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=16e53e59-245e-4dab-8770-db72c8584287&code=vz2XdCPpkym8dWACDnLc76RI3yor48zCKi4Z6Kr8uKw - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=1b02abe6-66dc-4a78-9372-7013b4719c55&code=yImc8YO5cG0jID8fpkopqO4Rq-8f1Mu6G8q-LzW-U8g - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=07fd7e31-a1a9-4dbf-8137-195e0be2e4b9&code=z_L1gqB-MyDlpCHg7hT03IqpGrZlgWnF4azYLHY5R5o - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=e949de8a-a256-4a41-9d35-09fcc10b2c07&code=jK21eQe_T_Ykh7Ayr5dXcP5_tN5BqqfpaWD9v8f8g_w - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET http://localhost:3000/callback?usid=d0bf5dd1-a1ec-407d-a1e2-58159c4a4205&code=yUju0GOpZhVog_V35z7q-jf5-SNhaxMkSJy50ihws98 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET http://localhost:3000/callback?usid=e8bcc23e-d219-4684-8a18-2fda5008a05c&code=Mih-_MpdXwfng2051H6QB2kUkArNRK3yVj3KoCbTwyo - net::ERR_ABORTED'\u001b[39m\n]\n\n--- CONTEXT ---\n\nTEST SUMMARY: 8 passed, 11 failed, 19 total\n\nRunning 19 tests using 1 worker\n\n\u001b[1A\u001b[2K[1/19] [chromium] › e2e/product-quick-view.spec.ts:148:9 › Product Quick View › Quick View Overlay Bar › Quick View button appears on product tiles on PLP\n\n\n\n\n\u001b[1A\u001b[2K[2/19] [chromium] › e2e/product-quick-view.spec.ts:158:9 › Product Quick View › Quick View Overlay Bar › Quick View button has correct accessible label\n\u001b[1A\u001b[2K[3/19] [chromium] › e2e/product-quick-view.spec.ts:170:9 › Product Quick View › Quick View Overlay Bar › Quick View button contains \"Quick View\" text\n\u001b[1A\u001b[2K[4/19] [chromium] › e2e/product-quick-view.spec.ts:181:9 › Product Quick View › Quick View Overlay Bar › Quick View button becomes visible on hover (desktop)\n\u001b[1A\u001b[2K[5/19] [chromium] › e2e/product-quick-view.spec.ts:197:9 › Product Quick View › Quick View Overlay Bar › clicking Quick View does not navigate away from PLP\n\u001b[1A\u001b[2K[6/19] [chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View Modal — Opening & Content › clicking Quick View button opens the modal\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View Modal — Opening & Content › clicking Quick View button opens the modal\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2K\n\n\u001b[1A\u001b[2K  1) [chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View Modal — Opening & Content › clicking Quick View button opens the modal \n\n    Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\n    Locator: getByTestId('quick-view-modal')\n    Expected: visible\n    Timeout: 15000ms\n    Error: element(s) not found\n\n    Call log:\n    \u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n    \u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n      226 |       // Modal should appear\n      227 |       const modal = page.getByTestId('quick-view-modal');\n    > 228 |       await expect(modal).toBeVisible({ timeout: 15_000 });\n          |                           ^\n      229 |     });\n      230 |\n      231 |     test('modal shows spinner while loading then resolves to content or error', async ({\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:228:27\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-e54bb-View-button-opens-the-modal-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[7/19] [chromium] › e2e/product-quick-view.spec.ts:231:9 › Product Quick View › Quick View Modal — Opening & Content › modal shows spinner while loading then resolves to content or error\n\n\n\u001b[1A\u001b[2K[chromium] \n\n... [25816 chars omitted] ...\n\nworkspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:249054:30)\n\u001b[2m[WebServer] \u001b[22m    at StaticRouter (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:249550:35)\n\u001b[2m[WebServer] \u001b[22m    at OuterApp (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:132823:3)\n\u001b[2m[WebServer] \u001b[22m    at ChunkExtractorManager (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:288765:24)\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mWarning: Document: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.\n\u001b[2m[WebServer] \u001b[22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133105:5)\n\u001b[2m[WebServer] \u001b[22mWarning: React does not recognize the `fetchPriority` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `fetchpriority` instead. If you accidentally passed it from a parent component, remove it from the DOM element.\n\u001b[2m[WebServer] \u001b[22m    at link\n\u001b[2m[WebServer] \u001b[22m    at head\n\u001b[2m[WebServer] \u001b[22m    at html\n\u001b[2m[WebServer] \u001b[22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133105:5)\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m"
     }
   ]
 }
