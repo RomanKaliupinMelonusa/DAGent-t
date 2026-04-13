@@ -1,0 +1,233 @@
+--- PRIORITY EVIDENCE (5 sections) ---
+
+Error: page.goto: Page crashed
+    Call log:
+    [2m  - navigating to "http://localhost:3000/", waiting until "domcontentloaded"[22m
+
+
+      76 |
+      77 |     // Fallback: go to homepage and click the first nav link to find a PLP
+    > 78 |     await page.goto('/', {waitUntil: 'domcontentloaded'})
+         |                ^
+      79 |     const navLink = page.locator('nav a, [role="navigation"] a').first()
+      80 |     const navVisible = await navLink
+      81 |         .waitFor({state: 'visible', timeout: 10_000})
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:78:16)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:152:9
+
+
+
+
+[1A[2K[2/21] [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+
+---
+
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/category/womens - net::ERR_CONNECTION_REFUSED'[39m
+]
+
+[1A[2K  2) [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/category/womens
+    Call log:
+    [2m  - navigating to "http://localhost:3000/category/womens", waiting until "domcontentloaded"[22m
+
+
+      60 | async function navigateToPLP(page: Page): Promise<void> {
+      61 |     // Try the well-known RefArch "Womens" category first
+    > 62 |     await page.goto('/category/womens', {waitUntil: 'domcontentloaded'})
+         |                ^
+      63 |
+      64 |     // Wait for at least one
+  ... [section truncated]
+
+---
+
+Error: page.goto: Page crashed
+    Call log:
+    [2m  - navigating to "http://localhost:3000/", waiting until "domcontentloaded"[22m
+
+
+      76 |
+      77 |     // Fallback: go to homepage and click the first nav link to find a PLP
+    > 78 |     await page.goto('/', {waitUntil: 'domcontentloaded'})
+         |                ^
+      79 |     const navLink = page.locator('nav a, [role="navigation"] a').first()
+      80 |     const navVisible = await navLink
+      81 |         .waitFor({state: 'visible', timeout: 10_000})
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:78:16)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:152:9
+
+
+
+
+[1A[2K[2/21] [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+
+---
+
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/category/womens - net::ERR_CONNECTION_REFUSED'[39m
+]
+
+[1A[2K  2) [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/category/womens
+    Call log:
+    [2m  - navigating to "http://localhost:3000/category/womens", waiting until "domcontentloaded"[22m
+
+
+      60 | async function navigateToPLP(page: Page): Promise<void> {
+      61 |     // Try the well-known RefArch "Womens" category first
+    > 62 |     await page.goto('/category/womens', {waitUntil: 'domcontentloaded'})
+         |                ^
+      63 |
+      64 |     // Wait for at least one
+  ... [section truncated]
+
+---
+
+Failed requests: [
+  [32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'[39m
+]
+
+---
+
+Failed requests: [
+  [32m'GET http://localhost:3000/category/womens - net::ERR_CONNECTION_REFUSED'[39m
+]
+
+---
+
+Failed requests: [ [32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'[39m ]
+
+--- CONTEXT ---
+
+TEST SUMMARY: 0 passed, 21 failed, 21 total
+
+Running 21 tests using 1 worker
+
+[1A[2K[1/21] [chromium] › e2e/product-quick-view.spec.ts:151:9 › Quick View Overlay Bar (PLP) › product tiles on PLP render Quick View buttons
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:151:9 › Quick View Overlay Bar (PLP) › product tiles on PLP render Quick View buttons
+
+---
+
+[1A[2K
+
+[1A[2K  1) [chromium] › e2e/product-quick-view.spec.ts:151:9 › Quick View Overlay Bar (PLP) › product tiles on PLP render Quick View buttons 
+
+    Error: page.goto: Page crashed
+    Call log:
+    [2m  - navigating to "http://localhost:3000/", waiting until "domcontentloaded"[22m
+
+
+      76 |
+      77 |     // Fallback: go to homepage and click the first nav link to find a PLP
+    > 78 |     await page.goto('/', {waitUntil: 'domcontentloaded'})
+         |                ^
+      79 |     const navLink = page.locator('nav a, [role="navigation"] a').first()
+      80 |     const navVisible = await navLink
+      81 |         .waitFor({state: 'visible', timeout: 10_000})
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:78:16)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:152:9
+
+
+
+
+[1A[2K[2/21] [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name
+
+---
+
+[1A[2K
+
+[1A[2K  2) [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/category/womens
+    Call log:
+    [2m  - navigating to "http://localhost:3000/category/womens", waiting until "domcontentloaded"[22m
+
+
+      60 | async function navigateToPLP(page: Page): Promise<void> {
+      61 |     // Try the well-known RefArch "Womens" category first
+    > 62 |     await page.goto('/category/womens', {waitUntil: 'domcontentloaded'})
+         |                ^
+      63 |
+      64 |     // Wait for at least one product tile or quick-view-btn to appear
+      65 |     const productContent = page.locator(
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:62:16)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:161:15
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/product-quick-view-Quick-V-fef32-ria-label-with-product-name-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K[3/21] [chromium] › e2e/product-quick-view.spec.ts:172:9 › Quick View Overlay Bar (PLP) › Quick View button contains "Quick View" text
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:172:9 › Quick View Overlay Bar (PLP) › Quick View button contains "Quick View" text
+
+---
+
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/category/womens - net::ERR_CONNECTION_REFUSED'[39m
+]
+
+[1A[2K  3) [chromium] › e2e/product-quick-view.spec.ts:172:9 › Quick View Overlay Bar (PLP) › Quick View button contains "Quick View" text 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/category/womens
+    Call log:
+    [2m  - navigating to "http://localhost:3000/category/womens", waiting until "domcontentloaded"[22m
+
+
+      60 | async function navigateToPLP(page: Page): Promise<void> {
+      61 |     // Try the well-known RefArch "Womens" category first
+    > 62 |     await page.goto('/category/womens', {waitUntil: 'domcontentloaded'})
+         |                ^
+      63 |
+      64 |     // Wait for at least one product tile or quick-view-btn to appear
+      65 |     const productContent = page.locator(
+        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:62:16)
+        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:173:15
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/product-quick-view-Quick-V-bd9cb-on-contains-Quick-View-text-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K[4/21] [chromium] › e2e/product-quick-view.spec.ts:183:9 › Quick View Overlay Bar (PLP) › clicking Quick View does NOT navigate away from PLP
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:183:9 › Quick View Overlay Bar (PLP) › clicking Quick View does NOT navigate away from PLP
+
+---
+
+[1A[2KFailed requests: [
+  [32m'GET http
+
+... [29156 chars omitted] ...
+
+mium] › e2e/product-quick-view.spec.ts:151:9 › Quick View Overlay Bar (PLP) › product tiles on PLP render Quick View buttons 
+    [chromium] › e2e/product-quick-view.spec.ts:160:9 › Quick View Overlay Bar (PLP) › Quick View button has accessible aria-label with product name 
+    [chromium] › e2e/product-quick-view.spec.ts:172:9 › Quick View Overlay Bar (PLP) › Quick View button contains "Quick View" text 
+    [chromium] › e2e/product-quick-view.spec.ts:183:9 › Quick View Overlay Bar (PLP) › clicking Quick View does NOT navigate away from PLP 
+    [chromium] › e2e/product-quick-view.spec.ts:205:9 › Quick View Modal › clicking Quick View button opens the modal with spinner or content 
+    [chromium] › e2e/product-quick-view.spec.ts:218:9 › Quick View Modal › modal displays a loading spinner before content loads 
+    [chromium] › e2e/product-quick-view.spec.ts:243:9 › Quick View Modal › modal has data-testid="quick-view-modal" 
+    [chromium] › e2e/product-quick-view.spec.ts:256:9 › Quick View Modal › modal has accessible aria-label containing product name 
+    [chromium] › e2e/product-quick-view.spec.ts:273:9 › Quick View Modal › modal can be closed via the close button 
+    [chromium] › e2e/product-quick-view.spec.ts:293:9 › Quick View Modal › modal can be closed via Escape key 
+    [chromium] › e2e/product-quick-view.spec.ts:341:9 › Quick View Modal Content › modal displays product name 
+    [chromium] › e2e/product-quick-view.spec.ts:353:9 › Quick View Modal Content › modal displays product price 
+    [chromium] › e2e/product-quick-view.spec.ts:367:9 › Quick View Modal Content › modal displays Add to Cart button 
+    [chromium] › e2e/product-quick-view.spec.ts:378:9 › Quick View Modal Content › modal displays "View Full Details" link to PDP 
+    [chromium] › e2e/product-quick-view.spec.ts:393:9 › Quick View Modal Content › modal renders product image 
+    [chromium] › e2e/product-quick-view.spec.ts:408:9 › Quick View Edge Cases › opening and closing modal preserves PLP URL 
+    [chromium] › e2e/product-quick-view.spec.ts:429:9 › Quick View Edge Cases › multiple Quick View buttons exist for multiple products 
+    [chromium] › e2e/product-quick-view.spec.ts:440:9 › Quick View Edge Cases › can open Quick View for different products sequentially 
+    [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
+    [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
+    [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info 
+[1A[2K[2m[WebServer] [22m(node:88989) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+[1A[2K[2m[WebServer] [22m(node:89013) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+[1A[2K[2m[WebServer] [22mKilled
