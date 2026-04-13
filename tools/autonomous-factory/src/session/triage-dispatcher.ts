@@ -16,6 +16,7 @@ import type { ApmFaultRoute } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
 import type { PipelineRunConfig, SessionResult } from "../session-runner.js";
 import type { ItemSummary } from "../types.js";
+import { computeErrorSignature } from "../triage/error-fingerprint.js";
 
 /**
  * Unified post-deploy failure handler — triages the error, routes to redevelopment,
@@ -95,6 +96,22 @@ export async function handleFailureReroute(
           resetKeys = [];
         }
       }
+    }
+  }
+
+  // --- Global error-signature cap: prevent death spirals across unstable classifications ---
+  // When the same error (by fingerprint) appears ≥3 times in the errorLog regardless
+  // of domain tags, the triage system is cycling through different classifications
+  // without fixing the root cause. Escalate to blocked.
+  if (resetKeys.length > 0) {
+    const currentSig = computeErrorSignature(rawError);
+    const errorEntries = pipeState.errorLog ?? [];
+    const sameSigCount = errorEntries.filter(
+      (e) => e.errorSignature === currentSig,
+    ).length;
+    if (sameSigCount >= 3) {
+      console.warn(`\n  ⚠ Error signature ${currentSig} seen ${sameSigCount + 1} times across all domains — escalating to blocked`);
+      resetKeys = [];
     }
   }
 

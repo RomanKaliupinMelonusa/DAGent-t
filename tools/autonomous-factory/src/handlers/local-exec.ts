@@ -25,10 +25,10 @@ const localExecHandler: NodeHandler = {
   name: "local-exec",
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { itemKey, appRoot, apmContext, environment, onHeartbeat } = ctx;
+    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug } = ctx;
 
     const node = getWorkflowNode(apmContext, itemKey);
-    const command = node?.command;
+    let command = node?.command;
     if (!command) {
       return {
         outcome: "error",
@@ -37,9 +37,15 @@ const localExecHandler: NodeHandler = {
       };
     }
 
-    const timeoutMs = (node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+    // Template interpolation: replace ${featureSlug} with the pipeline's feature slug.
+    // Enables workflow commands like: npx playwright test e2e/${featureSlug}.spec.ts
+    command = command.replace(/\$\{featureSlug\}/g, slug);
 
-    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot} (timeout: ${node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES}m)`);
+    const timeoutMinutes = node?.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
+
+    const timeoutMs = timeoutMinutes * 60 * 1000;
+
+    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot} (timeout: ${timeoutMinutes}m)`);
 
     try {
       const { stdout, stderr } = await execAsync(command, {
@@ -71,7 +77,7 @@ const localExecHandler: NodeHandler = {
 
       // Timeout kill — child_process sends SIGTERM when timeout expires
       if (execErr.killed && execErr.signal === "SIGTERM") {
-        const timeoutMsg = `local-exec: Process killed after ${node.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES}m timeout (SIGTERM). ` +
+        const timeoutMsg = `local-exec: Process killed after ${timeoutMinutes}m timeout (SIGTERM). ` +
           `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
         console.error(`  ✖ ${timeoutMsg}`);
         return {

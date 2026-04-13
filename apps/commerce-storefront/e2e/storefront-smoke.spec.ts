@@ -52,8 +52,8 @@ test.describe('Storefront Smoke Tests', () => {
   test('homepage loads and renders', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveTitle(/.+/); // Page has a title
-    // The Retail React App renders a main content area
-    await expect(page.locator('main, [role="main"], #app')).toBeVisible();
+    // The Retail React App renders a main content area (#app-main)
+    await expect(page.locator('#app-main')).toBeVisible();
   });
 
   test('can navigate to a category/PLP page', async ({ page }) => {

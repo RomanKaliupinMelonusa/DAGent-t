@@ -25,6 +25,18 @@ Analyze the condensed Playwright test output and determine the root cause.
 - Only relevant if they cause a component crash (see Crash Page pattern above)
 - If the page renders correctly despite 403s, this is NOT the root cause
 
+### Strict Mode Violation (fault_domain_hint: "test-code")
+- Error contains "strict mode violation" or "locator resolved to N elements"
+- Cause: Playwright locator matches multiple DOM elements (CSS comma selector, ambiguous role/tag)
+- The test selector is too broad — it should match exactly one element
+- This is a **test locator bug**, not an application code issue
+
+### TypeError in Component (fault_domain_hint: "test-code-from-dev")
+- Error contains "TypeError: undefined is not an object" or "TypeError: Cannot read property"
+- Stack trace shows component names (ProductView, QuickViewModal, etc.)
+- Cause: upstream dev component accessing undefined properties — missing null guard or ErrorBoundary
+- This is a **code bug in the upstream dev's component**, not a test issue
+
 ## Output Format
 
 Respond with ONLY valid JSON, no markdown fencing:

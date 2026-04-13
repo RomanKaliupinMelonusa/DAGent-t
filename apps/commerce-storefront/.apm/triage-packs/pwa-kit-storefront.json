@@ -13,6 +13,26 @@
       "reason": "React ErrorBoundary caught a component crash — upstream dev code threw during render."
     },
     {
+      "error_snippet": "strict mode violation",
+      "fault_domain": "test-code",
+      "reason": "Playwright strict mode: locator matched multiple DOM elements. Test selector is too broad — use a more specific locator."
+    },
+    {
+      "error_snippet": "locator resolved to",
+      "fault_domain": "test-code",
+      "reason": "Playwright locator matched multiple elements (strict mode violation). Narrow the selector to match exactly one element."
+    },
+    {
+      "error_snippet": "TypeError: undefined is not an object",
+      "fault_domain": "test-code-from-dev",
+      "reason": "Component accessing undefined property — upstream dev code is missing null guard or ErrorBoundary around base-template component."
+    },
+    {
+      "error_snippet": "TypeError: Cannot read propert",
+      "fault_domain": "test-code-from-dev",
+      "reason": "Component accessing property of undefined/null — upstream dev code is missing defensive checks or ErrorBoundary."
+    },
+    {
       "error_snippet": "net::ERR_NAME_NOT_RESOLVED",
       "fault_domain": "environment",
       "reason": "DNS resolution failure — transient network/infrastructure issue, not a code bug."

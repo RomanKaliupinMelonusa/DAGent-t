@@ -221,6 +221,7 @@ const copilotAgentHandler: NodeHandler = {
       apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
       node?.category,
       apmContext.config?.ci_scope_warning as string | undefined,
+      slug,
     );
     if (downstreamCtx) {
       taskPrompt += downstreamCtx;

@@ -370,13 +370,24 @@ export async function runItemSession(
 
   // --- Result processor: condense/diagnose failed script output before triage ---
   if (result.outcome !== "completed" && result.errorMessage && node?.result_processor) {
+    // Merge workflow-level defaults with node-level overrides (additive)
+    const workflow = config.apmContext.workflows?.default;
+    const defaults = workflow?.result_processor_defaults;
+    const mergedNoise = [
+      ...(defaults?.noise_patterns ?? []),
+      ...(node.result_processor.noise_patterns ?? []),
+    ];
+    const mergedPriority = [
+      ...(defaults?.priority_patterns ?? []),
+      ...(node.result_processor.priority_patterns ?? []),
+    ];
     const rpConfig: ResultProcessorConfig = {
       type: node.result_processor.type,
       maxChars: node.result_processor.max_chars,
       model: node.result_processor.model,
       prompt: node.result_processor.prompt,
-      noisePatterns: node.result_processor.noise_patterns,
-      priorityPatterns: node.result_processor.priority_patterns,
+      noisePatterns: mergedNoise.length > 0 ? mergedNoise : undefined,
+      priorityPatterns: mergedPriority.length > 0 ? mergedPriority : undefined,
       maxLlmInputChars: node.result_processor.max_llm_input_chars,
     };
 

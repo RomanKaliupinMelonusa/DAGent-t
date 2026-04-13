@@ -32,6 +32,9 @@ export interface PipelineState {
     timestamp: string;
     itemKey: string;
     message: string;
+    /** Stable fingerprint of the error (volatile tokens stripped, SHA-256 prefix).
+     *  Enables cross-cycle identity tracking for death-spiral prevention. */
+    errorSignature?: string | null;
   }>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;

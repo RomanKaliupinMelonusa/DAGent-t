@@ -28,7 +28,34 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { TriageDiagnosticSchema } from "./triage-schema.mjs";
+
+// ─── Error Signature (inline — no TS dependency) ────────────────────────────
+// Produces a stable fingerprint from a raw error message by stripping volatile
+// tokens (timestamps, PIDs, ports, hex hashes, paths). Enables cross-cycle
+// identity tracking: two errors with the same root cause produce the same hash.
+// Keep in sync with VOLATILE_PATTERNS in src/triage/error-fingerprint.ts.
+// Only universal (stack-agnostic) patterns here — framework-specific
+// normalization belongs in APM triage packs.
+const VOLATILE_RE = [
+  [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>"],
+  [/\b\d{13}\b/g, "<EPOCH>"],
+  [/\bpid[=:]\d+/gi, "pid=<PID>"],
+  [/:\d{4,5}\b/g, ":<PORT>"],
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
+  [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],
+  [/(?:\/[\w@.+-]+){2,}(?:\/[^\s'")]*)?/g, "<PATH>"],
+  [/[A-Z]:\\/[^\s'")]+/g, "<PATH>"],
+  [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
+  [/:\d+:\d+/g, ":<L>:<C>"],
+];
+function computeErrorSignature(msg) {
+  let n = msg;
+  for (const [re, repl] of VOLATILE_RE) n = n.replace(re, repl);
+  n = n.replace(/\s+/g, " ").trim();
+  return createHash("sha256").update(n).digest("hex").slice(0, 16);
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -442,6 +469,7 @@ export function failItem(slug, itemKey, message) {
       timestamp: new Date().toISOString(),
       itemKey,
       message: message || "Unknown failure",
+      errorSignature: message ? computeErrorSignature(message) : null,
     });
 
     const failCount = state.errorLog.filter((e) => e.itemKey === itemKey).length;
@@ -819,10 +847,7 @@ export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
     timestamp: new Date().toISOString(),
     itemKey: "reset-for-dev",
     message: `Redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
-  });
-
-  writeState(slug, state);
-  return { state, cycleCount: cycleCount + 1, halted: false };
+      errorSignature: reason ? computeErrorSignature(reason) : null,
   }); // end withLock
 }
 

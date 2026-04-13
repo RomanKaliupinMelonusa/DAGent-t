@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary } from "./types.js";
 import { readState } from "./state.js";
+import { computeErrorSignature } from "./triage/error-fingerprint.js";
 
 /**
  * Build retry context from a previous failed attempt.
@@ -67,6 +68,8 @@ export function buildDownstreamFailureContext(
   nodeCategory?: string,
   /** Config-driven commit scope warning text (from apm.yml config.ci_scope_warning). */
   ciScopeWarning?: string,
+  /** Feature slug — used for cross-cycle error signature comparison. */
+  slug?: string,
 ): string {
   if (nodeCategory !== "dev") return "";
 
@@ -100,7 +103,61 @@ export function buildDownstreamFailureContext(
     }
   }
 
-  return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}`;
+  // Cross-cycle error signature comparison — detect "same error after redevelopment"
+  const identicalErrorWarning = buildIdenticalErrorWarning(downstreamFailures, slug);
+
+  return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}${identicalErrorWarning}`;
+}
+
+/**
+ * Check whether the current downstream error signature matches a prior
+ * redevelopment cycle's error. Returns a warning string if the dev agent
+ * failed to fix the issue (identical error after redevelopment), else "".
+ */
+function buildIdenticalErrorWarning(
+  downstreamFailures: readonly ItemSummary[],
+  slug?: string,
+): string {
+  if (!slug) return "";
+  const currentError = downstreamFailures[downstreamFailures.length - 1]?.errorMessage;
+  if (!currentError) return "";
+
+  const currentSig = computeErrorSignature(currentError);
+
+  // readState is async (lazy-loaded .mjs), but this function is called
+  // synchronously from a string builder. Use a sync fallback via the
+  // filesystem directly to avoid breaking the call chain.
+  let errorLog: Array<{ itemKey: string; errorSignature?: string | null }> = [];
+  try {
+    const appRoot = process.env.APP_ROOT || "";
+    const stateDir = path.join(appRoot, "in-progress");
+    const statePath = path.join(stateDir, `${slug}_STATE.json`);
+    if (fs.existsSync(statePath)) {
+      const raw = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      errorLog = raw.errorLog ?? [];
+    }
+  } catch { /* noop */ }
+
+  try {
+    const priorRedevEntries = errorLog.filter(
+      (e) => e.itemKey === "reset-for-dev" && e.errorSignature,
+    );
+    const matchCount = priorRedevEntries.filter(
+      (e) => e.errorSignature === currentSig,
+    ).length;
+
+    if (matchCount >= 1) {
+      return `\n\n## ⚠️ IDENTICAL ERROR DETECTED (${matchCount + 1}× same root cause)`
+        + `\nThe downstream test failed with the **IDENTICAL error signature** as the previous redevelopment cycle.`
+        + `\nYour last change did NOT address the root cause.`
+        + `\n\n**Do NOT repeat the same fix.** Re-read the error output above with fresh eyes and try a fundamentally different approach.`
+        + (matchCount >= 2
+          ? `\n\n**ESCALATION WARNING:** This is the ${matchCount + 1}th identical failure. If you cannot resolve this, the pipeline will be blocked for human review.`
+          : "");
+    }
+  } catch { /* state read failed — no warning */ }
+
+  return "";
 }
 
 /**

@@ -20,6 +20,8 @@ import type { FaultDomain } from "./types.js";
 import type { ApmFaultRoute, TriageSignature } from "./apm-types.js";
 import { retrieveTopMatches } from "./triage/retriever.js";
 import { askLlmRouter } from "./triage/llm-router.js";
+import { computeErrorSignature } from "./triage/error-fingerprint.js";
+import { readState } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -160,7 +162,22 @@ export async function triageFailure(
     return [];
   }
 
-  // --- No retriever hits and no LLM available — retry the failing item only ---
+  // --- No retriever hits and no LLM available — check for repeated unclassifiable errors ---
+  // Death-spiral prevention: if the same error (by fingerprint) has already been
+  // logged as unclassifiable, escalate to "blocked" instead of retrying blindly.
+  if (slug) {
+    const sig = computeErrorSignature(errorMessage);
+    try {
+      const pipeState = await readState(slug);
+      const priorSameSig = pipeState.errorLog.filter(
+        (e) => e.errorSignature === sig && e.itemKey === itemKey,
+      );
+      if (priorSameSig.length >= 2) {
+        console.warn(`  ⚠ Unclassifiable error repeated ${priorSameSig.length + 1} times (signature: ${sig}) — escalating to blocked`);
+        return [];
+      }
+    } catch { /* state read failed — fall through to single retry */ }
+  }
   console.warn(`  ⚠ Triage could not determine root cause (no RAG matches, no LLM). Retrying ${itemKey} only.`);
   return [itemKey].filter((k) => !naItems.has(k));
 }

@@ -16,6 +16,34 @@ default:
     - finalize
     - deploy
 
+  # Shared result processor patterns inherited by all script-type nodes.
+  # Node-level noise_patterns / priority_patterns are ADDITIVE — they extend
+  # these defaults. Framework-specific knowledge lives HERE, not in kernel code.
+  result_processor_defaults:
+    # ── Noise: verbose framework lines stripped before truncation ──────────
+    noise_patterns:
+      # PWA Kit React warnings — verbose, no diagnostic value
+      - "Warning: The result of getServerSnapshot"
+      - "Warning: %s: Support for defaultProps"
+      # SFCC proxy logs — network noise from Commerce API
+      - "\\[WebServer\\].*pwa-kit-runtime\\.httprequest"
+      - "retail-react-app\\.use-datacloud\\._handleApiError"
+    # ── Priority: high-signal blocks extracted before truncation ───────────
+    # Ensures triage LLM always sees critical evidence regardless of output volume.
+    priority_patterns:
+      # Playwright assertion failures (expect().toBeVisible, etc.)
+      - "^\\s*Error:.*?expect\\(.*?\\).*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
+      # Timeout errors
+      - "^\\s*Error:.*?[Tt]imed?\\s*out.*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
+      # React ErrorBoundary crash evidence
+      - "The above error occurred in the <\\w[\\w.]*> component:.*?(?=\\n\\n|\\n\\[|$)"
+      # React component tree recreation messages
+      - "React will try to recreate this component tree.*?(?=\\n\\n|\\n\\[|$)"
+      # Failed network requests summary
+      - "Failed requests:\\s*\\[.*?\\]"
+      # Playwright test failure headers: "N) [browser] › file › test"
+      - "^\\s*\\d+\\)\\s*\\[(?:chromium|firefox|webkit)\\]\\s*›.*(?:\\n(?!\\n\\n|\\d+\\)\\s*\\[).*)*"
+
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
@@ -64,50 +92,38 @@ default:
       commit_scope: all
       diff_attribution_dirs: [e2e]
 
-    e2e-runner:
+    smoke-runner:
       type: script
       category: test
       script_type: local-exec
-      command: "npx playwright test --workers=1"
+      command: "npx playwright test e2e/storefront-smoke.spec.ts --workers=1"
       phase: validation
-      depends_on: [e2e-author]
+      depends_on: [storefront-dev]
       run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront, e2e]
       triage_json_gated: false
-      # Kill stale SSR dev server + orphaned Chromium before each retry.
-      # PWA Kit's `pwa-kit-dev` spawns webpack + SSR workers + Chromium;
-      # these survive test failures and cause resource exhaustion on retry.
       cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
       result_processor:
         type: cognitive
         max_chars: 12288
         model: fast
         prompt: instructions/triage/e2e-diagnosis.md
-        # ── Noise: verbose lines stripped before truncation ──────────────
-        # PWA Kit React warnings and SFCC proxy logs that dominate Playwright
-        # output. Stripped to preserve budget for actual diagnostic evidence.
-        noise_patterns:
-          - "Warning: The result of getServerSnapshot"
-          - "Warning: %s: Support for defaultProps"
-          - "\\[WebServer\\].*pwa-kit-runtime\\.httprequest"
-          - "retail-react-app\\.use-datacloud\\._handleApiError"
-        # ── Priority: high-signal blocks extracted to top of output ─────
-        # Playwright assertion failures, React ErrorBoundary crash stacks,
-        # and test failure headers. Extracted before truncation so triage
-        # LLM always sees them regardless of output volume.
-        priority_patterns:
-          # Playwright assertion failures (expect().toBeVisible, etc.)
-          - "^\\s*Error:.*?expect\\(.*?\\).*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
-          # Timeout errors
-          - "^\\s*Error:.*?[Tt]imed?\\s*out.*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
-          # React ErrorBoundary crash evidence
-          - "The above error occurred in the <\\w[\\w.]*> component:.*?(?=\\n\\n|\\n\\[|$)"
-          # React component tree recreation messages
-          - "React will try to recreate this component tree.*?(?=\\n\\n|\\n\\[|$)"
-          # Failed network requests summary
-          - "Failed requests:\\s*\\[.*?\\]"
-          # Playwright test failure headers: "N) [browser] › file › test"
-          - "^\\s*\\d+\\)\\s*\\[(?:chromium|firefox|webkit)\\]\\s*›.*(?:\\n(?!\\n\\n|\\d+\\)\\s*\\[).*)*"
+
+    e2e-runner:
+      type: script
+      category: test
+      script_type: local-exec
+      command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1"
+      phase: validation
+      depends_on: [e2e-author, smoke-runner]
+      run_if: [Storefront, Full-Stack]
+      auto_skip_if_no_changes_in: [storefront, e2e]
+      triage_json_gated: false
+      cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
+      result_processor:
+        type: cognitive
+        max_chars: 12288
+        model: fast
+        prompt: instructions/triage/e2e-diagnosis.md
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       type: agent

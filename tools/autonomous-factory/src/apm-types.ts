@@ -297,6 +297,14 @@ export const ApmWorkflowSchema = z.object({
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
+  /** Shared result processor defaults inherited by all script-type nodes.
+   *  Node-level noise_patterns / priority_patterns are ADDITIVE — they extend
+   *  these defaults rather than replacing them. This avoids duplicating
+   *  framework-specific patterns across every test runner node. */
+  result_processor_defaults: z.object({
+    noise_patterns: z.array(z.string()).default([]),
+    priority_patterns: z.array(z.string()).default([]),
+  }).default({ noise_patterns: [], priority_patterns: [] }),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key
