@@ -11,7 +11,8 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, resetForDev, resetForRedeploy, salvageForDraft } from "../state.js";
-import { triageFailure } from "../triage.js";
+import { triageFailure, parseDomainHeader, parseTriageDiagnostic } from "../triage.js";
+import type { ApmFaultRoute } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
 import type { PipelineRunConfig, SessionResult } from "../session-runner.js";
 import type { ItemSummary } from "../types.js";
@@ -44,10 +45,58 @@ export async function handleFailureReroute(
   const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
   const triageKb = config.apmContext.triage_kb;
   const unfixableSignals = workflow?.unfixable_signals ?? [];
-  const resetKeys = await triageFailure(
+  let resetKeys = await triageFailure(
     itemKey, rawError, naItems, faultRouting, workflowNodes,
     triageKb, client, slug, config.appRoot, unfixableSignals,
   );
+
+  // --- Extract resolved fault domain from the error message ---
+  // The cognitive processor prepends FAULT_DOMAIN_HINT; structured JSON has fault_domain.
+  // Used for (a) per-domain retry cap and (b) tagging the errorLog reason string.
+  let resolvedDomain: string | undefined;
+  const headerDomains = parseDomainHeader(rawError, faultRouting);
+  if (headerDomains && headerDomains.length > 0) {
+    resolvedDomain = headerDomains[0];
+  } else {
+    const diagnostic = parseTriageDiagnostic(rawError);
+    if (diagnostic?.fault_domain) resolvedDomain = String(diagnostic.fault_domain);
+  }
+
+  // --- Per-domain retry cap: prevent death spirals on non-code faults ---
+  // When the same fault domain triggers $SELF retries repeatedly, check if
+  // the fault route declares a max_retries cap. If exceeded, escalate to
+  // a different domain (or block) instead of burning the redev budget.
+  if (resolvedDomain && faultRouting && resetKeys.length > 0) {
+    const route = faultRouting[resolvedDomain] as ApmFaultRoute & { max_retries?: number; escalate_to?: string } | undefined;
+    if (route?.max_retries) {
+      // Count consecutive same-domain entries in errorLog (tagged with [domain:X])
+      const domainTag = `[domain:${resolvedDomain}]`;
+      const errorEntries = pipeState.errorLog ?? [];
+      let consecutiveCount = 0;
+      for (let i = errorEntries.length - 1; i >= 0; i--) {
+        const entry = errorEntries[i] as { message?: string; itemKey?: string };
+        if (entry.itemKey === "reset-for-dev" && entry.message?.includes(domainTag)) {
+          consecutiveCount++;
+        } else if (entry.itemKey === "reset-for-dev") {
+          break; // different domain — stop counting consecutive
+        }
+      }
+
+      if (consecutiveCount >= route.max_retries) {
+        const escalateTo = route.escalate_to;
+        if (escalateTo && faultRouting[escalateTo]) {
+          console.warn(`\n  ⚠ Domain "${resolvedDomain}" hit retry cap (${consecutiveCount}/${route.max_retries}) — escalating to "${escalateTo}"`);
+          const escalateRoute = faultRouting[escalateTo] as ApmFaultRoute;
+          resetKeys = escalateRoute.reset_nodes.map((k: string) => (k === "$SELF" ? itemKey : k))
+            .filter((k: string) => !naItems.has(k));
+          resolvedDomain = escalateTo;
+        } else {
+          console.warn(`\n  ⚠ Domain "${resolvedDomain}" hit retry cap (${consecutiveCount}/${route.max_retries}) — no escalate_to, treating as blocked`);
+          resetKeys = [];
+        }
+      }
+    }
+  }
 
   // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
   if (resetKeys.length === 0) {
@@ -109,7 +158,14 @@ export async function handleFailureReroute(
   }
 
   console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
-  console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}`);
+  console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}${resolvedDomain ? ` (domain: ${resolvedDomain})` : ""}`);
+
+  // Tag the reason string with [domain:X] for structured errorLog entries.
+  // This enables the per-domain retry cap (Change 1) to count consecutive
+  // same-domain entries unambiguously.
+  const taggedReason = resolvedDomain
+    ? `[domain:${resolvedDomain}] ${errorMsg}`
+    : errorMsg;
 
   // Branch: if triage targets only deploy/post-deploy items (no dev or test code
   // changes needed), use the separate re-deploy budget instead of burning a full
@@ -123,7 +179,7 @@ export async function handleFailureReroute(
 
   try {
     if (hasDevOrTestItems) {
-      const result = await resetForDev(slug, resetKeys, errorMsg, maxDevCycles);
+      const result = await resetForDev(slug, resetKeys, taggedReason, maxDevCycles);
       if (result.halted) {
         console.error(
           `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
@@ -142,7 +198,7 @@ export async function handleFailureReroute(
         } catch { /* non-fatal */ }
       }
     } else {
-      const result = await resetForRedeploy(slug, resetKeys, errorMsg, maxRedeployCycles);
+      const result = await resetForRedeploy(slug, resetKeys, taggedReason, maxRedeployCycles);
       if (result.halted) {
         console.error(
           `  ✖ HALTED: ${result.cycleCount} re-deploy cycles exhausted. Exiting.`,

@@ -36,6 +36,10 @@ export interface ProcessedResult {
   condensed: string;
   /** Raw output preserved for archival (_E2E-FULL-LOG.md). */
   fullOutput: string;
+  /** Noise-stripped + deduped output BEFORE capping. Used by the cognitive
+   *  processor as LLM input to avoid the information loss of truncation.
+   *  Only populated when the regex pass runs; undefined otherwise. */
+  cleanedOutput?: string;
   /** Extracted test summary statistics (if parseable). */
   stats?: TestStats;
   /** LLM-produced structured diagnosis (if cognitive pass ran). */
@@ -52,6 +56,11 @@ export interface ResultProcessorConfig {
   model?: "fast" | "default";
   /** Path to .md instruction fragment for LLM system prompt (relative to .apm/). */
   prompt?: string;
+  /** Maximum chars to send to the LLM in the cognitive pass.
+   *  When omitted, the full noise-stripped output is sent (recommended for
+   *  cognitive processor — the cost difference is negligible vs. pipeline run cost).
+   *  Set explicitly to cap LLM input for cost-sensitive environments. */
+  maxLlmInputChars?: number;
   /**
    * Regex patterns matching console/log noise lines to strip BEFORE truncation.
    * Each pattern is compiled as a case-insensitive regex and tested against

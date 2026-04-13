@@ -320,6 +320,18 @@ export async function runItemSession(
     }
   }
 
+  // --- Pre-retry cleanup: kill stale processes from previous failed run ---
+  if (attemptCounts[next.key] > 1 && node?.cleanup_command) {
+    console.log(`  🧹 Running cleanup command before retry (attempt ${attemptCounts[next.key]})`);
+    try {
+      execSync(node.cleanup_command, { cwd: appRoot, timeout: 15_000, stdio: "inherit" });
+    } catch {
+      // Cleanup failure is non-fatal — the retry should still proceed.
+      // The command itself should use `|| true` or `exit 0` to handle expected failures.
+      console.warn("  ⚠ Cleanup command exited with error (non-fatal, continuing)");
+    }
+  }
+
   // --- Execute handler ---
   let result: NodeResult;
   try {
@@ -365,6 +377,7 @@ export async function runItemSession(
       prompt: node.result_processor.prompt,
       noisePatterns: node.result_processor.noise_patterns,
       priorityPatterns: node.result_processor.priority_patterns,
+      maxLlmInputChars: node.result_processor.max_llm_input_chars,
     };
 
     if (rpConfig.type !== "none") {

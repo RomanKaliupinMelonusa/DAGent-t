@@ -81,6 +81,7 @@ async function callLlm(
   condensed: string,
   systemPrompt: string,
   modelTier?: "fast" | "default",
+  maxInputChars?: number,
 ): Promise<CognitiveDiagnosis | undefined> {
   try {
     const model = resolveModelId(modelTier);
@@ -93,8 +94,14 @@ async function callLlm(
       },
     });
 
+    // When maxInputChars is set, cap the input. Otherwise send the full
+    // noise-stripped output — the cost difference (~$0.01 vs ~$0.003) is
+    // negligible vs. the pipeline run cost (~$44), and the LLM sees critical
+    // mid-log signals (e.g. [WebServer] Killed) that truncation discards.
+    const llmInput = maxInputChars ? condensed.slice(0, maxInputChars) : condensed;
+
     const response = await session.sendAndWait(
-      { prompt: condensed.slice(0, 8000) }, // cap input — priority sections lead, so critical evidence survives
+      { prompt: llmInput },
       30_000, // 30s — diagnosis should be fast
     );
     await session.disconnect();
@@ -165,9 +172,13 @@ export function createCognitiveProcessor(client?: CopilotClient): ResultProcesso
       }
 
       // Step 3: Invoke LLM with project-specific or default prompt
+      // Use the full noise-stripped output (cleanedOutput) for LLM input instead
+      // of the capped condensed version. The regex pass already removed framework
+      // noise — what remains is diagnostic evidence the LLM needs to see in full.
       const systemPrompt = promptContent?.trim() || DEFAULT_BUILTIN_PROMPT;
-      console.log(`  🤖 Cognitive processor: invoking LLM diagnosis (model=${config.model ?? "fast"})`);
-      const diagnosis = await callLlm(client, regexResult.condensed, systemPrompt, config.model);
+      const llmInput = regexResult.cleanedOutput ?? regexResult.condensed;
+      console.log(`  🤖 Cognitive processor: invoking LLM diagnosis (model=${config.model ?? "fast"}, input=${llmInput.length} chars)`);
+      const diagnosis = await callLlm(client, llmInput, systemPrompt, config.model, config.maxLlmInputChars);
 
       if (!diagnosis || !diagnosis.fault_domain_hint) {
         console.log("  ⚠ Cognitive processor: LLM produced no usable diagnosis — using regex result only");
@@ -180,6 +191,7 @@ export function createCognitiveProcessor(client?: CopilotClient): ResultProcesso
       return {
         condensed: formatWithHint(regexResult.condensed, diagnosis),
         fullOutput: regexResult.fullOutput,
+        cleanedOutput: regexResult.cleanedOutput,
         stats: regexResult.stats,
         diagnosis,
       };

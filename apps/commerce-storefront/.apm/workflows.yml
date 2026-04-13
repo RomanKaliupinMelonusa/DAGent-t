@@ -74,6 +74,10 @@ default:
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
       triage_json_gated: false
+      # Kill stale SSR dev server + orphaned Chromium before each retry.
+      # PWA Kit's `pwa-kit-dev` spawns webpack + SSR workers + Chromium;
+      # these survive test failures and cause resource exhaustion on retry.
+      cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
       result_processor:
         type: cognitive
         max_chars: 12288
@@ -212,6 +216,8 @@ default:
     environment:
       description: "transient auth/credential glitch, SLAS token failure, not a code bug"
       reset_nodes: ["$SELF"]
+      max_retries: 2
+      escalate_to: blocked
     blocked:
       description: "unfixable without human intervention (permissions, SFCC access)"
       reset_nodes: []

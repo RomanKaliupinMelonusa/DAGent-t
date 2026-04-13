@@ -298,12 +298,17 @@ const regexResultProcessor: ResultProcessor = {
       condensed = `${summaryLine}\n\n${condensed}`;
     }
 
+    // Preserve the cleaned (noise-stripped + deduped) output before capping.
+    // The cognitive processor uses this as LLM input to avoid information loss.
+    const cleanedOutput = condensed;
+
     // 5. Cap total size (priority extraction from APM config + head/tail fallback)
     condensed = capOutput(condensed, maxChars, config.priorityPatterns);
 
     return {
       condensed,
       fullOutput: rawOutput,
+      cleanedOutput,
       stats,
     };
   },

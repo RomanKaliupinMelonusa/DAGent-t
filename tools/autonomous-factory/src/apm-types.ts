@@ -201,6 +201,11 @@ export const ApmWorkflowNodeSchema = z.object({
   post_run_hook: z.enum(["validateInfra", "validateApp"]).optional(),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
+  /** Shell command to run before retrying this node (attempt > 1).
+   *  Kills stale processes from the previous failed run. Non-fatal — cleanup
+   *  failure never blocks the retry. The kernel runs this blindly; all
+   *  framework-specific knowledge lives in the command itself. */
+  cleanup_command: z.string().optional(),
   /** Result processor config for post-processing handler output before triage.
    *  Only applicable to script-type nodes (e.g. local-exec test runners). */
   result_processor: z.object({
@@ -218,6 +223,10 @@ export const ApmWorkflowNodeSchema = z.object({
     /** Regex patterns for high-signal diagnostic lines to extract before truncation.
      *  Matched sections are placed at the top of condensed output for triage. */
     priority_patterns: z.array(z.string()).optional(),
+    /** Maximum chars to send to the LLM in the cognitive pass.
+     *  When omitted, the full noise-stripped output is sent (recommended —
+     *  the cost delta is negligible vs. pipeline run cost). */
+    max_llm_input_chars: z.number().positive().optional(),
   }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
@@ -261,6 +270,15 @@ export const ApmFaultRouteSchema = z.object({
   reset_nodes: z.array(z.string()),
   /** Human-readable description of this fault domain (injected into LLM triage prompt). */
   description: z.string().optional(),
+  /** Maximum consecutive times this domain can trigger a retry before escalation.
+   *  When the cap is reached, the kernel substitutes the `escalate_to` domain's
+   *  routing (or blocks if `escalate_to` is not set). Prevents death spirals where
+   *  a non-code fault (resource exhaustion, DNS) burns the entire redev budget. */
+  max_retries: z.number().int().positive().optional(),
+  /** Fault domain key to substitute when `max_retries` is exhausted.
+   *  Must reference another key in `fault_routing`. If omitted, the pipeline
+   *  treats the capped domain as "blocked" (empty reset_nodes → halt). */
+  escalate_to: z.string().optional(),
 });
 
 export const ApmWorkflowSchema = z.object({
@@ -324,6 +342,15 @@ export const ApmWorkflowSchema = z.object({
     return true;
   },
   { message: "fault_routing reset_nodes references an undefined node key (use \"$SELF\" for the calling item)." },
+).refine(
+  (wf) => {
+    // Validate: every fault_routing escalate_to references a valid fault_routing key
+    for (const [, route] of Object.entries(wf.fault_routing)) {
+      if (route.escalate_to && !(route.escalate_to in wf.fault_routing)) return false;
+    }
+    return true;
+  },
+  { message: "fault_routing escalate_to references an undefined fault_routing key." },
 );
 
 // ---------------------------------------------------------------------------
