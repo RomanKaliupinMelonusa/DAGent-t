@@ -113,7 +113,7 @@ Running 15 tests using 1 worker
 
 [1A[2KFailed requests: [
   [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=d66390be-1557-4dc8-911f-9571c8ad68f9&code=vSVm1FKAVC-CdK4PwbV5Bhy49LzgW4SecPXzsc5_KiY - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=ec400d44-037b-46f2-a53e-a8cf9f90f1bf&code=OaHuSZAPKchmzu0FTg95gYVT1Dn-6XQcsWQoJLy2ysE - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -251,8 +251,7 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=d471eef0-04c3-44b9-9ad9-57e2595c5c31&code=Yv3rcOOUGs4RC5rOUvQoZF9BU5YcPE0UYtJ1bZPjOog - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=32323bd1-51a5-4752-b807-9d305f6be850&code=q_d-ciP4Anje9lDaeY0U7sVoi4SBhQmuA1rTHFh2yJM - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -390,8 +389,7 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=6be2d459-f587-4a33-a114-5d8e25afd80d&code=1_e6dlX2Q1YHinHlQXbQ75UpSphq3b4mXLKHe4VTBDU - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=f938c5c2-0135-4662-80f5-5e8475970464&code=NpP1oO2nnGIJ9mFv229uwRShoKzCA-JuAJDcUhGQhrc - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -529,7 +527,8 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=1d842ca4-7f64-4f7a-a3b4-47bd3152ad47&code=76x-kWuuh5ve3NByE5LE59WlLvPSRkGRQ20mvvdJF2o - net::ERR_ABORTED'[39m,
+  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=a9c5c239-6c7a-4af5-9088-5211d5c55a6b&code=IRcw_1ZA7voyFGv-unGq0tEn6gy5L5Ufj6AheYDNhHw - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -667,7 +666,8 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=264f0697-7388-4bc4-a962-187a978496b3&code=27DBoKKu_4GuQ9Xr_nZxgRCG23ateAp5dDUSc_i7sM0 - net::ERR_ABORTED'[39m,
+  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=46740b37-e4ed-459d-aacd-479b212ef538&code=IzIZI5ZwRLrqZPfC-7m_Yece4Mzj6HDNGzSXC3KanIw - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -806,7 +806,7 @@ Running 15 tests using 1 worker
 
 [1A[2KFailed requests: [
   [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=763a5096-b15a-4383-a764-4e603c4abbc8&code=OHbIvwrMuabMcUyjUkzyyhWIu0exCP6TYXFgZy0P2ws - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=3f1eddec-fa4f-4d3e-abc5-59a2b7e04cd8&code=yMW63fJqq0SUfdChSaeimPFN1Ch3n_IzHKZ-E7gcTyk - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -945,7 +945,7 @@ Running 15 tests using 1 worker
 
 [1A[2KFailed requests: [
   [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=ca5511e6-9db4-408e-8841-4346f1230973&code=DOE2pviSlMZqKywy4_yPnN4WoTcxmCqV_QcFlIHG804 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=8e9e23a1-2ddc-44fd-9383-b90b1d765b7b&code=xeJq6XLydqW8t_BuUjxnFEBLlSpLGI57_VgxXWctDKU - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -1083,7 +1083,8 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=58037358-f6a6-42ec-8c32-262c32ec1eef&code=M9Gbm89ZiwTx5ig05xjyZ05myfjSohmnC55G9jUBnDc - net::ERR_ABORTED'[39m,
+  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=fbfc8aa2-ee71-4c3d-a925-8a5f2401b246&code=VkOqEE7WSe3Y-6NQJZVLDoU8IFbqq_C0sclXruXnUBk - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -1221,7 +1222,7 @@ Running 15 tests using 1 worker
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=4e3382e7-bad9-4644-815d-cfd4de8fe15e&code=Y_mGb7yF-WrkhTboNfTm_1chVNEZ-Jv08EUsQvku3F4 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=c0ced14b-fc41-4ec8-9442-0d448f28457f&code=UMsRMTBtKSFRcqH2GgAK1nMcDljwItChW-OP1hxSkHo - net::ERR_ABORTED'[39m,
   [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
@@ -1376,6 +1377,8 @@ Running 15 tests using 1 worker
 
 
 
+
+
 [1A[2K[chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page
 
 --- Browser Diagnostics for "can navigate to a category/PLP page" ---
@@ -1480,8 +1483,14 @@ Running 15 tests using 1 worker
     [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
-  [32m'Failed to load resource: net::ERR_NAME_NOT_RESOLVED'[39m,
-  [32m'retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event {}'[39m,
+  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
+  [32m'r: 400 Bad Request\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
   [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
   [32m'r: 400 Bad Request\n'[39m +
     [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
@@ -1505,15 +1514,24 @@ Running 15 tests using 1 worker
     [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
     [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
     [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
+    [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m,
+  [32m'Failed to load resource: net::ERR_NAME_NOT_RESOLVED'[39m,
+  [32m'retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event {}'[39m,
+  [32m'Failed to load resource: the server responded with a status of 400 (Bad Request)'[39m,
+  [32m'r: 400 Bad Request\n'[39m +
+    [32m'    at http://localhost:3000/mobify/bundle/development/vendor.js:30693:48391\n'[39m +
+    [32m'    at za (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22073)\n'[39m +
+    [32m'    at Generator._invoke (http://localhost:3000/mobify/bundle/development/vendor.js:30693:21823)\n'[39m +
+    [32m'    at Ta.forEach.e.<computed> [as next] (http://localhost:3000/mobify/bundle/development/vendor.js:30693:22447)\n'[39m +
+    [32m'    at la (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20032)\n'[39m +
     [32m'    at o (http://localhost:3000/mobify/bundle/development/vendor.js:30693:20236)'[39m
 ]
 
 [1A[2KFailed requests: [
-  [32m'GET http://localhost:3000/callback?usid=e335afe6-d856-4032-b422-da34d8ba4890&code=-4EIumWHLzxDPwsaNSrHQ5nc6eb2FUWYewE5_zMJuI0 - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=664e7546-7c8e-42e3-a2d7-fa7304ead41f&code=uS9YEPsTCeIVV8-btlJEiovgzFwS1d9hYiKVjoNAOxQ - net::ERR_ABORTED'[39m,
-  [32m'GET http://localhost:3000/callback?usid=3f66b913-6bcb-4569-8489-f336e5998d96&code=2q6OXNh2ZxndetrLHzoUI6mLMoZVe30oggkvfCa1w2g - net::ERR_ABORTED'[39m,
-  [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m,
-  [32m'GET https://images.demandware.net/dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg?sw=230&q=60 - net::ERR_ABORTED'[39m
+  [32m'GET http://localhost:3000/callback?usid=54429de0-c9ea-4d15-8561-5d945d80d036&code=bbUyr-k7kgyScIXTdd4TwcVlMPHHlE0PDt3AOPr00I0 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=6790f0d8-bdc0-4308-9b4f-9592f39ca928&code=dn6nonGqO5BBck2ufKivjYnBVHMxHtOxdHR6odIJQ9k - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/callback?usid=1195d2d2-1ff4-4067-8ebd-2387c2e1b76a&code=zFlUwxzDOz6bGGxXKEf0iI0mpPqn4SHAV1FFXgiR8AQ - net::ERR_ABORTED'[39m,
+  [32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'[39m
 ]
 
 [1A[2K  11) [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
@@ -1560,11 +1578,11 @@ Running 15 tests using 1 worker
     [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
     [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
   4 passed (2.5m)
-[1A[2K[2m[WebServer] [22m(node:33777) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[1A[2K[2m[WebServer] [22m(node:35791) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:33804) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[1A[2K[2m[WebServer] [22m(node:35850) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:33804) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[1A[2K[2m[WebServer] [22m(node:35850) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
 [1A[2K[2m[WebServer] [22mWarning: PageDesignerProvider: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.
 [2m[WebServer] [22m    at PageDesignerProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:308646:33)
 [2m[WebServer] [22m    at OfflineBoundary (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:9619:5)
@@ -1621,51 +1639,55 @@ Running 15 tests using 1 worker
 [2m[WebServer] [22m    at head
 [2m[WebServer] [22m    at html
 [2m[WebServer] [22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133105:5)
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (93f3d18e-33de-4494-a28e-d8e735a60f66) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 123.895 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (f4f92b0f-d707-457a-b862-fb2c71bb56f1) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ec400d44-037b-46f2-a53e-a8cf9f90f1bf?siteId=RefArch 403 105.064 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (8e5a6a58-3dd4-4471-8809-6be13ed63127) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/d66390be-1557-4dc8-911f-9571c8ad68f9?siteId=RefArch 403 133.981 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (7297ad39-09ee-4e8f-8c37-864bd4a1ea6a) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 473.266 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (15e9711f-5a57-42ad-ac84-60ad8703092c) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 119.880 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (6c457202-9535-4837-8d1e-54f039f8a567) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 195.718 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (e0ac7a3a-658d-406f-8d76-6c61fa650aad) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/d471eef0-04c3-44b9-9ad9-57e2595c5c31?siteId=RefArch 403 126.525 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (f5388892-a448-4911-8b07-1b1ea395f721) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/32323bd1-51a5-4752-b807-9d305f6be850?siteId=RefArch 403 125.902 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (d935d641-f8aa-4896-960f-0cf97a8277ec) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 105.624 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (46e90310-7268-4df7-b51c-d992bb1fc3d2) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 126.669 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (20012a1c-8526-475c-874e-326e2b39e3f5) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/6be2d459-f587-4a33-a114-5d8e25afd80d?siteId=RefArch 403 120.444 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (177be118-ca91-4936-b944-06b0d2ebeb61) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/f938c5c2-0135-4662-80f5-5e8475970464?siteId=RefArch 403 422.597 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (21f87b4a-9ae4-4ccd-9373-5b8cb4dd588c) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 126.623 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (091cb37e-58ec-42af-9e79-213ee78386a1) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 141.735 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (ae81b601-6502-4f5c-ae95-bb1825cc29c2) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/1d842ca4-7f64-4f7a-a3b4-47bd3152ad47?siteId=RefArch 403 130.431 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c2aaa712-0aa7-494e-a09e-35d28b6b2417) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/a9c5c239-6c7a-4af5-9088-5211d5c55a6b?siteId=RefArch 403 136.736 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (fda50e8b-f226-4f4a-8688-d3e98804f21a) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 112.807 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (433e912c-4b75-45ad-abf4-7c86dcbda64a) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 150.812 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (409b5bc3-c79d-4698-9687-69e62661e5ee) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/264f0697-7388-4bc4-a962-187a978496b3?siteId=RefArch 403 114.937 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (595544f4-967c-4794-b591-8cb40570a7fb) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/46740b37-e4ed-459d-aacd-479b212ef538?siteId=RefArch 403 108.218 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c0ded63d-e7df-4439-b267-6410d11b9c31) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/763a5096-b15a-4383-a764-4e603c4abbc8?siteId=RefArch 403 112.502 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (e242dde0-5c8f-4985-beaf-0f6c67361b57) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 115.843 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (0b8d75e1-b94f-4d7f-9dbf-f733b9695243) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 459.512 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (20fcded4-8123-45ac-b906-edf370029a62) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/3f1eddec-fa4f-4d3e-abc5-59a2b7e04cd8?siteId=RefArch 403 176.159 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (a00c4a3b-3936-4ccf-9d02-b30004b9a342) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 107.787 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (e7a80b0e-0c46-40f9-9453-11e73a71f171) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 116.365 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (51fdc4f9-b3f8-4ebb-91c2-8946d596c585) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/ca5511e6-9db4-408e-8841-4346f1230973?siteId=RefArch 403 520.425 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (a34b2a3e-08a1-4991-a4c9-fa27c64a8037) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/8e9e23a1-2ddc-44fd-9383-b90b1d765b7b?siteId=RefArch 403 118.663 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c4db5f2f-19b1-4694-8f9e-b632e48c9605) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 122.316 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (60c9dfdd-caea-497e-ad9a-f618bd902a70) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 119.569 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (2d251775-c7e3-4665-8e3b-6da1357c63eb) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/58037358-f6a6-42ec-8c32-262c32ec1eef?siteId=RefArch 403 138.601 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (ed82cce0-48a3-4788-bcce-733c28e58236) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/fbfc8aa2-ee71-4c3d-a925-8a5f2401b246?siteId=RefArch 403 116.173 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (9645d1f6-d4c5-4488-9c81-c866cc40e0fe) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 122.095 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (252a3d3a-a605-42c0-ae00-6c18c781c93c) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 116.927 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (8353ba54-ec6c-456a-8093-9e81bbff217d) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/4e3382e7-bad9-4644-815d-cfd4de8fe15e?siteId=RefArch 403 247.170 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (51da3b8d-1ad8-484c-94c8-82b2470eb5ae) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/c0ced14b-fc41-4ec8-9442-0d448f28457f?siteId=RefArch 403 121.561 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (bd96643d-6dd7-4305-b3d3-fab375cb4b52) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 127.231 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (442306c0-ccfc-4965-9592-ab6c36a1549c) GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations?siteId=RefArch 403 130.756 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (b2aeb95f-2862-4508-acdf-76585665b4ed) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/e335afe6-d856-4032-b422-da34d8ba4890?siteId=RefArch 403 148.588 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (6e104b8b-d002-4f7d-a607-e5a58cc60df1) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/54429de0-c9ea-4d15-8561-5d945d80d036?siteId=RefArch 403 111.244 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (363ba39f-60ca-4645-ae09-01b885ab12c4) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/664e7546-7c8e-42e3-a2d7-fa7304ead41f?siteId=RefArch 403 118.836 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (0cd8baad-9469-4544-a88f-314a46b586ef) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/6790f0d8-bdc0-4308-9b4f-9592f39ca928?siteId=RefArch 403 123.134 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (be9531b8-f50a-4bfe-a27e-55f53e83ec03) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abxrkXludKxrwRxbEZlGYYkbkW/product-lists?siteId=RefArch 400 329.911 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (bcb4dc45-418f-43bf-acbf-a3dee41bcad3) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bclroYkHJIxraRwXJJwqYYxbcZ/baskets?siteId=RefArch 400 273.225 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (3d1bdaa9-fb14-44be-9737-97ae2d7df137) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/abxrkXludKxrwRxbEZlGYYkbkW/baskets?siteId=RefArch 400 421.693 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (c0247085-77a1-4782-978f-536e52ff5ba4) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/bclroYkHJIxraRwXJJwqYYxbcZ/product-lists?siteId=RefArch 400 299.905 ms - 161
 [2m[WebServer] [22m
-[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (5e481b4a-75a9-47df-b7a2-d758326813ef) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/3f66b913-6bcb-4569-8489-f336e5998d96?siteId=RefArch 403 122.188 ms - 161
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (653dc558-d878-4260-9749-e2059d77a064) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/belHA3kewUxcERwKpHkbYYkXa2/baskets?siteId=RefArch 400 293.064 ms - 161
+[2m[WebServer] [22m
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (6860f338-98e7-4bf0-b177-f4ed26720530) GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context/1195d2d2-1ff4-4067-8ebd-2387c2e1b76a?siteId=RefArch 403 144.132 ms - 161
+[2m[WebServer] [22m
+[1A[2K[2m[WebServer] [22mpwa-kit-runtime.httprequest ERROR (dbe64b8f-6856-4dc0-b9cd-ac84d415ff7b) GET /mobify/proxy/api/customer/shopper-customers/v1/organizations/f_ecom_aaia_prd/customers/belHA3kewUxcERwKpHkbYYkXa2/product-lists?siteId=RefArch 400 396.572 ms - 161
 [2m[WebServer] [22m
