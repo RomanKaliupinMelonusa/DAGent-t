@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-13T17:46:10.917Z",
+  "generatedAt": "2026-04-13T17:46:18.452Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -326,21 +326,51 @@
       "headAfterAttempt": "f0a7b71b4c69d311bda9d02041278bca73562309"
     },
     {
-      "key": "create-draft-pr",
-      "label": "create-draft-pr",
-      "agent": "create-draft-pr",
-      "phase": "",
+      "key": "e2e-runner",
+      "label": "e2e-runner",
+      "agent": "unknown",
+      "phase": "validation",
       "attempt": 1,
-      "outcome": "in-progress",
-      "startedAt": "2026-04-13T17:44:12.811Z",
+      "startedAt": "2026-04-13T17:44:12.801Z",
       "finishedAt": "",
       "durationMs": 0,
-      "intents": [],
+      "outcome": "failed",
+      "intents": [
+        "Native script execution — failed"
+      ],
+      "messages": [],
+      "filesRead": [],
       "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "16bd695fa05a5ec80a6812f230d79cf0673e0617",
+      "errorMessage": "FAULT_DOMAIN_HINT: environment\nROOT_CAUSE: The local dev server at localhost:3000 was not running or crashed before tests executed, causing all 10 tests to fail with connection refused\nERROR_TYPE: network\nEVIDENCE: All 10 tests failed. 9/10 show 'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/', 1/10 timed out waiting for product tiles (server may have briefly started then crashed). Failed requests consistently report 'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'.\n\n--- PRIORITY EVIDENCE (4 sections) ---\n\nError: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n         |                ^\n      64 |\n      65 |     // Try clicking a category nav link to reach a PLP\n      66 |     const navLink = page.locator('nav a, [role=\"navigation\"] a').first()\n        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:63:16)\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:125:15\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-5b0ee--modal-with-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K[3/10] [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\n---\n\n\u001b[1A\u001b[2KFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n\u001b[1A\u001b[2K  3) [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n   \n  ... [section truncated]\n\n---\n\nError: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n         |                ^\n      64 |\n      65 |     // Try clicking a category nav link to reach a PLP\n      66 |     const navLink = page.locator('nav a, [role=\"navigation\"] a').first()\n        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:63:16)\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:125:15\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-5b0ee--modal-with-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K[3/10] [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\n---\n\n\u001b[1A\u001b[2KFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n\u001b[1A\u001b[2K  3) [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n   \n  ... [section truncated]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET https://unpkg.com/@salesforce-ux/design-system@2.14.3/assets/fonts/webfonts/SalesforceSans-Regular.woff2 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET https://unpkg.com/@salesforce-ux/design-system@2.14.3/assets/fonts/webfonts/SalesforceSans-Bold.woff2 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'\u001b[39m\n]\n\n---\n\nFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n--- CONTEXT ---\n\nTEST SUMMARY: 0 passed, 10 failed, 10 total\n\nRunning 10 tests using 1 worker\n\n\u001b[1A\u001b[2K[1/10] [chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles\n\n---\n\n\u001b[1A\u001b[2K\n\n\u001b[1A\u001b[2K  1) [chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles \n\n    TimeoutError: locator.waitFor: Timeout 30000ms exceeded.\n    Call log:\n    \u001b[2m  - waiting for locator('[data-testid=\"product-tile\"], .product-tile, article').first() to be visible\u001b[22m\n\n\n      79 |         .locator('[data-testid=\"product-tile\"], .product-tile, article')\n      80 |         .first()\n    > 81 |         .waitFor({state: 'visible', timeout: 30_000})\n         |          ^\n      82 | }\n      83 |\n      84 | /**\n        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:81:10)\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:110:9\n\n\n\u001b[1A\u001b[2K[2/10] [chromium] › e2e/product-quick-view.spec.ts:124:9 › Product Quick View › clicking Quick View button opens modal with product content\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:124:9 › Product Quick View › clicking Quick View button opens modal with product content\n\n---\n\n\u001b[1A\u001b[2K\n\n\u001b[1A\u001b[2K  2) [chromium] › e2e/product-quick-view.spec.ts:124:9 › Product Quick View › clicking Quick View button opens modal with product content \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n         |                ^\n      64 |\n      65 |     // Try clicking a category nav link to reach a PLP\n      66 |     const navLink = page.locator('nav a, [role=\"navigation\"] a').first()\n        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:63:16)\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:125:15\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-5b0ee--modal-with-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K[3/10] [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button\n\n---\n\n\u001b[1A\u001b[2KFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n\u001b[1A\u001b[2K  3) [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"domcontentloaded\"\u001b[22m\n\n\n      61 |  */\n      62 | async function navigateToPLP(page: Page) {\n    > 63 |     await page.goto('/', {waitUntil: 'domcontentloaded'})\n         |                ^\n      64 |\n      65 |     // Try clicking a category nav link to reach a PLP\n      66 |     const navLink = page.locator('nav a, [role=\"navigation\"] a').first()\n        at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:63:16)\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:192:15\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-7d1af-loses-with-the-close-button-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K[4/10] [chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View modal closes with Escape key\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View modal closes with Escape key\n\n---\n\n\u001b[1A\u001b[2KFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n\u001b[1A\u001b[2K  4) [chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View modal closes with Escape key \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating t\n\n... [8269 chars omitted] ...\n\n────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K[10/10] [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info\n\u001b[1A\u001b[2K[chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info\n\n---\n\n\u001b[1A\u001b[2KFailed requests: [ \u001b[32m'GET http://localhost:3000/ - net::ERR_CONNECTION_REFUSED'\u001b[39m ]\n\n\u001b[1A\u001b[2K  10) [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info \n\n    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/\n    Call log:\n    \u001b[2m  - navigating to \"http://localhost:3000/\", waiting until \"load\"\u001b[22m\n\n\n      70 |\n      71 |   test('product detail page shows product info', async ({ page }) => {\n    > 72 |     await page.goto('/');\n         |                ^\n      73 |     // Navigate to a product (find any product link)\n      74 |     const productLink = page.locator('a[href*=\"/product/\"], a[href*=\"/products/\"]').first();\n      75 |     if (await productLink.isVisible({ timeout: 10_000 })) {\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/storefront-smoke.spec.ts:72:16\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/storefront-smoke-Storefron-b1f09-ail-page-shows-product-info-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\u001b[1A\u001b[2K  10 failed\n    [chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles \n    [chromium] › e2e/product-quick-view.spec.ts:124:9 › Product Quick View › clicking Quick View button opens modal with product content \n    [chromium] › e2e/product-quick-view.spec.ts:191:9 › Product Quick View › Quick View modal closes with the close button \n    [chromium] › e2e/product-quick-view.spec.ts:215:9 › Product Quick View › Quick View modal closes with Escape key \n    [chromium] › e2e/product-quick-view.spec.ts:238:9 › Product Quick View › Quick View button has accessible aria-label \n    [chromium] › e2e/product-quick-view.spec.ts:255:9 › Product Quick View › Quick View does not navigate away from PLP \n    [chromium] › e2e/product-quick-view.spec.ts:283:9 › Product Quick View › Quick View modal shows loading spinner then content or error \n    [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders \n    [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page \n    [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info \n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22m(node:3317) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n\u001b[2m[WebServer] \u001b[22m(Use `node --trace-deprecation ...` to show where the warning was created)\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mKilled"
+    },
+    {
+      "key": "create-draft-pr",
+      "label": "create-draft-pr",
+      "agent": "@pr-creator",
+      "phase": "validation",
+      "attempt": 1,
+      "startedAt": "2026-04-13T17:44:12.799Z",
+      "finishedAt": "2026-04-13T17:46:18.451Z",
+      "durationMs": 125652,
+      "outcome": "completed",
+      "intents": [],
+      "messages": [
+        "Now I have all the information I need. Let me create the draft PR.",
+        "PR created successfully: https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/79  Now let me complete the pipeline phase:",
+        "All done. Here's a summary of what was accomplished:  ## ✅ Draft PR Created  **PR:** [#79 — feat(commerce): add Product Quick View modal on PLP](https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/79)  **Branch:** `feature/product-quick-view` → `project/pwa-kit`  ### What the PR contains: - **QuickViewModal component** — Lazy-loaded modal with ErrorBoundary wrapping, reusing existing Commerce SDK hooks - **ProductTile override** — Hover-activated \"Quick View\" overlay bar on PLP tiles - **34 unit tests** (17 per component) + **7 E2E Playwright tests** covering modal lifecycle, keyboard accessibility, and error resilience - **9 files changed**, +1,146 / -7 lines across 3 pipeline phases completed in ~10 minutes  ### Pipeline status: - ✅ `create-draft-pr` marked complete - ✅ Pipeline state committed"
+      ],
       "filesRead": [
         "apps/commerce-storefront/in-progress/product-quick-view_SPEC.md",
         "apps/commerce-storefront/in-progress/product-quick-view_SUMMARY.md"
       ],
+      "filesChanged": [],
       "shellCommands": [
         {
           "command": "cd /workspaces/DAGent-t && git diff project/pwa-kit...HEAD -- apps/commerce-storefront 2>&1 | head -500",
@@ -396,21 +426,23 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete product-quick-view create-draft-pr 2>&1 | cat",
           "timestamp": "2026-04-13T17:46:04.604Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark create-draft-pr complete for product-quick-view\" 2>&1 | cat",
+          "timestamp": "2026-04-13T17:46:10.920Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
         "file-read": 2,
-        "shell": 13
+        "shell": 14
       },
-      "messages": [
-        "Now I have all the information I need. Let me create the draft PR.",
-        "PR created successfully: https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/79  Now let me complete the pipeline phase:"
-      ],
-      "inputTokens": 113973,
-      "outputTokens": 3075,
-      "cacheReadTokens": 95316,
-      "cacheWriteTokens": 0
+      "inputTokens": 131952,
+      "outputTokens": 3324,
+      "cacheReadTokens": 113015,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "55173e8bc73760fcefe97e3c48449840e2226105"
     }
   ]
 }
