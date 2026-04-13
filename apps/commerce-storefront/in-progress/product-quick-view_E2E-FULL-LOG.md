@@ -1,6 +1,17 @@
 Running 10 tests using 1 worker
 
 [1A[2K[1/10] [chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles
+[1A[2K[chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles
+
+--- Browser Diagnostics for "Quick View button renders on PLP product tiles" ---
+
+[1A[2KFailed requests: [
+  [32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'[39m,
+  [32m'GET https://unpkg.com/@salesforce-ux/design-system@2.14.3/assets/fonts/webfonts/SalesforceSans-Regular.woff2 - net::ERR_ABORTED'[39m,
+  [32m'GET https://unpkg.com/@salesforce-ux/design-system@2.14.3/assets/fonts/webfonts/SalesforceSans-Bold.woff2 - net::ERR_ABORTED'[39m,
+  [32m'GET http://localhost:3000/__mrt/clear-browser-data - net::ERR_ABORTED'[39m
+]
+
 [1A[2K  1) [chromium] › e2e/product-quick-view.spec.ts:109:9 › Product Quick View › Quick View button renders on PLP product tiles 
 
     TimeoutError: locator.waitFor: Timeout 30000ms exceeded.
@@ -18,8 +29,7 @@ Running 10 tests using 1 worker
         at navigateToPLP (/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:81:10)
         at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:110:9
 
-    [31mTest timeout of 60000ms exceeded.[39m
-
+    Error Context: test-results/product-quick-view-Product-bebb4-enders-on-PLP-product-tiles-chromium/error-context.md
 
 
 
@@ -292,8 +302,6 @@ Running 10 tests using 1 worker
     [chromium] › e2e/storefront-smoke.spec.ts:52:7 › Storefront Smoke Tests › homepage loads and renders 
     [chromium] › e2e/storefront-smoke.spec.ts:59:7 › Storefront Smoke Tests › can navigate to a category/PLP page 
     [chromium] › e2e/storefront-smoke.spec.ts:71:7 › Storefront Smoke Tests › product detail page shows product info 
-[1A[2K[2m[WebServer] [22m(node:6806) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
-[1A[2K[2m[WebServer] [22m(node:6830) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+[1A[2K[2m[WebServer] [22m(node:8376) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 [2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
 [1A[2K[2m[WebServer] [22mKilled
