@@ -2,6 +2,10 @@
  * Quick View Modal — displays product details in a modal overlay
  * without navigating to the PDP. Reuses the existing ProductView
  * component and useProductViewModal hook from the base template.
+ *
+ * Wrapped in a local ErrorBoundary so that a render failure in
+ * ProductView does NOT propagate to the route-level AppErrorBoundary,
+ * which would replace the entire page with a crash screen.
  */
 import React from 'react'
 import PropTypes from 'prop-types'
@@ -13,12 +17,49 @@ import {
     ModalOverlay,
     Center,
     Spinner,
-    Text
+    Text,
+    Box
 } from '@salesforce/retail-react-app/app/components/shared/ui'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
 import {useIntl} from 'react-intl'
-import {WarningIcon} from '@chakra-ui/icons'
+
+/**
+ * Class-based ErrorBoundary (react-error-boundary is not installed).
+ * Catches render errors inside the modal so the PLP page stays intact.
+ */
+class QuickViewErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props)
+        this.state = {hasError: false}
+    }
+
+    static getDerivedStateFromError() {
+        return {hasError: true}
+    }
+
+    componentDidCatch(error, info) {
+        // eslint-disable-next-line no-console
+        console.error('[QuickViewModal] Render error caught by ErrorBoundary:', error, info)
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <Center py={10} flexDirection="column" data-testid="quick-view-error">
+                    <Text fontSize="lg" fontWeight="semibold">
+                        Unable to load product details.
+                    </Text>
+                </Center>
+            )
+        }
+        return this.props.children
+    }
+}
+
+QuickViewErrorBoundary.propTypes = {
+    children: PropTypes.node
+}
 
 /**
  * QuickViewModal — renders a Chakra modal that fetches full product
@@ -70,7 +111,7 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                         </Center>
                     ) : isUnavailable ? (
                         <Center py={10} flexDirection="column" data-testid="quick-view-error">
-                            <WarningIcon boxSize={8} color="orange.400" mb={3} />
+                            <Box mb={3} color="orange.400" fontSize="2xl">⚠</Box>
                             <Text fontSize="lg" fontWeight="semibold">
                                 {intl.formatMessage({
                                     defaultMessage:
@@ -80,12 +121,14 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             </Text>
                         </Center>
                     ) : (
-                        <ProductView
-                            product={fetchedProduct}
-                            isProductLoading={isFetching}
-                            showFullLink={true}
-                            imageSize="sm"
-                        />
+                        <QuickViewErrorBoundary>
+                            <ProductView
+                                product={fetchedProduct}
+                                isProductLoading={isFetching}
+                                showFullLink={true}
+                                imageSize="sm"
+                            />
+                        </QuickViewErrorBoundary>
                     )}
                 </ModalBody>
             </ModalContent>

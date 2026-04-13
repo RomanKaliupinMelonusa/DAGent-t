@@ -2,18 +2,43 @@
  * ProductTile Override — wraps the base ProductTile with a Quick View
  * overlay bar that slides up on hover (desktop) or is always visible
  * (mobile/tablet). Clicking the bar opens a QuickViewModal.
+ *
+ * SSR Safety: QuickViewModal is only mounted when isOpen === true,
+ * which only happens after a client-side click. This prevents the
+ * useProductViewModal / useProduct / useToast hooks from running
+ * during server-side rendering for every tile on the PLP.
  */
 import React from 'react'
 import PropTypes from 'prop-types'
 import {Box, useDisclosure} from '@salesforce/retail-react-app/app/components/shared/ui'
 import OriginalProductTile from '@salesforce/retail-react-app/app/components/product-tile'
-import QuickViewModal from '../quick-view-modal'
-import {ViewIcon} from '@chakra-ui/icons'
+
+// Lazy-load QuickViewModal — avoids hook execution during SSR entirely.
+// React.lazy + Suspense ensures the module (and its hooks) are only evaluated
+// when the fallback boundary is hit client-side.
+const QuickViewModal = React.lazy(() => import('../quick-view-modal'))
+
+/**
+ * Simple eye icon SVG to avoid depending on @chakra-ui/icons during SSR.
+ */
+const EyeIcon = (props) => (
+    <Box as="span" display="inline-flex" mr={2} {...props}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+        </svg>
+    </Box>
+)
 
 /**
  * Enhanced ProductTile with Quick View overlay bar.
  * Wraps the base ProductTile in a group-hover container and adds
  * an absolutely-positioned bar at the bottom of the product image area.
+ *
+ * NOTE: The PLP passes data-testid="sf-product-tile-{id}" which the base
+ * ProductTile spreads onto its Link, overwriting its hardcoded
+ * data-testid="product-tile". We add data-testid="product-tile" to
+ * our wrapper so E2E selectors like [data-testid="product-tile"] work.
  */
 const ProductTile = (props) => {
     const {product, ...rest} = props
@@ -34,7 +59,7 @@ const ProductTile = (props) => {
     }
 
     return (
-        <Box position="relative" role="group">
+        <Box position="relative" role="group" data-testid="product-tile">
             <OriginalProductTile product={product} {...rest} />
 
             {showQuickView && (
@@ -88,16 +113,21 @@ const ProductTile = (props) => {
                             transition="all 0.25s ease-in-out"
                             onClick={handleQuickView}
                         >
-                            <ViewIcon mr={2} />
+                            <EyeIcon />
                             Quick View
                         </Box>
                     </Box>
 
-                    <QuickViewModal
-                        product={product}
-                        isOpen={isOpen}
-                        onClose={onClose}
-                    />
+                    {/* Only mount QuickViewModal when opened — prevents SSR hook execution */}
+                    {isOpen && (
+                        <React.Suspense fallback={null}>
+                            <QuickViewModal
+                                product={product}
+                                isOpen={isOpen}
+                                onClose={onClose}
+                            />
+                        </React.Suspense>
+                    )}
                 </>
             )}
         </Box>

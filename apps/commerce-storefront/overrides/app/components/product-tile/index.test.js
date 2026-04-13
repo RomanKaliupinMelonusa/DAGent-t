@@ -3,7 +3,7 @@
  */
 import React from 'react'
 import '@testing-library/jest-dom'
-import {render, screen, fireEvent} from '@testing-library/react'
+import {render, screen, fireEvent, waitFor} from '@testing-library/react'
 import {IntlProvider} from 'react-intl'
 import {ChakraProvider} from '@salesforce/retail-react-app/app/components/shared/ui'
 import {BrowserRouter} from 'react-router-dom'
@@ -45,15 +45,6 @@ jest.mock('../quick-view-modal', () => {
             props.isOpen
                 ? React.createElement('div', {'data-testid': 'quick-view-modal', 'data-product-id': props.product?.productId}, 'Modal')
                 : null
-    }
-})
-
-// Mock @chakra-ui/icons
-jest.mock('@chakra-ui/icons', () => {
-    const React = require('react')
-    return {
-        ViewIcon: (props) =>
-            React.createElement('span', {'data-testid': 'view-icon', ...props})
     }
 })
 
@@ -140,11 +131,10 @@ test('renders Quick View overlay bar on standard product', () => {
     expect(screen.getByTestId('quick-view-btn')).toBeInTheDocument()
 })
 
-test('overlay bar contains eye icon and "Quick View" text', () => {
+test('overlay bar contains "Quick View" text', () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
     const btn = screen.getByTestId('quick-view-btn')
     expect(btn).toHaveTextContent('Quick View')
-    expect(screen.getByTestId('view-icon')).toBeInTheDocument()
 })
 
 test('overlay bar has correct aria-label', () => {
@@ -189,7 +179,6 @@ test('forwards all props to base ProductTile', () => {
             imageViewType="large"
         />
     )
-    // Base tile is rendered and receives forwarded props
     const baseTile = screen.getByTestId('base-product-tile')
     expect(baseTile).toBeInTheDocument()
     const receivedProps = JSON.parse(baseTile.getAttribute('data-props'))
@@ -206,13 +195,16 @@ test('renders base ProductTile for sets without Quick View bar', () => {
 
 // --- Interaction ---
 
-test('clicking bar opens QuickViewModal', () => {
+test('clicking bar opens QuickViewModal', async () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
 
     const btn = screen.getByTestId('quick-view-btn')
     fireEvent.click(btn)
 
-    expect(screen.getByTestId('quick-view-modal')).toBeInTheDocument()
+    // QuickViewModal is lazy-loaded, so we need to wait for it
+    await waitFor(() => {
+        expect(screen.getByTestId('quick-view-modal')).toBeInTheDocument()
+    })
 })
 
 test('clicking bar calls preventDefault', () => {
@@ -237,26 +229,16 @@ test('clicking bar calls stopPropagation', () => {
     expect(stopPropagationSpy).toHaveBeenCalled()
 })
 
-test('closing modal hides QuickViewModal', () => {
-    renderWithProviders(<ProductTile product={mockStandardProduct} />)
-
-    // Open modal
-    const btn = screen.getByTestId('quick-view-btn')
-    fireEvent.click(btn)
-    expect(screen.getByTestId('quick-view-modal')).toBeInTheDocument()
-
-    // The mock QuickViewModal shows when isOpen=true.
-    // The closing is handled by Chakra's useDisclosure internally.
-})
-
-test('modal receives correct product', () => {
+test('modal receives correct product', async () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
 
     const btn = screen.getByTestId('quick-view-btn')
     fireEvent.click(btn)
 
-    const modal = screen.getByTestId('quick-view-modal')
-    expect(modal.getAttribute('data-product-id')).toBe(mockStandardProduct.productId)
+    await waitFor(() => {
+        const modal = screen.getByTestId('quick-view-modal')
+        expect(modal.getAttribute('data-product-id')).toBe(mockStandardProduct.productId)
+    })
 })
 
 // --- Visual States ---
@@ -271,7 +253,6 @@ test('container has role="group" for hover pseudo', () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
 
     const btn = screen.getByTestId('quick-view-btn')
-    // Walk up to find the group container
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
@@ -279,15 +260,20 @@ test('container has role="group" for hover pseudo', () => {
 test('overlay bar is nested within an overflow-hidden container', () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
     const btn = screen.getByTestId('quick-view-btn')
-    // The bar should be within a parent that clips overflow for the slide animation
     const parent = btn.parentElement
     expect(parent).toBeTruthy()
-    // The parent container exists and the button is nested correctly
     expect(parent.contains(btn)).toBe(true)
 })
 
 test('handles undefined product gracefully', () => {
     renderWithProviders(<ProductTile product={undefined} />)
     expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
-    // Should still render without crashing
+})
+
+// --- SSR Safety ---
+
+test('QuickViewModal is NOT mounted when modal is closed', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    // Modal should not be in the DOM when not opened
+    expect(screen.queryByTestId('quick-view-modal')).not.toBeInTheDocument()
 })
