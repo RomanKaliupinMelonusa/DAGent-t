@@ -171,11 +171,14 @@ export async function triageFailure(
 export { parseTriageDiagnostic } from "./types.js";
 
 /**
- * Parse the `DOMAIN:` header from the first line of a CI diagnostic file.
+ * Parse the `DOMAIN:` or `FAULT_DOMAIN_HINT:` header from the first line of a diagnostic trace.
  * Returns an array of matched domain strings that exist as keys in `faultRouting`,
  * or `null` if the header is absent, empty, or no domains match.
  *
- * Format: `DOMAIN: service-a,service-b` (comma-separated domain names)
+ * Supported formats:
+ *   - `DOMAIN: service-a,service-b` (comma-separated domain names, from CI poll)
+ *   - `FAULT_DOMAIN_HINT: test-code-from-dev` (from cognitive result processor)
+ *
  * Matching: Each comma-separated value is checked against `faultRouting` keys.
  *           Only values that exist as keys are returned. If none match, returns `null`
  *           to fall through to keyword matching.
@@ -183,16 +186,15 @@ export { parseTriageDiagnostic } from "./types.js";
  * Examples (with appropriate faultRouting keys):
  *   - "DOMAIN: service-a"              → ["service-a"]
  *   - "DOMAIN: service-a,service-b"    → ["service-a", "service-b"]
- *   - "DOMAIN: schemas"                → ["schemas"]
+ *   - "FAULT_DOMAIN_HINT: test-code-from-dev" → ["test-code-from-dev"]
  *   - "DOMAIN: unknown"                → null (fall through)
- *   - "DOMAIN: ios"                    → ["ios"] (if "ios" exists in faultRouting)
  */
 export function parseDomainHeader(
   message: string,
   faultRouting?: Record<string, ApmFaultRoute>,
 ): string[] | null {
   const firstLine = message.split("\n")[0]?.trim() ?? "";
-  const match = /^DOMAIN:\s*(.+)$/i.exec(firstLine);
+  const match = /^(?:DOMAIN|FAULT_DOMAIN_HINT):\s*(.+)$/i.exec(firstLine);
   if (!match) return null;
 
   const domains = match[1].split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);

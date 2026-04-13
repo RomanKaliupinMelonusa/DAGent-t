@@ -43,6 +43,9 @@ import { pollReadiness, runValidateInfra } from "./session/readiness-probe.js";
 import { handleFailureReroute } from "./session/triage-dispatcher.js";
 import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
 import type { NodeContext, NodeResult } from "./handlers/index.js";
+import type { ResultProcessorConfig } from "./handlers/result-processor.js";
+import regexProcessor from "./handlers/result-processor-regex.js";
+import { createCognitiveProcessor } from "./handlers/result-processor-cognitive.js";
 
 // ── Backward-compatible re-exports ─────────────────────────────────────────
 // External consumers (watchdog.ts, tests) import these from session-runner.
@@ -325,6 +328,80 @@ export async function runItemSession(
     const message = err instanceof Error ? err.message : String(err);
     console.error(`  ✖ Handler "${handler.name}" threw: ${message}`);
     result = { outcome: "error", errorMessage: message, summary: {} };
+  }
+
+  // --- K2: Non-retryable detection for deterministic handlers ---
+  // If a deterministic (script) handler fails with the same error as the previous
+  // attempt AND no code has changed (HEAD unchanged), halt immediately instead of
+  // exhausting all retries. Retrying an identical command with identical input is futile.
+  if (
+    result.outcome !== "completed" &&
+    node?.type === "script" &&
+    previousAttempt?.errorMessage &&
+    result.errorMessage === previousAttempt.errorMessage
+  ) {
+    let headUnchanged = false;
+    try {
+      const currentHead = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim();
+      headUnchanged = currentHead === previousAttempt.headAfterAttempt;
+    } catch { /* non-fatal — skip optimization */ }
+    if (headUnchanged) {
+      console.log(`  ⚡ Non-retryable: deterministic handler "${handler.name}" produced identical error with no code changes — halting`);
+      itemSummary.outcome = result.outcome;
+      itemSummary.errorMessage = `Non-retryable: identical error on attempt ${attemptCounts[next.key]} with no code changes. ${result.errorMessage}`;
+      try {
+        await failItem(slug, next.key, itemSummary.errorMessage);
+      } catch { /* best-effort — pipeline is halting anyway */ }
+      return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
+    }
+  }
+
+  // --- Result processor: condense/diagnose failed script output before triage ---
+  if (result.outcome !== "completed" && result.errorMessage && node?.result_processor) {
+    const rpConfig: ResultProcessorConfig = {
+      type: node.result_processor.type,
+      maxChars: node.result_processor.max_chars,
+      model: node.result_processor.model,
+      prompt: node.result_processor.prompt,
+    };
+
+    if (rpConfig.type !== "none") {
+      try {
+        // Resolve prompt content from APM instruction fragment (if declared)
+        let promptContent: string | undefined;
+        if (rpConfig.prompt) {
+          const promptPath = path.join(appRoot, ".apm", rpConfig.prompt);
+          if (fs.existsSync(promptPath)) {
+            promptContent = fs.readFileSync(promptPath, "utf-8");
+          } else {
+            console.warn(`  ⚠ ResultProcessor prompt not found: ${promptPath}`);
+          }
+        }
+
+        const processor = rpConfig.type === "cognitive"
+          ? createCognitiveProcessor(client)
+          : regexProcessor;
+
+        const processed = await processor.process(result.errorMessage, rpConfig, promptContent);
+
+        // Store full output as separate file for human review
+        const fullLogPath = path.join(appRoot, "in-progress", `${slug}_E2E-FULL-LOG.md`);
+        fs.writeFileSync(fullLogPath, processed.fullOutput, "utf-8");
+
+        // Replace error message with condensed version for triage
+        result.errorMessage = processed.condensed;
+
+        const statsNote = processed.stats
+          ? ` (${processed.stats.passed}/${processed.stats.total} passed)`
+          : "";
+        const diagNote = processed.diagnosis
+          ? ` → hint: ${processed.diagnosis.fault_domain_hint}`
+          : "";
+        console.log(`  📊 ResultProcessor: ${result.errorMessage.length} chars condensed from ${processed.fullOutput.length}${statsNote}${diagNote}`);
+      } catch (err) {
+        console.warn(`  ⚠ ResultProcessor failed — using raw output: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   // --- Merge handler telemetry into kernel summary ---

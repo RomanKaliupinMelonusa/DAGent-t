@@ -54,3 +54,31 @@ Use `@salesforce/commerce-sdk-react` hooks for ALL Salesforce Commerce API inter
 - Hooks: `app/hooks/use-<name>.js`
 - Utilities: `app/utils/<name>.js`
 - Constants: `app/constants.js`
+
+### ErrorBoundary Mandate for Custom Containers
+
+When rendering a base-template component (`ProductView`, `ProductItem`, `ProductScroller`) inside a **custom container** (modal, drawer, sidebar, popover), **always wrap it in a local React `ErrorBoundary`**.
+
+The SDK's `AppErrorBoundary` wraps routes, not portals — an unhandled throw inside a Chakra `<Modal>` will destroy the **entire page** (route-level error boundary catches it, replacing all content with the crash page).
+
+```jsx
+import { ErrorBoundary } from 'react-error-boundary';
+
+function QuickViewFallback({ error }) {
+  return (
+    <Box data-testid="quick-view-error" p={4}>
+      <Text>Unable to load product details.</Text>
+    </Box>
+  );
+}
+
+// Inside your modal:
+<ErrorBoundary FallbackComponent={QuickViewFallback}>
+  <ProductView product={product} />
+</ErrorBoundary>
+```
+
+**Rules:**
+1. The fallback MUST include a `data-testid` ending in `-error` (matching the E2E three-outcome assertion contract).
+2. Never let a component crash escape a portal container to the route-level boundary.
+3. The `OfflineBoundary` in the SDK only catches `ChunkLoadError` — it will NOT catch API errors, TypeErrors, or render failures.

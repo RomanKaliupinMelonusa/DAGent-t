@@ -48,7 +48,7 @@ default:
       agent: "@pr-creator"
       phase: validation
       timeout_minutes: 15
-      depends_on: [storefront-unit-test]
+      depends_on: [storefront-unit-test, e2e-author]
       commit_scope: pipeline
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
@@ -74,6 +74,11 @@ default:
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
       triage_json_gated: false
+      result_processor:
+        type: cognitive
+        max_chars: 8192
+        model: fast
+        prompt: instructions/triage/e2e-diagnosis.md
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:

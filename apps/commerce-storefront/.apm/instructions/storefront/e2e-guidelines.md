@@ -40,3 +40,44 @@
     grep -rn 'networkidle' e2e/
     ```
     If this command returns ANY results, you have violated rule #1. Rewrite the offending test to use `domcontentloaded` + explicit locator waits before running `agent-commit.sh`.
+
+## Crash Page Detection (MANDATORY)
+
+11. **After any action that triggers component rendering** (button click, navigation, modal open), **check for the PWA Kit crash page.** DOM signature:
+    ```ts
+    const crashHeading = page.getByRole('heading', { name: /this page isn't working/i });
+    ```
+    If detected, capture the stack trace from the `<pre>` element and throw a structured error:
+    ```ts
+    const hasCrash = await crashHeading.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false);
+    if (hasCrash) {
+      const stack = await page.locator('pre').textContent().catch(() => 'no stack');
+      throw new Error(`PWA Kit crash page detected after "${actionDescription}". Stack: ${stack}`);
+    }
+    ```
+    This transforms ambiguous TimeoutErrors into actionable diagnostics. **Never let a crash page cause a silent 15-second timeout.**
+
+## Three-Outcome Assertion Pattern (MANDATORY for modals/drawers)
+
+12. **After opening a modal or drawer that fetches API data**, assert exactly one of three outcomes:
+    ```ts
+    // Outcome 1: Content loaded successfully
+    const content = page.locator('[data-testid="quick-view-modal"]');
+    // Outcome 2: Graceful error state inside the modal
+    const errorState = page.locator('[data-testid*="-error"]');
+    // Outcome 3: Crash page (entire page replaced)
+    const crashPage = page.getByRole('heading', { name: /this page isn't working/i });
+
+    const winner = await Promise.race([
+      content.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'content' as const),
+      errorState.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'error-state' as const),
+      crashPage.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'crash' as const),
+    ]);
+
+    if (winner === 'crash') {
+      const stack = await page.locator('pre').textContent().catch(() => 'no stack');
+      throw new Error(`PWA Kit crash page detected. Stack: ${stack}`);
+    }
+    // Outcome 1 or 2 are both valid — test logic decides which is expected
+    ```
+    An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode.

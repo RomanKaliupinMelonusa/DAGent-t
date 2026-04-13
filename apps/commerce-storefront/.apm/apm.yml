@@ -37,7 +37,7 @@ agents:
     skills: []
     toolLimits: { soft: 60, hard: 80 }
     security:
-      allowedWritePaths: ["^.*"]
+      allowedWritePaths: ["(^|/)in-progress/"]
     tools:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   e2e-author:
