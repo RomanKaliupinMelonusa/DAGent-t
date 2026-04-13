@@ -1,0 +1,82 @@
+{
+  "feature": "product-quick-view",
+  "timestamp": "2026-04-13T23:38:48.587Z",
+  "changes": [
+    {
+      "file": "overrides/app/components/product-tile/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "ProductTile override — wraps base tile with Quick View overlay bar (slide-up on hover, always visible on mobile)"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "QuickViewModal component — Chakra modal wrapping ProductView with lazy loading, error states, and a11y"
+    },
+    {
+      "file": "overrides/app/components/product-tile/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "19 unit tests for ProductTile overlay bar rendering, interaction, a11y, and edge cases"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "21 unit tests for QuickViewModal shell, content, hook integration, error handling, and a11y"
+    },
+    {
+      "file": "overrides/app/static/translations/compiled/en-US.json",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Add compiled en-US i18n strings for Quick View button and modal labels"
+    },
+    {
+      "file": "overrides/app/static/translations/compiled/en-GB.json",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Add compiled en-GB i18n strings for Quick View button and modal labels"
+    },
+    {
+      "file": "overrides/app/static/translations/compiled/en-XA.json",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Add compiled en-XA pseudo-locale i18n strings for Quick View"
+    },
+    {
+      "file": "translations/en-US.json",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Add source en-US translation messages for Quick View feature"
+    },
+    {
+      "file": "translations/en-GB.json",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Add source en-GB translation messages for Quick View feature"
+    },
+    {
+      "file": "jest.config.js",
+      "type": "modified",
+      "category": "config",
+      "description": "Exclude e2e/ directory from Jest test discovery to prevent Playwright/Jest conflicts"
+    },
+    {
+      "file": "e2e/product-quick-view.spec.ts",
+      "type": "added",
+      "category": "e2e",
+      "description": "13 Playwright E2E tests for Quick View button visibility, modal lifecycle, a11y, and keyboard navigation"
+    },
+    {
+      "file": "e2e/storefront-smoke.spec.ts",
+      "type": "deleted",
+      "category": "e2e",
+      "description": "Removed obsolete smoke test file superseded by feature-specific E2E specs"
+    }
+  ],
+  "testing": {
+    "unitTests": { "passed": 40, "failed": 0, "skipped": 0 },
+    "e2eTests": { "passed": 0, "failed": 13, "skipped": 0 }
+  }
+}
