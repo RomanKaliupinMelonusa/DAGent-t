@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-13T02:52:37.098Z",
+  "generatedAt": "2026-04-13T02:53:51.414Z",
   "featureSlug": "product-quick-view",
   "items": [
     {
@@ -385,19 +385,23 @@
     {
       "key": "create-draft-pr",
       "label": "create-draft-pr",
-      "agent": "create-draft-pr",
-      "phase": "",
+      "agent": "@pr-creator",
+      "phase": "validation",
       "attempt": 1,
-      "outcome": "in-progress",
-      "startedAt": "2026-04-13T02:50:59.973Z",
-      "finishedAt": "",
-      "durationMs": 0,
+      "startedAt": "2026-04-13T02:50:59.960Z",
+      "finishedAt": "2026-04-13T02:52:44.457Z",
+      "durationMs": 104498,
+      "outcome": "completed",
       "intents": [],
-      "filesChanged": [],
+      "messages": [
+        "The draft PR was created successfully: **PR #76**. Now let me complete the pipeline.",
+        "The **create-draft-pr** phase is complete. Here's a summary:  ## PR Created: [#76](https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/76) (Draft)  **Title:** `feat(commerce): product quick view — modal overlay on PLP tiles`   **Base:** `project/pwa-kit` ← `feature/product-quick-view`  ### What was delivered | Artifact | Details | |---|---| | **Draft PR** | Executive-ready with summary, changes table, testing evidence, risk assessment | | **9 files changed** | +1,346 lines / −6 lines | | **30 unit tests** | All passing (Jest/RTL) | | **14 E2E tests** | Authored (Playwright) | | **Pipeline state** | `create-draft-pr` marked complete and committed |"
+      ],
       "filesRead": [
         "apps/commerce-storefront/in-progress/product-quick-view_SPEC.md",
         "apps/commerce-storefront/in-progress/product-quick-view_SUMMARY.md"
       ],
+      "filesChanged": [],
       "shellCommands": [
         {
           "command": "cd /workspaces/DAGent-t && git diff project/pwa-kit...HEAD -- apps/commerce-storefront --stat",
@@ -453,20 +457,48 @@
           "command": "cd /workspaces/DAGent-t && npm run pipeline:complete product-quick-view create-draft-pr 2>&1",
           "timestamp": "2026-04-13T02:52:31.679Z",
           "isPipelineOp": true
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(pipeline): mark create-draft-pr complete for product-quick-view\" 2>&1",
+          "timestamp": "2026-04-13T02:52:37.099Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 3,
         "file-read": 2,
-        "shell": 12
+        "shell": 13
       },
-      "messages": [
-        "The draft PR was created successfully: **PR #76**. Now let me complete the pipeline."
+      "inputTokens": 122451,
+      "outputTokens": 3013,
+      "cacheReadTokens": 105794,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "a759a813a2112f0561a6aa60b77a027b0ac007bb"
+    },
+    {
+      "key": "e2e-runner",
+      "label": "e2e-runner",
+      "agent": "unknown",
+      "phase": "validation",
+      "attempt": 1,
+      "startedAt": "2026-04-13T02:50:59.962Z",
+      "finishedAt": "",
+      "durationMs": 0,
+      "outcome": "failed",
+      "intents": [
+        "Native script execution — failed"
       ],
-      "inputTokens": 106411,
-      "outputTokens": 2796,
-      "cacheReadTokens": 89994,
-      "cacheWriteTokens": 0
+      "messages": [],
+      "filesRead": [],
+      "filesChanged": [],
+      "shellCommands": [],
+      "toolCounts": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "headAfterAttempt": "a759a813a2112f0561a6aa60b77a027b0ac007bb",
+      "errorMessage": "--- PRIORITY EVIDENCE (5 sections) ---\n\nError: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeTruthy\u001b[2m()\u001b[22m\n\n    Received: \u001b[31mfalse\u001b[39m\n\n      268 |\n      269 |             // At minimum, the modal should contain some product content\n    > 270 |             expect(hasAddToCart || hasFullDetails).toBeTruthy()\n          |                                                    ^\n      271 |         }\n      272 |     })\n      273 |\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:270:52\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[5/17] [chromium] › e2e/product-quick-view.spec.ts:274:9 › Product Quick View › modal can be closed with the close button\n\n\n\u001b[1A\u001b[2K[6/17] [chromium] › e2e/product-quick-view.spec.ts:291:9 › Product Quick View › modal can be closed with Escape key\n\u001b[1A\u001b[2K[7/17] [chromium] › e2e/product-quick-view.spec.ts:307:9 › Product Quick View › Quick View does not navigate away from PLP\n\u001b[1A\u001b[2K[8/17] [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2KFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=f44fbadf-8447-48ca-a508-0b0c0b488d57&code=8vSS3_A0JXYRcr-yVj0HCFA7pqMjg14A2oJQrZHwJP4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy\n  ... [section truncated]\n\n---\n\nError: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeTruthy\u001b[2m()\u001b[22m\n\n    Received: \u001b[31mfalse\u001b[39m\n\n      268 |\n      269 |             // At minimum, the modal should contain some product content\n    > 270 |             expect(hasAddToCart || hasFullDetails).toBeTruthy()\n          |                                                    ^\n      271 |         }\n      272 |     })\n      273 |\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:270:52\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[5/17] [chromium] › e2e/product-quick-view.spec.ts:274:9 › Product Quick View › modal can be closed with the close button\n\n\n\u001b[1A\u001b[2K[6/17] [chromium] › e2e/product-quick-view.spec.ts:291:9 › Product Quick View › modal can be closed with Escape key\n\u001b[1A\u001b[2K[7/17] [chromium] › e2e/product-quick-view.spec.ts:307:9 › Product Quick View › Quick View does not navigate away from PLP\n\u001b[1A\u001b[2K[8/17] [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2KFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=f44fbadf-8447-48ca-a508-0b0c0b488d57&code=8vSS3_A0JXYRcr-yVj0HCFA7pqMjg14A2oJQrZHwJP4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy\n  ... [section truncated]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=765b8071-712c-47a8-a981-a3b38902e11e&code=ilqgai4EWCqbU8eYUA6j3rE1PVRk8bvmCXyAJQoZeWQ - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=f44fbadf-8447-48ca-a508-0b0c0b488d57&code=8vSS3_A0JXYRcr-yVj0HCFA7pqMjg14A2oJQrZHwJP4 - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n---\n\nFailed requests: [\n  \u001b[32m'GET http://localhost:3000/callback?usid=b9d99df5-b78d-41b4-98ad-7278ae5d5831&code=BSrcrzcuQn1QKxv4WBMlmcYhXTTtiklCTuttcW5kUCA - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET http://localhost:3000/callback?usid=c4fd8982-629d-40ce-ba46-540c4c449119&code=WaWPZewHo9-gXTO5OmNu3XFeMcicT1o5EOLuthy1Y1c - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'GET http://localhost:3000/callback?usid=aa6cdb00-1401-4cbf-a62e-6fdcea239c9a&code=0CMYHa-BmNJ1ti_gqiZpxJfH0bypgoCkcBIt4RFWHtE - net::ERR_ABORTED'\u001b[39m,\n  \u001b[32m'POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ - net::ERR_NAME_NOT_RESOLVED'\u001b[39m\n]\n\n--- CONTEXT ---\n\nTEST SUMMARY: 13 passed, 4 failed, 17 total\n\nRunning 17 tests using 1 worker\n\n\u001b[1A\u001b[2K[1/17] [chromium] › e2e/product-quick-view.spec.ts:172:9 › Product Quick View › Quick View button appears on product tiles on PLP\n\n\n\n\n\n\u001b[1A\u001b[2K[2/17] [chromium] › e2e/product-quick-view.spec.ts:185:9 › Product Quick View › Quick View button contains \"Quick View\" text\n\u001b[1A\u001b[2K[3/17] [chromium] › e2e/product-quick-view.spec.ts:196:9 › Product Quick View › clicking Quick View opens the modal with product data\n\n\n\u001b[1A\u001b[2K[4/17] [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2K\n\n\u001b[1A\u001b[2K  1) [chromium] › e2e/product-quick-view.spec.ts:228:9 › Product Quick View › modal shows loading spinner then product content \n\n    Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeTruthy\u001b[2m()\u001b[22m\n\n    Received: \u001b[31mfalse\u001b[39m\n\n      268 |\n      269 |             // At minimum, the modal should contain some product content\n    > 270 |             expect(hasAddToCart || hasFullDetails).toBeTruthy()\n          |                                                    ^\n      271 |         }\n      272 |     })\n      273 |\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:270:52\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-89128-pinner-then-product-content-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[5/17] [chromium] › e2e/product-quick-view.spec.ts:274:9 › Product Quick View › modal can be closed with the close button\n\n\n\u001b[1A\u001b[2K[6/17] [chromium] › e2e/product-quick-view.spec.ts:291:9 › Product Quick View › modal can be closed with Escape key\n\u001b[1A\u001b[2K[7/17] [chromium] › e2e/product-quick-view.spec.ts:307:9 › Product Quick View › Quick View does not navigate away from PLP\n\u001b[1A\u001b[2K[8/17] [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n\n\u001b[1A\u001b[2K[chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP\n\n---\n\n\u001b[1A\u001b[2KConsole errors: [\n]\n\n\u001b[1A\u001b[2K\n\n\u001b[1A\u001b[2K  2) [chromium] › e2e/product-quick-view.spec.ts:328:9 › Product Quick View › modal contains \"View Full Details\" link to PDP \n\n    Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\n    Locator: getByTestId('quick-view-modal').locator('a:has-text(\"View Full Details\"), a:has-text(\"Full Details\")').first()\n    Expected: visible\n    Timeout: 15000ms\n    Error: element(s) not found\n\n    Call log:\n    \u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n    \u001b[2m  - waiting for getByTestId('quick-view-modal').locator('a:has-text(\"View Full Details\"), a:has-text(\"Full Details\")').first()\u001b[22m\n\n\n      350 |                 'a:has-text(\"View Full Details\"), a:has-text(\"Full Details\")'\n      351 |             )\n    > 352 |             await expect(fullDetailsLink.first()).toBeVisible({timeout: ELEMENT_TIMEOUT})\n          |                                                   ^\n      353 |\n      354 |             // The link should point to a PDP URL\n      355 |             const href = await fullDetailsLink.first().getAttribute('href')\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:352:51\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-32409-ew-Full-Details-link-to-PDP-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-Product-32409-ew-Full-Details-link-to-PDP-chromium/error-context.md\n\n\n\u001b[1A\u001b[2K[9/17] [chromium] › e2e/product-quick-view.spec.ts:360:9 › Pr\n\n... [9821 chars omitted] ...\n\n-t/apps/commerce-storefront/build/main-server.js:277802:5)\n\u001b[2m[WebServer] \u001b[22m    at StoreLocatorProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:23156:3)\n\u001b[2m[WebServer] \u001b[22m    at MultiSiteProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:49905:9)\n\u001b[2m[WebServer] \u001b[22m    at CommerceApiProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:132009:5)\n\u001b[2m[WebServer] \u001b[22m    at AppConfig (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:68882:3)\n\u001b[2m[WebServer] \u001b[22m    at Hydrate (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:150267:3)\n\u001b[2m[WebServer] \u001b[22m    at QueryClientProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:150335:3)\n\u001b[2m[WebServer] \u001b[22m    at WithReactQuery (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:134258:3)\n\u001b[2m[WebServer] \u001b[22m    at CorrelationIdProvider (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:134403:3)\n\u001b[2m[WebServer] \u001b[22m    at Router (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:249094:30)\n\u001b[2m[WebServer] \u001b[22m    at StaticRouter (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:249590:35)\n\u001b[2m[WebServer] \u001b[22m    at OuterApp (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:132863:3)\n\u001b[2m[WebServer] \u001b[22m    at ChunkExtractorManager (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:288805:24)\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mWarning: Document: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.\n\u001b[2m[WebServer] \u001b[22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133145:5)\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mWarning: React does not recognize the `fetchPriority` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `fetchpriority` instead. If you accidentally passed it from a parent component, remove it from the DOM element.\n\u001b[2m[WebServer] \u001b[22m    at link\n\u001b[2m[WebServer] \u001b[22m    at head\n\u001b[2m[WebServer] \u001b[22m    at html\n\u001b[2m[WebServer] \u001b[22m    at Document (/workspaces/DAGent-t/apps/commerce-storefront/build/main-server.js:133145:5)\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m\n\u001b[2m[WebServer] \u001b[22m"
     }
   ]
 }
