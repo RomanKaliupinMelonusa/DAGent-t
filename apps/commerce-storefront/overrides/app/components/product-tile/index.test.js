@@ -212,3 +212,51 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+
+// --- Name fallback ---
+
+test('overlay bar aria-label uses name when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'name-only-789',
+        name: 'Sapphire Necklace',
+        image: {alt: 'Sapphire Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Sapphire Necklace')
+})
+
+test('overlay bar aria-label is empty string when both productName and name are missing', () => {
+    const productNoName = {
+        productId: 'no-name-456',
+        image: {alt: 'Unknown', disBaseLink: 'https://example.com/unknown.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+// --- Renders base tile even without Quick View (sets/bundles) ---
+
+test('still renders base ProductTile for product sets', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
+test('still renders base ProductTile for product bundles', () => {
+    renderWithProviders(<ProductTile product={mockBundleProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
+// --- Overlay bar is rendered as a button element ---
+
+test('overlay bar is rendered as a semantic button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName.toLowerCase()).toBe('button')
+})

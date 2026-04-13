@@ -220,3 +220,62 @@ test('aria-label falls back to generic text when product name missing', () => {
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
 })
+
+// --- imageSize prop ---
+
+test('passes imageSize="sm" to ProductView', () => {
+    // We can verify via the mock — ProductView stub receives imageSize prop.
+    const ProductViewMock = require('@salesforce/retail-react-app/app/components/product-view').default
+    const spy = jest.fn(ProductViewMock)
+    jest.spyOn(
+        require('@salesforce/retail-react-app/app/components/product-view'),
+        'default'
+    ).mockImplementation(spy)
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({imageSize: 'sm'}),
+        expect.anything()
+    )
+})
+
+// --- Error Boundary ---
+
+test('ErrorBoundary catches ProductView render errors gracefully', () => {
+    // Make ProductView throw an error during render
+    jest.spyOn(
+        require('@salesforce/retail-react-app/app/components/product-view'),
+        'default'
+    ).mockImplementation(() => {
+        throw new Error('Render crash')
+    })
+
+    // Suppress console.error from React error boundary logs
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(screen.getByTestId('quick-view-error')).toBeInTheDocument()
+    expect(screen.getByTestId('quick-view-error').textContent).toContain(
+        'Unable to load product details'
+    )
+
+    consoleError.mockRestore()
+})
+
+// --- aria-label uses fetched product name ---
+
+test('aria-label prefers fetched product name over search hit name', () => {
+    const searchHit = {productId: '123', productName: 'Search Name'}
+    useProductViewModal.mockReturnValue({
+        product: {name: 'Fetched Full Name', price: 50},
+        isFetching: false
+    })
+    renderWithProviders(
+        <QuickViewModal product={searchHit} isOpen={true} onClose={jest.fn()} />
+    )
+
+    const modal = screen.getByTestId('quick-view-modal')
+    expect(modal.getAttribute('aria-label')).toContain('Fetched Full Name')
+})
