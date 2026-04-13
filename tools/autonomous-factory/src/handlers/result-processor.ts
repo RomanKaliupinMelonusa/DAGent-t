@@ -77,19 +77,6 @@ export interface ResultProcessorConfig {
    * Declared per-project in workflows.yml → result_processor.priority_patterns.
    */
   priorityPatterns?: string[];
-  /**
-   * Regex patterns that indicate a runtime crash in the test output.
-   * When ANY pattern matches the condensed output, the cognitive processor
-   * always invokes the LLM — bypassing the fail-rate gate. This ensures
-   * component crashes get accurate fault-domain classification even when
-   * the majority of tests still pass.
-   *
-   * When empty or omitted, the cognitive processor relies solely on
-   * fail-rate and error-pattern-concentration heuristics.
-   *
-   * Declared per-project in workflows.yml → result_processor.crash_indicators.
-   */
-  crashIndicators?: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -32,41 +32,37 @@ const DEFAULT_BUILTIN_PROMPT =
   "Analyze this test output. Respond with JSON: " +
   '{ "root_cause": "<one sentence>", "fault_domain_hint": "<domain>", "error_type": "<category>", "evidence": "<key excerpts>" }';
 
-/** Determine whether the condensed output warrants an LLM diagnosis. */
+/**
+ * Determine whether the condensed output warrants an LLM diagnosis.
+ *
+ * Design principle: the cognitive processor costs ~$0.003 and takes ~3-5s.
+ * A misclassified pipeline run costs ~$38 and 15+ min of human time.
+ * The gate should therefore be permissive — invoke whenever failures exist.
+ *
+ * Previous design had a fail-rate gate (>50%) + error-concentration gate
+ * (≤3 unique patterns) + regex crash-indicator bypass. The regex gate
+ * caused misclassification when word order varied ("crash page" vs
+ * "Page crashed"), and the fail-rate gate blocked diagnosis at 47%.
+ * Both were premature optimizations that cost more than they saved.
+ */
 function shouldInvokeLlm(
-  condensed: string,
+  _condensed: string,
   stats?: { passed: number; failed: number; total: number },
-  crashIndicators?: string[],
 ): boolean {
-  // Condition A (priority): project-declared crash indicators always warrant
-  // LLM diagnosis, regardless of fail rate. Runtime crashes need accurate
-  // fault-domain classification even when most tests still pass.
-  if (crashIndicators && crashIndicators.length > 0) {
-    const hasMatch = crashIndicators.some((pattern) => {
-      try { return new RegExp(pattern, "i").test(condensed); } catch { return false; }
-    });
-    if (hasMatch) return true;
+  // Any failures → invoke. The LLM uses a project-specific prompt
+  // (e2e-diagnosis.md) that's far more accurate than regex pattern matching
+  // for classifying fault domains.
+  if (stats && stats.failed > 0) return true;
+
+  // Stats unparseable — invoke conservatively. The output already failed
+  // the handler, so something went wrong.
+  if (!stats) {
+    console.log("  ℹ Cognitive processor: test stats unavailable — invoking LLM for safety");
+    return true;
   }
 
-  // Condition B: majority failures (>50% fail rate)
-  if (stats && stats.total > 0) {
-    const failRate = stats.failed / stats.total;
-    if (failRate <= 0.5) return false;
-  } else if (!stats) {
-    // Stats unparseable — can't check fail rate. Continue to other conditions
-    // but log that we're operating without summary data.
-    console.log("  ℹ Cognitive processor: test stats unavailable — relying on error pattern analysis");
-  }
-
-  // Condition C: concentrated error patterns (≤3 unique error snippets)
-  const errorLines = condensed
-    .split("\n")
-    .filter((l) => /error|fail|timeout|crash|threw|exception/i.test(l));
-  const uniqueErrors = new Set(errorLines.map((l) => l.replace(/\d+/g, "N").trim()));
-  if (uniqueErrors.size > 3) return false;
-
-  // Default: invoke if conditions B+C passed
-  return true;
+  // All tests passed but handler still failed (e.g., exit code issues) — invoke.
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +148,7 @@ export function createCognitiveProcessor(client?: CopilotClient): ResultProcesso
         return regexResult;
       }
 
-      if (!shouldInvokeLlm(regexResult.condensed, regexResult.stats, config.crashIndicators)) {
+      if (!shouldInvokeLlm(regexResult.condensed, regexResult.stats)) {
         console.log("  ℹ Cognitive processor: trigger conditions not met — skipping LLM pass");
         return regexResult;
       }

@@ -218,9 +218,6 @@ export const ApmWorkflowNodeSchema = z.object({
     /** Regex patterns for high-signal diagnostic lines to extract before truncation.
      *  Matched sections are placed at the top of condensed output for triage. */
     priority_patterns: z.array(z.string()).optional(),
-    /** Regex patterns indicating runtime crashes — bypasses fail-rate gate
-     *  to always invoke LLM diagnosis when matched. */
-    crash_indicators: z.array(z.string()).optional(),
   }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",

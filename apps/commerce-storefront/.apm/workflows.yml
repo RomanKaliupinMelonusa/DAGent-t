@@ -104,17 +104,6 @@ default:
           - "Failed requests:\\s*\\[.*?\\]"
           # Playwright test failure headers: "N) [browser] › file › test"
           - "^\\s*\\d+\\)\\s*\\[(?:chromium|firefox|webkit)\\]\\s*›.*(?:\\n(?!\\n\\n|\\d+\\)\\s*\\[).*)*"
-        # ── Crash indicators: bypass fail-rate gate for LLM diagnosis ───
-        # When any of these match, the cognitive processor always invokes
-        # LLM regardless of pass/fail ratio. Ensures component crashes get
-        # accurate fault-domain classification (test-code-from-dev vs blocked).
-        crash_indicators:
-          - "error occurred in the <"
-          - "recreate this component tree"
-          - "ErrorBoundary"
-          - "crash page"
-          - "isn't working"
-
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       type: agent

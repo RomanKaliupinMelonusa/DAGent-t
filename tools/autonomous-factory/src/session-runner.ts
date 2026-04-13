@@ -365,7 +365,6 @@ export async function runItemSession(
       prompt: node.result_processor.prompt,
       noisePatterns: node.result_processor.noise_patterns,
       priorityPatterns: node.result_processor.priority_patterns,
-      crashIndicators: node.result_processor.crash_indicators,
     };
 
     if (rpConfig.type !== "none") {
