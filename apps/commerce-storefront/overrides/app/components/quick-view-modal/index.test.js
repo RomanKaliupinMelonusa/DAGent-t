@@ -15,12 +15,17 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
     useProductViewModal: jest.fn()
 }))
 
+// Capture ProductView props for assertion
+let capturedProductViewProps = {}
+
 // Mock ProductView to avoid deep dependency chains
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
     return {
         __esModule: true,
         default: (props) => {
+            // Store props for test assertions
+            capturedProductViewProps = props
             return React.createElement(
                 'div',
                 {'data-testid': 'product-view'},
@@ -101,6 +106,7 @@ const defaultProps = {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    capturedProductViewProps = {}
     useProductViewModal.mockReturnValue({
         product: mockProduct,
         isFetching: false
@@ -219,4 +225,21 @@ test('aria-label falls back to generic text when product name missing', () => {
 
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
+})
+
+// --- Additional Coverage Tests ---
+
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(capturedProductViewProps.imageSize).toBe('sm')
+})
+
+test('passes correct props bundle to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(capturedProductViewProps.showFullLink).toBe(true)
+    expect(capturedProductViewProps.imageSize).toBe('sm')
+    expect(capturedProductViewProps.product).toEqual(mockProduct)
+    expect(capturedProductViewProps.isProductLoading).toBe(false)
 })

@@ -212,3 +212,45 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Additional Coverage: productName fallback branch ---
+
+test('overlay bar aria-label uses name when productName is missing', () => {
+    const productWithOnlyName = {
+        productId: 'name-only-123',
+        name: 'Sapphire Necklace',
+        image: {alt: 'Sapphire Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithOnlyName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Sapphire Necklace')
+})
+
+test('overlay bar aria-label is empty string when neither productName nor name exists', () => {
+    const productNoName = {
+        productId: 'no-name-789',
+        image: {alt: 'Product', disBaseLink: 'https://example.com/product.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('renders Quick View bar for standard item type product', () => {
+    const itemProduct = {
+        productId: 'item-999',
+        productName: 'Standard Item',
+        image: {alt: 'Item', disBaseLink: 'https://example.com/item.jpg'},
+        imageGroups: [],
+        type: {item: true}
+    }
+    renderWithProviders(<ProductTile product={itemProduct} />)
+    expect(screen.getByTestId('quick-view-btn')).toBeInTheDocument()
+})
+
+test('does not render Quick View bar when product is undefined', () => {
+    renderWithProviders(<ProductTile product={undefined} />)
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
