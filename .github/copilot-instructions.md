@@ -131,11 +131,12 @@ The orchestrator is a deterministic `while` loop that:
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
 5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `git-push` (deterministic push), `github-ci-poll` (CI polling), `github-pr-publish` (PR promotion), `local-exec` (script execution)
 6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
-7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes) before the `docs-archived` session
-8. Waits for handlers to complete or fail
-9. Advances to the next batch of ready items
-10. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
-11. Injects downstream failure context into dev agents during redevelopment cycles (post-deploy error details)
+7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes and handoff artifacts) before the `docs-archived` session
+8. For `local-exec` script nodes: runs optional `smoke_command` pre-flight check before the main command, then processes failed output through the result processor pipeline (noise stripping → test failure dedup → diagnostic block dedup → priority extraction → optional LLM diagnosis)
+9. Waits for handlers to complete or fail
+10. Advances to the next batch of ready items
+11. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
+12. Injects downstream failure context (including structured diagnosis from result processors) into dev agents during redevelopment cycles
 
 ### Hard Rules
 
