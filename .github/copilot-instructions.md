@@ -40,15 +40,23 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Pipeline state machine & DAG | `tools/autonomous-factory/docs/04-state-machine.md` |
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
+| Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Session runner (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
+| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
+| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
+| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
+| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
+| Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
+| Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
+| Sample app DAG definition | `apps/sample-app/.apm/workflows.yml` |
 | Sample app instruction fragments | `apps/sample-app/.apm/instructions/**/*.md` |
 | Sample app lifecycle hooks | `apps/sample-app/.apm/hooks/*.sh` |
 | Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
@@ -56,6 +64,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | APM compiler & context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Active feature workspace | `apps/sample-app/in-progress/` |
 | Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
+| Commerce storefront DAG definition | `apps/commerce-storefront/.apm/workflows.yml` |
 | Commerce storefront instruction fragments | `apps/commerce-storefront/.apm/instructions/**/*.md` |
 | Commerce storefront lifecycle hooks | `apps/commerce-storefront/.apm/hooks/*.sh` |
 | Commerce storefront skill declarations | `apps/commerce-storefront/.apm/skills/*.skill.md` |
@@ -84,14 +93,19 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | What | Where |
 |---|---|
 | Orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Session runner (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
+| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
+| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
+| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
+| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
+| Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | State machine API binding | `tools/autonomous-factory/src/state.ts` |
 | GitHub Actions workflow | `.github/workflows/agentic-feature.yml` |
 
@@ -115,10 +129,10 @@ The orchestrator is a deterministic `while` loop that:
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
 3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
-5. Maps each item to a specialist agent config via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules
-6. Spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
+5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `git-push` (deterministic push), `github-ci-poll` (CI polling), `github-pr-publish` (PR promotion), `local-exec` (script execution)
+6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
 7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes) before the `docs-archived` session
-8. Waits for agents to complete or fail
+8. Waits for handlers to complete or fail
 9. Advances to the next batch of ready items
 10. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
 11. Injects downstream failure context into dev agents during redevelopment cycles (post-deploy error details)

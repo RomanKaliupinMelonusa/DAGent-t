@@ -177,14 +177,14 @@ flowchart TB
 
 | Workflow | Skipped Items (auto-N/A) | Active Count |
 |----------|-------------------------|:---:|
-| **Full-Stack** | (none) | 20 |
-| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 17 |
-| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 16 |
-| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `schema-dev`, `code-cleanup`, `push-app`, `poll-app-ci`, `doc-architect` | 9 |
-| **App-Only** | `schema-dev`, `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff` | 14 |
-| **Backend-Only** | `schema-dev`, `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `frontend-dev`, `frontend-unit-test`, `live-ui` | 11 |
+| **Full-Stack** | (none) | 19 |
+| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 16 |
+| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 15 |
+| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `code-cleanup`, `push-app`, `poll-app-ci`, `doc-architect` | 9 |
+| **App-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff` | 14 |
+| **Backend-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `frontend-dev`, `frontend-unit-test`, `live-ui` | 11 |
 
-> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for **all** workflow types. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items.
+> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for **all** workflow types. `schema-dev` runs for all types except Frontend. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items (except `create-draft-pr`).
 
 ---
 
@@ -321,8 +321,14 @@ classDiagram
         +string started
         +string|null deployedUrl
         +string|null implementationNotes
+        +boolean|null elevatedApply
         +PipelineItem[] items
         +ErrorEntry[] errorLog
+        +Record~string,string[]~ dependencies
+        +string[] phases
+        +Record~string,string~ nodeTypes
+        +Record~string,string~ nodeCategories
+        +string[] naByType
     }
 
     class PipelineItem {
@@ -339,6 +345,7 @@ classDiagram
         +string timestamp
         +string itemKey
         +string message
+        +string|null errorSignature
     }
 
     class NextAction {
@@ -373,6 +380,8 @@ classDiagram
 | `in-progress/<slug>_TRANS.md` | Markdown | Human-readable view (auto-generated from state) |
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
+>
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — `pipeline-state.mjs` contains no hardcoded item lists or dependency mappings.
 
 ---
 

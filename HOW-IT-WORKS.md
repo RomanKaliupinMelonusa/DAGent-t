@@ -23,7 +23,7 @@ graph LR
 
 That's the whole system. Everything below zooms deeper into each part.
 
-> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/watchdog.ts#L358) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). Session lifecycle lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts).
+> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/watchdog.ts) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). The dispatch kernel lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts), routing items to handler plugins in [handlers/](tools/autonomous-factory/src/handlers/).
 
 ---
 

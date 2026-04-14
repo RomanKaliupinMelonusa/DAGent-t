@@ -81,7 +81,7 @@ flowchart TB
 
 Both flows follow the same fundamental progression: **Design → Develop → Test → Deploy → Verify**. The agentic pipeline preserves this structure but adds parallelism, automated recovery, and mandatory finalization.
 
-> **Go deeper:** For the full system architecture with MCP servers and state management, see [00-overview.md](00-overview.md). For the DAG dependency graph with parallel scheduling details, see [04-state-machine.md](04-state-machine.md). For the 14 LLM specialist agents and their capabilities, see [05-agents.md](05-agents.md).
+> **Go deeper:** For the full system architecture with MCP servers and state management, see [00-overview.md](00-overview.md). For the DAG dependency graph with parallel scheduling details, see [04-state-machine.md](04-state-machine.md). For the 13 LLM specialist agents and their capabilities, see [05-agents.md](05-agents.md).
 
 ---
 
@@ -116,7 +116,7 @@ flowchart LR
 
     subgraph AGENTIC["DAGent Pipeline"]
         SPEC["SPEC file\n(human intent)"]:::green
-        APM["APM rules\n(28 .md fragments)\n(governance)"]:::blue
+        APM["APM rules\n(.md fragments)\n(governance)"]:::blue
         ROAM["roam-code index\n(semantic AST graph)\n(codebase reality)"]:::blue
 
         AGENTS["Specialist Agents"]:::purple

@@ -186,9 +186,9 @@ Five escape hatches exist for legitimate human use: the `AGENT_COMMIT` env var (
 
 Per-agent tool call limits prevent infinite loops:
 
-- **Soft limit (default: 30 calls)** — A frustration prompt is injected into the tool result: *"You appear stuck in a debugging loop. Consider: escalate via `pipeline:doc-note`, skip with `test.skip()`, or fail gracefully with `pipeline:fail`."* The agent can continue, but it's been told to wrap up.
+- **Soft limit (default: 60 calls)** — A frustration prompt is injected into the tool result: *"You appear stuck in a debugging loop. Consider: escalate via `pipeline:doc-note`, skip with `test.skip()`, or fail gracefully with `pipeline:fail`."* The agent can continue, but it's been told to wrap up.
 - **Write-density breaker** — If an agent writes to the same file 3+ times, a warning is injected about possible upstream issues. This catches the pattern where an agent polishes the symptom instead of fixing the cause.
-- **Hard limit (default: 40 calls)** — Force-disconnect. Session treated as an error. The orchestrator retries with injected context about why the previous attempt was killed.
+- **Hard limit (default: 80 calls)** — Force-disconnect. Session treated as an error. The orchestrator retries with injected context about why the previous attempt was killed.
 
 The limits are configurable per-agent in `apm.yml`. A `schema-dev` agent that generates types gets a tight budget. A `backend-dev` agent that writes multiple files gets more room. A `live-ui` agent that runs Playwright tests gets a larger allowance because each test execution is a tool call.
 
@@ -320,15 +320,24 @@ The `DOMAIN:` prefix bypasses all classification — simple string parsing route
 
 Triage packs — curated pattern libraries in `.apm/triage-packs/` — provide zero-cost substring matching. The retriever normalizes diagnostic traces (strips timestamps, SHAs, UUIDs), then matches against known signatures:
 
-```yaml
-# triage-packs/storefront-common.yml
-signatures:
-  - error_snippet: "Cannot find module '@salesforce/retail-react-app"
-    fault_domain: frontend
-    reason: "PWA Kit dependency resolution — check overrides/app imports"
-  - error_snippet: "ECONNREFUSED 127.0.0.1:3000"
-    fault_domain: cicd
-    reason: "Dev server not running — check start script in deploy workflow"
+```json
+// triage-packs/storefront-common.json
+{
+  "name": "storefront-common",
+  "stack": "PWA Kit / SFCC",
+  "signatures": [
+    {
+      "error_snippet": "Cannot find module '@salesforce/retail-react-app",
+      "fault_domain": "frontend",
+      "reason": "PWA Kit dependency resolution — check overrides/app imports"
+    },
+    {
+      "error_snippet": "ECONNREFUSED 127.0.0.1:3000",
+      "fault_domain": "cicd",
+      "reason": "Dev server not running — check start script in deploy workflow"
+    }
+  ]
+}
 ```
 
 This is the knowledge base. When the same error occurs twice, the second time it's routed deterministically in <1ms with zero LLM cost.
@@ -339,7 +348,7 @@ For genuinely novel errors — patterns nobody has seen before — the system fa
 
 ```typescript
 const session = await client.createSession({
-  model: "claude-opus-4-6",
+  model: "claude-opus-4.6",
   systemMessage: {
     mode: "replace",
     content: "You are a JSON-only fault-domain classifier.",
@@ -449,17 +458,26 @@ The agent receives both images, compares layout, spacing, color, and component p
 
 ### Triage Pack Marketplace
 
-Triage packs are YAML files with error signatures. They're project-specific today, but error patterns are often framework-specific:
+Triage packs are JSON files with error signatures. They're project-specific today, but error patterns are often framework-specific:
 
-```yaml
-# Potential shared pack: next-js-common.yml
-signatures:
-  - error_snippet: "Module not found: Can't resolve"
-    fault_domain: frontend
-    reason: "Missing dependency or incorrect import path"
-  - error_snippet: "NEXT_NOT_FOUND"
-    fault_domain: frontend
-    reason: "404 page rendered — check routing configuration"
+```json
+// Potential shared pack: next-js-common.json
+{
+  "name": "next-js-common",
+  "stack": "Next.js",
+  "signatures": [
+    {
+      "error_snippet": "Module not found: Can't resolve",
+      "fault_domain": "frontend",
+      "reason": "Missing dependency or incorrect import path"
+    },
+    {
+      "error_snippet": "NEXT_NOT_FOUND",
+      "fault_domain": "frontend",
+      "reason": "404 page rendered — check routing configuration"
+    }
+  ]
+}
 ```
 
 A registry of community-contributed triage packs — searchable by framework, cloud provider, and error class — would accelerate the data flywheel for new projects. Install a pack, get deterministic routing for common errors on day one.

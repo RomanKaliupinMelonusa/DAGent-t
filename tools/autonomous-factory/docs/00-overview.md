@@ -96,15 +96,32 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph ENTRY["Entry Point"]
-        W["watchdog.ts\n(~360 lines)"]
+        W["watchdog.ts\n(~575 lines)"]
     end
 
     subgraph CORE["Core Modules"]
-        SR["session-runner.ts\n(~1546 lines)\nSession Lifecycle"]
-        A["agents.ts\n(~1400 lines)\nPrompt Factory"]
-        PA["apm-compiler.ts\n(~310 lines)\nRule Engine"]
-        S["state.ts\n(~130 lines)\nTyped Wrapper"]
-        T["types.ts\n(~145 lines)\nShared Types + Constants"]
+        SR["session-runner.ts\n(~550 lines)\nDispatch Kernel"]
+        A["agents.ts\n(~320 lines)\nPrompt Factory"]
+        PA["apm-compiler.ts\n(~370 lines)\nRule Engine"]
+        S["state.ts\n(~90 lines)\nTyped Wrapper"]
+        T["types.ts\n(~170 lines)\nShared Types + Constants"]
+    end
+
+    subgraph HANDLERS["Handler Plugin System (handlers/)"]
+        H_CA["copilot-agent.ts\nLLM Agent Sessions"]
+        H_GP["git-push.ts\nDeterministic Push"]
+        H_CP["github-ci-poll.ts\nCI Polling"]
+        H_PR["github-pr-publish.ts\nPR Publish"]
+        H_LE["local-exec.ts\nLocal Script Exec"]
+        H_RP["result-processor-*.ts\nError Condensing"]
+    end
+
+    subgraph SESSION["Session Submodules (session/)"]
+        SS["shared.ts\nWorkflow Node Helpers"]
+        SE["session-events.ts\nTool Result Injection"]
+        RP_PROBE["readiness-probe.ts\nData-Plane Readiness"]
+        TD["triage-dispatcher.ts\nFailure Rerouting"]
+        SCR["script-executor.ts\nScript Execution"]
     end
 
     subgraph SUPPORT["Supporting Modules"]
@@ -112,11 +129,13 @@ flowchart LR
         RP["reporting.ts\nSummary + Logs"]
         AS["auto-skip.ts\nGit Change Detection"]
         CI["context-injection.ts\nRetry/Revert Prompts"]
-        TR["triage.ts\nFailure Classification"]
+        TR["triage.ts + triage/\nFailure Classification"]
+        TH["tool-harness.ts\nTool Call Harness"]
+        AR["archive.ts\nFeature Archiving"]
     end
 
     subgraph INFRA["Infrastructure"]
-        PS["pipeline-state.mjs\n(~468 lines)\nDAG State Machine"]
+        PS["pipeline-state.mjs\n(~1405 lines)\nDAG State Machine"]
         AC["agent-commit.sh\nGit Wrapper"]
         AB["agent-branch.sh\nBranch Manager"]
         PC["poll-ci.sh\nCI Poller"]
@@ -135,21 +154,23 @@ flowchart LR
         PW["@playwright/mcp"]
     end
 
-    W -->|"getAgentConfig()"| A
     W -->|"runItemSession()"| SR
     W -->|"getNextAvailable()"| S
     W -->|"agent-commit.sh"| AC
     W -->|"agent-branch.sh"| AB
     W -->|"roam index"| ROAM
-    SR -->|"getAgentConfig()"| A
-    SR -->|"triageFailure()"| TR
-    SR -->|"autoSkip"| AS
+    SR -->|"resolveHandler()"| HANDLERS
+    SR -->|"triageFailure()"| TD
+    SR -->|"evaluateAutoSkip()"| AS
     SR -->|"flushReports()"| RP
     SR -->|"context injection"| CI
-    W -->|"preflight"| PF
+    H_CA -->|"getAgentConfig()"| A
+    H_CA -->|"wireToolLogging()"| TH
+    H_CA -->|"session events"| SE
     A -->|"getRulesForAgent()"| PA
     A -->|"roamMcpConfig()"| ROAM
     A -->|"playwright config"| PW
+    W -->|"preflight"| PF
     S -->|"lazy import()"| PS
     PA -->|"load at init"| MF
     PA -->|"read & cache"| RF
@@ -161,6 +182,8 @@ flowchart LR
 
     style ENTRY fill:#e3f2fd,stroke:#1565c0
     style CORE fill:#fff3e0,stroke:#e65100
+    style HANDLERS fill:#e8f5e9,stroke:#2e7d32
+    style SESSION fill:#fff9c4,stroke:#f9a825
     style INFRA fill:#e8f5e9,stroke:#2e7d32
     style EXT fill:#f3e5f5,stroke:#7b1fa2
 ```
@@ -202,7 +225,7 @@ mindmap
       GitHub Actions (OIDC)
     Rule System
       apm.yml (persona bindings)
-      26 rule fragments (5 categories)
+      17 rule fragments (5 categories)
       APM Compiler (eager cache)
       apm compile (IDE gen)
 ```
@@ -342,7 +365,7 @@ flowchart LR
 | **02** | [02-roam-code.md](02-roam-code.md) | Developer | Roam-code: 6 killer capabilities, integration, agent rules, adoption roadmap |
 | **03** | [03-apm-context.md](03-apm-context.md) | Developer | Rule resolution pipeline, persona mapping, token budgets |
 | **04** | [04-state-machine.md](04-state-machine.md) | Architect | Pipeline DAG, workflow types, status lifecycle, redevelopment reroute |
-| **05** | [05-agents.md](05-agents.md) | Architect | 14 LLM specialist agents, MCP assignments, prompt anatomy, auto-skip |
+| **05** | [05-agents.md](05-agents.md) | Architect | 13 LLM specialist agents, 5 script handlers, MCP assignments, prompt anatomy, auto-skip |
 | **06** | [06-roadmap/](06-roadmap/) | All | Standing feature deep-dives with implementation plans |
 
 **Operational hub:** [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) — project structure, configuration, commands, safety guardrails, and how to run. *(Developer audience)*

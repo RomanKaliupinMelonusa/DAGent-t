@@ -1,8 +1,10 @@
 # Orchestrator — watchdog.ts & Session Modules
 
 > The deterministic headless loop that drives the entire pipeline.
-> Entry point: `tools/autonomous-factory/src/watchdog.ts` (~360 lines)
-> Session runner: `tools/autonomous-factory/src/session-runner.ts` (~1546 lines)
+> Entry point: `tools/autonomous-factory/src/watchdog.ts` (~575 lines)
+> Dispatch kernel: `tools/autonomous-factory/src/session-runner.ts` (~550 lines)
+> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, git-push, github-ci-poll, github-pr-publish, local-exec)
+> Session submodules: `tools/autonomous-factory/src/session/` (shared, readiness-probe, triage-dispatcher, session-events, script-executor)
 > Supporting modules: `preflight.ts`, `reporting.ts`, `auto-skip.ts`, `context-injection.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
@@ -35,7 +37,7 @@ flowchart TD
     INDEX -->|"Fail (non-fatal)"| ASSEMBLER
     WARN --> ASSEMBLER
 
-    ASSEMBLER["Init APM Compiler\n· Read .apm/apm.yml\n· Read 28 instruction fragments\n· Validate token budgets\n· Cache per-agent compiled context"]
+    ASSEMBLER["Init APM Compiler\n· Read .apm/apm.yml\n· Read instruction fragments\n· Validate token budgets\n· Cache per-agent compiled context"]
     ASSEMBLER -->|"Budget exceeded → FATAL"| ABORT(["❌ Abort"])
     ASSEMBLER --> LOOP
 
@@ -173,18 +175,21 @@ poll-infra-plan item?
 
 ## Session Timeout Configuration
 
+> Timeouts are declared per-node via `timeout_minutes` in `.apm/workflows.yml`. These are the values for the sample-app pipeline.
+
 | Item Type | Timeout | Rationale |
 |-----------|---------|-----------|
 | **Infra dev items** (schema-dev, infra-architect) | 20 min | Complex implementation, Terraform planning |
 | **App dev items** (backend-dev, frontend-dev) | 20 min | Complex implementation, multi-file changes |
 | **Test items** (backend-unit-test, frontend-unit-test) | 10 min | Scoped to test writing, fewer files |
-| **Infra push/poll** (push-infra, poll-infra-plan) | 15 min | Deterministic shell bypasses (no LLM). `poll-infra-plan` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
+| **Infra push/poll** (push-infra, poll-infra-plan) | 15 min | Deterministic handler bypasses (no LLM). `poll-infra-plan` captures CI failure logs via `gh run view --log-failed \| tail -n 250` and routes directly to `triage.ts` for `resetForDev` — no agent session fallback |
 | **Draft PR** (create-draft-pr) | 15 min | LLM agent session — creates Draft PR (requires agentic reasoning, not a shell bypass) |
 | **Approval gate** (await-infra-approval) | ∞ | Human gate — pipeline pauses until `/dagent approve-infra` |
-| **Infra handoff** (infra-handoff) | 15 min | Capture Terraform outputs, write infra-interfaces.md |
-| **App deploy items** (push-app, poll-app-ci) | 15 min | Deterministic shell bypasses (no LLM). `poll-app-ci` captures CI failure logs and routes to triage |
-| **Post-deploy items** (integration-test, live-ui) | 15 min | Run against live endpoints, may need retries. 60-second propagation delay before first attempt |
-| **Finalize items** (code-cleanup, docs-archived, publish-pr) | 15 min | Scoped cleanup and documentation tasks |
+| **Infra handoff** (infra-handoff) | 20 min | Capture Terraform outputs, write infra-interfaces.md |
+| **App deploy items** (push-app, poll-app-ci) | 15 min | Deterministic handler bypasses (no LLM). `poll-app-ci` captures CI failure logs and routes to triage |
+| **Post-deploy items** (integration-test, live-ui) | 20 min | Run against live endpoints, may need retries. 60-second propagation delay before first attempt |
+| **Finalize items** (code-cleanup, docs-archived, doc-architect) | 20 min | Cleanup, documentation, and architecture assessment |
+| **Script handlers** (publish-pr) | 15 min | Deterministic PR promotion (no LLM) |
 
 ---
 
@@ -276,14 +281,14 @@ classDiagram
 | `main()` | watchdog.ts | Entry point — init, pre-flight, Phase 0, main loop | CLI |
 | `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After publish-pr |
 | `commitAndPushState()` | watchdog.ts | Commit state files + conditional push (push guard: skips push if unpushed code files exist outside `in-progress/` or `archive/`) | Main loop |
-| `runItemSession()` | session-runner.ts | Execute one pipeline item (auto-skip, bypass, or SDK session) | Main loop |
-| `shouldSkipRetry()` | session-runner.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` before comparing. Strips git SHAs, timestamps, run IDs, and line numbers to detect semantically identical errors across retries | `runItemSession()` |
-| `normalizeDiagnosticTrace()` | session-runner.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces for semantic circuit breaker comparison | `shouldSkipRetry()` |
-| `getAgentDirectoryPrefixes()` | session-runner.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution (prevents cross-agent pollution in parallel runs) | Post-session `filesChanged` fallback |
-| `handleFailureReroute()` | session-runner.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
-| `runValidateApp()` | session-runner.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
-| `runValidateInfra()` | session-runner.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
-| `getTimeout()` | session-runner.ts | Session timeout by item type | `runAgentSession()` |
+| `runItemSession()` | session-runner.ts | Execute one pipeline item — dispatch kernel: circuit breaker → auto-skip → readiness probe → resolve handler → execute → state transitions. Routes to handler plugins in `handlers/` | Main loop |
+| `shouldSkipRetry()` | session/shared.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` before comparing. Strips git SHAs, timestamps, run IDs, and line numbers to detect semantically identical errors across retries | `runItemSession()` |
+| `normalizeDiagnosticTrace()` | session/shared.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces for semantic circuit breaker comparison | `shouldSkipRetry()` |
+| `getAgentDirectoryPrefixes()` | session/shared.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution (prevents cross-agent pollution in parallel runs) | Post-session `filesChanged` fallback |
+| `handleFailureReroute()` | session/triage-dispatcher.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
+| `runValidateApp()` | session/readiness-probe.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
+| `runValidateInfra()` | session/readiness-probe.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
+| `getTimeout()` | session/shared.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in workflows.yml) | Copilot agent handler |
 | `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
 | `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |
 | `checkInProgressArtifacts()` | preflight.ts | Check for stale artifacts from previous runs | `main()` |
@@ -291,20 +296,25 @@ classDiagram
 | `buildRoamIndex()` | preflight.ts | Phase 0 semantic graph build | `main()` |
 | `getAutoSkipBaseRef()` | auto-skip.ts | Git ref for change detection (auto-skip optimization) | `tryAutoSkip()` |
 | `getGitChangedFiles()` | auto-skip.ts | Files changed since a git ref via `git diff --name-only` | Auto-skip |
-| `buildRetryContext()` | context-injection.ts | Prompt augmentation for retry attempts | `runAgentSession()` |
-| `buildDownstreamFailureContext()` | context-injection.ts | Inject post-deploy errors into dev agent prompts | `runAgentSession()` |
-| `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | `runAgentSession()` |
-| `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runAgentSession()` |
-| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-archived | `runAgentSession()` |
+| `buildRetryContext()` | context-injection.ts | Prompt augmentation for retry attempts | Copilot agent handler |
+| `buildDownstreamFailureContext()` | context-injection.ts | Inject post-deploy errors into dev agent prompts | Copilot agent handler |
+| `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | Copilot agent handler |
+| `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runItemSession()` |
+| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-archived | Copilot agent handler |
 | `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
 | `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
-| `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | `runAgentSession()` |
+| `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | Copilot agent handler |
 | `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
-| `wireToolLogging()` | session-runner.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | `runAgentSession()` |
+| `wireToolLogging()` | tool-harness.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | Copilot agent handler |
 | `triageFailure()` | triage.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router). Tier 1 runs `validateFaultDomain()` to detect CI/CD root causes and augment reset keys with deploy items | `handleFailureReroute()` |
 | `validateFaultDomain()` | triage.ts | Defense-in-Depth: detect CI/CD root-cause indicators in agent-classified errors and augment reset list with deploy items (keeps original domain so dev agent can fix `.github/` files). Uses `retrieveTopMatches()` for cicd KB matching + hardcoded `CICD_ROOT_CAUSE_INDICATORS` | `triageFailure()` Tier 1 |
 | `retrieveTopMatches()` | triage/retriever.ts | Local substring matcher against pre-compiled triage pack signatures. Normalizes trace via `normalizeDiagnosticTrace()`, returns top 3 hits ranked by snippet length (Tier 4) | `triageFailure()`, `validateFaultDomain()` |
 | `askLlmRouter()` | triage/llm-router.ts | LLM-based fault domain classification fallback for novel errors. Persists novel classifications to `_NOVEL_TRIAGE.jsonl` (Data Flywheel) (Tier 5) | `triageFailure()` |
+| `resolveHandler()` | handlers/registry.ts | Look up a handler by name from the built-in registry or dynamic import from `.apm/handlers/` | `runItemSession()` |
+| `inferHandler()` | handlers/registry.ts | Infer handler from node `type` + `script_type` when no explicit `handler` declared | `runItemSession()` |
+| `evaluateAutoSkip()` | handlers/auto-skip-evaluator.ts | Evaluate `auto_skip_if_no_changes_in` + `force_run_if_changed` from workflows.yml | `runItemSession()` |
+| `computeErrorFingerprint()` | triage/error-fingerprint.ts | Compute stable SHA-256 fingerprint for error dedup across cycles | `failItem()` |
+| `pollReadiness()` | session/readiness-probe.ts | Data-plane readiness polling before post-deploy test items | `runItemSession()` |
 
 ---
 

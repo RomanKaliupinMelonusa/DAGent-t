@@ -1,7 +1,7 @@
 # Specialist Agents — Catalog & Configuration
 
 > 19 pipeline items across 6 phases (two-wave architecture). 13 LLM-driven agents, 5 deterministic script bypasses, and one human approval gate. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
-> Source: `tools/autonomous-factory/src/agents.ts`
+> Source: `tools/autonomous-factory/src/agents.ts` (prompt factory) · `tools/autonomous-factory/src/handlers/` (execution handlers)
 
 ---
 
@@ -91,6 +91,8 @@ flowchart TB
 > **Script** items execute deterministic shell commands — zero LLM tokens consumed. **Human gate** pauses the orchestrator and logs a message prompting for `/dagent approve-infra` on the Draft PR.
 >
 > **Scripts:** `push-infra`, `poll-infra-plan`, `push-app`, `poll-app-ci`, `publish-pr`
+>
+> **Handler Plugin System:** Each item type is dispatched to a registered handler in `handlers/`: `copilot-agent.ts` (LLM sessions), `git-push.ts` (deterministic push), `github-ci-poll.ts` (CI polling), `github-pr-publish.ts` (PR promotion), `local-exec.ts` (local script execution). Handlers implement the `NodeHandler` interface and return structured `NodeResult` objects — the dispatch kernel (`session-runner.ts`) manages all state transitions.
 
 ---
 

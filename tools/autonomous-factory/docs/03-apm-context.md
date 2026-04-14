@@ -111,7 +111,7 @@ agents:
 ```
 apps/<app>/.apm/
   apm.yml                     # Root manifest (context SSOT)
-  instructions/               # Rule fragments (28 .md files)
+  instructions/               # Rule fragments (varies per app)
     always/                   # Injected into ALL agents
     backend/                  # Backend-specific rules
     frontend/                 # Frontend-specific rules
@@ -134,51 +134,38 @@ apps/<app>/.apm/
 
 ## Instruction Fragment Inventory
 
+> The example below reflects the **sample-app** (17 fragments across 5 categories). Each app has its own instruction set — the commerce-storefront has different fragments tailored to PWA Kit development.
+
 ```mermaid
 mindmap
-  root((28 Instruction<br/>Fragments))
-    always/ (6 files)
+  root((17 Instruction<br/>Fragments))
+    always/ (4 files)
       auth-credentials.md
         DefaultAzureCredential
         Zero API keys
-      cors-apim-policy.md
-        APIM policy updates
-        Both entra + demo variants
       git-operations.md
         agent-commit.sh mandatory
         package-lock.json staging
       hard-limits.md
         10 retries max
         No cross-agent delegation
-      infra-ui-qa-trigger.md
-        Infra changes trigger live-ui
-      safety-dual-layer.md
-        Local regex + RAI Policy
-        PROHIBITED_TERMS sync
-    backend/ (9 files)
-      chat-completions.md
-      dependency-injection.md
-      deployment.md
-      environment-variables.md
-      error-codes.md
+      safety-rules.md
+        Content safety policy
+        Prohibited terms
+    backend/ (5 files)
+      azure-functions-constraints.md
+      identity.md
+      integration-auth.md
       integration-testing.md
-      prompts-location.md
-      runtime.md
       schema-sync.md
-    frontend/ (8 files)
-      api-client.md
+    frontend/ (3 files)
       auth-dual-mode.md
-      component-conventions.md
       e2e-testing-mandate.md
-      error-code-handling.md
-      framework-nextjs.md
-      testing.md
-      ui-primitives.md
+      known-framework-issues.md
     infra/ (1 file)
-      terraform-rules.md
-        azurerm + azapi + azuread
-        New Foundry native
-        OIDC, Queue, State
+      identity.md
+        Azure resource identity
+        OIDC + service principals
     tooling/ (4 files)
       roam-tool-rules.md
         Mandatory usage rules
@@ -201,9 +188,9 @@ mindmap
 ```mermaid
 flowchart LR
     subgraph RULES["Instruction Categories"]
-        A["always/\n(6 files)"]
-        B["backend/\n(9 files)"]
-        F["frontend/\n(8 files)"]
+        A["always/\n(4 files)"]
+        B["backend/\n(5 files)"]
+        F["frontend/\n(3 files)"]
         I["infra/\n(1 file)"]
         T1["tooling/\nroam-tool-rules.md"]
         T2["tooling/\nroam-efficiency.md"]
@@ -259,24 +246,27 @@ flowchart LR
 
 ### Detailed Include Map
 
+> Reflects the **sample-app** `apm.yml`. Fragment counts: `always/` = 4, `backend/` = 5, `frontend/` = 3, `infra/` = 1, `tooling/` = 4 individual files.
+
 | Agent | Includes | Files Loaded |
 |-------|----------|-------------|
-| `backend-dev` | `always`, `backend`, `infra`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 9 + 1 + 1 + 1 = **18** |
-| `frontend-dev` | `always`, `frontend`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 8 + 1 + 1 = **16** |
-| `schema-dev` | `always`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 + 1 = **9** |
-| `infra-architect` | `always`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 + 1 = **9** |
-| `backend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
-| `frontend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 6 + 1 = **7** |
-| `integration-test` | `always`, `backend/integration-testing.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 = **8** |
-| `live-ui` | `always`, `frontend/e2e-testing-mandate.md`, `tooling/roam-tool-rules.md`, `tooling/roam-test-intelligence.md`, `tooling/cloud-telemetry.md` | 6 + 1 + 1 + 1 + 1 = **10** |
-| `code-cleanup` | `always`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 6 + 1 + 1 = **8** |
-| `docs-archived` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
-| `publish-pr` | `always`, `tooling/roam-tool-rules.md` | 6 + 1 = **7** |
-| `create-draft-pr` | `always` | **6** |
-| `infra-handoff` | `always` | **6** |
-| `push-infra` / `push-app` | — (script bypass) | **0** |
-| `poll-infra-plan` / `poll-app-ci` | — (script bypass) | **0** |
-| `await-infra-approval` | — (human gate) | **0** |
+| `backend-dev` | `always`, `backend`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 4 + 5 + 1 + 1 = **11** |
+| `frontend-dev` | `always`, `frontend`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 4 + 3 + 1 + 1 = **9** |
+| `schema-dev` | `always`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 4 + 1 + 1 + 1 = **7** |
+| `infra-architect` | `always`, `infra`, `backend/schema-sync.md`, `tooling/roam-tool-rules.md` | 4 + 1 + 1 + 1 = **7** |
+| `backend-unit-test` | `always`, `tooling/roam-test-intelligence.md` | 4 + 1 = **5** |
+| `frontend-unit-test` | `always`, `frontend/known-framework-issues.md`, `tooling/roam-test-intelligence.md` | 4 + 1 + 1 = **6** |
+| `integration-test` | `always`, `backend/integration-auth.md`, `tooling/roam-test-intelligence.md` | 4 + 1 + 1 = **6** |
+| `live-ui` | `always`, `frontend/e2e-testing-mandate.md`, `frontend/known-framework-issues.md`, `tooling/roam-tool-rules.md`, `tooling/roam-test-intelligence.md`, `tooling/cloud-telemetry.md` | 4 + 1 + 1 + 1 + 1 + 1 = **9** |
+| `code-cleanup` | `always`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 4 + 1 + 1 = **6** |
+| `doc-architect` | `always`, `tooling/roam-tool-rules.md`, `tooling/roam-efficiency.md` | 4 + 1 + 1 = **6** |
+| `docs-archived` | `always`, `tooling/roam-tool-rules.md` | 4 + 1 = **5** |
+| `infra-handoff` | `always`, `tooling/roam-tool-rules.md` | 4 + 1 = **5** |
+| `publish-pr` | `always` | **4** |
+| `create-draft-pr` | `always` | **4** |
+| `push-infra` / `push-app` | `always` (script — no LLM session) | **4** |
+| `poll-infra-plan` / `poll-app-ci` | `always` (script — no LLM session) | **4** |
+| `await-infra-approval` | `always` (human gate) | **4** |
 
 ---
 
@@ -356,7 +346,7 @@ description: "Run Jest backend unit tests..."
 
 ```mermaid
 flowchart TD
-    RULES["28 Instruction Fragments\n(.md files in .apm/instructions/)"]
+    RULES["Instruction Fragments\n(.md files in .apm/instructions/)"]
     MANIFEST[".apm/apm.yml\n(agents + generatedInstructions)"]
     MCPS["MCP Declarations\n(.apm/mcp/*.mcp.yml)"]
     SKILLS["Skill Definitions\n(.apm/skills/*.skill.md)"]
