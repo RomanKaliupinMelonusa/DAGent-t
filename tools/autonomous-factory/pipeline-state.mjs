@@ -1039,6 +1039,46 @@ export function setDocNote(slug, itemKey, note) {
 }
 
 /**
+ * Set a structured handoff artifact on a pipeline item.
+ * Dev agents use this to communicate typed contracts (testid maps, affected
+ * routes, SSR-safety flags) to downstream agents (SDET, test runners).
+ *
+ * The artifact is a free-form JSON string — the kernel stores it verbatim
+ * without schema validation. Each project defines its own artifact shape
+ * in its APM instructions. This keeps the kernel tech-stack agnostic.
+ *
+ * @param {string} slug - Feature slug
+ * @param {string} itemKey - Pipeline item key (e.g. "storefront-dev")
+ * @param {string} artifactJson - JSON string to store as the handoff artifact
+ * @returns {object} Updated state
+ * @throws {Error} if slug, itemKey, or artifactJson missing; or if artifactJson is not valid JSON
+ */
+export function setHandoffArtifact(slug, itemKey, artifactJson) {
+  if (!slug || !itemKey || !artifactJson) {
+    throw new Error("setHandoffArtifact requires slug, itemKey, and artifactJson");
+  }
+
+  // Validate JSON — fail fast if the agent emits garbage
+  try {
+    JSON.parse(artifactJson);
+  } catch {
+    throw new Error(`setHandoffArtifact: artifactJson must be valid JSON. Got: ${artifactJson.slice(0, 200)}`);
+  }
+
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    const item = state.items.find((i) => i.key === itemKey);
+    if (!item) {
+      throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
+    }
+
+    item.handoffArtifact = artifactJson;
+    writeState(slug, state);
+    return state;
+  });
+}
+
+/**
  * Set the deployed URL.
  * @returns {object} Updated state
  * @throws {Error} if slug or url missing
@@ -1315,6 +1355,21 @@ function cmdSetUrl(slug, url) {
   }
 }
 
+function cmdSetHandoffArtifact(slug, itemKey, artifactJson) {
+  if (!slug || !itemKey || !artifactJson) {
+    console.error("Usage: pipeline-state.mjs handoff-artifact <slug> <item-key> <json>");
+    process.exit(1);
+  }
+
+  try {
+    setHandoffArtifact(slug, itemKey, artifactJson);
+    console.log(`✔ Set handoff artifact for "${itemKey}".`);
+  } catch (err) {
+    console.error(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 // ─── CLI Router ─────────────────────────────────────────────────────────────
 // Only run when executed directly (not when imported as a module by the orchestrator).
 
@@ -1374,6 +1429,9 @@ switch (command) {
   case "doc-note":
     cmdSetDocNote(args[0], args[1], args.slice(2).join(" "));
     break;
+  case "handoff-artifact":
+    cmdSetHandoffArtifact(args[0], args[1], args.slice(2).join(" "));
+    break;
   case "set-url":
     cmdSetUrl(args[0], args.slice(1).join(" "));
     break;
@@ -1394,6 +1452,7 @@ switch (command) {
     console.error("  next              <slug>                      — Print next actionable item");
     console.error("  set-note          <slug> <note>               — Append implementation note");
     console.error("  doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item");
+    console.error("  handoff-artifact  <slug> <item-key> <json>    — Set structured handoff artifact (JSON) on a pipeline item");
     console.error("  set-url           <slug> <url>                — Set deployed URL");
     console.error("");
     console.error("Item keys are dynamically defined in your app's workflows.yml");

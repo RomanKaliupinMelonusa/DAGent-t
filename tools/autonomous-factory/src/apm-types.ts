@@ -206,6 +206,14 @@ export const ApmWorkflowNodeSchema = z.object({
    *  failure never blocks the retry. The kernel runs this blindly; all
    *  framework-specific knowledge lives in the command itself. */
   cleanup_command: z.string().optional(),
+  /** Shell command to run BEFORE the main `command` as a pre-flight check.
+   *  If it exits non-zero, the node fails immediately with a clear diagnostic
+   *  message — avoiding the cost of running the full test suite against a
+   *  broken environment. The kernel executes this generically; all framework-
+   *  specific knowledge (e.g. "curl the PLP to verify SSR") lives in the
+   *  command itself, declared per-project in workflows.yml. */
+  smoke_command: z.string().optional(),
+
   /** Result processor config for post-processing handler output before triage.
    *  Only applicable to script-type nodes (e.g. local-exec test runners). */
   result_processor: z.object({
@@ -223,6 +231,12 @@ export const ApmWorkflowNodeSchema = z.object({
     /** Regex patterns for high-signal diagnostic lines to extract before truncation.
      *  Matched sections are placed at the top of condensed output for triage. */
     priority_patterns: z.array(z.string()).optional(),
+    /** Regex pattern matching the header of individual test failure blocks.
+     *  Used to split output into per-test blocks for dedup of identical errors.
+     *  When omitted, test-level dedup is skipped. Framework-specific knowledge
+     *  lives in the project's workflows.yml, not the kernel.
+     *  Examples: Playwright: `\s*\d+\)\s+\[\w+\]\s+›` / Jest: `●\s+\S+` */
+    failure_block_separator: z.string().optional(),
     /** Maximum chars to send to the LLM in the cognitive pass.
      *  When omitted, the full noise-stripped output is sent (recommended —
      *  the cost delta is negligible vs. pipeline run cost). */

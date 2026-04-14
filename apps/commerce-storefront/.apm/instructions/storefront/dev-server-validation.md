@@ -23,3 +23,34 @@ echo "OK: Dev server returned HTTP 200 — all modules resolve correctly"
 ```
 
 If the server returns anything other than HTTP 200, inspect the terminal output for `ModuleNotFoundError` and fix the import paths before committing.
+
+## Route-Aware Validation (CRITICAL)
+
+Checking only the root route (`/`) is **NOT sufficient**. SSR crashes are often page-specific — a component override can crash only the pages that render it while the homepage works fine.
+
+**After verifying `/`, also verify the routes affected by your code change:**
+
+| If you modified… | Also check these routes |
+|---|---|
+| `components/product-tile/` | `/category/newarrivals` (PLP) |
+| `components/product-view/` or `pages/product-detail/` | `/product/{any-product-id}` (PDP) |
+| `components/header/` or `components/footer/` | Any route (header/footer render everywhere) |
+| `pages/cart/` or `components/cart-*` | `/cart` |
+| `pages/checkout/` | `/checkout` |
+| `pages/account/` | `/account` |
+| `components/search/` or `pages/product-list/` | `/search?q=shirt` |
+| `pages/home/` | `/` |
+
+```bash
+# Example: after modifying product-tile override, also check PLP
+PLP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/category/newarrivals)
+if [ "$PLP_STATUS" != "200" ]; then
+  echo "ERROR: PLP returned HTTP $PLP_STATUS — SSR crash on affected route"
+  exit 1
+fi
+```
+
+**If the affected route returns a non-200 status**, the SSR is crashing. Check the server terminal output for the error stack trace. Common causes:
+- Commerce SDK hooks (`useProduct`, `useProductViewModal`) executing during SSR
+- Missing import paths for override components
+- Hydration mismatches from browser-only APIs in the render path

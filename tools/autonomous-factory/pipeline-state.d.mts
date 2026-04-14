@@ -11,6 +11,10 @@ interface PipelineItem {
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
   docNote?: string | null;
+  /** Structured handoff artifact (JSON string) for downstream agent contracts.
+   *  Dev agents use this to communicate typed data (testid maps, affected routes,
+   *  SSR-safety flags) to SDET and test runner agents. */
+  handoffArtifact?: string | null;
 }
 
 interface PipelineState {
@@ -99,6 +103,7 @@ export function getNext(slug: string): NextAction;
 export function getNextAvailable(slug: string): NextAction[];
 export function setNote(slug: string, note: string): PipelineState;
 export function setDocNote(slug: string, itemKey: string, note: string): PipelineState;
+export function setHandoffArtifact(slug: string, itemKey: string, artifactJson: string): PipelineState;
 export function setUrl(slug: string, url: string): PipelineState;
 export function readState(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];

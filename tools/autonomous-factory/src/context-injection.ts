@@ -78,6 +78,12 @@ export function buildDownstreamFailureContext(
   ).filter((s) => s.key !== itemKey);
   if (downstreamFailures.length === 0) return "";
 
+  // --- K2: Extract structured diagnosis from cognitive result processor ---
+  // The result processor prepends FAULT_DOMAIN_HINT/ROOT_CAUSE/ERROR_TYPE/EVIDENCE
+  // headers to the condensed error message. Surface these prominently so the dev
+  // agent sees the diagnosis immediately instead of re-discovering it from raw output.
+  const diagnosisSection = extractDiagnosisFromFailures(downstreamFailures);
+
   const failureDetails = downstreamFailures
     .map((f) => [
       `### ${f.key} (attempt ${f.attempt})`,
@@ -106,7 +112,51 @@ export function buildDownstreamFailureContext(
   // Cross-cycle error signature comparison — detect "same error after redevelopment"
   const identicalErrorWarning = buildIdenticalErrorWarning(downstreamFailures, slug);
 
-  return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}${identicalErrorWarning}`;
+  return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n${diagnosisSection}\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}${identicalErrorWarning}`;
+}
+
+/**
+ * Extract structured diagnosis headers (FAULT_DOMAIN_HINT, ROOT_CAUSE, etc.)
+ * from downstream failure error messages. The cognitive result processor
+ * prepends these headers when it runs successfully.
+ *
+ * Returns a formatted "## Automated Diagnosis" section if any diagnosis is found,
+ * or empty string if raw errors have no structured headers.
+ *
+ * Stack-agnostic: parses `KEY: value` header lines with no framework assumptions.
+ */
+function extractDiagnosisFromFailures(
+  failures: readonly ItemSummary[],
+): string {
+  const diagFields: Record<string, string> = {};
+
+  for (const f of failures) {
+    if (!f.errorMessage) continue;
+    // Parse structured headers from the beginning of the error message
+    // Format: "FAULT_DOMAIN_HINT: frontend\nROOT_CAUSE: ...\nERROR_TYPE: ...\nEVIDENCE: ..."
+    const lines = f.errorMessage.split("\n");
+    for (const line of lines) {
+      const match = line.match(/^(FAULT_DOMAIN_HINT|ROOT_CAUSE|ERROR_TYPE|EVIDENCE):\s*(.+)/);
+      if (match) {
+        // Use the most recent value if multiple failures have headers
+        diagFields[match[1]] = match[2].trim();
+      } else if (Object.keys(diagFields).length > 0 && !line.match(/^\w+:/)) {
+        // Stop parsing headers once we hit a non-header line
+        break;
+      }
+    }
+  }
+
+  if (Object.keys(diagFields).length === 0) return "";
+
+  const parts = ["\n### Automated Diagnosis (from previous run's result processor)"];
+  if (diagFields.ROOT_CAUSE) parts.push(`**Root Cause:** ${diagFields.ROOT_CAUSE}`);
+  if (diagFields.FAULT_DOMAIN_HINT) parts.push(`**Fault Domain:** ${diagFields.FAULT_DOMAIN_HINT}`);
+  if (diagFields.ERROR_TYPE) parts.push(`**Error Type:** ${diagFields.ERROR_TYPE}`);
+  if (diagFields.EVIDENCE) parts.push(`**Evidence:** ${diagFields.EVIDENCE}`);
+  parts.push("\n**Use this diagnosis as your starting point. Do NOT re-investigate from scratch.**");
+
+  return parts.join("\n");
 }
 
 /**

@@ -96,18 +96,36 @@ default:
       type: script
       category: test
       script_type: local-exec
-      command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1"
+      command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
       phase: validation
       depends_on: [e2e-author]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
       triage_json_gated: false
+      smoke_command: |
+        set -m
+        npm start > /tmp/smoke-server.log 2>&1 &
+        SERVER_PID=$!
+        trap "kill -- -$SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null" EXIT
+        echo "Smoke: waiting for dev server (PID $SERVER_PID)..."
+        for i in $(seq 1 24); do
+          sleep 5
+          if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
+            echo "Smoke: PLP returned HTTP 200 — SSR is healthy"
+            exit 0
+          fi
+        done
+        echo "Smoke: PLP failed to return HTTP 200 after 120s — SSR is broken"
+        echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
+        exit 1
       cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
       result_processor:
         type: cognitive
         max_chars: 12288
         model: fast
         prompt: instructions/triage/e2e-diagnosis.md
+        # Playwright failure block header: "  1) [chromium] › file:line › suite › test"
+        failure_block_separator: "\\s*\\d+\\)\\s+\\[\\w+\\]\\s+›"
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       type: agent
