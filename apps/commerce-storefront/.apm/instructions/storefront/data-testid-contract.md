@@ -24,3 +24,32 @@ The SDET agent relies **entirely** on these attributes to author E2E tests using
    <div data-testid={`item-${index}`}>
    ```
 6. **List items** should include a stable identifier suffix (e.g., product ID, SKU).
+
+## PWA Kit Override Prop-Spread Footgun
+
+When overriding a base PWA Kit component, **parent pages may pass `data-testid` via props** that gets spread via `{...rest}` onto the root element, **overwriting your hardcoded `data-testid`**.
+
+For example, the PLP page passes `data-testid={`sf-product-tile-${product.id}`}` to each `<ProductTile>`. Inside the base component, `{...rest}` spreads this onto the `<Link>` after the hardcoded `data-testid="product-tile"`, destroying it.
+
+**Rules for overrides:**
+
+1. **Always add your required `data-testid` on a WRAPPER element** — not on the base component's root:
+   ```jsx
+   // ✅ Correct — testid on your wrapper, unaffected by parent props
+   <Box data-testid="product-tile" position="relative">
+     <OriginalProductTile {...props} />
+     <QuickViewOverlay />
+   </Box>
+
+   // ❌ WRONG — parent's data-testid="sf-product-tile-123" overwrites yours
+   <OriginalProductTile data-testid="product-tile" {...props} />
+   ```
+
+2. **Audit parent pages** before choosing testid strategy. Run:
+   ```bash
+   grep -rn 'data-testid' node_modules/@salesforce/retail-react-app/app/pages/ | grep '<YourComponent>'
+   ```
+
+3. **If the base component already has a `data-testid`**, verify whether parent pages overwrite it via prop spread. If they do, your override MUST add a stable testid on a wrapper.
+
+4. **Document your testid contract** in a `pipeline:doc-note` so the SDET agent knows exactly which testids to target.

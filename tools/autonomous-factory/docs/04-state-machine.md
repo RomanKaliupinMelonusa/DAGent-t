@@ -339,6 +339,7 @@ classDiagram
         +string status
         +string|null error
         +string|null docNote
+        +string|null handoffArtifact
     }
 
     class ErrorEntry {
@@ -457,6 +458,67 @@ flowchart LR
 ```
 
 > `state.ts` exists because the pipeline state machine is written in JavaScript (`.mjs`) for CLI use, but the orchestrator needs TypeScript types. The lazy-loaded dynamic import bridges the gap with zero re-imports after first call.
+
+---
+
+## Result Processor Pipeline
+
+When a `local-exec` script node (e.g., `e2e-runner`) fails, the kernel runs its error output through a **result processor pipeline** before triage. This happens in `session-runner.ts` after `handler.execute()` returns a failed `NodeResult`.
+
+```mermaid
+flowchart LR
+    RAW["Raw script\noutput"] --> NOISE["Strip noise\n(noise_patterns)"]
+    NOISE --> DEDUP_T["Dedup test failures\n(failure_block_separator)"]
+    DEDUP_T --> DEDUP_B["Dedup diagnostic\nblocks (separator-based)"]
+    DEDUP_B --> STATS["Extract test stats\n(passed/failed/total)"]
+    STATS --> CAP["Cap output\n(priority_patterns → head/tail)"]
+    CAP --> COG{"Cognitive\npass?"}
+    COG -->|"type: cognitive"| LLM["LLM diagnosis\n(fault_domain, root_cause,\nerror_type, evidence)"]
+    COG -->|"type: regex"| DONE["ProcessedResult"]
+    LLM --> DONE
+
+    style RAW fill:#ffcdd2
+    style DONE fill:#c8e6c9
+    style LLM fill:#e3f2fd
+```
+
+### Configuration (`workflows.yml` → `result_processor`)
+
+| Field | Type | Purpose |
+|-------|------|----------|
+| `type` | `"regex"` \| `"cognitive"` \| `"none"` | Processor pipeline to run |
+| `max_chars` | number | Budget for condensed output (default: 8192) |
+| `model` | `"fast"` \| `"default"` | LLM tier for cognitive pass |
+| `prompt` | string | Path to `.md` system prompt for LLM (relative to `.apm/`) |
+| `noise_patterns` | string[] | Regex patterns matching noise lines to strip before truncation |
+| `priority_patterns` | string[] | Regex patterns matching high-signal lines to extract first |
+| `failure_block_separator` | string | Regex matching test failure block headers (enables per-test dedup) |
+
+> **Zero hardcoded knowledge:** All `noise_patterns`, `priority_patterns`, and `failure_block_separator` values are declared per-project in `workflows.yml`. The kernel applies them generically — it contains no framework-specific patterns.
+>
+> **Additive defaults:** `result_processor_defaults` at the workflow level provides shared noise/priority patterns. Node-level patterns are merged additively.
+
+### Context Injection (Diagnosis → Redevelopment)
+
+When a cognitive result processor produces structured diagnosis headers (`FAULT_DOMAIN_HINT`, `ROOT_CAUSE`, `ERROR_TYPE`, `EVIDENCE`), these are **extracted by `context-injection.ts`** and surfaced prominently in the redevelopment agent's system prompt. This prevents the agent from re-investigating the same failure from scratch.
+
+```mermaid
+sequenceDiagram
+    participant ER as e2e-runner
+    participant RP as Result Processor
+    participant TR as Triage Router
+    participant CI as context-injection.ts
+    participant DEV as storefront-dev (retry)
+
+    ER->>RP: Raw Playwright output
+    RP->>RP: Regex pass (dedup + cap)
+    RP->>RP: Cognitive pass (LLM diagnosis)
+    RP-->>TR: ProcessedResult {condensed, diagnosis}
+    TR->>TR: Route to fault domain → reset dev items
+    Note over CI: On retry, kernel calls\nbuildDownstreamFailureContext()
+    CI->>CI: extractDiagnosisFromFailures()
+    CI-->>DEV: Prompt: "## Automated Diagnosis\n**Root Cause:** ...\n**Use this as your starting point.**"
+```
 
 ---
 

@@ -209,6 +209,31 @@ sequenceDiagram
 
 > Dev agents leave 1–2 sentence architectural summaries via `pipeline:doc-note`. The `docs-archived` agent reads all doc-notes via `_CHANGES.json` to update documentation without re-analyzing the entire codebase.
 
+### Handoff Artifact Pattern
+
+For structured inter-agent contracts beyond free-text doc-notes, dev agents can set a **typed JSON handoff artifact** on their pipeline item via `pipeline:handoff-artifact`. Unlike doc-notes (human-readable summaries), handoff artifacts carry machine-parseable data — testid maps, affected routes, SSR-safety flags — that downstream agents (SDET, test runners) can consume programmatically.
+
+```mermaid
+sequenceDiagram
+    participant SD as storefront-dev
+    participant PS as pipeline-state
+    participant SDET as @sdet-expert
+
+    SD->>PS: pipeline:handoff-artifact slug storefront-dev<br/>'{"affectedRoutes":["/plp","/pdp"],<br/>"newTestIds":["quick-view-btn","modal-overlay"]}'
+    PS->>PS: Validate JSON, store in<br/>item.handoffArtifact
+
+    Note over PS,SDET: Watchdog reads handoffArtifact<br/>when building SDET prompt
+
+    PS-->>SDET: Agent prompt includes<br/>structured handoff data
+    SDET->>SDET: Generate E2E tests targeting<br/>exact routes + testids
+```
+
+| CLI | `npm run pipeline:handoff-artifact <slug> <item-key> <json>` |
+|-----|--------------------------------------------------------------|
+| **Validation** | Must be parseable JSON (rejects malformed strings) |
+| **Storage** | `_STATE.json` → `item.handoffArtifact` |
+| **Consumers** | Downstream agents via prompt injection |
+
 ---
 
 ## Auto-Skip Optimization
@@ -358,6 +383,35 @@ When post-deploy or test items fail, `triageFailure()` in `triage.ts` (called fr
 | `deployment-stale` | push-app, poll-app-ci (code correct — re-deploy only) |
 | `environment` | itemKey only (retry, not a code bug) |
 | `blocked` | `[]` — halt pipeline (unfixable) |
+
+---
+
+## Local-Exec Script Nodes
+
+Script-type nodes with `script_type: local-exec` execute shell commands natively (zero LLM cost). The `local-exec` handler supports two pre-flight mechanisms to catch catastrophic failures early:
+
+### Smoke Command
+
+When a workflow node declares `smoke_command`, the kernel executes it **before** the main `command` with a 2-minute timeout. If the smoke check exits non-zero, the node fails immediately — avoiding the cost of running a full test suite against a broken environment.
+
+```mermaid
+flowchart LR
+    START["local-exec\nstarts"] --> SMOKE{"smoke_command\ndeclared?"}
+    SMOKE -->|yes| RUN_SMOKE["Run smoke_command\n(2 min timeout)"]
+    SMOKE -->|no| RUN_MAIN["Run main command"]
+    RUN_SMOKE -->|"exit 0"| RUN_MAIN
+    RUN_SMOKE -->|"exit ≠ 0"| FAIL["Node fails:\nsmokeCheckFailed: true"]
+    RUN_MAIN --> RESULT["Handler returns\nNodeResult"]
+
+    style FAIL fill:#ffcdd2
+    style RUN_SMOKE fill:#fff9c4
+```
+
+> **Framework knowledge stays in workflows.yml.** The kernel executes `smoke_command` blindly — it contains no awareness of what the command checks (SSR health, build success, etc.). Each project declares its own smoke logic.
+
+### Cleanup Command
+
+When a `local-exec` node is **retried** (attempt > 1), the kernel runs `cleanup_command` before the main command to kill stale processes from the previous failed run. Non-fatal — cleanup failure never blocks the retry.
 
 ---
 

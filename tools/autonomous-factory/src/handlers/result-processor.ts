@@ -86,6 +86,19 @@ export interface ResultProcessorConfig {
    * Declared per-project in workflows.yml → result_processor.priority_patterns.
    */
   priorityPatterns?: string[];
+  /**
+   * Regex pattern that matches the header of individual test failure blocks.
+   * Used by `dedupTestFailures()` to split output into per-test blocks and
+   * collapse identical errors. The pattern is used as a lookahead split point.
+   *
+   * Examples:
+   *   Playwright: `\s*\d+\)\s+\[\w+\]\s+›`  (matches "  1) [chromium] › ...")
+   *   Jest:       `●\s+\S+`                   (matches "● Suite › test name")
+   *
+   * When omitted, test-level dedup is skipped (the generic diagnostic block
+   * dedup still runs). Declared per-project in workflows.yml.
+   */
+  failureBlockSeparator?: string;
 }
 
 // ---------------------------------------------------------------------------

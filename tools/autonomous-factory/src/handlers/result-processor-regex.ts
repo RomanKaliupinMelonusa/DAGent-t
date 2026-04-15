@@ -65,6 +65,118 @@ function dedupDiagnosticBlocks(output: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Test-level failure deduplication
+// ---------------------------------------------------------------------------
+
+/**
+ * Collapse test failures that share the same root error message.
+ *
+ * Test runners emit per-test failure blocks that often contain identical
+ * error text (same TimeoutError, same assertion). When a systemic issue
+ * causes ALL tests to fail identically, the raw output is N× the same
+ * error with only the test name differing — wasting tokens and obscuring
+ * the single root cause.
+ *
+ * This function splits the output on a **project-declared** separator
+ * pattern (`failure_block_separator` in result_processor config), normalizes
+ * each block by stripping the header line and file/line references, then
+ * groups identical errors. Each group is collapsed to one representative
+ * block with the count and list of affected test names.
+ *
+ * The kernel contains ZERO hardcoded runner patterns. Projects declare
+ * their runner's failure block format in `.apm/workflows.yml`.
+ * When no separator is configured, this function is a no-op.
+ */
+function dedupTestFailures(output: string, separatorPattern?: string): string {
+  if (!separatorPattern) return output; // no config → skip dedup
+
+  let splitRegex: RegExp;
+  try {
+    splitRegex = new RegExp(`(?=${separatorPattern})`, "m");
+  } catch {
+    return output; // invalid regex → skip
+  }
+
+  const failureBlocks = output.split(splitRegex);
+
+  // If we can't split into failure blocks, fall back to no dedup
+  if (failureBlocks.length <= 2) return output;
+
+  const preamble = failureBlocks[0]; // content before first failure
+  const failures = failureBlocks.slice(1);
+
+  // Build header regex from the separator pattern for extraction
+  let headerRegex: RegExp;
+  try {
+    headerRegex = new RegExp(`^\\s*${separatorPattern}`, "m");
+  } catch {
+    return output;
+  }
+
+  // Extract test name from the header and normalize the error body
+  const groups = new Map<string, { header: string; body: string; testNames: string[]; count: number }>();
+  const groupOrder: string[] = [];
+
+  for (const block of failures) {
+    const headerMatch = block.match(headerRegex);
+    if (!headerMatch) {
+      // Not a recognizable failure block — preserve as-is
+      const key = "__non_failure_" + groupOrder.length;
+      groups.set(key, { header: "", body: block, testNames: [], count: 1 });
+      groupOrder.push(key);
+      continue;
+    }
+
+    const testName = headerMatch[0].trim();
+    // Normalize: strip header line and common volatile references to get the pure error
+    const body = block
+      .replace(headerRegex, "") // strip header line
+      .replace(/at\s+\S+\s+\(.*?:\d+:\d+\)/g, "at <location>") // normalize stack locations
+      .replace(/\S+\.(?:spec|test)\.\w+:\d+:\d+/g, "<file>") // normalize file refs
+      .trim();
+
+    const normalizedKey = body.replace(/\s+/g, " ");
+    const existing = groups.get(normalizedKey);
+    if (existing) {
+      existing.count++;
+      existing.testNames.push(testName);
+    } else {
+      groups.set(normalizedKey, { header: headerMatch[0], body: block, testNames: [testName], count: 1 });
+      groupOrder.push(normalizedKey);
+    }
+  }
+
+  // Rebuild: if groups reduced the count meaningfully, emit deduplicated version
+  const totalFailures = failures.length;
+  const uniqueGroups = groupOrder.filter(k => !k.startsWith("__non_failure_"));
+  if (uniqueGroups.length >= totalFailures * 0.8) {
+    // Most failures are unique — dedup wouldn't help, return original
+    return output;
+  }
+
+  const parts: string[] = [preamble.trim()];
+  for (const key of groupOrder) {
+    const group = groups.get(key)!;
+    if (key.startsWith("__non_failure_")) {
+      parts.push(group.body);
+      continue;
+    }
+    if (group.count > 1) {
+      parts.push(
+        `${group.header}\n\n` +
+        `(× ${group.count} tests failed with IDENTICAL error — showing representative failure)\n` +
+        `Affected tests:\n${group.testNames.map(n => `  - ${n}`).join("\n")}\n\n` +
+        `${group.body.replace(headerRegex, "").trim()}`
+      );
+    } else {
+      parts.push(group.body);
+    }
+  }
+
+  return parts.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
 // Test summary extraction
 // ---------------------------------------------------------------------------
 
@@ -289,10 +401,14 @@ const regexResultProcessor: ResultProcessor = {
       ? stripNoiseLines(rawOutput, config.noisePatterns)
       : rawOutput;
 
-    // 3. Dedup identical diagnostic blocks
+    // 3. Collapse test failures with identical error messages (e.g., 13× same TimeoutError)
+    //    Uses the project-declared failure_block_separator pattern. No hardcoded runner knowledge.
+    cleaned = dedupTestFailures(cleaned, config.failureBlockSeparator);
+
+    // 4. Dedup identical diagnostic blocks (separator-based)
     let condensed = dedupDiagnosticBlocks(cleaned);
 
-    // 4. Prepend summary line if stats were extracted
+    // 5. Prepend summary line if stats were extracted
     if (stats) {
       const summaryLine = `TEST SUMMARY: ${stats.passed} passed, ${stats.failed} failed, ${stats.total} total${stats.duration ? ` (${stats.duration})` : ""}`;
       condensed = `${summaryLine}\n\n${condensed}`;
@@ -302,7 +418,7 @@ const regexResultProcessor: ResultProcessor = {
     // The cognitive processor uses this as LLM input to avoid information loss.
     const cleanedOutput = condensed;
 
-    // 5. Cap total size (priority extraction from APM config + head/tail fallback)
+    // 6. Cap total size (priority extraction from APM config + head/tail fallback)
     condensed = capOutput(condensed, maxChars, config.priorityPatterns);
 
     return {

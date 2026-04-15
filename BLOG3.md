@@ -1,6 +1,6 @@
-# n8n Meets Jenkins — Why the Future of AI Coding Is a Deterministic Factory, Not a Smart Agent
+# Built Like n8n, Disciplined Like Jenkins — Why the Future of AI Coding Is a Deterministic Factory, Not a Smart Agent
 
-**TL;DR:** After two iterations — a 12-item pipeline that wasted 50 minutes on correct code, and an 18-item two-wave DAG that cut runtime by 55% — the architecture has crystallized. The system now runs multiple apps, enforces per-agent RBAC at the tool level, routes failures through a 5-tier triage engine with a data flywheel, and treats every agent like an untrusted worker in a distributed system. The mental model isn't "smarter agents." It's n8n's visual workflow engine combined with Jenkins' battle-tested CI/CD discipline. [The repo is open.](https://github.com/RomanKaliupinMelonusa/DAGent-t)
+**TL;DR:** After two iterations — a 12-item pipeline that wasted 50 minutes on correct code, and an 18-item two-wave DAG that cut runtime by 55% — the latest run shipped a real feature and burned $67 on preventable failures. The post-mortem produced five kernel improvements: a result processor that collapses 13 identical test failures into one root cause, smoke commands that catch SSR crashes before the expensive test suite runs, structured diagnosis that flows directly to retry agents so they don't investigate from scratch, and a hard architectural rule — **zero framework knowledge in the kernel**. All Playwright/Jest/PWA-Kit awareness lives in project config, never in orchestrator code. The mental model isn't "smarter agents." It's n8n's visual workflow engine combined with Jenkins' battle-tested CI/CD discipline. [The repo is open.](https://github.com/RomanKaliupinMelonusa/DAGent-t)
 
 ---
 
@@ -10,11 +10,13 @@
 
 [Post 2]({{SECOND_POST_URL}}): The pipeline burned 50 minutes retrying correct code because infrastructure didn't exist yet. I restructured into a two-wave DAG with a human-approved infrastructure gate, cutting runtime by 55%.
 
-This post covers what the system became after those lessons. Not another increment — a different mental model entirely.
+This post covers what the system became after those lessons — and what a real production run taught us about the gap between "architecture" and "actually shipping."
 
 ---
 
 ## The n8n + Jenkins Thesis
+
+*To be clear upfront: we're not running n8n or Jenkins. We built the same ideas from scratch — DAG canvas becomes YAML config, Jenkins stages become handler plugins. The mental model is the point, not the tools.*
 
 Here's the idea that changed everything: **stop thinking about "AI agents" and start thinking about workflow nodes and build pipelines.**
 
@@ -30,9 +32,10 @@ My system is both of these things, except the nodes are AI agents:
 | **Orchestration** | Visual canvas + router | Declarative Jenkinsfile | DAG state machine + TypeScript while-loop |
 | **Error handling** | Retry node, error branch | `post { failure { } }` | 5-tier triage → targeted reroute to responsible agent |
 | **Gating** | Conditional nodes, wait nodes | Input step, approval gates | `agent: null` approval gate, ChatOps `/dagent approve-infra` |
-| **Artifacts** | Node output → next node input | `stash`/`unstash`, `archiveArtifacts` | `handlerData` bag, infra-handoff contract, `_CHANGES.json` manifest |
+| **Artifacts** | Node output → next node input | `stash`/`unstash`, `archiveArtifacts` | `handlerData` bag, infra-handoff contract, `_CHANGES.json` manifest, typed handoff artifacts |
 | **Parallelism** | Parallel branches | `parallel { }` | DAG batch — any items with all dependencies `done` run concurrently |
 | **Plugin system** | Community nodes | Jenkins plugins | Handler plugin architecture (5 built-in, extensible via dynamic import) |
+| **Error preprocessing** | Transform node before error branch | Groovy `post { }` log parsing | Result processor pipeline: noise strip → dedup → priority extract → optional LLM diagnosis |
 | **Security** | Credential vault | Credentials binding, folder-level RBAC | Per-agent RBAC, shell bouncers, pre-commit hook, tool allow-lists |
 
 The workflow engine community figured out decades ago that the unit of work should be dumb and scoped, and the graph should be smart. The AI coding community is still debating whether to give agents `sudo`.
@@ -41,57 +44,62 @@ The workflow engine community figured out decades ago that the unit of work shou
 
 ## The Architecture, Final Form
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  APM Compiler (apm.yml → per-agent context)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐   │
-│  │Instructions│  │MCP Servers│  │  Skills  │  │ Token Budgets │   │
-│  └──────────┘  └──────────┘  └──────────┘  └───────────────┘   │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-┌───────────────────────▼─────────────────────────────────────────┐
-│  DAG State Machine (pipeline-state.mjs)                         │
-│  ┌─────────┐    ┌─────────────┐    ┌──────────────────┐        │
-│  │ Items[] │───▶│ getNextAvail│───▶│ Batch dispatcher  │        │
-│  │ Deps{}  │    │ (topo-sort) │    │ (‖ when possible) │        │
-│  └─────────┘    └─────────────┘    └──────────────────┘        │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-┌───────────────────────▼─────────────────────────────────────────┐
-│  Handler Registry (plugin dispatch)                             │
-│  ┌──────────────┐ ┌──────────────┐ ┌────────────────────┐      │
-│  │ copilot-agent│ │  git-push    │ │ github-ci-poll     │      │
-│  │ (LLM session)│ │  (execSync)  │ │ (poll-ci.sh)       │      │
-│  ├──────────────┤ ├──────────────┤ ├────────────────────┤      │
-│  │ local-exec   │ │ github-pr-   │ │ custom (dynamic    │      │
-│  │ (child_proc) │ │  publish     │ │  import)           │      │
-│  └──────────────┘ └──────────────┘ └────────────────────┘      │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-┌───────────────────────▼─────────────────────────────────────────┐
-│  Agent Sandbox (per-session enforcement)                        │
-│  ┌─────────────┐ ┌────────────┐ ┌──────────────┐               │
-│  │Tool Allow-  │ │  RBAC      │ │ Shell        │               │
-│  │List (30+)   │ │  (path +   │ │ Bouncers     │               │
-│  │             │ │  command)  │ │ (cd, grep -r)│               │
-│  └─────────────┘ └────────────┘ └──────────────┘               │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-┌───────────────────────▼─────────────────────────────────────────┐
-│  5-Tier Triage Engine                                           │
-│  ┌──────────┐ ┌──────────┐ ┌───────┐ ┌──────┐ ┌────────────┐  │
-│  │ Unfixable│▶│Structured│▶│  CI   │▶│ Local│▶│ LLM Router │  │
-│  │ Signals  │ │  JSON    │ │Headers│ │  RAG │ │ (fallback) │  │
-│  └──────────┘ └──────────┘ └───────┘ └──────┘ └──────┬─────┘  │
-│                                                       │        │
-│                                         ┌─────────────▼──────┐ │
-│                                         │ Data Flywheel      │ │
-│                                         │ _NOVEL_TRIAGE.jsonl│ │
-│                                         └────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph APM["APM Compiler (apm.yml → per-agent context)"]
+        direction LR
+        A1["Instructions"]
+        A2["MCP Servers"]
+        A3["Skills"]
+        A4["Token Budgets"]
+    end
+
+    subgraph DAG["DAG State Machine (pipeline-state.mjs)"]
+        direction LR
+        D1["Items[] + Deps{}"] --> D2["getNextAvail\n(topo-sort)"] --> D3["Batch dispatcher\n(‖ when possible)"]
+    end
+
+    subgraph HANDLERS["Handler Registry (plugin dispatch)"]
+        direction LR
+        H1["copilot-agent\n(LLM session)"]
+        H2["git-push\n(execSync)"]
+        H3["github-ci-poll\n(poll-ci.sh)"]
+        H4["local-exec\n(child_proc)"]
+        H5["github-pr-publish"]
+        H6["custom\n(dynamic import)"]
+    end
+
+    subgraph RP["Result Processor Pipeline (post-failure, pre-triage)"]
+        direction LR
+        R1["Noise\nStripping"] --> R2["Test\nDedup"] --> R3["Priority\nExtract"] --> R4["Cognitive\nDiagnosis (opt.)"]
+    end
+
+    subgraph SANDBOX["Agent Sandbox (per-session enforcement)"]
+        direction LR
+        S1["Tool Allow-List\n(30+ safe tools)"]
+        S2["RBAC\n(path + command)"]
+        S3["Shell Bouncers\n(cd, grep -r)"]
+    end
+
+    subgraph TRIAGE["5-Tier Triage Engine"]
+        direction LR
+        T1["Unfixable\nSignals"] --> T2["Structured\nJSON"] --> T3["CI\nHeaders"] --> T4["Local\nRAG"] --> T5["LLM Router\n(fallback)"]
+        T5 --> T6["Data Flywheel\n_NOVEL_TRIAGE.jsonl"]
+    end
+
+    APM --> DAG --> HANDLERS --> RP --> SANDBOX --> TRIAGE
+
+    style APM fill:#e3f2fd,stroke:#1565c0
+    style DAG fill:#e8f5e9,stroke:#2e7d32
+    style HANDLERS fill:#fff3e0,stroke:#e65100
+    style RP fill:#fce4ec,stroke:#c62828
+    style SANDBOX fill:#f3e5f5,stroke:#6a1b9a
+    style TRIAGE fill:#fff9c4,stroke:#f9a825
 ```
 
-Five layers, each with a single job. The APM compiler builds context. The DAG schedules work. The handler registry dispatches. The sandbox constrains. The triage engine routes failures. No layer knows about the others' internals. This is standard distributed systems architecture — applied to AI agents.
+Six layers, each with a single job. The APM (Agent Prompt Manifest) compiler reads `apm.yml` and assembles per-agent execution contexts — instructions, MCP server configs, skills, and token budgets — before the DAG scheduler dispatches any work. The DAG schedules work. The handler registry dispatches. The result processor condenses raw error output into structured evidence. The sandbox constrains. The triage engine routes failures. No layer knows about the others' internals. This is standard distributed systems architecture — applied to AI agents.
+
+**Current state:** The pipeline is configured entirely in markup — `apm.yml`, `workflows.yml`, `.apm/instructions/`. No UI yet. The DAG state machine, triage engine, and handler registry are implemented and have run real feature deployments. The Visual DAG editor described in the roadmap section is the planned front-end for this config layer — the declarative graph is already there, rendering it is a UI project. For senior engineers: the architecture is stable; the operational surface is CLI and YAML today.
 
 ---
 
@@ -119,8 +127,10 @@ Every one of these properties maps directly to the pipeline:
 | **Resource monitoring** | Cognitive circuit breaker: soft limit → frustration prompt, hard limit → kill |
 | **Dead letter queue** | Unfixable signals → graceful degradation → Draft PR with documented failure |
 | **Health checks** | Pre-flight: junk file detection, auth validation, roam index health |
-| **Artifact passing** | `handlerData` bag flows between handlers (git-push SHA → poll-ci, Terraform outputs → infra-handoff contract) |
+| **Artifact passing** | `handlerData` bag flows between handlers (git-push SHA → poll-ci, Terraform outputs → infra-handoff contract, typed JSON handoff artifacts between dev → SDET agents) |
 | **Idempotency** | Auto-skip: git diff detects unchanged code → skip redundant test/cleanup phases |
+| **Error preprocessing** | Result processor pipeline: noise strip → test dedup → priority extract → cap → optional LLM diagnosis — before any triage logic sees the output |
+| **Fail-fast / smoke tests** | Smoke command: 2-minute pre-flight check runs before expensive test suites. Server can't start? Fail immediately, skip the $15 E2E run |
 
 This isn't a metaphor. These are the *same problems* with the *same solutions*. The only difference is that the worker happens to be an LLM instead of a container.
 
@@ -198,26 +208,17 @@ The limits are configurable per-agent in `apm.yml`. A `schema-dev` agent that ge
 
 Here's where the Jenkins DNA shows. The pipeline doesn't just *run* tests — it implements a full testing pyramid where each layer catches a different class of defect, and **agents write the tests themselves** for the code they just built.
 
-```
-                    ┌───────────────┐
-                    │   live-ui     │  LLM sees the page.
-                    │  (Playwright  │  Validates rendered DOM
-                    │   + browser)  │  against feature spec.
-                    └───────┬───────┘
-                   ┌────────┴────────┐
-                   │ integration-test│  HTTP calls to deployed
-                   │ (real endpoints)│  endpoints. CORS, auth,
-                   │                 │  response schemas.
-                   └────────┬────────┘
-              ┌─────────────┴─────────────┐
-              │    E2E / Automation        │  Playwright scenarios
-              │  (e2e-author + e2e-runner) │  against dev server or
-              │                            │  deployed app.
-              └─────────────┬──────────────┘
-         ┌──────────────────┴──────────────────┐
-         │          Unit Tests                  │  backend-unit-test
-         │  (backend + frontend, Jest)          │  frontend-unit-test
-         └─────────────────────────────────────┘
+```mermaid
+graph BT
+    UNIT["Unit Tests\n(backend + frontend, Jest)\nbackend-unit-test · frontend-unit-test"] --> E2E
+    E2E["E2E Automation\n(e2e-author + e2e-runner)\nPlaywright against dev server"] --> INT
+    INT["Integration Tests\n(real endpoints)\nHTTP, CORS, auth, schemas"] --> LIVE
+    LIVE["live-ui\n(Playwright + browser)\nLLM sees the page — validates DOM vs. spec"]
+
+    style UNIT fill:#e8f5e9,stroke:#2e7d32
+    style E2E fill:#e3f2fd,stroke:#1565c0
+    style INT fill:#fff3e0,stroke:#e65100
+    style LIVE fill:#fce4ec,stroke:#c62828
 ```
 
 ### Layer 1: Unit Tests (Agents Write Them)
@@ -234,6 +235,13 @@ The commerce-storefront pipeline separates test authoring from test execution:
 - **`e2e-runner`** — A `local-exec` handler that runs `npx playwright test` as a child process. Zero LLM tokens. Pure shell execution.
 
 Why split them? Because test *writing* requires reasoning (LLM). Test *running* is mechanical (shell). Combining them into one agent means the LLM burns tokens watching `npx playwright` scroll through output. The split saves ~2 minutes of LLM time per run and produces cleaner error attribution — if the test fails, it's either a bad test (author's fault) or bad code (dev's fault), never "the agent got confused mid-test."
+
+The `e2e-runner` node also demonstrates two patterns that emerged from real production runs:
+
+- **Smoke command:** Before running the full Playwright suite, a 2-minute pre-flight spins up the dev server and pings a critical route (PLP). If the server can't render the page at all — an SSR crash, a missing dependency, a broken import — the node fails immediately with a clear diagnostic. No $15 Playwright run against a dead server.
+- **Early bail:** `--max-failures=3` directly in the command string. When a systemic error (e.g., SSR crash) causes every test to fail identically, the third failure kills the suite. No reason to watch 13 tests produce the same `TimeoutError`.
+
+Both are declared in `workflows.yml`. The kernel runs them blindly — it doesn't know what "PLP" means or that `--max-failures` is a Playwright flag. All framework knowledge stays in project config.
 
 ### Layer 3: Integration Tests (Against Real Infrastructure)
 
@@ -258,6 +266,8 @@ The `live-ui` agent is the test that matters most and exists nowhere else:
 
 This is where the "LLM sees the page" idea comes in. The agent doesn't execute a pre-written test suite — it **creates** Playwright scenarios tailored to the feature, runs them, and interprets the results. If a button renders but doesn't fire an API call, the agent catches it. If the API call succeeds but the UI doesn't update, the agent catches it.
 
+Unlike the E2E layer (split author + runner), live-ui intentionally keeps authoring and execution in the same session. The agent needs to see intermediate results — a failed interaction mid-flow — to adapt its next scenario. Separating them would require either storing intermediate Playwright state across sessions or running blind. The combined model costs more per run but produces richer, adaptive coverage. The split-author pattern remains the right call for deterministic regression suites where the scenarios are known in advance.
+
 *Future direction:* Screenshot comparison with design mockups. The agent captures a screenshot, compares it against a Figma export or reference image, and flags visual regressions. The primitives exist (Playwright screenshot API + multimodal LLM). The workflow node is a declaration in `workflows.yml` away.
 
 ### What the Pyramid Catches
@@ -273,9 +283,84 @@ Each layer is a DAG node. Each has its own failure recovery path. Each feeds int
 
 ---
 
+## The Result Processor — From 13 Identical Failures to One Root Cause
+
+Here's the problem that triggered this entire subsystem: The `product-quick-view` pipeline run produced 13 Playwright test failures. All 13 had the exact same root cause — an SSR crash from a React hook firing during server-side rendering. The raw output was ~15,000 characters of the same `TimeoutError` repeated 13 times, with only the test name differing. The triage LLM received a wall of noise and produced a mediocre diagnosis. The redevelopment agent re-investigated from scratch instead of reading the diagnosis. Total waste: ~$67 and ~22 minutes — roughly 3× the expected cost of a successful run for a feature of this scope.
+
+The result processor pipeline sits between the handler (which produces raw output) and the triage engine (which classifies failures). It's a multi-stage deterministic transform:
+
+```mermaid
+flowchart TD
+    RAW["Raw Output\n(15,432 chars)"] --> NOISE
+    NOISE["1 · Strip Noise\nRemove React warnings, framework spam\nPatterns: workflows.yml noise_patterns"] --> DEDUP_T
+    DEDUP_T["2 · Dedup Test Failures\n13 failures → 1 representative + ×13 identical\nHeader regex: failure_block_separator"] --> DEDUP_B
+    DEDUP_B["3 · Dedup Diagnostic Blocks\nCollapse repeated stack traces\nGeneric separator-based"] --> STATS
+    STATS["4 · Extract Test Stats\n13 failed, 0 passed — summary line\nStack-agnostic"] --> PRI
+    PRI["5 · Priority Extraction\nAssertions + timeouts pulled to top\nPatterns: workflows.yml priority_patterns"] --> CAP
+    CAP["6 · Cap Output\nPriority sections + head/tail\nBudget: max_chars (default 8192)"] --> CONDENSED
+
+    CONDENSED["Condensed Output\n(2,847 chars)"] --> COG
+
+    COG{"Cognitive\npass?"}
+    COG -->|"type: cognitive"| LLM["7 · LLM Diagnosis\nEmits: FAULT_DOMAIN_HINT\nROOT_CAUSE, ERROR_TYPE, EVIDENCE"]
+    COG -->|"type: regex"| RESULT
+
+    LLM --> RESULT["ProcessedResult\n{ condensed, stats, diagnosis }"]
+
+    style RAW fill:#ffcdd2,stroke:#c62828
+    style CONDENSED fill:#fff9c4,stroke:#f9a825
+    style RESULT fill:#c8e6c9,stroke:#2e7d32
+    style LLM fill:#e3f2fd,stroke:#1565c0
+    style COG fill:#f3e5f5,stroke:#6a1b9a
+```
+
+Steps 1–6 are pure regex/string processing — zero LLM cost. The cognitive pass (Step 7) is optional and uses a "fast" model tier. The entire pipeline reduces a 15K-character wall of repeated errors into a 3K-character condensed report with a structured diagnosis header.
+
+### The Architecture Rule: Zero Framework Knowledge in the Kernel
+
+This emerged as a hard design constraint during the build. Every pattern — noise patterns, priority patterns, failure block separators — is declared in the project's `workflows.yml`, not in kernel code:
+
+```yaml
+# apps/commerce-storefront/.apm/workflows.yml
+result_processor_defaults:
+  noise_patterns:
+    - "Warning: The result of getServerSnapshot"  # PWA Kit React warning
+    - "retail-react-app\\.use-datacloud"           # SFCC API spam
+  priority_patterns:
+    - "^\\s*Error:.*?expect\\(.*?\\)"              # Assertion failures
+    - "^\\s*Error:.*?[Tt]imed?\\s*out"             # Timeout errors
+
+e2e-runner:
+  result_processor:
+    type: cognitive
+    failure_block_separator: "\\s*\\d+\\)\\s+\\[\\w+\\]\\s+›"  # Playwright: "1) [chromium] ›"
+```
+
+A Jest project would declare `●\\s+\\S+` as its separator. A Vitest project would declare its own. The kernel applies patterns generically — it has no idea what Playwright, Jest, or PWA Kit are. This is the Jenkins plugin model: the engine is dumb, the configuration is smart.
+
+### The Diagnosis Bridge
+
+The cognitive pass produces structured headers. Those headers don't just help triage — they flow **back to the redevelopment agent** via `context-injection.ts`:
+
+```
+## Automated Diagnosis (from previous run's result processor)
+**Root Cause:** useProductViewModal hook fires during SSR for every ProductTile
+**Fault Domain:** frontend
+**Error Type:** SSR hook crash causing TimeoutError cascade
+**Evidence:** "Error: Minified React error #310" in server render path
+
+**Use this diagnosis as your starting point. Do NOT re-investigate from scratch.**
+```
+
+The retry agent receives the diagnosis as part of its system prompt. It doesn't need to re-analyze 13 test failures or re-read the SSR rendering pipeline. It knows the root cause, the fault domain, and the evidence. This is the difference between a $20 redevelopment cycle (agent starts with the answer) and a $40 one (agent re-discovers the answer).
+
+This is also why handoff artifacts matter: a dev agent that wraps a hook in `isOpen &&` guard can set a typed handoff artifact — `{"affectedRoutes": ["/plp", "/pdp"], "newTestIds": ["quick-view-btn"]}` — that the SDET agent consumes when authoring E2E tests. Machine-parseable contracts, not free-text doc-notes.
+
+---
+
 ## The 5-Tier Triage Engine — Where n8n Error Branches Meet ML
 
-When a post-deploy test fails, the error doesn't just go back to "the agent." It passes through a 5-tier classification pipeline that uses the cheapest possible method first and escalates only when necessary:
+When a post-deploy test fails, the error doesn't just go back to "the agent." It arrives **pre-processed** — noise stripped, identical failures collapsed, high-signal lines extracted. Then it passes through a 5-tier classification pipeline that uses the cheapest possible method first and escalates only when necessary:
 
 ### Tier 1: Unfixable Signals (Pattern Match)
 
@@ -368,6 +453,8 @@ Here's the n8n-inspired part: every Tier 5 classification is persisted to `_NOVE
 
 A human reviews these periodically and generalizes recurring patterns into triage pack signatures. The next time the same error class occurs, it routes at Tier 4 instead of Tier 5. Over time, the LLM fallback fires less and less. The system gets cheaper as it learns. The flywheel turns.
 
+The result processor amplifies this flywheel: pre-processed output is shorter, cleaner, and more structured — which means the LLM Router at Tier 5 classifies more accurately, which means the novel triage entries it generates are higher quality, which means triage packs graduate faster.
+
 ---
 
 ## One Engine, Multiple Apps
@@ -387,6 +474,8 @@ The pipeline currently runs two apps with radically different architectures:
 | **Test layers** | Unit → Integration → Live UI | Unit → E2E Author → E2E Runner |
 | **Fault domains** | backend, frontend, infra, cicd | frontend, cicd |
 | **Triage packs** | Azure-specific error patterns | PWA Kit + Chakra UI patterns |
+| **Result processor** | Regex only (no cognitive) | Regex + cognitive (LLM diagnosis on E2E failures) |
+| **Smoke command** | N/A (tests run against deployed infra) | SSR health check on dev server before E2E |
 | **CI workflow** | `deploy-backend.yml` + `deploy-frontend.yml` | `deploy-storefront.yml` |
 
 Same orchestrator. Same DAG scheduler. Same triage engine. Same handler registry. Different `apm.yml`, different `workflows.yml`, different `.apm/instructions/`. The `--app` flag points at a directory, and the engine adapts.
@@ -398,6 +487,8 @@ Adding a third app — Rails API, Django monolith, Go microservice — means wri
 4. Optionally, triage packs for known error patterns
 
 The engine handles scheduling, sandboxing, triage, circuit breaking, and delivery. You handle domain knowledge.
+
+**On scale and concurrency:** Each app maintains its own `_STATE.json`, so multiple pipelines run independently in parallel — `sample-app` and `commerce-storefront` can execute concurrently on the same machine without contention. Within a single pipeline, agent dispatch is serial: a POSIX lock file serializes state transitions to prevent race conditions between the scheduler and any parallel agent completing its work. This is the same tradeoff the Archon comparison covers — mutex vs. worktree isolation. It's the right tradeoff for a single-developer or small-team context. Multi-team isolation (per-developer pipeline state, concurrent feature branches) is a known gap on the roadmap.
 
 ---
 
@@ -416,7 +507,7 @@ Archon is a **workflow engine**. DAGent is an **SDLC factory**.
 | **CI/CD integration** | Not built-in (can exec scripts) | Deterministic handlers: zero-LLM push, CI poll, PR publish | DAGent's deploy phase spends zero tokens |
 | **Testing pyramid** | Manual test config | Agents write tests → automation → integration → live UI | Structural — not configurable in Archon |
 | **Human gates** | Approval nodes (pause workflow) | `agent: null` + ChatOps + elevated OIDC workflows | DAGent's approval actually triggers `terraform apply` |
-| **Cost optimization** | Per-node model selection, cost cap | 4-tier triage avoids LLM, auto-skip avoids redundant runs, deterministic handlers | Different strategies |
+| **Cost optimization** | Per-node model selection, cost cap | 4-tier triage avoids LLM, auto-skip avoids redundant runs, deterministic handlers, result processor dedup, smoke command fail-fast | Different strategies |
 | **Multi-platform** | Web UI, CLI, Telegram, Slack, Discord, GitHub | Headless CLI + GitHub Actions only | Archon wins on platform reach |
 
 The fundamental primitive gap: Archon's hooks are static YAML — `before_run` and `after_run` callbacks that can't inspect tool arguments at runtime. DAGent's tool harness is a `onPreToolUse` hook that runs code against every tool invocation, checking file paths against RBAC rules and shell commands against bounce patterns. You can't configure Archon's YAML to replicate runtime argument inspection.
@@ -498,20 +589,11 @@ This is the distributed systems pattern — event-driven microservices that reac
 
 **The future of AI coding isn't smarter agents. It's smarter pipelines with constrained agents.**
 
-Every control in this system — RBAC, shell bouncers, circuit breakers, commit scope enforcement, tool allow-lists, approval gates — exists because an agent did something stupid in a previous run. The pre-commit hook exists because an agent ran `git commit` directly. The shell bouncers exist because an agent ran `grep -r` and produced 40,000 lines of output. The circuit breaker exists because an agent rewrote the same file 7 times.
+Every control in this system — RBAC, shell bouncers, circuit breakers, commit scope enforcement, tool allow-lists, result processors, smoke commands, diagnosis injection — exists because an agent did something stupid or the pipeline wasted money on a previous run. The pre-commit hook exists because an agent ran `git commit` directly. The shell bouncers exist because an agent ran `grep -r` and produced 40,000 lines of output. The circuit breaker exists because an agent rewrote the same file 7 times. The result processor exists because 13 identical `TimeoutError` blocks consumed $67 in triage and redevelopment. The smoke command exists because a full Playwright suite ran against an SSR-crashed server.
 
 Each failure was observable, triageable, and fixable — because the pipeline's execution graph is deterministic. When an agent goes rogue in an unstructured "do anything" setup, you get a mess. When it goes rogue inside a DAG with RBAC and circuit breakers, you get a log entry and a graceful fallback.
 
-The old software engineering playbook already solved this:
-- **Unit tests** catch logic errors early — agents write them.
-- **Integration tests** catch deployment errors — agents run them against real infrastructure.
-- **E2E automation** catches user journey breakage — agents author and execute them.
-- **Live UI tests** catch everything visible to a user — agents see the page.
-- **Approval gates** prevent irreversible damage — humans review what matters.
-- **Circuit breakers** prevent cascade failures — deterministic limits on LLM behavior.
-- **RBAC** prevents blast radius expansion — file-path-level enforcement.
-
-None of this is new. Distributed systems, CI/CD pipelines, and workflow engines have used these patterns for decades. The only new thing is that the worker inside the node is an LLM.
+None of these controls are new ideas. Distributed systems, CI/CD pipelines, and workflow engines have used them for decades. The only new thing is that the worker inside the node is an LLM.
 
 **n8n's canvas + Jenkins' discipline + LLM's reasoning = the factory that ships code while you sleep.**
 

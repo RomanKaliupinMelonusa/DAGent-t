@@ -40,10 +40,24 @@ fi
 
 # ─── @storefront-dev appends route checks below this line ─────────────────
 
+# ─── Baseline Route Checks (PLP, PDP — common crash targets) ─────────────
+# Override components often crash only on the pages that render them.
+# The root route may return HTTP 200 while PLP/PDP are broken.
+BASE="${STOREFRONT_URL:-http://localhost:3000}"
+BASELINE_ROUTES=("/category/newarrivals" "/search?q=shirt")
+for ROUTE in "${BASELINE_ROUTES[@]}"; do
+  ROUTE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${BASE}${ROUTE}" 2>/dev/null || echo "000")
+  # 200 = OK, 302 = redirect (acceptable for some routes)
+  if [[ "$ROUTE_STATUS" != "200" && "$ROUTE_STATUS" != "302" ]]; then
+    echo "Route ${ROUTE} at ${BASE}${ROUTE} returned HTTP $ROUTE_STATUS (expected 200 or 302)"
+    echo "This likely indicates an SSR crash in a component override affecting this page."
+    exit 1
+  fi
+done
+
 # ─── SLAS Probe (informational only) ──────────────────────────────────────
 # Client-side SLAS guest auth returns 403 on localhost — this is EXPECTED.
 # SSR handles data fetching server-side via /mobify/proxy/api.
-BASE="${STOREFRONT_URL:-http://localhost:3000}"
 SLAS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${BASE}/mobify/proxy/api/" 2>/dev/null || echo "000")
 if [[ "$SLAS_STATUS" == "403" || "$SLAS_STATUS" == "401" ]]; then
   echo "SLAS PROBE: HTTP $SLAS_STATUS Forbidden. Note: This is EXPECTED for local dev environments because client-side auth fails outside of Managed Runtime. SSR will still render correctly. Do not debug this."

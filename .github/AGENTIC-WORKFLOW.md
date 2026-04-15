@@ -267,6 +267,7 @@ Exposed as npm scripts in the root `package.json`, delegating to `tools/autonomo
 | `pipeline:next-available` | *(programmatic only — used by watchdog)* | Returns all items whose DAG dependencies are satisfied — enables parallel batch execution |
 | `pipeline:set-note` | `npm run pipeline:set-note <slug> <note>` | Appends text to `implementationNotes` |
 | `pipeline:doc-note` | `npm run pipeline:doc-note <slug> <item-key> <note>` | Sets a per-item documentation note on a pipeline item. Dev agents use this to pass architectural context to `docs-archived` ("Pass the Baton" pattern) |
+| `pipeline:handoff-artifact` | `npm run pipeline:handoff-artifact <slug> <item-key> <json>` | Sets a structured JSON handoff artifact on a pipeline item. Must be valid JSON. Used for typed inter-agent contracts (testid maps, affected routes, SSR-safety flags) |
 | `pipeline:set-url` | `npm run pipeline:set-url <slug> <url>` | Sets `deployedUrl` in state |
 
 The programmatic API (used by the orchestrator) exposes these same operations as importable functions in `pipeline-state.mjs` that throw errors instead of calling `process.exit()`. It also exports `getNextAvailable(slug)` for DAG-aware parallel scheduling and `ITEM_DEPENDENCIES` for the dependency graph.
@@ -327,6 +328,39 @@ The orchestrator sets `POLL_MAX_RETRIES=60` for ~30 min polling. Default remains
 **Failure log capture:** On failure (exit 1), the script fetches truncated runner logs via `gh run view <RUN_ID> --log-failed | tail -n 250` and echoes them to stdout. The orchestrator captures these logs and passes them to `triage.ts` for deterministic fault-domain routing.
 
 **Cancelled run handling:** Manually cancelled runs are tracked separately and treated as failures (exit 1) with a `CI_RUN_CANCELLED_MANUALLY` marker. Triage routes these to the environment fault domain (retry only, no dev reset).
+
+### Result Processor Pipeline
+
+When a `local-exec` script node fails, its raw output is processed through a **result processor** before reaching triage. Configured per-node in `workflows.yml` via `result_processor`.
+
+| Config Field | Purpose |
+|---|---|
+| `type` | `"regex"` (deterministic only), `"cognitive"` (regex + LLM diagnosis), `"none"` (disabled) |
+| `max_chars` | Budget for condensed output (default: 8192) |
+| `noise_patterns` | Regex patterns matching noise lines to strip (additive with `result_processor_defaults`) |
+| `priority_patterns` | Regex patterns for high-signal lines to extract before truncation |
+| `failure_block_separator` | Regex matching per-test failure headers — enables dedup of identical errors |
+| `model` | LLM tier for cognitive pass: `"fast"` or `"default"` |
+| `prompt` | Path to `.md` system prompt for LLM (relative to `.apm/`) |
+
+Workflow-level `result_processor_defaults` provides shared patterns that node-level configs extend additively. See [04-state-machine.md](../tools/autonomous-factory/docs/04-state-machine.md#result-processor-pipeline) for the full pipeline diagram.
+
+### Smoke Command (Pre-flight Check)
+
+Local-exec nodes can declare `smoke_command` in `workflows.yml` — a lightweight shell check that runs **before** the main command (2 min timeout). If it exits non-zero, the node fails immediately without running the expensive test suite.
+
+```yaml
+e2e-runner:
+  type: script
+  script_type: local-exec
+  command: "npx playwright test e2e/${featureSlug}.spec.ts"
+  smoke_command: |
+    npm start &
+    # poll dev server, exit 0 if healthy, exit 1 if broken
+  cleanup_command: "pkill -f 'node.*ssr' 2>/dev/null; exit 0"
+```
+
+`cleanup_command` runs before retries (attempt > 1) to kill stale processes from previous failures.
 
 ---
 

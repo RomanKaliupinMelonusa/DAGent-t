@@ -389,6 +389,7 @@ export async function runItemSession(
       noisePatterns: mergedNoise.length > 0 ? mergedNoise : undefined,
       priorityPatterns: mergedPriority.length > 0 ? mergedPriority : undefined,
       maxLlmInputChars: node.result_processor.max_llm_input_chars,
+      failureBlockSeparator: node.result_processor.failure_block_separator,
     };
 
     if (rpConfig.type !== "none") {
