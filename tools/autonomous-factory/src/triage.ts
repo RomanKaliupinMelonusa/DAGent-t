@@ -68,8 +68,8 @@ export async function triageFailure(
   errorMessage: string,
   naItems: Set<string>,
   faultRouting?: Record<string, ApmFaultRoute>,
-  /** Workflow nodes for dynamic deploy-augmentation lookup (script_type === "push"|"poll"). */
-  nodes?: Record<string, { script_type?: string }>,
+  /** Workflow nodes for dynamic deploy-augmentation lookup (category === "deploy" && type === "script"). */
+  nodes?: Record<string, { category?: string; type?: string; script_type?: string }>,
   /** Triage knowledge base — flattened signatures from .apm/triage-packs/. */
   triageKb?: TriageSignature[],
   /** Copilot SDK client for LLM fallback triage. */
@@ -194,7 +194,7 @@ export { parseTriageDiagnostic } from "./types.js";
  *
  * Supported formats:
  *   - `DOMAIN: service-a,service-b` (comma-separated domain names, from CI poll)
- *   - `FAULT_DOMAIN_HINT: test-code-from-dev` (from cognitive result processor)
+ *   - `FAULT_DOMAIN_HINT: test-code-from-dev` (from post-hook failure or triage system)
  *
  * Matching: Each comma-separated value is checked against `faultRouting` keys.
  *           Only values that exist as keys are returned. If none match, returns `null`
@@ -230,16 +230,17 @@ export function parseDomainHeader(
 
 /**
  * Dynamically discover deploy-augmentation nodes from the workflow DAG.
- * Returns all node keys where `script_type` is "push" or "poll", filtered by `naItems`.
+ * Returns all node keys with `category === "deploy"` and `type === "script"`,
+ * filtered by `naItems`.
  * When no `nodes` dictionary is provided, returns an empty array (graceful degradation).
  */
 function getDeployAugmentationNodes(
-  nodes?: Record<string, { script_type?: string }>,
+  nodes?: Record<string, { category?: string; type?: string; script_type?: string }>,
   naItems?: Set<string>,
 ): string[] {
   if (!nodes) return [];
   return Object.entries(nodes)
-    .filter(([, n]) => n.script_type === "push" || n.script_type === "poll")
+    .filter(([, n]) => n.category === "deploy" && n.type === "script")
     .map(([key]) => key)
     .filter((k) => !naItems?.has(k));
 }

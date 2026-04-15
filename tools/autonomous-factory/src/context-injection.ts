@@ -78,9 +78,9 @@ export function buildDownstreamFailureContext(
   ).filter((s) => s.key !== itemKey);
   if (downstreamFailures.length === 0) return "";
 
-  // --- K2: Extract structured diagnosis from cognitive result processor ---
-  // The result processor prepends FAULT_DOMAIN_HINT/ROOT_CAUSE/ERROR_TYPE/EVIDENCE
-  // headers to the condensed error message. Surface these prominently so the dev
+  // --- K2: Extract structured diagnosis from triage system ---
+  // The triage cascade may prepend structured headers (FAULT_DOMAIN_HINT, ROOT_CAUSE,
+  // ERROR_TYPE, EVIDENCE) to error messages. Surface these prominently so the dev
   // agent sees the diagnosis immediately instead of re-discovering it from raw output.
   const diagnosisSection = extractDiagnosisFromFailures(downstreamFailures);
 
@@ -117,8 +117,8 @@ export function buildDownstreamFailureContext(
 
 /**
  * Extract structured diagnosis headers (FAULT_DOMAIN_HINT, ROOT_CAUSE, etc.)
- * from downstream failure error messages. The cognitive result processor
- * prepends these headers when it runs successfully.
+ * from downstream failure error messages. The triage system or post-hook
+ * failures may prepend these headers to error messages.
  *
  * Returns a formatted "## Automated Diagnosis" section if any diagnosis is found,
  * or empty string if raw errors have no structured headers.
@@ -149,7 +149,7 @@ function extractDiagnosisFromFailures(
 
   if (Object.keys(diagFields).length === 0) return "";
 
-  const parts = ["\n### Automated Diagnosis (from previous run's result processor)"];
+  const parts = ["\n### Automated Diagnosis (from previous run's triage system)"];
   if (diagFields.ROOT_CAUSE) parts.push(`**Root Cause:** ${diagFields.ROOT_CAUSE}`);
   if (diagFields.FAULT_DOMAIN_HINT) parts.push(`**Fault Domain:** ${diagFields.FAULT_DOMAIN_HINT}`);
   if (diagFields.ERROR_TYPE) parts.push(`**Error Type:** ${diagFields.ERROR_TYPE}`);

@@ -43,7 +43,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
 | Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
-| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
+| Handler plugins (agent, poll, local-exec) | `tools/autonomous-factory/src/handlers/` |
 | Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
 | Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
@@ -129,14 +129,14 @@ The orchestrator is a deterministic `while` loop that:
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
 3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
-5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `git-push` (deterministic push), `github-ci-poll` (CI polling), `github-pr-publish` (PR promotion), `local-exec` (script execution)
+5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `github-ci-poll` (CI polling), `local-exec` (script execution — push, publish, tests, builds)
 6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
 7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes and handoff artifacts) before the `docs-archived` session
-8. For `local-exec` script nodes: runs optional `smoke_command` pre-flight check before the main command, then processes failed output through the result processor pipeline (noise stripping → test failure dedup → diagnostic block dedup → priority extraction → optional LLM diagnosis)
+8. For script nodes: runs optional `pre` hook before the handler body (e.g. environment health check), then runs the handler, then runs optional `post` hook (e.g. cleanup/validation). Failed output flows to the triage system for fault classification.
 9. Waits for handlers to complete or fail
 10. Advances to the next batch of ready items
 11. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
-12. Injects downstream failure context (including structured diagnosis from result processors) into dev agents during redevelopment cycles
+12. Injects downstream failure context into dev agents during redevelopment cycles
 
 ### Hard Rules
 

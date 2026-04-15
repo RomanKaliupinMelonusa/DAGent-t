@@ -388,30 +388,33 @@ When post-deploy or test items fail, `triageFailure()` in `triage.ts` (called fr
 
 ## Local-Exec Script Nodes
 
-Script-type nodes with `script_type: local-exec` execute shell commands natively (zero LLM cost). The `local-exec` handler supports two pre-flight mechanisms to catch catastrophic failures early:
+Script-type nodes with `script_type: local-exec` execute shell commands natively (zero LLM cost). The `local-exec` handler supports `pre` and `post` hooks for lifecycle management:
 
-### Smoke Command
+### Pre/Post Hooks
 
-When a workflow node declares `smoke_command`, the kernel executes it **before** the main `command` with a 2-minute timeout. If the smoke check exits non-zero, the node fails immediately — avoiding the cost of running a full test suite against a broken environment.
+All script-type nodes support optional `pre` and `post` hooks — shell commands that run before and after the handler body.
+
+- **`pre`** — Runs before the main command on every attempt (including first). If it exits non-zero, the node fails immediately without running the expensive body command. Timeout: 2 minutes. Use for: killing stale processes from previous runs, validating environment health (SSR smoke check, dev server startup).
+- **`post`** — Runs after the handler body completes successfully. Use for: cleanup (killing dev servers, browser processes), validation hooks. For local-exec nodes, post-hook failure is non-fatal (logged as warning).
 
 ```mermaid
 flowchart LR
-    START["local-exec\nstarts"] --> SMOKE{"smoke_command\ndeclared?"}
-    SMOKE -->|yes| RUN_SMOKE["Run smoke_command\n(2 min timeout)"]
-    SMOKE -->|no| RUN_MAIN["Run main command"]
-    RUN_SMOKE -->|"exit 0"| RUN_MAIN
-    RUN_SMOKE -->|"exit ≠ 0"| FAIL["Node fails:\nsmokeCheckFailed: true"]
-    RUN_MAIN --> RESULT["Handler returns\nNodeResult"]
+    START["script node\nstarts"] --> PRE{"pre hook\ndeclared?"}
+    PRE -->|yes| RUN_PRE["Run pre hook\n(2 min timeout)"]
+    PRE -->|no| RUN_MAIN["Run handler body"]
+    RUN_PRE -->|"exit 0"| RUN_MAIN
+    RUN_PRE -->|"exit ≠ 0"| FAIL["Node fails:\npreHookFailed: true"]
+    RUN_MAIN --> POST{"post hook\ndeclared?"}
+    POST -->|yes| RUN_POST["Run post hook"]
+    POST -->|no| RESULT["Handler returns\nNodeResult"]
+    RUN_POST --> RESULT
 
     style FAIL fill:#ffcdd2
-    style RUN_SMOKE fill:#fff9c4
+    style RUN_PRE fill:#fff9c4
+    style RUN_POST fill:#fff9c4
 ```
 
-> **Framework knowledge stays in workflows.yml.** The kernel executes `smoke_command` blindly — it contains no awareness of what the command checks (SSR health, build success, etc.). Each project declares its own smoke logic.
-
-### Cleanup Command
-
-When a `local-exec` node is **retried** (attempt > 1), the kernel runs `cleanup_command` before the main command to kill stale processes from the previous failed run. Non-fatal — cleanup failure never blocks the retry.
+> **Framework knowledge stays in workflows.yml.** The kernel executes `pre`/`post` hooks blindly — it contains no awareness of what they check. Each project declares its own hook logic.
 
 ---
 

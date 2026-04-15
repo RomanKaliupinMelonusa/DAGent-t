@@ -44,13 +44,12 @@ default:
     push-infra:
       type: script
       category: deploy
-      agent: "@deploy-manager"
       phase: infra
       timeout_minutes: 15
       depends_on: [infra-architect]
       run_if: [Backend, Frontend, Full-Stack, Infra]
-      commit_scope: pipeline
-      script_type: push
+      script_type: local-exec
+      command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
 
     create-draft-pr:
       type: agent
@@ -64,13 +63,10 @@ default:
     poll-infra-plan:
       type: script
       category: deploy
-      agent: "@deploy-manager"
       phase: infra
       timeout_minutes: 15
       depends_on: [create-draft-pr]
       run_if: [Backend, Frontend, Full-Stack, Infra]
-      triage_json_gated: true
-      commit_scope: pipeline
       post_ci_artifact_to_pr: "plan-output"
       script_type: poll
       poll_target: push-infra
@@ -95,7 +91,7 @@ default:
       depends_on: [await-infra-approval]
       run_if: [Backend, Frontend, Full-Stack, Infra]
       commit_scope: pipeline
-      post_run_hook: validateInfra
+      post: "bash .apm/hooks/validate-infra.sh"
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
@@ -149,29 +145,25 @@ default:
     push-app:
       type: script
       category: deploy
-      agent: "@deploy-manager"
       phase: deploy
       timeout_minutes: 15
       depends_on: [backend-unit-test, frontend-unit-test]
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      commit_scope: pipeline
-      writes_deploy_sentinel: true
-      script_type: push
+      script_type: local-exec
+      command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
+      post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
 
     poll-app-ci:
       type: script
       category: deploy
-      agent: "@deploy-manager"
       phase: deploy
       timeout_minutes: 15
       depends_on: [push-app]
       run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      triage_json_gated: true
-      commit_scope: pipeline
       script_type: poll
       poll_target: push-app
       ci_workflow_key: app
-      post_run_hook: validateApp
+      post: "bash .apm/hooks/validate-app.sh"
 
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
@@ -241,12 +233,12 @@ default:
     publish-pr:
       type: script
       category: finalize
-      agent: "@pr-creator"
       phase: finalize
       timeout_minutes: 15
       depends_on: [doc-architect]
-      commit_scope: pipeline
-      script_type: publish
+      script_type: local-exec
+      command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
+      signals_create_pr: true
       salvage_survivor: true
 
   # ── Cycle Budgets ──────────────────────────────────────────────────

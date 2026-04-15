@@ -461,64 +461,38 @@ flowchart LR
 
 ---
 
-## Result Processor Pipeline
+## Output Sanitization
 
-When a `local-exec` script node (e.g., `e2e-runner`) fails, the kernel runs its error output through a **result processor pipeline** before triage. This happens in `session-runner.ts` after `handler.execute()` returns a failed `NodeResult`.
+When a script node fails, the kernel sanitizes the raw output before passing it to the triage system. This is zero-config — no per-node or per-app configuration required.
 
-```mermaid
-flowchart LR
-    RAW["Raw script\noutput"] --> NOISE["Strip noise\n(noise_patterns)"]
-    NOISE --> DEDUP_T["Dedup test failures\n(failure_block_separator)"]
-    DEDUP_T --> DEDUP_B["Dedup diagnostic\nblocks (separator-based)"]
-    DEDUP_B --> STATS["Extract test stats\n(passed/failed/total)"]
-    STATS --> CAP["Cap output\n(priority_patterns → head/tail)"]
-    CAP --> COG{"Cognitive\npass?"}
-    COG -->|"type: cognitive"| LLM["LLM diagnosis\n(fault_domain, root_cause,\nerror_type, evidence)"]
-    COG -->|"type: regex"| DONE["ProcessedResult"]
-    LLM --> DONE
+1. **Extract test stats** — recognizes common runner output (Playwright, Jest, Vitest) for `passed/failed/total` summary
+2. **Truncate** — caps output to 8192 chars using 60/40 head/tail split
 
-    style RAW fill:#ffcdd2
-    style DONE fill:#c8e6c9
-    style LLM fill:#e3f2fd
+Fault classification is handled by the triage system's 4-tier cascade (unfixable signals → structured JSON → domain header → RAG retriever → LLM router). Domain-specific error patterns live in triage packs (`.apm/triage-packs/*.json`), not in script node config.
+
+### Script Node Pre/Post Hooks
+
+All script-type nodes support `pre` and `post` hooks — shell commands that run before and after the handler body.
+
+- **`pre`** — Runs before the main command on every attempt (idempotent). Fatal on failure (node aborts). Timeout: 2 minutes for local-exec.
+- **`post`** — Runs after successful handler completion. Use for: cleanup, validation hooks.
+
+```yaml
+e2e-runner:
+  type: script
+  script_type: local-exec
+  command: "npx playwright test e2e/${featureSlug}.spec.ts"
+  pre: |
+    pkill -f 'node.*ssr' 2>/dev/null || true
+    npm start &
+    # poll dev server, exit 0 if healthy, exit 1 if broken
+  post: |
+    pkill -f 'node.*ssr' 2>/dev/null || true
 ```
 
-### Configuration (`workflows.yml` → `result_processor`)
+### Context Injection (Failure → Redevelopment)
 
-| Field | Type | Purpose |
-|-------|------|----------|
-| `type` | `"regex"` \| `"cognitive"` \| `"none"` | Processor pipeline to run |
-| `max_chars` | number | Budget for condensed output (default: 8192) |
-| `model` | `"fast"` \| `"default"` | LLM tier for cognitive pass |
-| `prompt` | string | Path to `.md` system prompt for LLM (relative to `.apm/`) |
-| `noise_patterns` | string[] | Regex patterns matching noise lines to strip before truncation |
-| `priority_patterns` | string[] | Regex patterns matching high-signal lines to extract first |
-| `failure_block_separator` | string | Regex matching test failure block headers (enables per-test dedup) |
-
-> **Zero hardcoded knowledge:** All `noise_patterns`, `priority_patterns`, and `failure_block_separator` values are declared per-project in `workflows.yml`. The kernel applies them generically — it contains no framework-specific patterns.
->
-> **Additive defaults:** `result_processor_defaults` at the workflow level provides shared noise/priority patterns. Node-level patterns are merged additively.
-
-### Context Injection (Diagnosis → Redevelopment)
-
-When a cognitive result processor produces structured diagnosis headers (`FAULT_DOMAIN_HINT`, `ROOT_CAUSE`, `ERROR_TYPE`, `EVIDENCE`), these are **extracted by `context-injection.ts`** and surfaced prominently in the redevelopment agent's system prompt. This prevents the agent from re-investigating the same failure from scratch.
-
-```mermaid
-sequenceDiagram
-    participant ER as e2e-runner
-    participant RP as Result Processor
-    participant TR as Triage Router
-    participant CI as context-injection.ts
-    participant DEV as storefront-dev (retry)
-
-    ER->>RP: Raw Playwright output
-    RP->>RP: Regex pass (dedup + cap)
-    RP->>RP: Cognitive pass (LLM diagnosis)
-    RP-->>TR: ProcessedResult {condensed, diagnosis}
-    TR->>TR: Route to fault domain → reset dev items
-    Note over CI: On retry, kernel calls\nbuildDownstreamFailureContext()
-    CI->>CI: extractDiagnosisFromFailures()
-    CI-->>DEV: Prompt: "## Automated Diagnosis\n**Root Cause:** ...\n**Use this as your starting point.**"
-```
+When a test node fails, the error output and triage classification are **extracted by `context-injection.ts`** and surfaced prominently in the redevelopment agent's system prompt. This prevents the agent from re-investigating the same failure from scratch.
 
 ---
 

@@ -148,7 +148,7 @@ export const ApmWorkflowNodeSchema = z.object({
   agent: z.string().optional(),
   /**
    * Handler reference for this node. Determines which NodeHandler implementation executes it.
-   * Built-in keys: "copilot-agent", "git-push", "github-ci-poll", "github-pr-publish".
+   * Built-in keys: "copilot-agent", "github-ci-poll", "local-exec".
    * Local paths: "./handlers/my-handler.ts" (resolved against appRoot, sandboxed to repo).
    * If omitted, inferred from `type` + `script_type` for backward compatibility.
    */
@@ -181,7 +181,7 @@ export const ApmWorkflowNodeSchema = z.object({
   /** Directory keys (from config.directories) or literal path prefixes for scoped git-diff attribution.
    *  Empty array = no scope restriction (all non-state files). Entries ending in "/" are literal prefixes. */
   diff_attribution_dirs: z.array(z.string()).default([]),
-  /** When true, runPushCode writes `.deploy-trigger` sentinel files to force CI. */
+  /** @deprecated — push is now local-exec; sentinel logic lives in hooks/write-deploy-sentinels.sh. */
   writes_deploy_sentinel: z.boolean().default(false),
   /** When set, runPollCi downloads the named CI artifact and posts it to the PR (e.g. "plan-output"). */
   post_ci_artifact_to_pr: z.string().optional(),
@@ -189,59 +189,30 @@ export const ApmWorkflowNodeSchema = z.object({
   generates_change_manifest: z.boolean().default(false),
   /** When true, buildInfraRollbackContext() is injected into the agent prompt. */
   injects_infra_rollback: z.boolean().default(false),
-  /** Deterministic handler type for script nodes: push, poll, publish, or local-exec. */
-  script_type: z.enum(["push", "poll", "publish", "local-exec"]).optional(),
+  /** Deterministic handler type for script nodes: poll or local-exec.
+   *  Push and publish are now expressed as local-exec with pre/command/post hooks. */
+  script_type: z.enum(["poll", "local-exec"]).optional(),
   /** Shell command to execute (required when script_type is "local-exec"). */
   command: z.string().optional(),
   /** For poll nodes — the key of the push node whose SHA to look up in state.lastPushedShas. */
   poll_target: z.string().optional(),
   /** For poll nodes — the key into config.ciWorkflows for CI_WORKFLOW_FILTER (e.g. "infra", "app"). */
   ci_workflow_key: z.string().optional(),
-  /** Validation hook to run after the node completes successfully. */
-  post_run_hook: z.enum(["validateInfra", "validateApp"]).optional(),
+  /** Shell command to run BEFORE the handler body as a pre-flight check.
+   *  If it exits non-zero, the node fails immediately. Runs on every attempt
+   *  (including first), so should be idempotent (e.g. kill stale processes,
+   *  then validate environment health). The kernel executes this generically;
+   *  all framework-specific knowledge lives in the command itself. */
+  pre: z.string().optional(),
+  /** Shell command to run AFTER the handler body completes successfully.
+   *  If it exits non-zero, the node fails. Use for cleanup, validation hooks,
+   *  or any post-processing that doesn't need LLM involvement. */
+  post: z.string().optional(),
+  /** When true, successful completion signals the watchdog to archive feature files.
+   *  Used by the publish-pr node to trigger post-pipeline archiving. */
+  signals_create_pr: z.boolean().default(false),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
-  /** Shell command to run before retrying this node (attempt > 1).
-   *  Kills stale processes from the previous failed run. Non-fatal — cleanup
-   *  failure never blocks the retry. The kernel runs this blindly; all
-   *  framework-specific knowledge lives in the command itself. */
-  cleanup_command: z.string().optional(),
-  /** Shell command to run BEFORE the main `command` as a pre-flight check.
-   *  If it exits non-zero, the node fails immediately with a clear diagnostic
-   *  message — avoiding the cost of running the full test suite against a
-   *  broken environment. The kernel executes this generically; all framework-
-   *  specific knowledge (e.g. "curl the PLP to verify SSR") lives in the
-   *  command itself, declared per-project in workflows.yml. */
-  smoke_command: z.string().optional(),
-
-  /** Result processor config for post-processing handler output before triage.
-   *  Only applicable to script-type nodes (e.g. local-exec test runners). */
-  result_processor: z.object({
-    /** Processor type: "regex" = deterministic only, "cognitive" = regex + LLM, "none" = disabled. */
-    type: z.enum(["regex", "cognitive", "none"]),
-    /** Maximum chars for condensed output (default: 8192). */
-    max_chars: z.number().positive().default(8192),
-    /** LLM model tier for cognitive pass: "fast" or "default" (default: "fast"). */
-    model: z.enum(["fast", "default"]).default("fast"),
-    /** Path to .md instruction fragment for LLM system prompt (relative to .apm/). */
-    prompt: z.string().optional(),
-    /** Regex patterns matching console/log noise lines to strip before truncation.
-     *  Declared per-project — the kernel applies them generically. */
-    noise_patterns: z.array(z.string()).optional(),
-    /** Regex patterns for high-signal diagnostic lines to extract before truncation.
-     *  Matched sections are placed at the top of condensed output for triage. */
-    priority_patterns: z.array(z.string()).optional(),
-    /** Regex pattern matching the header of individual test failure blocks.
-     *  Used to split output into per-test blocks for dedup of identical errors.
-     *  When omitted, test-level dedup is skipped. Framework-specific knowledge
-     *  lives in the project's workflows.yml, not the kernel.
-     *  Examples: Playwright: `\s*\d+\)\s+\[\w+\]\s+›` / Jest: `●\s+\S+` */
-    failure_block_separator: z.string().optional(),
-    /** Maximum chars to send to the LLM in the cognitive pass.
-     *  When omitted, the full noise-stripped output is sent (recommended —
-     *  the cost delta is negligible vs. pipeline run cost). */
-    max_llm_input_chars: z.number().positive().optional(),
-  }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },
@@ -249,7 +220,7 @@ export const ApmWorkflowNodeSchema = z.object({
   (node) => node.script_type !== "poll" || typeof node.poll_target === "string",
   { message: "Workflow node with script_type 'poll' must declare a 'poll_target' field." },
 ).refine(
-  (node) => node.script_type !== "local-exec" || typeof node.command === "string",
+  (node) => !(node.type === "script" && node.script_type === "local-exec") || typeof node.command === "string",
   { message: "Workflow node with script_type 'local-exec' must declare a 'command' field." },
 );
 
@@ -311,14 +282,6 @@ export const ApmWorkflowSchema = z.object({
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
-  /** Shared result processor defaults inherited by all script-type nodes.
-   *  Node-level noise_patterns / priority_patterns are ADDITIVE — they extend
-   *  these defaults rather than replacing them. This avoids duplicating
-   *  framework-specific patterns across every test runner node. */
-  result_processor_defaults: z.object({
-    noise_patterns: z.array(z.string()).default([]),
-    priority_patterns: z.array(z.string()).default([]),
-  }).default({ noise_patterns: [], priority_patterns: [] }),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key

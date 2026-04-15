@@ -101,32 +101,6 @@ async function postCiArtifactToPr(ctx: NodeContext): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// validateApp hook (inline — mirrors readiness-probe.ts logic)
-// ---------------------------------------------------------------------------
-
-function runValidateApp(ctx: NodeContext): string | null {
-  const hookScript = path.join(ctx.appRoot, ".apm", "hooks", "validate-app.sh");
-  if (!fs.existsSync(hookScript)) return null;
-  try {
-    execSync(`bash "${hookScript}"`, {
-      cwd: ctx.appRoot,
-      stdio: "pipe",
-      timeout: 120_000,
-      env: {
-        ...process.env,
-        SLUG: ctx.slug,
-        APP_ROOT: ctx.appRoot,
-        REPO_ROOT: ctx.repoRoot,
-      },
-    });
-    return null;
-  } catch (err: unknown) {
-    const execErr = err as { stderr?: Buffer; message?: string };
-    return execErr.stderr?.toString().trim() || execErr.message || "validateApp hook failed";
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Handler implementation
 // ---------------------------------------------------------------------------
 
@@ -139,7 +113,6 @@ const githubCiPollHandler: NodeHandler = {
 
     const pollTarget = node?.poll_target;
     const ciWorkflowKey = node?.ci_workflow_key ?? "app";
-    const postRunHook = node?.post_run_hook;
 
     if (!pollTarget) {
       return {
@@ -206,20 +179,6 @@ const githubCiPollHandler: NodeHandler = {
             await postCiArtifactToPr(ctx);
           } catch (planErr) {
             console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
-          }
-        }
-
-        // ── Declarative post-run validation hook ─────────────────────────
-        if (postRunHook === "validateApp") {
-          const appFailure = runValidateApp(ctx);
-          if (appFailure) {
-            console.error(`  🚫 App validation failed after CI: ${appFailure}`);
-            const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
-            return {
-              outcome: "failed",
-              errorMessage: failMsg,
-              summary: { intents: ["App validation failed — blocking before post-deploy agents"] },
-            };
           }
         }
 

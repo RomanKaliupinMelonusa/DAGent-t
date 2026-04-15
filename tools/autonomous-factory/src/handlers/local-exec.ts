@@ -15,18 +15,19 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import { getWorkflowNode } from "../session/shared.js";
+import { sanitizeOutput } from "./result-processor-regex.js";
 
 const execAsync = promisify(exec);
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
 const DEFAULT_TIMEOUT_MINUTES = 15;
-const SMOKE_TIMEOUT_MS = 120_000; // 2 min — smoke checks should be fast
+const PRE_TIMEOUT_MS = 120_000; // 2 min — pre-hooks should be fast
 
 const localExecHandler: NodeHandler = {
   name: "local-exec",
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug } = ctx;
+    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch } = ctx;
 
     const node = getWorkflowNode(apmContext, itemKey);
     let command = node?.command;
@@ -45,34 +46,44 @@ const localExecHandler: NodeHandler = {
     const timeoutMinutes = node?.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
-    // --- K4: Pre-run smoke check (optional) ---
-    // If the workflow node declares a smoke_command, run it before the main command.
-    // Catches catastrophic environment issues (SSR crash, server not starting) without
-    // the cost of running the full test suite. Framework knowledge lives in the command.
-    const smokeCommand = node?.smoke_command?.replace(/\$\{featureSlug\}/g, slug);
-    if (smokeCommand) {
-      console.log(`  🔍 local-exec: Running smoke check before main command...`);
+    // Build env with kernel-provided context variables for hook scripts
+    const execEnv = {
+      ...process.env,
+      ...environment,
+      SLUG: slug,
+      APP_ROOT: appRoot,
+      REPO_ROOT: repoRoot,
+      BASE_BRANCH: baseBranch,
+    };
+
+    // --- Pre-hook (optional) ---
+    // Runs before the main command on every attempt (idempotent).
+    // Use for: killing stale processes, validating environment health (SSR smoke check).
+    // All framework-specific knowledge lives in the command itself.
+    const preCommand = node?.pre?.replace(/\$\{featureSlug\}/g, slug);
+    if (preCommand) {
+      console.log(`  🔍 local-exec: Running pre-hook before main command...`);
       try {
-        await execAsync(smokeCommand, {
+        await execAsync(preCommand, {
           cwd: appRoot,
           maxBuffer: MAX_BUFFER,
-          timeout: SMOKE_TIMEOUT_MS,
-          env: { ...process.env, ...environment },
+          timeout: PRE_TIMEOUT_MS,
+          env: execEnv,
         });
-        console.log(`  ✅ local-exec: Smoke check passed`);
-      } catch (smokeErr: unknown) {
+        console.log(`  ✅ local-exec: Pre-hook passed`);
+      } catch (preErr: unknown) {
         onHeartbeat();
-        const e = smokeErr as { stdout?: string; stderr?: string; message?: string };
-        const smokeOut = ((e.stdout ?? "") + (e.stderr ?? "")).trim() || e.message || "smoke check failed";
-        const msg = `Smoke check failed — aborting "${command}" without running it.\n` +
-          `Smoke command: ${smokeCommand}\n` +
-          `Output:\n${smokeOut.slice(-2048)}`;
+        const e = preErr as { stdout?: string; stderr?: string; message?: string };
+        const preOut = ((e.stdout ?? "") + (e.stderr ?? "")).trim() || e.message || "pre-hook failed";
+        const msg = `Pre-hook failed — aborting "${command}" without running it.\n` +
+          `Pre command:\n${preCommand}\n` +
+          `Output:\n${preOut.slice(-2048)}`;
         console.error(`  ✖ local-exec: ${msg}`);
         return {
           outcome: "failed",
           errorMessage: msg,
-          summary: { intents: ["Native script execution — smoke check failed"] },
-          handlerOutput: { scriptOutput: smokeOut, exitCode: 1, smokeCheckFailed: true },
+          summary: { intents: ["Native script execution — pre-hook failed"] },
+          handlerOutput: { scriptOutput: preOut, exitCode: 1, preHookFailed: true },
         };
       }
     }
@@ -84,12 +95,13 @@ const localExecHandler: NodeHandler = {
         cwd: appRoot,
         maxBuffer: MAX_BUFFER,
         timeout: timeoutMs,
-        env: { ...process.env, ...environment },
+        env: execEnv,
       });
 
       onHeartbeat();
 
       const output = (stdout + stderr).trim();
+
       console.log(`  ✅ local-exec: Command completed successfully`);
 
       return {
@@ -123,11 +135,14 @@ const localExecHandler: NodeHandler = {
       const output = combinedOutput || execErr.message || "Unknown execution error";
       const exitCode = typeof execErr.code === "number" ? execErr.code : 1;
 
+      // Sanitize raw output — cap to 8KB and extract test stats for triage
+      const sanitized = sanitizeOutput(output);
+
       console.error(`  ✖ local-exec: Command failed (exit code ${exitCode})`);
 
       return {
         outcome: "failed",
-        errorMessage: output,
+        errorMessage: sanitized.condensed,
         summary: { intents: ["Native script execution — failed"] },
         handlerOutput: { scriptOutput: output, exitCode },
       };

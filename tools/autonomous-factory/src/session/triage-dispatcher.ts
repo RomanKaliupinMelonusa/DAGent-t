@@ -52,7 +52,7 @@ export async function handleFailureReroute(
   );
 
   // --- Extract resolved fault domain from the error message ---
-  // The cognitive processor prepends FAULT_DOMAIN_HINT; structured JSON has fault_domain.
+  // Post-hook failures prepend FAULT_DOMAIN_HINT; structured JSON has fault_domain.
   // Used for (a) per-domain retry cap and (b) tagging the errorLog reason string.
   let resolvedDomain: string | undefined;
   const headerDomains = parseDomainHeader(rawError, faultRouting);

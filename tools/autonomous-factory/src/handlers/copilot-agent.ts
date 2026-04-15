@@ -377,16 +377,6 @@ const copilotAgentHandler: NodeHandler = {
       };
     }
 
-    // Success path — check for publish script signal (defensive)
-    if (node?.script_type === "publish") {
-      return {
-        outcome: "completed",
-        summary: telemetry,
-        signal: "create-pr",
-        stateManaged: true,
-      };
-    }
-
     console.log(`  ✅ ${itemKey} complete`);
     return {
       outcome: "completed",

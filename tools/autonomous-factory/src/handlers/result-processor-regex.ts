@@ -1,16 +1,12 @@
 /**
- * handlers/result-processor-regex.ts — Deterministic test output preprocessor.
+ * handlers/result-processor-regex.ts — Zero-config kernel output sanitizer.
  *
- * Deduplicates identical diagnostic blocks, extracts test summary stats,
- * and caps total output size. Zero LLM cost — pure regex/string processing.
- *
- * Stack-agnostic: recognizes common test runner output patterns (Playwright,
- * Jest, Vitest, etc.) without hardcoding any specific framework.
+ * Extracts test summary stats and truncates output to a fixed budget.
+ * No per-project configuration — the kernel applies sensible defaults.
+ * Fault classification is handled by the triage system (RAG + LLM router).
  */
 
 import type {
-  ResultProcessor,
-  ResultProcessorConfig,
   ProcessedResult,
   TestStats,
 } from "./result-processor.js";
@@ -18,170 +14,11 @@ import type {
 const DEFAULT_MAX_CHARS = 8192;
 
 // ---------------------------------------------------------------------------
-// Diagnostic block deduplication
-// ---------------------------------------------------------------------------
-
-/**
- * Detect repeated diagnostic blocks separated by common markers.
- * Collapses N identical blocks to a single occurrence with a count annotation.
- */
-function dedupDiagnosticBlocks(output: string): string {
-  // Split on common diagnostic separators (--- Browser Diagnostics ---, ═══, ──────, etc.)
-  const separatorPattern = /^[-─═]{3,}.*[-─═]{3,}$/m;
-  const blocks = output.split(separatorPattern);
-
-  if (blocks.length <= 2) return output; // nothing to dedup
-
-  // Hash blocks and count occurrences
-  const seen = new Map<string, { first: string; count: number }>();
-  const order: string[] = [];
-
-  for (const block of blocks) {
-    const trimmed = block.trim();
-    if (!trimmed) continue;
-    // Normalize whitespace for comparison but preserve first occurrence
-    const key = trimmed.replace(/\s+/g, " ");
-    const existing = seen.get(key);
-    if (existing) {
-      existing.count++;
-    } else {
-      seen.set(key, { first: trimmed, count: 1 });
-      order.push(key);
-    }
-  }
-
-  // Rebuild with dedup annotations
-  const parts: string[] = [];
-  for (const key of order) {
-    const entry = seen.get(key)!;
-    if (entry.count > 1) {
-      parts.push(`${entry.first}\n\n(× ${entry.count} identical occurrences — showing first)`);
-    } else {
-      parts.push(entry.first);
-    }
-  }
-
-  return parts.join("\n\n---\n\n");
-}
-
-// ---------------------------------------------------------------------------
-// Test-level failure deduplication
-// ---------------------------------------------------------------------------
-
-/**
- * Collapse test failures that share the same root error message.
- *
- * Test runners emit per-test failure blocks that often contain identical
- * error text (same TimeoutError, same assertion). When a systemic issue
- * causes ALL tests to fail identically, the raw output is N× the same
- * error with only the test name differing — wasting tokens and obscuring
- * the single root cause.
- *
- * This function splits the output on a **project-declared** separator
- * pattern (`failure_block_separator` in result_processor config), normalizes
- * each block by stripping the header line and file/line references, then
- * groups identical errors. Each group is collapsed to one representative
- * block with the count and list of affected test names.
- *
- * The kernel contains ZERO hardcoded runner patterns. Projects declare
- * their runner's failure block format in `.apm/workflows.yml`.
- * When no separator is configured, this function is a no-op.
- */
-function dedupTestFailures(output: string, separatorPattern?: string): string {
-  if (!separatorPattern) return output; // no config → skip dedup
-
-  let splitRegex: RegExp;
-  try {
-    splitRegex = new RegExp(`(?=${separatorPattern})`, "m");
-  } catch {
-    return output; // invalid regex → skip
-  }
-
-  const failureBlocks = output.split(splitRegex);
-
-  // If we can't split into failure blocks, fall back to no dedup
-  if (failureBlocks.length <= 2) return output;
-
-  const preamble = failureBlocks[0]; // content before first failure
-  const failures = failureBlocks.slice(1);
-
-  // Build header regex from the separator pattern for extraction
-  let headerRegex: RegExp;
-  try {
-    headerRegex = new RegExp(`^\\s*${separatorPattern}`, "m");
-  } catch {
-    return output;
-  }
-
-  // Extract test name from the header and normalize the error body
-  const groups = new Map<string, { header: string; body: string; testNames: string[]; count: number }>();
-  const groupOrder: string[] = [];
-
-  for (const block of failures) {
-    const headerMatch = block.match(headerRegex);
-    if (!headerMatch) {
-      // Not a recognizable failure block — preserve as-is
-      const key = "__non_failure_" + groupOrder.length;
-      groups.set(key, { header: "", body: block, testNames: [], count: 1 });
-      groupOrder.push(key);
-      continue;
-    }
-
-    const testName = headerMatch[0].trim();
-    // Normalize: strip header line and common volatile references to get the pure error
-    const body = block
-      .replace(headerRegex, "") // strip header line
-      .replace(/at\s+\S+\s+\(.*?:\d+:\d+\)/g, "at <location>") // normalize stack locations
-      .replace(/\S+\.(?:spec|test)\.\w+:\d+:\d+/g, "<file>") // normalize file refs
-      .trim();
-
-    const normalizedKey = body.replace(/\s+/g, " ");
-    const existing = groups.get(normalizedKey);
-    if (existing) {
-      existing.count++;
-      existing.testNames.push(testName);
-    } else {
-      groups.set(normalizedKey, { header: headerMatch[0], body: block, testNames: [testName], count: 1 });
-      groupOrder.push(normalizedKey);
-    }
-  }
-
-  // Rebuild: if groups reduced the count meaningfully, emit deduplicated version
-  const totalFailures = failures.length;
-  const uniqueGroups = groupOrder.filter(k => !k.startsWith("__non_failure_"));
-  if (uniqueGroups.length >= totalFailures * 0.8) {
-    // Most failures are unique — dedup wouldn't help, return original
-    return output;
-  }
-
-  const parts: string[] = [preamble.trim()];
-  for (const key of groupOrder) {
-    const group = groups.get(key)!;
-    if (key.startsWith("__non_failure_")) {
-      parts.push(group.body);
-      continue;
-    }
-    if (group.count > 1) {
-      parts.push(
-        `${group.header}\n\n` +
-        `(× ${group.count} tests failed with IDENTICAL error — showing representative failure)\n` +
-        `Affected tests:\n${group.testNames.map(n => `  - ${n}`).join("\n")}\n\n` +
-        `${group.body.replace(headerRegex, "").trim()}`
-      );
-    } else {
-      parts.push(group.body);
-    }
-  }
-
-  return parts.join("\n\n");
-}
-
-// ---------------------------------------------------------------------------
 // Test summary extraction
 // ---------------------------------------------------------------------------
 
 /** Extract test run stats from common runner output formats. */
-function extractTestStats(output: string): TestStats | undefined {
+export function extractTestStats(output: string): TestStats | undefined {
   // Playwright format: "X passed", "Y failed", "Z skipped"
   const passedMatch = output.match(/(\d+)\s+passed/i);
   const failedMatch = output.match(/(\d+)\s+failed/i);
@@ -218,114 +55,12 @@ function extractTestStats(output: string): TestStats | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Output capping (priority-based extraction + head/tail fallback)
+// Output capping (head/tail truncation)
 // ---------------------------------------------------------------------------
 
-/**
- * Extract high-signal sections from test runner output using project-declared
- * priority patterns.
- *
- * Test runners emit structured failure blocks interleaved with verbose noise
- * (console logs, framework warnings, network traces). Naive head/tail
- * truncation often keeps only the noise and discards the actual failure
- * evidence.
- *
- * This function scans for patterns declared in the APM config
- * (`result_processor.priority_patterns`). Each matched section is extracted
- * verbatim (up to a per-section cap) and placed BEFORE the generic head/tail
- * remainder — ensuring the triage LLM always sees critical evidence.
- *
- * The kernel contains ZERO hardcoded patterns. All framework/runner-specific
- * knowledge lives in each project's `.apm/workflows.yml`.
- *
- * When no priority patterns are configured, returns empty extraction and
- * the caller falls back to plain head/tail truncation.
- */
-function extractPrioritySections(
-  output: string,
-  budget: number,
-  patternStrings?: string[],
-): { extracted: string; remainder: string } {
-  if (!patternStrings || patternStrings.length === 0) {
-    return { extracted: "", remainder: output };
-  }
-
-  // Compile project-declared patterns — each gets global+multiline flags
-  const compiledPatterns: RegExp[] = patternStrings
-    .map((p) => {
-      try { return new RegExp(p, "gims"); } catch { return null; }
-    })
-    .filter(Boolean) as RegExp[];
-
-  if (compiledPatterns.length === 0) {
-    return { extracted: "", remainder: output };
-  }
-
-  const seen = new Set<string>();
-  const sections: string[] = [];
-  let totalLen = 0;
-  const sectionCap = Math.floor(budget * 0.15); // max 15% of budget per section
-
-  for (const pattern of compiledPatterns) {
-    // Reset lastIndex for global regexes
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(output)) !== null) {
-      let section = match[0].trim();
-      if (!section || seen.has(section)) continue;
-      // Cap individual sections to avoid one giant crash stack dominating
-      if (section.length > sectionCap) {
-        section = section.slice(0, sectionCap) + "\n  ... [section truncated]";
-      }
-      if (totalLen + section.length > budget * 0.6) break; // reserve 40% for head/tail context
-      seen.add(section);
-      sections.push(section);
-      totalLen += section.length + 2; // +2 for separators
-    }
-  }
-
-  if (sections.length === 0) {
-    return { extracted: "", remainder: output };
-  }
-
-  // Build remainder by removing extracted sections (avoid duplicating content)
-  let remainder = output;
-  for (const s of seen) {
-    // Only remove first occurrence to keep remainder coherent
-    const idx = remainder.indexOf(s);
-    if (idx !== -1) {
-      remainder = remainder.slice(0, idx) + remainder.slice(idx + s.length);
-    }
-  }
-
-  const extracted = `--- PRIORITY EVIDENCE (${sections.length} sections) ---\n\n` +
-    sections.join("\n\n---\n\n");
-
-  return { extracted, remainder };
-}
-
-function capOutput(output: string, maxChars: number, priorityPatterns?: string[]): string {
+export function capOutput(output: string, maxChars: number): string {
   if (output.length <= maxChars) return output;
 
-  // Phase 1: Extract high-signal sections using project-declared priority patterns
-  const { extracted, remainder } = extractPrioritySections(output, maxChars, priorityPatterns);
-
-  if (extracted) {
-    // Priority sections get first claim on the budget
-    const remainingBudget = maxChars - extracted.length - 50; // 50 chars for markers
-    if (remainingBudget <= 0) {
-      return extracted.slice(0, maxChars);
-    }
-    // Fill the rest with head/tail of the remainder
-    const headBudget = Math.floor(remainingBudget * 0.6);
-    const tailBudget = remainingBudget - headBudget - 100;
-    const head = remainder.slice(0, Math.max(headBudget, 0));
-    const tail = tailBudget > 0 ? remainder.slice(-tailBudget) : "";
-    const omitted = remainder.length - headBudget - Math.max(tailBudget, 0);
-    return `${extracted}\n\n--- CONTEXT ---\n\n${head}${omitted > 0 ? `\n\n... [${omitted} chars omitted] ...\n\n` : "\n\n"}${tail}`;
-  }
-
-  // Fallback: no priority sections found — use original head/tail strategy
   const headBudget = Math.floor(maxChars * 0.6);
   const tailBudget = maxChars - headBudget - 100;
 
@@ -337,97 +72,33 @@ function capOutput(output: string, maxChars: number, priorityPatterns?: string[]
 }
 
 // ---------------------------------------------------------------------------
-// Noise filtering (project-configurable via APM)
+// Public API — zero-config output sanitization
 // ---------------------------------------------------------------------------
 
 /**
- * Strip lines matching project-declared noise patterns.
- * Runs BEFORE dedup and truncation to free budget for diagnostic evidence.
- *
- * Each noise pattern is a regex string compiled case-insensitively.
- * Multi-line console noise blocks (React stack traces, HTTP request logs)
- * are matched line-by-line — if the first line of a block matches,
- * subsequent indented continuation lines are also removed.
+ * Sanitize raw script output: extract test stats and truncate to budget.
+ * No configuration required — the kernel applies sensible defaults.
  */
-function stripNoiseLines(output: string, noisePatterns: string[]): string {
-  if (noisePatterns.length === 0) return output;
+export function sanitizeOutput(
+  rawOutput: string,
+  maxChars: number = DEFAULT_MAX_CHARS,
+): ProcessedResult {
+  // 1. Extract stats before any mutations
+  const stats = extractTestStats(rawOutput);
 
-  const compiled = noisePatterns.map((p) => {
-    try { return new RegExp(p, "i"); } catch { return null; }
-  }).filter(Boolean) as RegExp[];
-
-  if (compiled.length === 0) return output;
-
-  const lines = output.split("\n");
-  const result: string[] = [];
-  let inNoiseBlock = false;
-
-  for (const line of lines) {
-    // Check if this line starts a noise block
-    const isNoiseLine = compiled.some((re) => re.test(line));
-    if (isNoiseLine) {
-      inNoiseBlock = true;
-      continue;
-    }
-    // Continuation lines of a noise block: indented or string concatenation
-    if (inNoiseBlock) {
-      if (/^\s{2,}/.test(line) || /^\s*'/.test(line) || /^\s*\+\s*'/.test(line)) {
-        continue; // still in noise block continuation
-      }
-      inNoiseBlock = false; // block ended
-    }
-    result.push(line);
+  // 2. Prepend summary line if stats were extracted
+  let condensed = rawOutput;
+  if (stats) {
+    const summaryLine = `TEST SUMMARY: ${stats.passed} passed, ${stats.failed} failed, ${stats.total} total${stats.duration ? ` (${stats.duration})` : ""}`;
+    condensed = `${summaryLine}\n\n${condensed}`;
   }
 
-  return result.join("\n");
+  // 3. Cap total size (head/tail truncation)
+  condensed = capOutput(condensed, maxChars);
+
+  return {
+    condensed,
+    fullOutput: rawOutput,
+    stats,
+  };
 }
-
-// ---------------------------------------------------------------------------
-// ResultProcessor implementation
-// ---------------------------------------------------------------------------
-
-const regexResultProcessor: ResultProcessor = {
-  async process(
-    rawOutput: string,
-    config: ResultProcessorConfig,
-  ): Promise<ProcessedResult> {
-    const maxChars = config.maxChars ?? DEFAULT_MAX_CHARS;
-
-    // 1. Extract stats before any mutations
-    const stats = extractTestStats(rawOutput);
-
-    // 2. Strip project-declared noise patterns (frees budget for real evidence)
-    let cleaned = config.noisePatterns && config.noisePatterns.length > 0
-      ? stripNoiseLines(rawOutput, config.noisePatterns)
-      : rawOutput;
-
-    // 3. Collapse test failures with identical error messages (e.g., 13× same TimeoutError)
-    //    Uses the project-declared failure_block_separator pattern. No hardcoded runner knowledge.
-    cleaned = dedupTestFailures(cleaned, config.failureBlockSeparator);
-
-    // 4. Dedup identical diagnostic blocks (separator-based)
-    let condensed = dedupDiagnosticBlocks(cleaned);
-
-    // 5. Prepend summary line if stats were extracted
-    if (stats) {
-      const summaryLine = `TEST SUMMARY: ${stats.passed} passed, ${stats.failed} failed, ${stats.total} total${stats.duration ? ` (${stats.duration})` : ""}`;
-      condensed = `${summaryLine}\n\n${condensed}`;
-    }
-
-    // Preserve the cleaned (noise-stripped + deduped) output before capping.
-    // The cognitive processor uses this as LLM input to avoid information loss.
-    const cleanedOutput = condensed;
-
-    // 6. Cap total size (priority extraction from APM config + head/tail fallback)
-    condensed = capOutput(condensed, maxChars, config.priorityPatterns);
-
-    return {
-      condensed,
-      fullOutput: rawOutput,
-      cleanedOutput,
-      stats,
-    };
-  },
-};
-
-export default regexResultProcessor;

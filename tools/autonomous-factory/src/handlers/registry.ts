@@ -23,9 +23,7 @@ import type { NodeHandler } from "./types.js";
  * handlers are only imported when first referenced.
  */
 const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
-  "git-push": async () => (await import("./git-push.js")).default,
   "github-ci-poll": async () => (await import("./github-ci-poll.js")).default,
-  "github-pr-publish": async () => (await import("./github-pr-publish.js")).default,
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
   "local-exec": async () => (await import("./local-exec.js")).default,
 };
@@ -38,15 +36,15 @@ const handlerCache = new Map<string, NodeHandler>();
 // ---------------------------------------------------------------------------
 
 /**
- * Infer the handler key from legacy workflow node fields.
+ * Infer the handler key from workflow node fields.
  * Used when a node does not declare an explicit `handler` field.
  *
  * Inference rules:
- * - type "script" + script_type "push"    → "git-push"
- * - type "script" + script_type "poll"    → "github-ci-poll"
- * - type "script" + script_type "publish" → "github-pr-publish"
- * - type "agent"                          → "copilot-agent"
- * - type "approval"                       → null (handled by kernel, no handler)
+ * - type "script" + script_type "poll"      → "github-ci-poll"
+ * - type "script" + script_type "local-exec" → "local-exec"
+ * - type "script" (no script_type / default)  → "local-exec" (push/publish are now local-exec)
+ * - type "agent"                             → "copilot-agent"
+ * - type "approval"                          → null (handled by kernel, no handler)
  */
 export function inferHandler(
   nodeType: string,
@@ -54,11 +52,9 @@ export function inferHandler(
 ): string | null {
   if (nodeType === "script") {
     switch (scriptType) {
-      case "push": return "git-push";
       case "poll": return "github-ci-poll";
-      case "publish": return "github-pr-publish";
       case "local-exec": return "local-exec";
-      default: return null;
+      default: return "local-exec";
     }
   }
   if (nodeType === "agent") return "copilot-agent";
@@ -96,7 +92,7 @@ function assertWithinRepo(resolved: string, repoRoot: string): void {
  * Resolve a handler reference to a NodeHandler instance.
  *
  * Resolution order:
- * 1. Built-in handler key (e.g. "copilot-agent", "git-push")
+ * 1. Built-in handler key (e.g. "copilot-agent", "local-exec")
  * 2. Local file path starting with "./" (resolved against appRoot, sandboxed)
  * 3. Error for anything else (npm packages deferred to v2)
  *
@@ -172,7 +168,7 @@ export async function resolveHandler(
  * Register a built-in handler factory. Used internally by handler modules
  * to register themselves at import time.
  *
- * @param key - Handler key (e.g. "git-push")
+ * @param key - Handler key (e.g. "local-exec")
  * @param factory - Lazy factory that returns the handler
  */
 export function registerBuiltinHandler(key: string, factory: () => Promise<NodeHandler>): void {

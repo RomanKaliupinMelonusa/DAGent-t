@@ -13,7 +13,7 @@
  *   state transitions. The kernel skips its own mutations to avoid
  *   duplicates. Currently only copilot-agent uses this mode.
  *
- * Built-in handlers: copilot-agent, git-push, github-ci-poll, github-pr-publish
+ * Built-in handlers: copilot-agent, github-ci-poll, local-exec
  * Custom handlers: local .ts files resolved via dynamic import (sandboxed to repo)
  */
 
@@ -60,7 +60,7 @@ export interface NodeContext {
   readonly forceRunChanges?: boolean;
   /**
    * Opaque data bag populated by the kernel from previous handlers' output.
-   * Example: git-push handler outputs `{ lastPushedSha: "abc123" }`, which
+   * Example: kernel auto-captures `{ lastPushedSha: "abc123" }` for deploy nodes,
    * the kernel stores and passes to the downstream github-ci-poll handler.
    */
   readonly handlerData: Readonly<Record<string, unknown>>;
@@ -103,7 +103,7 @@ export interface NodeResult {
   /**
    * Opaque output data for downstream handlers.
    * The kernel stores this in `handlerData` for subsequent handler invocations.
-   * Example: `{ lastPushedSha: "abc123" }` from git-push handler.
+   * Example: `{ lastPushedSha: "abc123" }` auto-captured by kernel for deploy nodes.
    */
   handlerOutput?: Record<string, unknown>;
   /**
@@ -144,7 +144,7 @@ export interface SkipResult {
 /**
  * Plugin interface for pipeline node execution.
  *
- * Built-in implementations: copilot-agent, git-push, github-ci-poll, github-pr-publish.
+ * Built-in implementations: copilot-agent, github-ci-poll, local-exec.
  * Custom implementations: local .ts files or npm packages (v2).
  *
  * Contract:
@@ -156,7 +156,7 @@ export interface SkipResult {
  * - The kernel is the default owner of pipeline state transitions
  */
 export interface NodeHandler {
-  /** Unique handler identifier (e.g. "copilot-agent", "git-push") */
+  /** Unique handler identifier (e.g. "copilot-agent", "local-exec") */
   readonly name: string;
 
   /**
