@@ -441,6 +441,8 @@ async function main(): Promise<void> {
       // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
       // Only `type: approval` nodes are true human gates. Script nodes (local-exec, push, poll)
       // have agent=null but are executed by handlers and must NOT trigger the approval pause.
+      // Barrier nodes (type: barrier) are zero-execution sync points — they are dispatched
+      // normally and auto-complete in session-runner.
       const approvalGateItems = available.filter(
         (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
       );

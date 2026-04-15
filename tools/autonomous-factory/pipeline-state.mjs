@@ -29,7 +29,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { TriageDiagnosticSchema } from "./triage-schema.mjs";
 
 // ─── Error Signature (inline — no TS dependency) ────────────────────────────
 // Produces a stable fingerprint from a raw error message by stripping volatile
@@ -116,6 +115,35 @@ export function getUpstream(state, seedKeys) {
     }
   }
   return [...result];
+}
+
+/**
+ * Cascade barrier nodes into a reset set.
+ * Barrier nodes (type "barrier") are pure sync points with no real work.
+ * When ANY of a barrier's dependencies is being reset, the barrier must also
+ * reset — its "done" status is no longer valid. This is recursive: if
+ * cascading a barrier causes another barrier's dep to be in the set, that
+ * barrier cascades too.
+ *
+ * @param {object} state - Pipeline state (needs dependencies, nodeTypes)
+ * @param {Set<string>} keysToReset - Mutable set; barrier keys are added in-place
+ * @returns {Set<string>} The same set, expanded with cascaded barrier keys
+ */
+export function cascadeBarriers(state, keysToReset) {
+  const nodeTypes = state.nodeTypes || {};
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [key, deps] of Object.entries(state.dependencies)) {
+      if (nodeTypes[key] !== "barrier") continue;
+      if (keysToReset.has(key)) continue;
+      if (deps.some(dep => keysToReset.has(dep))) {
+        keysToReset.add(key);
+        changed = true;
+      }
+    }
+  }
+  return keysToReset;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -345,13 +373,11 @@ export function initState(slug, workflowType, contextJsonPath) {
   const dependencies = {};
   const nodeTypes = {};
   const nodeCategories = {};
-  const jsonGated = {};
   const salvageSurvivors = [];
   for (const [key, node] of nodeEntries) {
     dependencies[key] = node.depends_on || [];
     nodeTypes[key] = node.type || "agent";
     nodeCategories[key] = node.category;
-    jsonGated[key] = node.triage_json_gated ?? false;
     if (node.salvage_survivor) salvageSurvivors.push(key);
   }
 
@@ -386,7 +412,6 @@ export function initState(slug, workflowType, contextJsonPath) {
     phases,
     nodeTypes,
     nodeCategories,
-    jsonGated,
     naByType,
     salvageSurvivors,
   };
@@ -451,15 +476,6 @@ export function failItem(slug, itemKey, message) {
     const item = state.items.find((i) => i.key === itemKey);
     if (!item) {
       throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
-    }
-
-    // Soft enforcement: warn when dev/test items fail without structured JSON
-    const category = state.nodeCategories?.[itemKey];
-    if ((category === "dev" || category === "test") && message) {
-      const parsed = TriageDiagnosticSchema.safeParse((() => { try { return JSON.parse(message); } catch { return null; } })());
-      if (!parsed.success) {
-        console.warn(`  ⚠ pipeline:fail for ${category} item "${itemKey}" did not include valid TriageDiagnostic JSON. Structured failures improve triage accuracy.`);
-      }
     }
 
     item.status = "failed";
@@ -663,6 +679,10 @@ export function recoverElevated(slug, errorMessage) {
     }
     const resetSeed = infraDevKey;
     const keysToReset = new Set(getDownstream(state, [resetSeed]));
+    // Cascade barrier nodes defensively (getDownstream already includes barriers
+    // in the transitive set, but cascadeBarriers catches cross-branch barriers
+    // whose deps span multiple seed branches).
+    cascadeBarriers(state, keysToReset);
     let resetCount = 0;
     for (const it of state.items) {
       if (keysToReset.has(it.key) && it.status !== "na") {
@@ -707,6 +727,10 @@ export function resetScripts(slug, phase) {
       .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === phase)
       .map((i) => i.key)
   );
+
+  // Cascade barrier nodes: if any barrier's dependency is being reset, reset the barrier too.
+  cascadeBarriers(state, resetKeys);
+
   let resetCount = 0;
   for (const item of state.items) {
     if (resetKeys.has(item.key) && item.status !== "na") {
@@ -731,108 +755,39 @@ export function resetScripts(slug, phase) {
  * Reset deploy + post-deploy items for a re-deployment cycle.
  * Called when triage classifies the failure as `deployment-stale` — the code
  * on the branch is correct but the deployed artifact is outdated.
- *
- * Unlike `resetForDev()`, this does NOT increment the redevelopment cycle
- * counter. It tracks its own budget via `reset-for-redeploy` error log entries
- * (max 3 cycles).
- *
- * @param {string} slug - Feature slug
- * @param {string[]} itemKeys - Item keys to reset (deploy + post-deploy items)
- * @param {string} reason - Human-readable reason for the re-deploy
- * @returns {{ state: object, cycleCount: number, halted: boolean }}
- * @throws {Error} if slug missing or no itemKeys provided
- */
-export function resetForRedeploy(slug, itemKeys, reason, maxCycles = 3) {
-  if (!slug || !itemKeys?.length) {
-    throw new Error("resetForRedeploy requires slug and at least one itemKey");
-  }
-
-  return withLock(slug, () => {
-  const state = readStateOrThrow(slug);
-
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-redeploy").length;
-  if (cycleCount >= maxCycles) {
-    return { state, cycleCount, halted: true };
-  }
-
-  const keysToReset = new Set(itemKeys);
-
-  // Cascade: also reset post-deploy items that depend on deploy items.
-  // When WYSIWYG fault_routing omits "$SELF" (e.g. deployment-stale routes),
-  // the triggering post-deploy item has status "failed" (set by failItem before
-  // this function runs). Include both "done" and "failed" post-deploy items so
-  // the full test suite re-runs after the fresh deployment.
-  // SURGICAL: if the caller already specified specific post-deploy items (e.g.,
-  // via "$SELF" in fault_routing), do NOT blanket-reset — this preserves
-  // already-passed tests in the unaffected domain.
-  const callerSpecifiedPostDeploy = [...keysToReset].some(k => (state.nodeCategories || {})[k] === "test");
-  const hasDeployReset = [...keysToReset].some(k => (state.nodeTypes || {})[k] === "script");
-  if (hasDeployReset && !callerSpecifiedPostDeploy) {
-    // No specific post-deploy item targeted — cascade to all done/failed post-deploy items
-    for (const item of state.items) {
-      if (item.phase === "post-deploy" && (item.status === "done" || item.status === "failed")) {
-        keysToReset.add(item.key);
-      }
-    }
-  }
-
-  let resetCount = 0;
-  for (const item of state.items) {
-    if (keysToReset.has(item.key) && item.status !== "na") {
-      item.status = "pending";
-      item.error = null;
-      resetCount++;
-    }
-  }
-
-  state.errorLog.push({
-    timestamp: new Date().toISOString(),
-    itemKey: "reset-for-redeploy",
-    message: `Re-deployment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
-  });
-
-  writeState(slug, state);
-  return { state, cycleCount: cycleCount + 1, halted: false };
-  }); // end withLock
-}
-
 /**
- * Reset specified items back to pending for a redevelopment cycle.
- * Used when post-deploy validation (live-ui, integration-test) fails and
- * the root cause requires changes in dev items (backend, frontend, infra).
+ * Reset a single node + all transitive downstream dependents to pending.
+ * Used by triage v2 profile-based routing: triage classifies a domain,
+ * the profile maps it to a single `route_to` entry-point node, and this
+ * function cascades the reset through the DAG.
+ *
+ * Unified cycle budget — replaces the separate resetForDev / resetForRedeploy
+ * budgets with a single `maxReroutes` counter per triage profile.
  *
  * @param {string} slug - Feature slug
- * @param {string[]} itemKeys - Item keys to reset (e.g. ["backend-dev", "frontend-dev", ...])
- * @param {string} reason - Human-readable reason for the reroute
+ * @param {string} routeToKey - Single node key to reset (entry point)
+ * @param {string} reason - Human-readable reason (tagged with domain)
+ * @param {number} maxReroutes - Maximum total reroutes before halt (default: 5)
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
- * @throws {Error} if slug missing or no itemKeys provided
  */
-export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
-  if (!slug || !itemKeys?.length) {
-    throw new Error("resetForDev requires slug and at least one itemKey");
+export function resetForReroute(slug, routeToKey, reason, maxReroutes = 5) {
+  if (!slug || !routeToKey) {
+    throw new Error("resetForReroute requires slug and routeToKey");
   }
 
   return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
-  if (cycleCount >= maxCycles) {
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-reroute").length;
+  if (cycleCount >= maxReroutes) {
     return { state, cycleCount, halted: true };
   }
 
-  // Include the specified items + all downstream dependents so the fix gets redeployed.
-  const keysToReset = new Set(getDownstream(state, itemKeys));
+  // Route to the target node + all transitive downstream dependents
+  const keysToReset = new Set(getDownstream(state, [routeToKey]));
 
-  // Also reset any "done" post-deploy items when deploy items are being reset
-  // (prevents stale test results while push-app is pending)
-  const hasDeployReset = [...keysToReset].some(k => (state.nodeTypes || {})[k] === "script");
-  if (hasDeployReset) {
-    for (const item of state.items) {
-      if (item.phase === "post-deploy" && item.status === "done") {
-        keysToReset.add(item.key);
-      }
-    }
-  }
+  // Cascade barrier nodes
+  cascadeBarriers(state, keysToReset);
 
   let resetCount = 0;
   for (const item of state.items) {
@@ -845,8 +800,8 @@ export function resetForDev(slug, itemKeys, reason, maxCycles = 5) {
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
-    itemKey: "reset-for-dev",
-    message: `Redevelopment cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
+    itemKey: "reset-for-reroute",
+    message: `Reroute cycle ${cycleCount + 1}/${maxReroutes}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
     errorSignature: reason ? computeErrorSignature(reason) : null,
   });
 
@@ -885,6 +840,10 @@ export function resetPhases(slug, phasesCsv, reason, maxCycles = 5) {
   const resetItemKeys = new Set(
     state.items.filter((i) => targetPhases.has(i.phase)).map((i) => i.key),
   );
+
+  // Cascade barrier nodes: if any barrier's dependency is being reset, reset the barrier too.
+  cascadeBarriers(state, resetItemKeys);
+
   let resetCount = 0;
   for (const item of state.items) {
     if (resetItemKeys.has(item.key) && item.status !== "na") {
@@ -1145,45 +1104,10 @@ function cmdComplete(slug, itemKey) {
   }
 }
 
-/** Post-deploy items whose failure messages must be valid TriageDiagnostic JSON.
- *  Derived from persisted triage_json_gated flags in state (set during initState from workflow YAML). */
-function getZodGatedKeys(state) {
-  const gated = new Set();
-  for (const item of state.items) {
-    if (state.jsonGated?.[item.key]) {
-      gated.add(item.key);
-    }
-  }
-  return gated;
-}
-
 function cmdFail(slug, itemKey, message) {
   if (!slug || !itemKey) {
     console.error("Usage: pipeline-state.mjs fail <slug> <item-key> <message>");
     process.exit(1);
-  }
-
-  // ── Zod gate: post-deploy & test items must supply valid TriageDiagnostic JSON ──
-  const state = readState(slug);
-  const zodGated = getZodGatedKeys(state);
-  if (zodGated.has(itemKey)) {
-    let parsed;
-    try {
-      parsed = JSON.parse(message);
-    } catch {
-      console.error(`ERROR: Item "${itemKey}" requires a valid JSON failure message for triage routing.`);
-      console.error(`Expected: {"fault_domain": "backend"|"frontend"|"both"|"environment", "diagnostic_trace": "<details>"}`);
-      console.error(`Received: ${message}`);
-      process.exit(1);
-    }
-    const result = TriageDiagnosticSchema.safeParse(parsed);
-    if (!result.success) {
-      console.error(`ERROR: Item "${itemKey}" failure message failed schema validation.`);
-      console.error(`Expected: {"fault_domain": "backend"|"frontend"|"both"|"environment", "diagnostic_trace": "<details>"}`);
-      console.error(`Validation errors: ${JSON.stringify(result.error.issues)}`);
-      console.error(`Received: ${message}`);
-      process.exit(1);
-    }
   }
 
   try {

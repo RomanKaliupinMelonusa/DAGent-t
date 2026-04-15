@@ -23,9 +23,8 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
-import type { ApmCompiledOutput } from "./apm-types.js";
+import type { ApmCompiledOutput, CompiledTriageProfile } from "./apm-types.js";
 import type { NextAction, ItemSummary } from "./types.js";
-import { parseTriageDiagnostic } from "./triage.js";
 import { writeFlightData } from "./reporting.js";
 import {
   computeEffectiveDevAttempts,
@@ -39,9 +38,22 @@ import {
   finishItem,
 } from "./session/shared.js";
 import { pollReadiness } from "./session/readiness-probe.js";
-import { handleFailureReroute } from "./session/triage-dispatcher.js";
+import { handleTriageReroute } from "./session/triage-dispatcher.js";
 import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
 import type { NodeContext, NodeResult } from "./handlers/index.js";
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Resolve compiled triage profile for a workflow node (v2 path). */
+function resolveTriageProfile(
+  apmContext: ApmCompiledOutput,
+  itemKey: string,
+): CompiledTriageProfile | undefined {
+  const node = getWorkflowNode(apmContext, itemKey);
+  if (!node?.triage) return undefined;
+  // Key convention: "<workflowName>.<profileName>" — currently always "default"
+  return apmContext.triage_profiles?.[`default.${node.triage}`];
+}
 
 // ── Backward-compatible re-exports ─────────────────────────────────────────
 // External consumers (watchdog.ts, tests) import these from session-runner.
@@ -180,6 +192,41 @@ export async function runItemSession(
     }
   }
 
+  // --- Early node lookup (needed for barrier short-circuit before heavy banner) ---
+  const node = getWorkflowNode(apmContext, next.key);
+
+  // --- Barrier node: zero-execution sync point (auto-complete immediately) ---
+  // Checked before the banner/HEAD-snapshot to avoid noisy logs for zero-work nodes.
+  if (node?.type === "barrier") {
+    const stepStart = Date.now();
+    const barrierSummary: ItemSummary = {
+      key: next.key,
+      label: next.label,
+      agent: "barrier",
+      phase: next.phase ?? "unknown",
+      attempt: attemptCounts[next.key],
+      startedAt: new Date().toISOString(),
+      finishedAt: "",
+      durationMs: 0,
+      outcome: "completed",
+      intents: [],
+      messages: [],
+      filesRead: [],
+      filesChanged: [],
+      shellCommands: [],
+      toolCounts: {},
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    await completeItem(slug, next.key);
+    console.log(`  ⊕ Barrier ${next.key} — all upstream resolved, auto-completing`);
+    return finishItem(barrierSummary, "completed", stepStart, config, state, {
+      intents: ["barrier-sync: all upstream dependencies resolved"],
+    });
+  }
+
   console.log(
     `\n${"═".repeat(70)}\n  Phase: ${next.phase} | Item: ${next.key} | Agent: ${next.agent}\n${"═".repeat(70)}`,
   );
@@ -217,7 +264,6 @@ export async function runItemSession(
   };
 
   // --- Auto-skip evaluation ---
-  const node = getWorkflowNode(apmContext, next.key);
   const skipDecision = evaluateAutoSkip(next.key, apmContext, repoRoot, baseBranch, appRoot, preStepRefs);
   state.forceRunChangesDetected[next.key] = skipDecision.forceRunChanges;
   if (skipDecision.skip) {
@@ -399,13 +445,12 @@ export async function runItemSession(
     } else {
       itemSummary.outcome = result.outcome;
       itemSummary.errorMessage = result.errorMessage;
-      if (node?.category === "test") {
+      const triageProfile1 = resolveTriageProfile(config.apmContext, next.key);
+      if (triageProfile1) {
         const rawError = result.errorMessage ?? "Unknown failure";
-        const diagnostic = parseTriageDiagnostic(rawError);
-        const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
         pipelineSummaries.push(itemSummary);
         flushReports(config, state);
-        return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable, client);
+        return handleTriageReroute(slug, next.key, rawError, triageProfile1, config, itemSummary, roamAvailable, client);
       }
       console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
     }
@@ -425,13 +470,12 @@ export async function runItemSession(
       console.error("  ✖ Could not record failure in pipeline state.");
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
-    if (node?.category === "test") {
+    const triageProfile2 = resolveTriageProfile(config.apmContext, next.key);
+    if (triageProfile2) {
       const rawError = result.errorMessage ?? "Unknown failure";
-      const diagnostic = parseTriageDiagnostic(rawError);
-      const errorMsg = diagnostic ? diagnostic.diagnostic_trace : rawError;
       pipelineSummaries.push(itemSummary);
       flushReports(config, state);
-      return handleFailureReroute(slug, next.key, rawError, errorMsg, config, itemSummary, roamAvailable, client);
+      return handleTriageReroute(slug, next.key, rawError, triageProfile2, config, itemSummary, roamAvailable, client);
     }
     console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
   }
@@ -476,12 +520,16 @@ export async function runItemSession(
       const execErr = postErr as { stderr?: Buffer; message?: string };
       const postFailure = execErr.stderr?.toString().trim() || execErr.message || "post-hook failed";
       console.error(`  🚫 Post-hook failed after ${next.key}: ${postFailure}`);
-      const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `post-hook: ${postFailure}` });
+      const failMsg = `post-hook: ${postFailure}`;
       try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
-      return handleFailureReroute(slug, next.key, failMsg, postFailure, config, itemSummary, roamAvailable, client);
+      const triageProfile3 = resolveTriageProfile(config.apmContext, next.key);
+      if (triageProfile3) {
+        return handleTriageReroute(slug, next.key, failMsg, triageProfile3, config, itemSummary, roamAvailable, client);
+      }
+      return finishItem(itemSummary, "failed", stepStart, config, state, { halt: true });
     }
   }
 

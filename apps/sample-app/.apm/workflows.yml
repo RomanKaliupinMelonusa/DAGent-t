@@ -125,7 +125,7 @@ default:
       depends_on: [backend-dev]
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
       auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage_json_gated: true
+      triage: full-stack
       commit_scope: backend
       diff_attribution_dirs: [backend, packages, infra, .github/]
 
@@ -138,7 +138,7 @@ default:
       depends_on: [frontend-dev]
       run_if: [Frontend, Full-Stack, App-Only]
       auto_skip_if_no_changes_in: [frontend, e2e]
-      triage_json_gated: true
+      triage: full-stack
       commit_scope: frontend
       diff_attribution_dirs: [frontend, packages, e2e, .github/]
 
@@ -176,7 +176,7 @@ default:
       requires_data_plane_ready: true
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
       auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage_json_gated: true
+      triage: full-stack
       template_flags: ["isPostDeploy", "isIntegrationTest"]
       commit_scope: pipeline
       diff_attribution_dirs: [backend, packages, infra, .github/]
@@ -191,7 +191,7 @@ default:
       requires_data_plane_ready: true
       run_if: [Frontend, Full-Stack, App-Only]
       auto_skip_if_no_changes_in: [frontend, infra, e2e]
-      triage_json_gated: true
+      triage: full-stack
       template_flags: ["isPostDeploy", "isLiveUi"]
       force_run_if_changed: ["infra"]
       commit_scope: pipeline
@@ -241,10 +241,6 @@ default:
       signals_create_pr: true
       salvage_survivor: true
 
-  # ── Cycle Budgets ──────────────────────────────────────────────────
-  max_redevelopment_cycles: 5
-  max_redeploy_cycles: 3
-
   # ── Unfixable Signals ──────────────────────────────────────────────
   # Error substrings that signal conditions no agent can fix.
   # When any signal matches, the pipeline halts for human intervention.
@@ -262,44 +258,43 @@ default:
     - "resource already exists"
     - "state blob is already locked"
 
-  # ── Fault Routing (Triage-as-Code) ────────────────────────────────
-  # Maps fault domains to the exact set of nodes to reset.
-  # WYSIWYG: the kernel returns exactly what is declared. No hidden appending.
-  # Use "$SELF" to include the calling item (e.g. live-ui, integration-test).
-  fault_routing:
-    backend:
-      description: "application logic errors, 500s, import failures, API bugs"
-      reset_nodes: [backend-dev, backend-unit-test, "$SELF"]
-    frontend:
-      description: "UI rendering, selectors, Playwright failures, CSS/HTML issues"
-      reset_nodes: [frontend-dev, frontend-unit-test, "$SELF"]
-    both:
-      description: "error clearly spans backend and frontend"
-      reset_nodes: [backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
-    schemas:
-      reset_nodes: [schema-dev, infra-architect, backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
-    "frontend+infra":
-      reset_nodes: [infra-architect, frontend-dev, frontend-unit-test, "$SELF"]
-    "backend+infra":
-      reset_nodes: [infra-architect, backend-dev, backend-unit-test, "$SELF"]
-    cicd:
-      description: "GitHub Actions workflow file errors, deploy pipeline config"
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale:
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale-backend:
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale-frontend:
-      reset_nodes: [push-app, poll-app-ci]
-    infra:
-      description: "missing cloud resources, CORS, auth config, Terraform errors, env vars"
-      reset_nodes: [infra-architect, push-infra, poll-infra-plan, create-draft-pr, await-infra-approval, infra-handoff, "$SELF"]
-    test-code:
-      description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
-      reset_nodes: ["$SELF"]
-    environment:
-      description: "transient auth/credential glitch, not a code bug"
-      reset_nodes: ["$SELF"]
-    blocked:
-      description: "unfixable without human intervention (permissions, subscriptions)"
-      reset_nodes: []
+  # ── Triage Profiles ─────────────────────────────────────────────────
+  triage:
+    full-stack:
+      packs: [azure-functions-common, deployment-lifecycle, cicd-root-cause]
+      llm_fallback: true
+      max_reroutes: 5
+      routing:
+        backend:
+          description: "Application logic errors, 500s, import failures, API bugs"
+          route_to: backend-dev
+        frontend:
+          description: "UI rendering, selectors, Playwright failures, CSS/HTML issues"
+          route_to: frontend-dev
+        both:
+          description: "Error clearly spans backend and frontend"
+          route_to: schema-dev
+        schemas:
+          route_to: schema-dev
+        "frontend+infra":
+          route_to: infra-architect
+        "backend+infra":
+          route_to: infra-architect
+        cicd:
+          description: "GitHub Actions workflow file errors, deploy pipeline config"
+          route_to: push-app
+        deployment-stale:
+          route_to: push-app
+        infra:
+          description: "Missing cloud resources, CORS, auth config, Terraform errors, env vars"
+          route_to: infra-architect
+        test-code:
+          description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
+          route_to: "$SELF"
+        environment:
+          description: "Transient auth/credential glitch, not a code bug"
+          route_to: "$SELF"
+          retries: 2
+        blocked:
+          description: "Unfixable without human intervention (permissions, subscriptions)"
+          route_to: null

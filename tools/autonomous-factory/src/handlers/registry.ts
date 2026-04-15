@@ -59,6 +59,7 @@ export function inferHandler(
   }
   if (nodeType === "agent") return "copilot-agent";
   if (nodeType === "approval") return null;
+  if (nodeType === "barrier") return null;
   return null;
 }
 

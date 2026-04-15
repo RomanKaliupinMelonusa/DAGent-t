@@ -5,11 +5,6 @@
  * and are used by state.ts, agents.ts, and watchdog.ts.
  */
 
-import { z } from "zod";
-import { TriageDiagnosticSchema } from "../triage-schema.mjs";
-
-export { TriageDiagnosticSchema };
-
 export interface PipelineItem {
   key: string;
   label: string;
@@ -75,36 +70,31 @@ export interface InitResult {
 }
 
 // ---------------------------------------------------------------------------
-// Structured error triage — JSON contract between post-deploy agents and the
-// watchdog's deterministic rerouting logic. The LLM classifies; the DAG routes.
-//
-// TriageDiagnosticSchema is the single source of truth (triage-schema.mjs).
-// FaultDomain and TriageDiagnostic are derived from it via z.infer.
+// Triage v2 — 2-layer profile-based system (RAG → LLM).
 // ---------------------------------------------------------------------------
 
-/** Fault domain that determines which dev items get reset on post-deploy failure. */
-export type FaultDomain = TriageDiagnostic["fault_domain"];
-
-/** Structured triage diagnostic — inferred from the Zod schema. */
-export type TriageDiagnostic = z.infer<typeof TriageDiagnosticSchema>;
+/** Result of the 2-layer triage evaluation. */
+export interface TriageResult {
+  /** Routing domain (key from the triage profile's routing section). */
+  domain: string;
+  /** Human-readable explanation of the classification. */
+  reason: string;
+  /** Which layer produced the classification. */
+  source: "rag" | "llm" | "fallback";
+}
 
 /**
- * Attempt to parse a `TriageDiagnostic` from the raw error message.
- * Returns `null` if the message is not valid JSON or fails Zod validation.
- *
- * Defined here (not in triage.ts) to break the circular dependency:
- * triage.ts → triage/retriever.ts → session/shared.ts → triage.ts
+ * Extract `diagnostic_trace` from a JSON error message, if present.
+ * Used by the circuit breaker to normalize error comparisons.
  */
-export function parseTriageDiagnostic(message: string): TriageDiagnostic | null {
-  let parsed: unknown;
+export function extractDiagnosticTrace(message: string): string | null {
   try {
-    parsed = JSON.parse(message);
-  } catch {
-    return null;
-  }
-
-  const result = TriageDiagnosticSchema.safeParse(parsed);
-  return result.success ? result.data : null;
+    const parsed = JSON.parse(message);
+    if (parsed && typeof parsed === "object" && typeof parsed.diagnostic_trace === "string") {
+      return parsed.diagnostic_trace;
+    }
+  } catch { /* not JSON */ }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

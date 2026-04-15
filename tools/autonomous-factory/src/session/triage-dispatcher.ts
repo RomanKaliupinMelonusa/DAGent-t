@@ -1,236 +1,165 @@
 /**
- * session/triage-dispatcher.ts — Post-deploy failure triage and rerouting.
+ * session/triage-dispatcher.ts — Failure triage and DAG-native rerouting.
  *
- * Extracted from session-runner.ts for Single Responsibility.
- * Contains handleFailureReroute which triages errors, routes to
- * redevelopment, and re-indexes the semantic graph.
+ * Node has `triage` field → evaluateTriage() → route_to + DAG cascade.
+ * The triage engine classifies; this module orchestrates the rerouting lifecycle.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, resetForDev, resetForRedeploy, salvageForDraft } from "../state.js";
-import { triageFailure, parseDomainHeader, parseTriageDiagnostic } from "../triage.js";
-import type { ApmFaultRoute } from "../apm-types.js";
+import { getStatus, failItem, resetForReroute, salvageForDraft } from "../state.js";
+import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
+import type { CompiledTriageProfile } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
 import type { PipelineRunConfig, SessionResult } from "../session-runner.js";
 import type { ItemSummary } from "../types.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 
+// ---------------------------------------------------------------------------
+// v2: Profile-based triage + DAG-native routing
+// ---------------------------------------------------------------------------
+
 /**
- * Unified post-deploy failure handler — triages the error, routes to redevelopment,
- * and re-indexes the semantic graph. Used by both poll-ci (deterministic) and
- * agent sessions (live-ui, integration-test).
+ * Handle failure rerouting using triage v2 profiles.
+ * Evaluates the error via 2-layer triage, resolves route_to from the profile,
+ * and resets that node + all downstream dependents via resetForReroute().
  */
-export async function handleFailureReroute(
+export async function handleTriageReroute(
   slug: string,
   itemKey: string,
   rawError: string,
-  errorMsg: string,
+  profile: CompiledTriageProfile,
   config: PipelineRunConfig,
   itemSummary: ItemSummary,
   roamAvailable: boolean,
   client?: CopilotClient,
 ): Promise<SessionResult> {
   const { repoRoot } = config;
-
-  const pipeState = await getStatus(slug);
-  const naItems = new Set(
-    pipeState.items.filter((i) => i.status === "na").map((i) => i.key),
-  );
   const workflow = config.apmContext.workflows?.default;
-  const faultRouting = workflow?.fault_routing;
-  const workflowNodes = workflow?.nodes as Record<string, { script_type?: string }> | undefined;
-  const maxDevCycles = workflow?.max_redevelopment_cycles ?? 5;
-  const maxRedeployCycles = workflow?.max_redeploy_cycles ?? 3;
-  const triageKb = config.apmContext.triage_kb;
   const unfixableSignals = workflow?.unfixable_signals ?? [];
-  let resetKeys = await triageFailure(
-    itemKey, rawError, naItems, faultRouting, workflowNodes,
-    triageKb, client, slug, config.appRoot, unfixableSignals,
-  );
 
-  // --- Extract resolved fault domain from the error message ---
-  // Post-hook failures prepend FAULT_DOMAIN_HINT; structured JSON has fault_domain.
-  // Used for (a) per-domain retry cap and (b) tagging the errorLog reason string.
-  let resolvedDomain: string | undefined;
-  const headerDomains = parseDomainHeader(rawError, faultRouting);
-  if (headerDomains && headerDomains.length > 0) {
-    resolvedDomain = headerDomains[0];
-  } else {
-    const diagnostic = parseTriageDiagnostic(rawError);
-    if (diagnostic?.fault_domain) resolvedDomain = String(diagnostic.fault_domain);
-  }
-
-  // --- Per-domain retry cap: prevent death spirals on non-code faults ---
-  // When the same fault domain triggers $SELF retries repeatedly, check if
-  // the fault route declares a max_retries cap. If exceeded, escalate to
-  // a different domain (or block) instead of burning the redev budget.
-  if (resolvedDomain && faultRouting && resetKeys.length > 0) {
-    const route = faultRouting[resolvedDomain] as ApmFaultRoute & { max_retries?: number; escalate_to?: string } | undefined;
-    if (route?.max_retries) {
-      // Count consecutive same-domain entries in errorLog (tagged with [domain:X])
-      const domainTag = `[domain:${resolvedDomain}]`;
-      const errorEntries = pipeState.errorLog ?? [];
-      let consecutiveCount = 0;
-      for (let i = errorEntries.length - 1; i >= 0; i--) {
-        const entry = errorEntries[i] as { message?: string; itemKey?: string };
-        if (entry.itemKey === "reset-for-dev" && entry.message?.includes(domainTag)) {
-          consecutiveCount++;
-        } else if (entry.itemKey === "reset-for-dev") {
-          break; // different domain — stop counting consecutive
-        }
-      }
-
-      if (consecutiveCount >= route.max_retries) {
-        const escalateTo = route.escalate_to;
-        if (escalateTo && faultRouting[escalateTo]) {
-          console.warn(`\n  ⚠ Domain "${resolvedDomain}" hit retry cap (${consecutiveCount}/${route.max_retries}) — escalating to "${escalateTo}"`);
-          const escalateRoute = faultRouting[escalateTo] as ApmFaultRoute;
-          resetKeys = escalateRoute.reset_nodes.map((k: string) => (k === "$SELF" ? itemKey : k))
-            .filter((k: string) => !naItems.has(k));
-          resolvedDomain = escalateTo;
-        } else {
-          console.warn(`\n  ⚠ Domain "${resolvedDomain}" hit retry cap (${consecutiveCount}/${route.max_retries}) — no escalate_to, treating as blocked`);
-          resetKeys = [];
-        }
-      }
-    }
-  }
-
-  // --- Global error-signature cap: prevent death spirals across unstable classifications ---
-  // When the same error (by fingerprint) appears ≥3 times in the errorLog regardless
-  // of domain tags, the triage system is cycling through different classifications
-  // without fixing the root cause. Escalate to blocked.
-  if (resetKeys.length > 0) {
-    const currentSig = computeErrorSignature(rawError);
-    const errorEntries = pipeState.errorLog ?? [];
-    const sameSigCount = errorEntries.filter(
-      (e) => e.errorSignature === currentSig,
-    ).length;
-    if (sameSigCount >= 3) {
-      console.warn(`\n  ⚠ Error signature ${currentSig} seen ${sameSigCount + 1} times across all domains — escalating to blocked`);
-      resetKeys = [];
-    }
-  }
-
-  // Empty array = unfixable error ("blocked" fault domain) — trigger Graceful Degradation
-  if (resetKeys.length === 0) {
-    console.error(`\n  🛑 BLOCKED: Unfixable error detected in ${itemKey} — triggering Graceful Degradation.`);
-    console.error(`     Pipeline will skip tests and open a Draft PR for human remediation.`);
+  // --- Pre-triage guard: SDK timeout → transient retry ---
+  if (isOrchestratorTimeout(rawError)) {
+    console.log(`  ⚠ SDK Timeout detected in ${itemKey}. Bypassing triage — transient retry via $SELF.`);
     try {
-      await failItem(slug, itemKey, `BLOCKED: Unfixable error — ${errorMsg}`);
-      await salvageForDraft(slug, itemKey);
-
-      // Write flag for PR creator agent
-      const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
-      fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
-    } catch (e) {
-      console.error("  ✖ Failed to salvage pipeline state", e);
-      return { summary: itemSummary, halt: true, createPr: false };
-    }
-    // halt: false — main loop continues to docs-archived → publish-pr
-    return { summary: itemSummary, halt: false, createPr: false };
-  }
-
-  // ── Guard: detect unreachable dev items behind an incomplete approval gate ──
-  // When Wave 1 CI items fail with a domain-specific error, triage routes to
-  // Wave 2 dev items. But if an approval gate they depend on is not yet done/na,
-  // those dev items can never run — resetting them creates an infinite retry loop.
-  //
-  // Derive approval gates and dev/test items from workflow manifest:
-  const approvalGates = pipeState.items.filter(
-    (i) => (pipeState.nodeTypes || {})[i.key] === "approval" &&
-           i.status !== "done" && i.status !== "na"
-  );
-  const openGateKeys = new Set(
-    pipeState.items
-      .filter((i) => (pipeState.nodeTypes || {})[i.key] === "approval" &&
-                     (i.status === "done" || i.status === "na"))
-      .map((i) => i.key)
-  );
-  // Check if any reset keys are dev/test items behind a pending approval gate
-  const gatedKeys = resetKeys.filter((k) => {
-    const cat = getWorkflowNode(config.apmContext, k)?.category;
-    if (cat !== "dev" && cat !== "test") return false;
-    // Check if this item has any upstream approval gate that is NOT yet open
-    return approvalGates.some((gate) => {
-      // The dev item is gated if the gate is upstream of it (the item depends transitively on the gate)
-      const depChain = pipeState.dependencies?.[k] || [];
-      // Simple check: does this item or any of its deps include the gate?
-      // For deep dependency chains, use getUpstream — but that requires async.
-      // Simpler: if any approval gate is still pending, check if the gate is in this item's phase predecessors
-      return !openGateKeys.has(gate.key);
-    });
-  });
-
-  if (approvalGates.length > 0 && gatedKeys.length > 0) {
-    console.warn(`\n  🚧 Triaged dev items [${gatedKeys.join(", ")}] are gated behind approval — cannot run in current wave.`);
-    console.warn(`     This is likely a pre-existing CI failure unrelated to the current feature.`);
-    console.warn(`     Fix the failing tests on the base branch or feature branch, then re-run the pipeline.`);
-    // Don't reset — let the pipeline naturally block on the next getNextAvailable() call.
-    // The item was already marked as failed by the caller.
-    return { summary: itemSummary, halt: false, createPr: false };
-  }
-
-  console.log(`\n  🔄 Post-deploy failure in ${itemKey} — rerouting to redevelopment`);
-  console.log(`     Root cause triage → resetting: ${resetKeys.join(", ")}${resolvedDomain ? ` (domain: ${resolvedDomain})` : ""}`);
-
-  // Tag the reason string with [domain:X] for structured errorLog entries.
-  // This enables the per-domain retry cap (Change 1) to count consecutive
-  // same-domain entries unambiguously.
-  const taggedReason = resolvedDomain
-    ? `[domain:${resolvedDomain}] ${errorMsg}`
-    : errorMsg;
-
-  // Branch: if triage targets only deploy/post-deploy items (no dev or test code
-  // changes needed), use the separate re-deploy budget instead of burning a full
-  // redevelopment cycle. This handles "deployment-stale" faults deterministically.
-  // category === "test" also implies code changes (test failures need dev fixes),
-  // so they route to the full redevelopment path alongside category === "dev".
-  const hasDevOrTestItems = resetKeys.some((k) => {
-    const cat = getWorkflowNode(config.apmContext, k)?.category;
-    return cat === "dev" || cat === "test";
-  });
-
-  try {
-    if (hasDevOrTestItems) {
-      const result = await resetForDev(slug, resetKeys, taggedReason, maxDevCycles);
+      const result = await resetForReroute(slug, itemKey, `SDK timeout in ${itemKey}`, profile.max_reroutes);
       if (result.halted) {
-        console.error(
-          `  ✖ HALTED: ${result.cycleCount} redevelopment cycles exhausted. Exiting.`,
-        );
+        console.error(`  ✖ HALTED: ${result.cycleCount} reroute cycles exhausted.`);
         return { summary: itemSummary, halt: true, createPr: false };
       }
-      console.log(
-        `     Redevelopment cycle ${result.cycleCount}/${maxDevCycles} — pipeline will restart from dev`,
-      );
+    } catch {
+      return { summary: itemSummary, halt: true, createPr: false };
+    }
+    return { summary: itemSummary, halt: false, createPr: false };
+  }
 
-      // Re-index semantic graph after redevelopment reroute
-      if (roamAvailable) {
-        console.log("  🧠 Re-indexing semantic graph after redevelopment reroute...");
+  // --- Pre-triage guard: unfixable signals → immediate halt ---
+  const unfixableReason = isUnfixableError(rawError, unfixableSignals);
+  if (unfixableReason) {
+    console.error(`\n  🛑 BLOCKED: Unfixable error "${unfixableReason}" in ${itemKey} — Graceful Degradation.`);
+    return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
+  }
+
+  // --- Pre-triage guard: death spiral (same error ≥3 times) ---
+  const errorSig = computeErrorSignature(rawError);
+  try {
+    const pipeState = await getStatus(slug);
+    const sameSigCount = pipeState.errorLog.filter((e) => e.errorSignature === errorSig).length;
+    if (sameSigCount >= 3) {
+      console.error(`\n  🛑 BLOCKED: Error signature ${errorSig} seen ${sameSigCount + 1} times — death spiral prevention.`);
+      return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
+    }
+  } catch { /* continue to triage */ }
+
+  // --- Evaluate triage (2-layer: RAG → LLM → fallback) ---
+  const triageResult = await evaluateTriage(rawError, profile, client, slug, config.appRoot);
+
+  // --- Resolve route_to from profile routing ---
+  let routeToKey: string | null;
+  if (triageResult.domain === "$SELF") {
+    // Fallback: retry the failing node itself
+    routeToKey = itemKey;
+  } else {
+    const routeEntry = profile.routing[triageResult.domain];
+    if (!routeEntry || routeEntry.route_to === null) {
+      // Domain is "blocked" or unknown → graceful degradation
+      console.error(`\n  🛑 BLOCKED: Triage classified as "${triageResult.domain}" (route_to: null) — Graceful Degradation.`);
+      return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
+    }
+    routeToKey = routeEntry.route_to === "$SELF" ? itemKey : routeEntry.route_to;
+
+    // Per-domain retry cap
+    if (routeEntry.retries) {
+      const pipeState = await getStatus(slug);
+      const domainTag = `[domain:${triageResult.domain}]`;
+      let consecutiveCount = 0;
+      for (let i = (pipeState.errorLog ?? []).length - 1; i >= 0; i--) {
+        const entry = pipeState.errorLog[i];
+        if (entry.itemKey === "reset-for-reroute" && entry.message?.includes(domainTag)) {
+          consecutiveCount++;
+        } else if (entry.itemKey === "reset-for-reroute") {
+          break;
+        }
+      }
+      if (consecutiveCount >= routeEntry.retries) {
+        console.warn(`\n  ⚠ Domain "${triageResult.domain}" hit retry cap (${consecutiveCount}/${routeEntry.retries}) — treating as blocked.`);
+        return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
+      }
+    }
+  }
+
+  // --- Execute reroute: reset target node + DAG cascade ---
+  const taggedReason = `[domain:${triageResult.domain}] [source:${triageResult.source}] ${triageResult.reason}`;
+  console.log(`\n  🔄 Triage reroute: ${itemKey} → route_to: ${routeToKey} (domain: ${triageResult.domain}, source: ${triageResult.source})`);
+
+  try {
+    const result = await resetForReroute(slug, routeToKey, taggedReason, profile.max_reroutes);
+    if (result.halted) {
+      console.error(`  ✖ HALTED: ${result.cycleCount} reroute cycles exhausted.`);
+      return { summary: itemSummary, halt: true, createPr: false };
+    }
+    console.log(`     Reroute cycle ${result.cycleCount}/${profile.max_reroutes} — pipeline will restart from ${routeToKey}`);
+
+    // Re-index semantic graph after reroute if target involves dev/test nodes
+    if (roamAvailable) {
+      const targetCat = getWorkflowNode(config.apmContext, routeToKey)?.category;
+      if (targetCat === "dev" || targetCat === "test") {
+        console.log("  🧠 Re-indexing semantic graph after reroute...");
         try {
           execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
         } catch { /* non-fatal */ }
       }
-    } else {
-      const result = await resetForRedeploy(slug, resetKeys, taggedReason, maxRedeployCycles);
-      if (result.halted) {
-        console.error(
-          `  ✖ HALTED: ${result.cycleCount} re-deploy cycles exhausted. Exiting.`,
-        );
-        return { summary: itemSummary, halt: true, createPr: false };
-      }
-      console.log(
-        `     Re-deploy cycle ${result.cycleCount}/${maxRedeployCycles} — pipeline will restart from deploy`,
-      );
-      // No roam re-indexing needed — no code changes, just re-push and re-poll
     }
   } catch {
-    console.error("  ✖ Could not trigger redevelopment reroute. Exiting.");
+    console.error("  ✖ Could not execute reroute. Exiting.");
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
+  return { summary: itemSummary, halt: false, createPr: false };
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+async function triggerGracefulDegradation(
+  slug: string,
+  itemKey: string,
+  errorMsg: string,
+  config: PipelineRunConfig,
+  itemSummary: ItemSummary,
+): Promise<SessionResult> {
+  console.error(`  🛑 Triggering Graceful Degradation — pipeline will open a Draft PR for human remediation.`);
+  try {
+    await failItem(slug, itemKey, `BLOCKED: ${errorMsg}`);
+    await salvageForDraft(slug, itemKey);
+    const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
+    fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
+  } catch (e) {
+    console.error("  ✖ Failed to salvage pipeline state", e);
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
   return { summary: itemSummary, halt: false, createPr: false };
 }

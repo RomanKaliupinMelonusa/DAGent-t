@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { approveAll } from "@github/copilot-sdk";
-import type { ApmFaultRoute, TriageSignature } from "../apm-types.js";
+import type { TriageSignature } from "../apm-types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,7 +40,7 @@ function buildTriagePrompt(
   trace: string,
   domains: string[],
   topMatches: TriageSignature[],
-  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
+  faultRouting: Record<string, { description?: string }>,
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
@@ -109,7 +109,7 @@ export async function askLlmRouter(
   topMatches: TriageSignature[],
   slug: string,
   appRoot: string,
-  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
+  faultRouting: Record<string, { description?: string }>,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",

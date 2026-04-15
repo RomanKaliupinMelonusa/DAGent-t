@@ -22,7 +22,7 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 import { getStatus, failItem } from "../state.js";
 import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
-import { parseTriageDiagnostic } from "../triage.js";
+import { extractDiagnosticTrace } from "../types.js";
 import { getAgentDirectoryPrefixes } from "../session/shared.js";
 import { writePlaywrightLog, writeFlightData } from "../reporting.js";
 import {
@@ -367,13 +367,13 @@ const copilotAgentHandler: NodeHandler = {
     if (item?.status === "failed") {
       telemetry.outcome = "failed";
       telemetry.errorMessage = item.error ?? "Unknown failure";
-      const diagnostic = parseTriageDiagnostic(item.error ?? "");
+      const diagTrace = extractDiagnosticTrace(item.error ?? "");
       return {
         outcome: "failed",
         errorMessage: item.error ?? "Unknown failure",
         summary: telemetry,
         stateManaged: true,
-        ...(diagnostic ? { diagnosticTrace: diagnostic.diagnostic_trace } : {}),
+        ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
       };
     }
 

@@ -38,7 +38,7 @@ interface PipelineState {
   /** Explicit ordered phase names — persisted at init from workflows.yml */
   phases: string[];
   /** Node execution types — persisted at init from workflows.yml */
-  nodeTypes: Record<string, "agent" | "script" | "approval">;
+  nodeTypes: Record<string, "agent" | "script" | "approval" | "barrier">;
   /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
   nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
   /** Whether pipeline:fail messages must be valid TriageDiagnostic JSON — persisted at init from workflows.yml */
@@ -82,19 +82,13 @@ export function completeItem(slug: string, itemKey: string): PipelineState;
  *
  * **CLI-level validation:** When invoked via the CLI (`npm run pipeline:fail`)
  * for a post-deploy item (`live-ui`, `integration-test`), the `message`
- * parameter is validated against a Zod `TriageDiagnosticSchema`:
- *   `{ fault_domain: "backend"|"frontend"|"both"|"environment", diagnostic_trace: string }`
- * If validation fails, the CLI exits with code 1 and a descriptive error,
- * forcing the LLM agent to retry with correct JSON formatting.
- *
- * The programmatic `failItem()` function (imported by state.ts) does NOT
- * validate — it accepts any string to support SDK-level crash messages.
+ * The programmatic `failItem()` function (imported by state.ts) accepts any
+ * string as the error message.
  */
 export function failItem(slug: string, itemKey: string, message: string): FailResult;
 export function resetScripts(slug: string, phase: string): ResetResult;
 export function resetPhases(slug: string, phasesCsv: string, reason: string, maxCycles?: number): ResetResult;
-export function resetForDev(slug: string, itemKeys: string[], reason: string, maxCycles?: number): ResetResult;
-export function resetForRedeploy(slug: string, itemKeys: string[], reason: string, maxCycles?: number): ResetResult;
+export function resetForReroute(slug: string, routeToKey: string, reason: string, maxReroutes?: number): ResetResult;
 export function salvageForDraft(slug: string, failedItemKey: string): PipelineState;
 export function resumeAfterElevated(slug: string): ResetResult;
 export function recoverElevated(slug: string, errorMessage: string): ResetResult;
@@ -108,3 +102,4 @@ export function setUrl(slug: string, url: string): PipelineState;
 export function readState(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
 export function getUpstream(state: PipelineState, seedKeys: string[]): string[];
+export function cascadeBarriers(state: PipelineState, keysToReset: Set<string>): Set<string>;

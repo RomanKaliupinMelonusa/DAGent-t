@@ -1,6 +1,6 @@
 # workflows.yml — Declarative DAG for the commerce-storefront pipeline.
 #
-# 11-node DAG: no infra wave (Managed Runtime is SaaS),
+# 12-node DAG (11 work nodes + 1 barrier): no infra wave (Managed Runtime is SaaS),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
@@ -38,7 +38,7 @@ default:
       depends_on: [storefront-dev]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront]
-      triage_json_gated: true
+      triage: storefront
       commit_scope: all
       diff_attribution_dirs: [storefront]
 
@@ -61,6 +61,7 @@ default:
       depends_on: [storefront-unit-test]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
+      triage: storefront
       commit_scope: all
       diff_attribution_dirs: [e2e]
 
@@ -73,7 +74,7 @@ default:
       depends_on: [e2e-author]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
-      triage_json_gated: false
+      triage: storefront
       pre: |
         # Kill stale processes from previous runs (idempotent)
         pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
@@ -103,6 +104,14 @@ default:
         pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
         pkill -f 'chromium|chrome' 2>/dev/null || true
         sleep 2
+
+    # ── Barrier: wait for all validation branches before finalize ──────
+    validation-gate:
+      type: barrier
+      category: test
+      phase: validation
+      depends_on: [e2e-runner, create-draft-pr]
+
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       type: agent
@@ -110,7 +119,7 @@ default:
       agent: "@code-cleanup"
       phase: finalize
       timeout_minutes: 15
-      depends_on: [e2e-runner]
+      depends_on: [validation-gate]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_deletions: true
       commit_scope: pipeline
@@ -172,10 +181,6 @@ default:
       signals_create_pr: true
       salvage_survivor: true
 
-  # ── Cycle Budgets ──────────────────────────────────────────────────
-  max_redevelopment_cycles: 5
-  max_redeploy_cycles: 3
-
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:
     - "unauthorized_client"
@@ -184,31 +189,31 @@ default:
     - "organization not found"
     - "slas client not found"
 
-  # ── Fault Routing (Triage-as-Code) ────────────────────────────────
-  # Simplified: no backend/infra domains. Storefront is the primary domain.
-  fault_routing:
-    frontend:
-      description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
-      reset_nodes: [storefront-dev, storefront-unit-test, "$SELF"]
-    cicd:
-      description: "GitHub Actions workflow file errors, deploy pipeline config"
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale:
-      reset_nodes: [push-app, poll-app-ci]
-    test-code:
-      description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
-      reset_nodes: [e2e-author]
-    test-code-from-dev:
-      description: "Test code is broken, but it was written by the upstream developer agent, not the current QA agent."
-      reset_nodes:
-        - storefront-dev
-        - storefront-unit-test
-        - "$SELF"
-    environment:
-      description: "transient auth/credential glitch, SLAS token failure, not a code bug"
-      reset_nodes: ["$SELF"]
-      max_retries: 2
-      escalate_to: blocked
-    blocked:
-      description: "unfixable without human intervention (permissions, SFCC access)"
-      reset_nodes: []
+  # ── Triage Profiles ─────────────────────────────────────────────────
+  triage:
+    storefront:
+      packs: [pwa-kit-storefront]
+      llm_fallback: true
+      max_reroutes: 5
+      routing:
+        frontend:
+          description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
+          route_to: storefront-dev
+        cicd:
+          description: "GitHub Actions workflow file errors, deploy pipeline config"
+          route_to: push-app
+        deployment-stale:
+          route_to: push-app
+        test-code:
+          description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
+          route_to: e2e-author
+        test-code-from-dev:
+          description: "Test code is broken, but written by the upstream dev agent, not QA"
+          route_to: storefront-dev
+        environment:
+          description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
+          route_to: "$SELF"
+          retries: 2
+        blocked:
+          description: "Unfixable without human intervention (permissions, SFCC access)"
+          route_to: null

@@ -140,8 +140,8 @@ export const ApmConfigSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const ApmWorkflowNodeSchema = z.object({
-  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate. */
-  type: z.enum(["agent", "script", "approval"]).default("agent"),
+  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate, barrier = DAG sync point. */
+  type: z.enum(["agent", "script", "approval", "barrier"]).default("agent"),
   /** Semantic category — replaces hardcoded DEV_ITEMS / TEST_ITEMS / POST_DEPLOY_ITEMS sets. */
   category: z.enum(["dev", "test", "deploy", "finalize"]),
   /** Agent key from the agents section (required when type is "agent"). */
@@ -167,8 +167,8 @@ export const ApmWorkflowNodeSchema = z.object({
   auto_skip_if_no_changes_in: z.array(z.string()).default([]),
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
-  /** Whether `pipeline:fail` messages must be valid TriageDiagnostic JSON for triage routing. */
-  triage_json_gated: z.boolean().default(false),
+  /** Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
+  triage: z.string().optional(),
   /** Handlebars template flags — injected as boolean `true` keys into the template context.
    *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
   template_flags: z.array(z.string()).default([]),
@@ -222,6 +222,18 @@ export const ApmWorkflowNodeSchema = z.object({
 ).refine(
   (node) => !(node.type === "script" && node.script_type === "local-exec") || typeof node.command === "string",
   { message: "Workflow node with script_type 'local-exec' must declare a 'command' field." },
+).refine(
+  (node) => node.type !== "barrier" || (node.depends_on && node.depends_on.length >= 2),
+  { message: "Barrier node must declare at least 2 entries in 'depends_on' (a single dependency does not need a barrier)." },
+).refine(
+  (node) => node.type !== "barrier" || !node.agent,
+  { message: "Barrier node must not declare an 'agent' field (barriers have zero execution)." },
+).refine(
+  (node) => node.type !== "barrier" || !node.command,
+  { message: "Barrier node must not declare a 'command' field (barriers have zero execution)." },
+).refine(
+  (node) => node.type !== "barrier" || !node.script_type,
+  { message: "Barrier node must not declare a 'script_type' field (barriers have zero execution)." },
 );
 
 /**
@@ -249,21 +261,33 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
   return result;
 }
 
-/** Schema for a fault_routing entry — maps a fault domain to the nodes that should be reset. */
-export const ApmFaultRouteSchema = z.object({
-  /** Node keys to reset. Use "$SELF" as a sentinel that the kernel replaces with the current itemKey at runtime. */
-  reset_nodes: z.array(z.string()),
+// ---------------------------------------------------------------------------
+// Triage Profile schemas (v2 — DAG-native routing)
+// ---------------------------------------------------------------------------
+
+/** A single routing entry inside a triage profile — maps a domain to a single DAG entry-point node. */
+export const TriageRouteEntrySchema = z.object({
   /** Human-readable description of this fault domain (injected into LLM triage prompt). */
   description: z.string().optional(),
-  /** Maximum consecutive times this domain can trigger a retry before escalation.
-   *  When the cap is reached, the kernel substitutes the `escalate_to` domain's
-   *  routing (or blocks if `escalate_to` is not set). Prevents death spirals where
-   *  a non-code fault (resource exhaustion, DNS) burns the entire redev budget. */
-  max_retries: z.number().int().positive().optional(),
-  /** Fault domain key to substitute when `max_retries` is exhausted.
-   *  Must reference another key in `fault_routing`. If omitted, the pipeline
-   *  treats the capped domain as "blocked" (empty reset_nodes → halt). */
-  escalate_to: z.string().optional(),
+  /** Single DAG node key to route to. The kernel resets this node + all transitive downstream dependents.
+   *  Use "$SELF" to retry the failing node itself. Use `null` to signal "blocked" (halt pipeline). */
+  route_to: z.string().nullable(),
+  /** Maximum consecutive times this domain can trigger a reroute before escalating to blocked.
+   *  Default: unlimited (governed by profile-level max_reroutes). */
+  retries: z.number().int().positive().optional(),
+});
+
+/** Triage profile — a reusable triage configuration referenced by workflow nodes. */
+export const TriageProfileSchema = z.object({
+  /** Names of triage packs (from .apm/triage-packs/<name>.json) used by the RAG layer. */
+  packs: z.array(z.string()).default([]),
+  /** Enable LLM fallback when the RAG layer has no match. */
+  llm_fallback: z.boolean().default(true),
+  /** Maximum total reroutes allowed for this profile before the pipeline halts.
+   *  Replaces the separate max_redevelopment_cycles / max_redeploy_cycles budgets. */
+  max_reroutes: z.number().int().positive().default(5),
+  /** Domain → routing entry. Domain keys are dynamic per-profile (no global enum). */
+  routing: z.record(z.string(), TriageRouteEntrySchema),
 });
 
 export const ApmWorkflowSchema = z.object({
@@ -271,17 +295,12 @@ export const ApmWorkflowSchema = z.object({
   phases: z.array(z.string()),
   /** Pipeline nodes keyed by item key. */
   nodes: z.record(z.string(), ApmWorkflowNodeSchema),
-  /** Maximum redevelopment cycles before the pipeline halts. */
-  max_redevelopment_cycles: z.number().int().positive().default(5),
-  /** Maximum re-deploy cycles before the pipeline halts. */
-  max_redeploy_cycles: z.number().int().positive().default(3),
-  /** Declarative fault routing — maps fault domain strings to reset node lists.
-   *  WYSIWYG: the kernel returns exactly what is declared here. No hidden appending.
-   *  Use "$SELF" to include the calling item in the reset list. */
-  fault_routing: z.record(z.string(), ApmFaultRouteSchema).default({}),
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
+  /** Triage profiles — keyed by profile name. Nodes reference profiles via the `triage` field.
+   *  Each profile declares RAG packs, LLM fallback, routing domains, and reroute budgets. */
+  triage: z.record(z.string(), TriageProfileSchema).default({}),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key
@@ -317,25 +336,27 @@ export const ApmWorkflowSchema = z.object({
   { message: "Workflow DAG contains a cycle." },
 ).refine(
   (wf) => {
-    // Validate: every fault_routing reset_nodes entry is "$SELF" or a valid node key
+    // Validate: every triage profile route_to is "$SELF", null, or a valid node key
     const nodeKeys = new Set(Object.keys(wf.nodes));
-    for (const [domain, route] of Object.entries(wf.fault_routing)) {
-      for (const node of route.reset_nodes) {
-        if (node !== "$SELF" && !nodeKeys.has(node)) return false;
+    for (const [profileName, profile] of Object.entries(wf.triage)) {
+      for (const [domain, entry] of Object.entries(profile.routing)) {
+        if (entry.route_to !== null && entry.route_to !== "$SELF" && !nodeKeys.has(entry.route_to)) {
+          return false;
+        }
       }
     }
     return true;
   },
-  { message: "fault_routing reset_nodes references an undefined node key (use \"$SELF\" for the calling item)." },
+  { message: "Triage profile route_to references an undefined node key (use \"$SELF\" or null)." },
 ).refine(
   (wf) => {
-    // Validate: every fault_routing escalate_to references a valid fault_routing key
-    for (const [, route] of Object.entries(wf.fault_routing)) {
-      if (route.escalate_to && !(route.escalate_to in wf.fault_routing)) return false;
+    // Validate: every node's triage field references a defined triage profile
+    for (const [key, node] of Object.entries(wf.nodes)) {
+      if (node.triage && !(node.triage in wf.triage)) return false;
     }
     return true;
   },
-  { message: "fault_routing escalate_to references an undefined fault_routing key." },
+  { message: "Workflow node references an undefined triage profile." },
 );
 
 // ---------------------------------------------------------------------------
@@ -346,7 +367,7 @@ export const ApmWorkflowSchema = z.object({
 export const TriageSignatureSchema = z.object({
   /** The exact substring to fast-match against error traces. */
   error_snippet: z.string(),
-  /** Target fault domain for routing (must exist in fault_routing). */
+  /** Target fault domain for routing (must exist in the triage profile's routing section). */
   fault_domain: z.string(),
   /** Human-readable explanation of why this snippet maps to this domain. */
   reason: z.string(),
@@ -359,6 +380,15 @@ export const TriagePackSchema = z.object({
   signatures: z.array(TriageSignatureSchema),
 });
 
+/** A compiled triage profile — profile with pack signatures resolved inline. */
+export const CompiledTriageProfileSchema = z.object({
+  llm_fallback: z.boolean(),
+  max_reroutes: z.number().int().positive(),
+  routing: z.record(z.string(), TriageRouteEntrySchema),
+  /** Resolved signatures from the referenced packs. */
+  signatures: z.array(TriageSignatureSchema),
+});
+
 export const ApmCompiledOutputSchema = z.object({
   version: z.literal("1.0.0"),
   compiledAt: z.string(),
@@ -367,8 +397,9 @@ export const ApmCompiledOutputSchema = z.object({
   config: ApmConfigSchema.optional(),
   /** Workflow DAG definitions (keyed by workflow name, e.g. "default"). */
   workflows: z.record(z.string(), ApmWorkflowSchema).default({}),
-  /** Flattened triage knowledge base — compiled from .apm/triage-packs/*.json. */
-  triage_kb: z.array(TriageSignatureSchema).default([]),
+
+  /** Compiled triage profiles — keyed by "<workflow>.<profile>" (e.g. "default.storefront"). */
+  triage_profiles: z.record(z.string(), CompiledTriageProfileSchema).default({}),
 });
 
 // ---------------------------------------------------------------------------
@@ -458,13 +489,15 @@ export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmWorkflowNode = z.infer<typeof ApmWorkflowNodeSchema>;
 export type ApmWorkflow = z.infer<typeof ApmWorkflowSchema>;
-export type ApmFaultRoute = z.infer<typeof ApmFaultRouteSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;
 export type ApmGeneratedInstruction = z.infer<typeof ApmGeneratedInstructionSchema>;
 export type TriageSignature = z.infer<typeof TriageSignatureSchema>;
 export type TriagePack = z.infer<typeof TriagePackSchema>;
+export type TriageRouteEntry = z.infer<typeof TriageRouteEntrySchema>;
+export type TriageProfile = z.infer<typeof TriageProfileSchema>;
+export type CompiledTriageProfile = z.infer<typeof CompiledTriageProfileSchema>;
 
 // ---------------------------------------------------------------------------
 // Errors

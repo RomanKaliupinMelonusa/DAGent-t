@@ -258,11 +258,7 @@ When you have finished your task and verified it works:
 
 If you cannot complete the task:
 \`\`\`bash
-{{#if jsonGated}}
-npm run pipeline:fail {{featureSlug}} {{itemKey}} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'
-{{else}}
 npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
-{{/if}}
 \`\`\`
 `);
   Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
@@ -299,7 +295,6 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
         ...((compiled.workflows?.default?.nodes?.[agentKey]?.template_flags ?? []) as string[]).reduce(
           (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
         ),
-        jsonGated: false,
         rules: agent.rules,
         environmentContext: "",
         resolvedBackendUnit: "cd apps/sample-app/backend && npx jest --verbose",

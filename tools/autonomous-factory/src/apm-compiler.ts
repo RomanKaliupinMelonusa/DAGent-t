@@ -23,6 +23,7 @@ import {
   type ApmManifest,
   type ApmWorkflow,
   type TriageSignature,
+  type CompiledTriageProfile,
 } from "./apm-types.js";
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,8 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
 
   // --- 5b. Load triage packs ---
   const triagePacksDir = path.join(apmDir, "triage-packs");
-  const triageKb: TriageSignature[] = [];
+  /** Pack name → resolved signatures (for triage profile compilation). */
+  const triagePacksByName = new Map<string, TriageSignature[]>();
   if (fs.existsSync(triagePacksDir)) {
     const packFiles = fs.readdirSync(triagePacksDir).filter((f) => f.endsWith(".json"));
     for (const file of packFiles) {
@@ -212,14 +214,11 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
           `Invalid triage pack ${file}: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
         );
       }
-      triageKb.push(...result.data.signatures.map((sig) => ({
+      const normalizedSigs = result.data.signatures.map((sig) => ({
         ...sig,
-        // Normalize snippets at compile time: trim + collapse whitespace.
-        // KB snippets are static strings authored by humans — they should never
-        // contain dynamic entropy (SHAs, timestamps), but whitespace normalization
-        // ensures consistent matching against normalizeDiagnosticTrace() output.
         error_snippet: sig.error_snippet.trim().replace(/\s+/g, " "),
-      })));
+      }));
+      triagePacksByName.set(result.data.name, normalizedSigs);
     }
   }
 
@@ -309,7 +308,34 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     };
   }
 
-  // --- 7. Build compiled output (resolve env vars in config) ---
+  // --- 7. Compile triage profiles ---
+  const triageProfiles: Record<string, CompiledTriageProfile> = {};
+  for (const [wfName, wf] of Object.entries(workflows)) {
+    if (!wf.triage) continue;
+    for (const [profileName, profile] of Object.entries(wf.triage)) {
+      // Resolve pack references → inline signatures
+      const signatures: TriageSignature[] = [];
+      for (const packName of profile.packs) {
+        const packSigs = triagePacksByName.get(packName);
+        if (!packSigs) {
+          throw new ApmCompileError(
+            `Triage profile "${profileName}" references pack "${packName}" which does not exist in .apm/triage-packs/`,
+          );
+        }
+        signatures.push(...packSigs);
+      }
+
+      const compiledKey = `${wfName}.${profileName}`;
+      triageProfiles[compiledKey] = {
+        llm_fallback: profile.llm_fallback,
+        max_reroutes: profile.max_reroutes,
+        routing: profile.routing,
+        signatures,
+      };
+    }
+  }
+
+  // --- 8. Build compiled output (resolve env vars in config) ---
   const resolvedConfig = manifest.config
     ? resolveEnvVars(manifest.config)
     : undefined;
@@ -321,7 +347,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     agents,
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
     workflows,
-    triage_kb: triageKb,
+    triage_profiles: triageProfiles,
   };
 
   // --- 8. Write to .compiled/context.json ---

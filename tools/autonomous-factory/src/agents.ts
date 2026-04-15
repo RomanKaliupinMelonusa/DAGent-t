@@ -82,11 +82,7 @@ When you have finished your task and verified it works:
 
 If you cannot complete the task:
 \`\`\`bash
-{{#if jsonGated}}
-npm run pipeline:fail {{featureSlug}} {{itemKey}} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'
-{{else}}
-npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
-{{/if}}
+npm run pipeline:fail {{featureSlug}} {{itemKey}} \"<detailed reason>\"
 \`\`\`
 `);
 
@@ -214,7 +210,6 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     ...((apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.template_flags ?? []) as string[]).reduce(
       (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
     ),
-    jsonGated: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.triage_json_gated ?? false,
 
     // APM rules for this agent
     rules: apmContext.agents[ctx.itemKey].rules,

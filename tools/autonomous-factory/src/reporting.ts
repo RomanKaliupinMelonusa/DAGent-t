@@ -51,6 +51,17 @@ export function outcomeIcon(outcome: string): string {
   return outcome === "completed" ? "✅" : outcome === "failed" ? "❌" : "💥";
 }
 
+/** Check if a step was a barrier sync point (zero-execution DAG join) */
+function isBarrierStep(item: ItemSummary): boolean {
+  return item.intents.some((i) => i.startsWith("barrier-sync"));
+}
+
+/** Icon for a step, with barrier override */
+function stepIcon(item: ItemSummary): string {
+  if (isBarrierStep(item)) return "⊕";
+  return outcomeIcon(item.outcome);
+}
+
 /** Compute estimated USD cost for a single pipeline step based on token usage */
 export function computeStepCost(s: ItemSummary): number {
   return (
@@ -300,11 +311,13 @@ export function writePipelineSummary(
       const heading = currentPhase === "pre-deploy" ? "Pre-Deploy"
         : currentPhase === "deploy" ? "Deploy"
         : currentPhase === "post-deploy" ? "Post-Deploy"
-        : "Finalize";
+        : currentPhase === "finalize" ? "Finalize"
+        : currentPhase === "validation" ? "Validation"
+        : currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1);
       lines.push(`### Phase: ${heading}`, ``);
     }
 
-    const icon = outcomeIcon(item.outcome);
+    const icon = stepIcon(item);
     const duration = formatDuration(item.durationMs);
     const attemptTag = item.attempt > 1 ? ` (attempt ${item.attempt})` : "";
     lines.push(`#### ${icon} ${item.label} — \`${item.key}\`${attemptTag}`);
@@ -524,11 +537,13 @@ export function writeTerminalLog(
       const heading = currentPhase === "pre-deploy" ? "Pre-Deploy"
         : currentPhase === "deploy" ? "Deploy"
         : currentPhase === "post-deploy" ? "Post-Deploy"
-        : "Finalize";
+        : currentPhase === "finalize" ? "Finalize"
+        : currentPhase === "validation" ? "Validation"
+        : currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1);
       lines.push(`### Phase: ${heading}`, ``);
     }
 
-    const icon = outcomeIcon(item.outcome);
+    const icon = stepIcon(item);
     const duration = formatDuration(item.durationMs);
     const attemptTag = item.attempt > 1 ? ` (attempt ${item.attempt})` : "";
     lines.push(`#### ${icon} ${item.label} — \`${item.key}\`${attemptTag}`);

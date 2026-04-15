@@ -37,7 +37,7 @@ export {
 } from "./session-events.js";
 
 export {
-  handleFailureReroute,
+  handleTriageReroute,
 } from "./triage-dispatcher.js";
 
 export {

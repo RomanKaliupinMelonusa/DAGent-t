@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm-types.js";
 import type { ApmWorkflowNode } from "../apm-types.js";
 import type { ItemSummary } from "../types.js";
-import { parseTriageDiagnostic } from "../types.js";
+import { extractDiagnosticTrace } from "../types.js";
 import { writePipelineSummary, writeTerminalLog } from "../reporting.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 
@@ -145,10 +145,8 @@ export function shouldSkipRetry(
 
   // Extract diagnostic_trace from structured errors for comparison
   // (full error JSON includes timestamps/metadata that differ between attempts)
-  const lastDiag = parseTriageDiagnostic(last.errorMessage);
-  const prevDiag = parseTriageDiagnostic(prev.errorMessage);
-  const lastTrace = lastDiag?.diagnostic_trace ?? last.errorMessage;
-  const prevTrace = prevDiag?.diagnostic_trace ?? prev.errorMessage;
+  const lastTrace = extractDiagnosticTrace(last.errorMessage) ?? last.errorMessage;
+  const prevTrace = extractDiagnosticTrace(prev.errorMessage) ?? prev.errorMessage;
 
   // Normalize traces to strip dynamic metadata (SHAs, timestamps, line numbers)
   // before comparison. LLMs inject build-specific entropy that defeats exact-match.

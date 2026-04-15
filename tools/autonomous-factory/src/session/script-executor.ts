@@ -12,12 +12,22 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { getStatus, failItem, completeItem } from "../state.js";
 import { getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "../auto-skip.js";
-import { parseTriageDiagnostic } from "../triage.js";
 import { getWorkflowNode, flushReports, finishItem } from "./shared.js";
 import { runValidateApp } from "./readiness-probe.js";
-import { handleFailureReroute } from "./triage-dispatcher.js";
+import { handleTriageReroute } from "./triage-dispatcher.js";
+import type { ApmCompiledOutput, CompiledTriageProfile } from "../apm-types.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 import type { ItemSummary } from "../types.js";
+
+/** Resolve compiled triage profile for a workflow node. */
+function resolveTriageProfile(
+  apmContext: ApmCompiledOutput,
+  itemKey: string,
+): CompiledTriageProfile | undefined {
+  const node = getWorkflowNode(apmContext, itemKey);
+  if (!node?.triage) return undefined;
+  return apmContext.triage_profiles?.[`default.${node.triage}`];
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -301,10 +311,14 @@ export async function runPollCi(
         const appFailure = runValidateApp(config);
         if (appFailure) {
           console.error(`  🚫 App validation failed after CI: ${appFailure}`);
-          const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
+          const failMsg = `validateApp hook: ${appFailure}`;
           try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
           finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failMsg, intents: ["App validation failed — blocking before post-deploy agents"] });
-          return handleFailureReroute(slug, itemKey, failMsg, appFailure, config, itemSummary, roamAvailable);
+          const triageProfileApp = resolveTriageProfile(config.apmContext, itemKey);
+          if (triageProfileApp) {
+            return handleTriageReroute(slug, itemKey, failMsg, triageProfileApp, config, itemSummary, roamAvailable);
+          }
+          return { summary: itemSummary, halt: true, createPr: false };
         }
       }
 
@@ -369,9 +383,11 @@ export async function runPollCi(
 
       finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failureContext });
 
-      const diagnostic = parseTriageDiagnostic(failureContext);
-      const errorMsg = diagnostic ? diagnostic.diagnostic_trace : failureContext;
-      return handleFailureReroute(slug, itemKey, failureContext, errorMsg, config, itemSummary, roamAvailable);
+      const triageProfileCi = resolveTriageProfile(config.apmContext, itemKey);
+      if (triageProfileCi) {
+        return handleTriageReroute(slug, itemKey, failureContext, triageProfileCi, config, itemSummary, roamAvailable);
+      }
+      return { summary: itemSummary, halt: true, createPr: false };
     }
   }
 
