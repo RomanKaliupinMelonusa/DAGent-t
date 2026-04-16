@@ -17,10 +17,10 @@
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
-import type { CopilotClient } from "@github/copilot-sdk";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import type { TriageRecord, TriageResult } from "../types.js";
+import { RESET_OPS } from "../types.js";
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode } from "../session/shared.js";
@@ -195,7 +195,7 @@ const triageHandler: NodeHandler = {
     } catch { /* continue to triage classification */ }
 
     // --- 2-layer triage classification (RAG → LLM → fallback) ---
-    const client = ctx.client as CopilotClient | undefined;
+    const client = ctx.client;
     const triageResult: TriageResult = await evaluateTriage(
       rawError, profile, client, slug, ctx.appRoot, logger,
     );
@@ -229,7 +229,7 @@ const triageHandler: NodeHandler = {
           domain: triageResult.domain,
           reason: triageResult.reason,
           source: triageResult.source,
-          route_to: null,
+          route_to: "$BLOCKED",
           cascade: [],
           cycle_count: 0,
           domain_retry_count: 0,
@@ -257,9 +257,9 @@ const triageHandler: NodeHandler = {
           let consecutiveCount = 0;
           for (let i = (pipeState.errorLog ?? []).length - 1; i >= 0; i--) {
             const entry = pipeState.errorLog[i];
-            if (entry.itemKey === "reset-for-reroute" && entry.message?.includes(domainTag)) {
+            if (entry.itemKey === RESET_OPS.RESET_FOR_REROUTE && entry.message?.includes(domainTag)) {
               consecutiveCount++;
-            } else if (entry.itemKey === "reset-for-reroute") {
+            } else if (entry.itemKey === RESET_OPS.RESET_FOR_REROUTE) {
               break;
             }
           }
@@ -280,7 +280,7 @@ const triageHandler: NodeHandler = {
               domain: triageResult.domain,
               reason: `domain retry cap reached (${consecutiveCount}/${routeEntry.retries})`,
               source: triageResult.source,
-              route_to: null,
+              route_to: "$BLOCKED",
               cascade: [],
               cycle_count: 0,
               domain_retry_count: domainRetryCount,

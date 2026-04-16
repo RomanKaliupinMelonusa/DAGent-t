@@ -5,6 +5,30 @@
  * and are used by state.ts, agents.ts, and watchdog.ts.
  */
 
+// ---------------------------------------------------------------------------
+// Reset operation keys — shared protocol between pipeline-state.mjs and TS
+// ---------------------------------------------------------------------------
+
+/**
+ * Synthetic `itemKey` values written to `errorLog` by the state machine's
+ * reset functions. These are NOT real DAG node keys — they're operation
+ * markers used for cycle counting and context injection.
+ */
+export const RESET_OPS = {
+  /** resetNodes() for upstream dev redevelopment */
+  RESET_FOR_DEV: "reset-for-dev",
+  /** resetNodes() for triage reroute */
+  RESET_FOR_REROUTE: "reset-for-reroute",
+  /** resetPhases() for full-phase redevelopment */
+  RESET_PHASES: "reset-phases",
+} as const;
+
+/** All reset-operation keys that indicate a redevelopment cycle */
+export const REDEVELOPMENT_RESET_OPS = [
+  RESET_OPS.RESET_FOR_DEV,
+  RESET_OPS.RESET_FOR_REROUTE,
+] as const;
+
 export interface PipelineItem {
   key: string;
   label: string;
@@ -41,10 +65,10 @@ export interface PipelineState {
   phases: string[];
   /** Human-readable labels for phase slugs (from config.phase_labels) */
   phaseLabels?: Record<string, string> | null;
-  /** Node execution types — persisted at init from workflows.yml */
-  nodeTypes: Record<string, "agent" | "script" | "approval" | "barrier">;
-  /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
-  nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Node execution types — open set; built-in: agent, script, approval, barrier, triage. */
+  nodeTypes: Record<string, string>;
+  /** Node semantic categories — open set; built-in: dev, test, deploy, finalize. */
+  nodeCategories: Record<string, string>;
   /** Whether pipeline:fail messages must be valid TriageDiagnostic JSON — persisted at init from workflows.yml */
   jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
@@ -100,7 +124,7 @@ export interface TriageResult {
 }
 
 /**
- * Full triage record assembled by the triage-dispatcher.
+ * Full triage record assembled by the triage handler (handlers/triage.ts).
  * Captures everything about a failure classification for retrospective analysis.
  * Persisted to `_STATE.json.lastTriageRecord` and emitted as a `triage.evaluate` event.
  */
@@ -110,7 +134,7 @@ export interface TriageRecord {
   /** Stable error fingerprint (SHA-256 prefix of normalized trace). */
   error_signature: string;
 
-  /** Pre-guard result (set by triage-dispatcher, not evaluateTriage). */
+  /** Pre-guard result (set by triage handler, not evaluateTriage). */
   guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral";
   guard_detail?: string;
 
@@ -130,7 +154,7 @@ export interface TriageRecord {
   reason: string;
   source: "rag" | "llm" | "fallback";
 
-  /** Routing decision (set by triage-dispatcher after evaluateTriage). */
+  /** Routing decision (set by triage handler after evaluateTriage). */
   route_to: string;
   cascade: string[];
   cycle_count: number;

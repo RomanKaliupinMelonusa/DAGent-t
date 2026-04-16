@@ -25,6 +25,12 @@ const DEFAULT_TIMEOUT_MINUTES = 15;
 const localExecHandler: NodeHandler = {
   name: "local-exec",
 
+  metadata: {
+    description: "Executes a shell command from the workflow node's `command` field with environment variable interpolation.",
+    inputs: {},
+    outputs: [],
+  },
+
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch } = ctx;
 

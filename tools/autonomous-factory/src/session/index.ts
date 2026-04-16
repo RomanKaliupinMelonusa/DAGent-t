@@ -5,7 +5,7 @@
 export {
   getWorkflowNode,
   getTimeout,
-  findUpstreamDevKeys,
+  findUpstreamKeysByCategory,
   getAgentDirectoryPrefixes,
   normalizeDiagnosticTrace,
   shouldSkipRetry,
@@ -35,12 +35,3 @@ export {
   TOOL_CATEGORIES,
   toolSummary,
 } from "./session-events.js";
-
-export {
-  handleTriageReroute,
-} from "./triage-dispatcher.js";
-
-export {
-  runPushCode,
-  runPollCi,
-} from "./script-executor.js";

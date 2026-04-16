@@ -186,17 +186,55 @@ export const ApmConfigSchema = z.object({
   /** Human-readable labels for phase slugs, used in TRANS.md and reports.
    *  Falls back to title-casing the slug. E.g. { "pre-deploy": "Pre-Deploy", "infra": "Infrastructure (Wave 1)" }. */
   phase_labels: z.record(z.string(), z.string()).optional(),
+
+  /** Handler inference map: node type (or "type:script_type") → handler key.
+   *  Used by the kernel when a node does not declare an explicit `handler` field.
+   *  Extend this to register new node types without changing kernel code.
+   *  Built-in defaults (applied when not overridden):
+   *    agent → copilot-agent, script:poll → github-ci-poll, script → local-exec,
+   *    approval → approval, barrier → barrier, triage → triage */
+  handler_defaults: z.record(z.string(), z.string()).optional(),
+
+  /** Custom handler declarations — pre-register handlers with metadata.
+   *  Keys are handler names (used in `handler_defaults` or node `handler` fields).
+   *  Each entry declares the handler's file path and optional input/output contracts.
+   *  Built-in handlers (copilot-agent, local-exec, etc.) don't need declaration.
+   *  Example:
+   *    handlers:
+   *      webhook-notifier:
+   *        path: "./handlers/webhook-notifier.ts"
+   *        description: "Sends webhook notifications to external systems"
+   *        inputs: { webhookUrl: required }
+   *        outputs: ["responseStatus"] */
+  handlers: z.record(z.string(), z.object({
+    /** File path to the handler module (relative to appRoot, must start with "./"). */
+    path: z.string(),
+    /** Human-readable description of the handler. */
+    description: z.string().optional(),
+    /** Input keys expected from handlerData. Maps key → "required" | "optional". */
+    inputs: z.record(z.string(), z.enum(["required", "optional"])).optional(),
+    /** Output keys the handler produces in handlerOutput. */
+    outputs: z.array(z.string()).optional(),
+  })).optional(),
+
+  /** Node categories that trigger a roam-code re-index after triage reroute.
+   *  When a triage handler reroutes to a node whose category is in this list,
+   *  the kernel refreshes the semantic graph index before re-execution.
+   *  Default: ["dev", "test"]. Set to [] to disable auto-reindex. */
+  reindex_categories: z.array(z.string()).default(["dev", "test"]),
 });
 
 // ---------------------------------------------------------------------------
 // Workflow DAG schemas (workflows.yml)
 // ---------------------------------------------------------------------------
 
-export const ApmWorkflowNodeSchema = z.object({
-  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate, barrier = DAG sync point, triage = failure classification node. */
-  type: z.enum(["agent", "script", "approval", "barrier", "triage"]).default("agent"),
-  /** Semantic category — replaces hardcoded DEV_ITEMS / TEST_ITEMS / POST_DEPLOY_ITEMS sets. */
-  category: z.enum(["dev", "test", "deploy", "finalize"]),
+const ApmWorkflowNodeSchemaBase = z.object({
+  /** Execution type: built-in types are "agent", "script", "approval", "barrier", "triage".
+   *  Custom types are allowed — declare a matching handler in config.handler_defaults or node.handler. */
+  type: z.string().default("agent"),
+  /** Semantic category — built-in: "dev", "test", "deploy", "finalize".
+   *  Custom categories are allowed — referenced by redevelopment_categories, reindex_categories, etc. */
+  category: z.string(),
   /** Agent key from the agents section (required when type is "agent"). */
   agent: z.string().optional(),
   /**
@@ -253,12 +291,13 @@ export const ApmWorkflowNodeSchema = z.object({
   injects_infra_rollback: z.boolean().default(false),
   /** Alias for `injects_infra_rollback` — preferred name for new workflows. */
   injects_phase_rejection: z.boolean().optional(),
-  /** Deterministic handler type for script nodes: poll or local-exec.
+  /** Deterministic handler type for script nodes: built-in values are "poll" and "local-exec".
+   *  Custom script_type values are allowed — declare a matching handler in config.handler_defaults.
    *  Push and publish are now expressed as local-exec with pre/command/post hooks. */
-  script_type: z.enum(["poll", "local-exec"]).optional(),
+  script_type: z.string().optional(),
   /** Shell command to execute (required when script_type is "local-exec"). */
   command: z.string().optional(),
-  /** For poll nodes — the key of the push node whose SHA to look up in state.lastPushedShas. */
+  /** For poll nodes — the key of the push node whose SHA to look up in handlerOutputs. */
   poll_target: z.string().optional(),
   /** For poll nodes — the key into config.ciWorkflows for CI_WORKFLOW_FILTER (e.g. "infra", "app"). */
   ci_workflow_key: z.string().optional(),
@@ -281,6 +320,19 @@ export const ApmWorkflowNodeSchema = z.object({
   /** When true, successful completion signals the watchdog to archive feature files.
    *  Used by the publish-pr node to trigger post-pipeline archiving. */
   signals_create_pr: z.boolean().default(false),
+  /** Data keys this node produces in handlerOutput (declared for validation + tracing).
+   *  Example: ["lastPushedSha", "ciRunId"]. The kernel validates downstream `consumes`
+   *  against upstream `produces` at compile time. */
+  produces: z.array(z.string()).default([]),
+  /** Data keys this node expects in handlerData from upstream nodes.
+   *  Each entry: { key: "lastPushedSha", from: "push-app", required: true }.
+   *  `from` = upstream node key (or "*" = any). `required` defaults to true.
+   *  The kernel warns/fails at dispatch if required keys are missing. */
+  consumes: z.array(z.object({
+    key: z.string(),
+    from: z.string().default("*"),
+    required: z.boolean().default(true),
+  })).default([]),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
 
@@ -309,37 +361,84 @@ export const ApmWorkflowNodeSchema = z.object({
      *  Only applies when allows_revert_bypass is true. Default: 3. */
     revert_warning_at: z.number().int().positive().default(3),
   }).optional(),
-}).refine(
-  (node) => node.type !== "agent" || typeof node.agent === "string",
-  { message: "Workflow node with type 'agent' must declare an 'agent' field." },
-).refine(
-  (node) => node.script_type !== "poll" || typeof node.poll_target === "string",
-  { message: "Workflow node with script_type 'poll' must declare a 'poll_target' field." },
-).refine(
-  (node) => !(node.type === "script" && node.script_type === "local-exec") || typeof node.command === "string",
-  { message: "Workflow node with script_type 'local-exec' must declare a 'command' field." },
-).refine(
-  (node) => node.type !== "barrier" || (node.depends_on && node.depends_on.length >= 2),
-  { message: "Barrier node must declare at least 2 entries in 'depends_on' (a single dependency does not need a barrier)." },
-).refine(
-  (node) => node.type !== "barrier" || !node.agent,
-  { message: "Barrier node must not declare an 'agent' field (barriers have zero execution)." },
-).refine(
-  (node) => node.type !== "barrier" || !node.command,
-  { message: "Barrier node must not declare a 'command' field (barriers have zero execution)." },
-).refine(
-  (node) => node.type !== "barrier" || !node.script_type,
-  { message: "Barrier node must not declare a 'script_type' field (barriers have zero execution)." },
-).refine(
-  (node) => node.type !== "triage" || typeof node.triage_profile === "string",
-  { message: "Triage node must declare a 'triage_profile' field referencing a triage profile." },
-).refine(
-  (node) => node.type !== "triage" || !node.agent,
-  { message: "Triage node must not declare an 'agent' field." },
-).refine(
-  (node) => node.type !== "triage" || !node.command,
-  { message: "Triage node must not declare a 'command' field." },
-);
+});
+
+// ---------------------------------------------------------------------------
+// Node constraint system — extensible validation for built-in + custom types
+// ---------------------------------------------------------------------------
+
+/**
+ * A node constraint function. Returns true if valid, false if violated.
+ * The framework runs all constraints for the node's type; custom types
+ * register constraints via `registerNodeConstraint()`.
+ */
+export interface NodeConstraint {
+  /** Constraint applies to nodes with this type (or "*" for all types). */
+  type: string;
+  /** Human-readable error message when constraint fails. */
+  message: string;
+  /** Validation function — return true if constraint is satisfied. */
+  check: (node: Record<string, unknown>) => boolean;
+}
+
+/** Registry of node constraints, keyed by type. */
+const NODE_CONSTRAINTS: NodeConstraint[] = [
+  // ── agent constraints ──
+  { type: "agent", message: "Workflow node with type 'agent' must declare an 'agent' field.", check: (n) => typeof n.agent === "string" },
+  // ── script constraints ──
+  { type: "script", message: "Workflow node with script_type 'poll' must declare a 'poll_target' field.", check: (n) => n.script_type !== "poll" || typeof n.poll_target === "string" },
+  { type: "script", message: "Workflow node with script_type 'local-exec' must declare a 'command' field.", check: (n) => n.script_type !== "local-exec" || typeof n.command === "string" },
+  // ── barrier constraints ──
+  { type: "barrier", message: "Barrier node must declare at least 2 entries in 'depends_on'.", check: (n) => Array.isArray(n.depends_on) && (n.depends_on as string[]).length >= 2 },
+  { type: "barrier", message: "Barrier node must not declare an 'agent' field.", check: (n) => !n.agent },
+  { type: "barrier", message: "Barrier node must not declare a 'command' field.", check: (n) => !n.command },
+  { type: "barrier", message: "Barrier node must not declare a 'script_type' field.", check: (n) => !n.script_type },
+  // ── triage constraints ──
+  { type: "triage", message: "Triage node must declare a 'triage_profile' field.", check: (n) => typeof n.triage_profile === "string" },
+  { type: "triage", message: "Triage node must not declare an 'agent' field.", check: (n) => !n.agent },
+  { type: "triage", message: "Triage node must not declare a 'command' field.", check: (n) => !n.command },
+];
+
+/**
+ * Register a custom node constraint. Custom types call this to add
+ * validation rules that run at workflow parse time.
+ *
+ * @example
+ * registerNodeConstraint({
+ *   type: "webhook",
+ *   message: "Webhook node must declare a 'webhook_url' field.",
+ *   check: (n) => typeof n.webhook_url === "string",
+ * });
+ */
+export function registerNodeConstraint(constraint: NodeConstraint): void {
+  NODE_CONSTRAINTS.push(constraint);
+}
+
+/**
+ * Validate a parsed workflow node against all applicable constraints.
+ * Returns an array of violation messages (empty = valid).
+ */
+export function validateNodeConstraints(node: Record<string, unknown>): string[] {
+  const nodeType = (node.type as string) ?? "agent";
+  const violations: string[] = [];
+  for (const c of NODE_CONSTRAINTS) {
+    if (c.type !== nodeType && c.type !== "*") continue;
+    if (!c.check(node)) violations.push(c.message);
+  }
+  return violations;
+}
+
+/**
+ * Zod-compatible superRefine that runs the constraint registry.
+ * Applied to ApmWorkflowNodeSchema via .superRefine().
+ */
+function nodeConstraintRefine(node: Record<string, unknown>, ctx: z.RefinementCtx): void {
+  for (const msg of validateNodeConstraints(node)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: msg });
+  }
+}
+
+export const ApmWorkflowNodeSchema = ApmWorkflowNodeSchemaBase.superRefine(nodeConstraintRefine);
 
 /**
  * Topological sort for DAG acyclicity validation.

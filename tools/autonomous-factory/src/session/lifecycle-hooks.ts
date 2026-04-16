@@ -170,9 +170,7 @@ export function runPostHook(ctx: HookContext): HookResult {
  */
 export function captureHeadSha(ctx: HookContext): string | null {
   const node = ctx.node;
-  const shouldCapture = node?.captures_head_sha
-    || (node?.category === "deploy" && node?.type === "script");
-  if (!shouldCapture) return null;
+  if (!node?.captures_head_sha) return null;
 
   try {
     const sha = execSync("git rev-parse HEAD", {

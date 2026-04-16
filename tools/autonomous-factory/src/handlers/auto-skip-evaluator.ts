@@ -14,7 +14,7 @@ import path from "node:path";
 import type { ApmCompiledOutput } from "../apm-types.js";
 import type { SkipResult } from "./types.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../auto-skip.js";
-import { findUpstreamDevKeys } from "../session/shared.js";
+import { findUpstreamKeysByCategory } from "../session/shared.js";
 
 // ---------------------------------------------------------------------------
 // Return type
@@ -65,7 +65,7 @@ export function evaluateAutoSkip(
   if (node.auto_skip_if_no_changes_in && node.auto_skip_if_no_changes_in.length > 0) {
     // Find the best base ref — walk DAG backward to find nearest upstream dev node
     const workflow = apmContext.workflows?.default;
-    const upstreamDevKeys = workflow ? findUpstreamDevKeys(workflow.nodes, itemKey) : [];
+    const upstreamDevKeys = workflow ? findUpstreamKeysByCategory(workflow.nodes, itemKey, ["dev"]) : [];
     let devRef: string | null = null;
     for (const dk of upstreamDevKeys) {
       devRef = autoSkipRef(dk);

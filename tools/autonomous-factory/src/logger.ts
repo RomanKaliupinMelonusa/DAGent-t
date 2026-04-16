@@ -32,6 +32,7 @@ export type EventKind =
   | "item.end"
   | "item.skip"
   | "item.barrier"
+  | "item.approval"
   // Tool calls
   | "tool.call"
   | "tool.result"
@@ -124,6 +125,52 @@ export interface PipelineLogger {
 
   /** The run ID for this pipeline execution. */
   readonly runId: string;
+
+  /**
+   * Build a structured execution trace for a node across all attempts.
+   * Captures: start/end, handler events, handoff (emit/inject), triage reroutes,
+   * and state transitions — everything needed to trace execution flow between nodes.
+   *
+   * @param itemKey - The node key to trace
+   * @returns NodeTrace with ordered events grouped by attempt
+   */
+  queryNodeTrace(itemKey: string): NodeTrace;
+}
+
+// ---------------------------------------------------------------------------
+// NodeTrace — structured execution trace for a single node
+// ---------------------------------------------------------------------------
+
+export interface NodeTraceAttempt {
+  /** 1-based attempt number */
+  attempt: number;
+  /** ISO timestamp of item.start */
+  startedAt: string;
+  /** ISO timestamp of item.end (empty if still running) */
+  finishedAt: string;
+  /** Execution outcome */
+  outcome: string;
+  /** Error message (if failed) */
+  errorMessage?: string;
+  /** Handler output keys emitted to downstream nodes */
+  handoffEmitted: string[];
+  /** Context types injected from upstream nodes */
+  handoffInjected: string[];
+  /** All events in this attempt (ordered) */
+  events: PipelineEvent[];
+}
+
+export interface NodeTrace {
+  /** The node key */
+  itemKey: string;
+  /** Total attempts across the pipeline run */
+  totalAttempts: number;
+  /** Per-attempt trace */
+  attempts: NodeTraceAttempt[];
+  /** Cross-node references: nodes this node received data from (via handoff.inject) */
+  upstreamNodes: string[];
+  /** Cross-node references: nodes that consumed this node's handoff data */
+  downstreamNodes: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +476,100 @@ export class JsonlPipelineLogger implements PipelineLogger {
     };
   }
 
+  queryNodeTrace(itemKey: string): NodeTrace {
+    const nodeEvents = this.events.filter((e) => e.item_key === itemKey);
+
+    // Group events by attempt
+    const byAttempt = new Map<number, PipelineEvent[]>();
+    for (const evt of nodeEvents) {
+      const a = evt.attempt ?? 1;
+      if (!byAttempt.has(a)) byAttempt.set(a, []);
+      byAttempt.get(a)!.push(evt);
+    }
+
+    const attempts: NodeTraceAttempt[] = [];
+    for (const [attempt, events] of [...byAttempt.entries()].sort((a, b) => a[0] - b[0])) {
+      const startEvt = events.find((e) => e.kind === "item.start");
+      const endEvt = [...events].reverse().find((e) => e.kind === "item.end");
+
+      const handoffEmitted = events
+        .filter((e) => e.kind === "handoff.emit")
+        .flatMap((e) => (e.data.keys as string[]) ?? []);
+      const handoffInjected = events
+        .filter((e) => e.kind === "handoff.inject")
+        .flatMap((e) => (e.data.injection_types as string[]) ?? []);
+
+      attempts.push({
+        attempt,
+        startedAt: startEvt?.ts ?? events[0]?.ts ?? "",
+        finishedAt: endEvt?.ts ?? "",
+        outcome: (endEvt?.data.outcome as string) ?? "in-progress",
+        errorMessage: endEvt?.data.error_preview as string | undefined,
+        handoffEmitted,
+        handoffInjected,
+        events,
+      });
+    }
+
+    // Cross-node references from handoff events across all items.
+    // Match emitters to consumers by comparing emitted vs injected keys.
+    const upstreamNodes = new Set<string>();
+    const downstreamNodes = new Set<string>();
+
+    // Keys this node consumed (from handoff.inject events)
+    const consumedKeys = new Set<string>();
+    for (const evt of nodeEvents) {
+      if (evt.kind === "handoff.inject") {
+        for (const t of (evt.data.injection_types as string[]) ?? []) {
+          consumedKeys.add(t);
+        }
+      }
+    }
+
+    // Keys this node emitted (from handoff.emit events)
+    const emittedKeys = new Set<string>();
+    for (const evt of nodeEvents) {
+      if (evt.kind === "handoff.emit" && evt.data.channel === "handler_data") {
+        for (const k of (evt.data.keys as string[]) ?? []) {
+          emittedKeys.add(k);
+        }
+      }
+    }
+
+    // Upstream: other nodes whose emitted keys overlap with what this node consumed
+    if (consumedKeys.size > 0) {
+      for (const evt of this.events) {
+        if (evt.kind === "handoff.emit" && evt.data.channel === "handler_data" &&
+            evt.item_key && evt.item_key !== itemKey) {
+          const otherKeys = (evt.data.keys as string[]) ?? [];
+          if (otherKeys.some((k) => consumedKeys.has(k) || consumedKeys.has(`missing_optional:${k}`) || consumedKeys.has(`missing_required:${k}`))) {
+            upstreamNodes.add(evt.item_key);
+          }
+        }
+      }
+    }
+
+    // Downstream: other nodes whose consumed keys overlap with what this node emitted
+    if (emittedKeys.size > 0) {
+      for (const evt of this.events) {
+        if (evt.kind === "handoff.inject" && evt.item_key && evt.item_key !== itemKey) {
+          const otherInjections = (evt.data.injection_types as string[]) ?? [];
+          if (otherInjections.some((t) => emittedKeys.has(t) || emittedKeys.has(t.replace(/^missing_(optional|required):/, "")))) {
+            downstreamNodes.add(evt.item_key);
+          }
+        }
+      }
+    }
+
+    return {
+      itemKey,
+      totalAttempts: attempts.length,
+      attempts,
+      upstreamNodes: [...upstreamNodes],
+      downstreamNodes: [...downstreamNodes],
+    };
+  }
+
   /** Close file descriptors and deregister exit handler. */
   close(): void {
     if (this._exitHandler) {
@@ -480,6 +621,9 @@ export class NoopPipelineLogger implements PipelineLogger {
   query(_filter: EventFilter): PipelineEvent[] { return []; }
   setAttempt(_itemKey: string, _attempt: number): void {}
   materializeItemSummary(_itemKey: string, _attempt?: number): ItemSummary | null { return null; }
+  queryNodeTrace(itemKey: string): NodeTrace {
+    return { itemKey, totalAttempts: 0, attempts: [], upstreamNodes: [], downstreamNodes: [] };
+  }
 }
 
 // ---------------------------------------------------------------------------

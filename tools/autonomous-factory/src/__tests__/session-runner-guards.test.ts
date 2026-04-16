@@ -14,7 +14,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { appendToToolResult } from "../session-runner.js";
+import { appendToToolResult } from "../session/session-events.js";
 
 // ---------------------------------------------------------------------------
 // appendToToolResult — non-destructive tool result mutation

@@ -1,8 +1,11 @@
 /**
  * session/triage-dispatcher.ts — Failure triage and DAG-native rerouting.
  *
- * Node has `triage` field → evaluateTriage() → route_to + DAG cascade.
- * The triage engine classifies; this module orchestrates the rerouting lifecycle.
+ * @deprecated Triage is now a first-class DAG node handler (handlers/triage.ts).
+ * The kernel dispatches triage via on_failure edges instead of calling this module.
+ * This file is retained for backward compatibility only — do not add new logic here.
+ * The active triage handler is: tools/autonomous-factory/src/handlers/triage.ts
+ * The kernel failure-edge dispatch is in: session-runner.ts (dispatchOnFailure)
  */
 
 import fs from "node:fs";

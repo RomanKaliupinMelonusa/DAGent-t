@@ -48,7 +48,6 @@ function makeState(): PipelineRunState {
     circuitBreakerBypassed: new Set(),
     preStepRefs: {},
     baseTelemetry: null,
-    lastPushedShas: {},
     handlerOutputs: {},
     forceRunChangesDetected: {},
   };

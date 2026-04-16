@@ -15,6 +15,7 @@ default:
     - validation
     - finalize
     - deploy
+    - triage
 
   nodes:
     # ── Development ────────────────────────────────────────────────────
@@ -28,6 +29,9 @@ default:
       run_if: [Storefront, Full-Stack]
       commit_scope: all
       diff_attribution_dirs: [storefront]
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     storefront-unit-test:
       type: agent
@@ -38,7 +42,7 @@ default:
       depends_on: [storefront-dev]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront]
-      triage: storefront
+      on_failure: triage-storefront
       commit_scope: all
       diff_attribution_dirs: [storefront]
 
@@ -61,7 +65,7 @@ default:
       depends_on: [storefront-unit-test]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
-      triage: storefront
+      on_failure: triage-storefront
       commit_scope: all
       diff_attribution_dirs: [e2e]
 
@@ -74,7 +78,7 @@ default:
       depends_on: [e2e-author]
       run_if: [Storefront, Full-Stack]
       auto_skip_if_no_changes_in: [storefront, e2e]
-      triage: storefront
+      on_failure: triage-storefront
       pre: |
         # Kill stale processes from previous runs (idempotent)
         pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
@@ -104,6 +108,8 @@ default:
         pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
         pkill -f 'chromium|chrome' 2>/dev/null || true
         sleep 2
+      circuit_breaker:
+        halt_on_identical: true
 
     # ── Barrier: wait for all validation branches before finalize ──────
     validation-gate:
@@ -157,6 +163,9 @@ default:
       script_type: local-exec
       command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
       post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     poll-app-ci:
       type: script
@@ -169,6 +178,9 @@ default:
       poll_target: push-app
       ci_workflow_key: app
       post: "bash .apm/hooks/validate-app.sh"
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     publish-pr:
       type: script
@@ -180,6 +192,18 @@ default:
       command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
       signals_create_pr: true
       salvage_survivor: true
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
+
+    # ── Triage Nodes ───────────────────────────────────────────────────
+    triage-storefront:
+      type: triage
+      category: finalize
+      phase: triage
+      timeout_minutes: 5
+      depends_on: []
+      triage_profile: storefront
 
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:

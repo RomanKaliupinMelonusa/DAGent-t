@@ -27,7 +27,6 @@ import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
 import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkGitHubLogin, checkStateContextDrift, buildRoamIndex } from "./preflight.js";
-import { getWorkflowNode } from "./session/shared.js";
 import { writePipelineSummary, writeTerminalLog, loadPreviousSummary, setModelPricing } from "./reporting.js";
 import { archiveFeatureFiles, commitAndPushState } from "./archive.js";
 import { runResolveEnvironment } from "./hooks.js";
@@ -212,7 +211,6 @@ async function main(): Promise<void> {
     circuitBreakerBypassed: new Set<string>(),
     preStepRefs: {},
     baseTelemetry,
-    lastPushedShas: {},
     handlerOutputs: {},
     forceRunChangesDetected: {},
   };
@@ -243,36 +241,13 @@ async function main(): Promise<void> {
         break;
       }
 
-      // --- Approval gate: orchestrator pauses for human approval ---
-      // Only `type: approval` nodes are true human gates. Script nodes (local-exec, push, poll)
-      // have agent=null but are executed by handlers and must NOT trigger the approval pause.
-      // Barrier nodes (type: barrier) are zero-execution sync points — they are dispatched
-      // normally and auto-complete in session-runner.
-      const approvalGateItems = available.filter(
-        (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
-      );
-      if (approvalGateItems.length > 0 && available.every(
-        (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
-      )) {
-        const gateKeys = approvalGateItems.map((i) => i.key).join(", ");
-        console.log(`\n${"─".repeat(70)}`);
-        console.log(`  ⏸  Awaiting human approval for: ${gateKeys}`);
-        console.log(`     Complete via: npm run pipeline:complete <slug> <gate-key>`);
-        console.log(`${"─".repeat(70)}\n`);
-        logger.event("run.end", null, { outcome: "approval_gate", duration_ms: Date.now() - runStartMs });
-        // Clean exit — ChatOps will pipeline:complete + re-trigger the orchestrator
-        break;
-      }
-
+      // --- Dispatch all available items (including approval gates) ---
       if (available.length > 1) {
         logger.event("batch.start", null, { batch_number: batchNumber, items: available.map((i) => i.key) });
       }
 
-      // Run items in parallel (or sequentially if only one)
-      // Filter out approval-gate items — they are completed externally via ChatOps
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } =>
-          item.key !== null && getWorkflowNode(apmContext, item.key)?.type !== "approval",
+        (item): item is NextAction & { key: string } => item.key !== null,
       );
 
       // Pre-batch sync: single pull before parallel execution
@@ -292,12 +267,14 @@ async function main(): Promise<void> {
       // === Centralized Mutex: Commit state files after parallel batch ===
       commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
 
-      // Check results for halt or publish-pr signals
+      // Check results for halt, publish-pr, or approval-pending signals
       let shouldHalt = false;
       let pipelineDone = false;
-      for (const result of results) {
+      let approvalPendingKeys: string[] = [];
+      for (const [i, result] of results.entries()) {
         if (result.status === "fulfilled") {
           if (result.value.halt) shouldHalt = true;
+          if (result.value.approvalPending) approvalPendingKeys.push(runnableItems[i].key);
           if (result.value.createPr) {
             archiveFeatureFiles(slug, appRoot, repoRoot);
 
@@ -339,6 +316,17 @@ async function main(): Promise<void> {
 
       if (pipelineDone || shouldHalt) {
         if (shouldHalt) process.exitCode = 1;
+        break;
+      }
+
+      // --- Approval gate: all items in batch are awaiting human approval ---
+      if (approvalPendingKeys.length > 0 && approvalPendingKeys.length === runnableItems.length) {
+        const gateKeys = approvalPendingKeys.join(", ");
+        console.log(`\n${"─".repeat(70)}`);
+        console.log(`  ⏸  Awaiting human approval for: ${gateKeys}`);
+        console.log(`     Complete via: npm run pipeline:complete <slug> <gate-key>`);
+        console.log(`${"─".repeat(70)}\n`);
+        logger.event("run.end", null, { outcome: "approval_gate", duration_ms: Date.now() - runStartMs });
         break;
       }
     }

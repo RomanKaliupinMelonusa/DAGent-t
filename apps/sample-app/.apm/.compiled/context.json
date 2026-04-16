@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-15T18:00:50.678Z",
+  "compiledAt": "2026-04-16T16:48:58.525Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -901,7 +901,15 @@
       "validateInfra": "bash .apm/hooks/validate-infra.sh",
       "validateApp": "bash .apm/hooks/validate-app.sh",
       "preflightAuth": "bash .apm/hooks/preflight-auth.sh"
-    }
+    },
+    "max_same_error_cycles": 3,
+    "redevelopment_categories": [
+      "test"
+    ],
+    "reindex_categories": [
+      "dev",
+      "test"
+    ]
   },
   "workflows": {
     "default": {
@@ -911,7 +919,8 @@
         "pre-deploy",
         "deploy",
         "post-deploy",
-        "finalize"
+        "finalize",
+        "triage"
       ],
       "nodes": {
         "schema-dev": {
@@ -940,7 +949,16 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "allows_revert_bypass": true,
+            "allows_timeout_salvage": true,
+            "revert_warning_at": 3
+          }
         },
         "infra-architect": {
           "type": "agent",
@@ -969,7 +987,16 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": true,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "allows_revert_bypass": true,
+            "allows_timeout_salvage": true,
+            "revert_warning_at": 3
+          }
         },
         "push-infra": {
           "type": "script",
@@ -997,7 +1024,15 @@
           "injects_infra_rollback": false,
           "script_type": "local-exec",
           "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh",
-          "signals_create_pr": false
+          "captures_head_sha": true,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3
+          }
         },
         "create-draft-pr": {
           "type": "agent",
@@ -1019,7 +1054,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "poll-infra-plan": {
           "type": "script",
@@ -1049,7 +1087,15 @@
           "script_type": "poll",
           "poll_target": "push-infra",
           "ci_workflow_key": "infra",
-          "signals_create_pr": false
+          "captures_head_sha": true,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3
+          }
         },
         "await-infra-approval": {
           "type": "approval",
@@ -1075,7 +1121,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "infra-handoff": {
           "type": "agent",
@@ -1103,7 +1152,16 @@
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
           "post": "bash .apm/hooks/validate-infra.sh",
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "allows_revert_bypass": true,
+            "allows_timeout_salvage": true,
+            "revert_warning_at": 3
+          }
         },
         "backend-dev": {
           "type": "agent",
@@ -1136,7 +1194,16 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "allows_revert_bypass": true,
+            "allows_timeout_salvage": true,
+            "revert_warning_at": 3
+          }
         },
         "frontend-dev": {
           "type": "agent",
@@ -1168,7 +1235,16 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "allows_revert_bypass": true,
+            "allows_timeout_salvage": true,
+            "revert_warning_at": 3
+          }
         },
         "backend-unit-test": {
           "type": "agent",
@@ -1193,7 +1269,7 @@
             "packages"
           ],
           "auto_skip_if_no_deletions": false,
-          "triage": "full-stack",
+          "on_failure": "triage-full-stack",
           "template_flags": [],
           "force_run_if_changed": [],
           "commit_scope": "backend",
@@ -1206,7 +1282,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "frontend-unit-test": {
           "type": "agent",
@@ -1228,7 +1307,7 @@
             "e2e"
           ],
           "auto_skip_if_no_deletions": false,
-          "triage": "full-stack",
+          "on_failure": "triage-full-stack",
           "template_flags": [],
           "force_run_if_changed": [],
           "commit_scope": "frontend",
@@ -1241,7 +1320,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "push-app": {
           "type": "script",
@@ -1272,7 +1354,15 @@
           "script_type": "local-exec",
           "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh",
           "post": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh",
-          "signals_create_pr": false
+          "captures_head_sha": true,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3
+          }
         },
         "poll-app-ci": {
           "type": "script",
@@ -1303,7 +1393,15 @@
           "poll_target": "push-app",
           "ci_workflow_key": "app",
           "post": "bash .apm/hooks/validate-app.sh",
-          "signals_create_pr": false
+          "captures_head_sha": true,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3
+          }
         },
         "integration-test": {
           "type": "agent",
@@ -1328,7 +1426,7 @@
             "packages"
           ],
           "auto_skip_if_no_deletions": false,
-          "triage": "full-stack",
+          "on_failure": "triage-full-stack",
           "template_flags": [
             "isPostDeploy",
             "isIntegrationTest"
@@ -1344,7 +1442,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "live-ui": {
           "type": "agent",
@@ -1368,7 +1469,7 @@
             "e2e"
           ],
           "auto_skip_if_no_deletions": false,
-          "triage": "full-stack",
+          "on_failure": "triage-full-stack",
           "template_flags": [
             "isPostDeploy",
             "isLiveUi"
@@ -1386,7 +1487,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "code-cleanup": {
           "type": "agent",
@@ -1415,7 +1519,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "docs-archived": {
           "type": "agent",
@@ -1437,7 +1544,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": true,
           "injects_infra_rollback": false,
+          "captures_head_sha": false,
           "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
           "salvage_survivor": true
         },
         "doc-architect": {
@@ -1467,7 +1577,10 @@
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
           "injects_infra_rollback": false,
-          "signals_create_pr": false
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         },
         "publish-pr": {
           "type": "script",
@@ -1490,8 +1603,39 @@
           "injects_infra_rollback": false,
           "script_type": "local-exec",
           "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh",
+          "captures_head_sha": false,
           "signals_create_pr": true,
-          "salvage_survivor": true
+          "produces": [],
+          "consumes": [],
+          "salvage_survivor": true,
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3
+          }
+        },
+        "triage-full-stack": {
+          "type": "triage",
+          "category": "finalize",
+          "phase": "triage",
+          "timeout_minutes": 5,
+          "depends_on": [],
+          "run_if": [],
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "triage_profile": "full-stack",
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": []
         }
       },
       "unfixable_signals": [

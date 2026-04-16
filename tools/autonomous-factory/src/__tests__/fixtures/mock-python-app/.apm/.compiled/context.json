@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-13T20:04:37.707Z",
+  "compiledAt": "2026-04-16T16:49:01.154Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -68,8 +68,16 @@
         "infra/",
         "in-progress/"
       ]
-    }
+    },
+    "max_same_error_cycles": 3,
+    "redevelopment_categories": [
+      "test"
+    ],
+    "reindex_categories": [
+      "dev",
+      "test"
+    ]
   },
   "workflows": {},
-  "triage_kb": []
+  "triage_profiles": {}
 }

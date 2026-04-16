@@ -9,9 +9,10 @@
  * 5. Sends prompt and waits for completion
  * 6. Observes post-state to determine outcome
  *
- * This handler sets `stateManaged: true` because the SDK agent itself
- * manages pipeline state transitions via tool calls during the session.
- * The kernel skips its own completeItem/failItem calls for this handler.
+ * This handler is an OBSERVER — it does not call completeItem/failItem.
+ * The kernel is the sole authority on pipeline state transitions.
+ * The SDK agent may call pipeline:complete/fail via bash during the session,
+ * and the kernel's idempotent state transitions handle this gracefully.
  */
 
 import fs from "node:fs";
@@ -19,7 +20,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
 import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
-import { getStatus, failItem } from "../state.js";
+import { getStatus } from "../state.js";
 import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
 import { extractDiagnosticTrace } from "../types.js";
@@ -74,8 +75,7 @@ const copilotAgentHandler: NodeHandler = {
       attempt, effectiveAttempts, previousAttempt, pipelineSummaries,
     } = ctx;
 
-    // Cast client — typed as `unknown` in NodeContext to keep interface SDK-agnostic
-    const client = ctx.client as CopilotClient;
+    const client = ctx.client;
     if (!client) {
       return {
         outcome: "error",
@@ -230,9 +230,12 @@ const copilotAgentHandler: NodeHandler = {
       apmContext,
     );
 
+    // Resolve circuit breaker config for injection gates
+    const cbConfig = resolveCircuitBreaker(node);
+
     // Inject retry context from previous attempt
     if (attempt > 1 && previousAttempt) {
-      const atRevertThreshold = node?.category === "dev" && effectiveAttempts >= 3;
+      const atRevertThreshold = cbConfig.allowsRevertBypass && effectiveAttempts >= (cbConfig.revertWarningAt ?? 3);
       taskPrompt += buildRetryContext(previousAttempt, atRevertThreshold);
       ctx.logger.event("handoff.inject", itemKey, {
         injection_types: ["retry_context"],
@@ -240,15 +243,11 @@ const copilotAgentHandler: NodeHandler = {
       });
     }
 
-    // Resolve circuit breaker config for downstream + revert warning injection
-    const cbConfig = resolveCircuitBreaker(node);
-
     // Inject downstream failure context
     const downstreamCtx = buildDownstreamFailureContext(
       itemKey,
       pipelineSummaries as ItemSummary[],
       apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
-      node?.category,
       apmContext.config?.ci_scope_warning as string | undefined,
       slug,
       cbConfig.allowsRevertBypass,
@@ -264,7 +263,7 @@ const copilotAgentHandler: NodeHandler = {
     }
 
     // Inject clean-slate revert warning
-    const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, node?.category, cbConfig.allowsRevertBypass, cbConfig.revertWarningAt);
+    const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, cbConfig.allowsRevertBypass, cbConfig.revertWarningAt);
     if (revertWarning) {
       taskPrompt += revertWarning;
       ctx.logger.event("handoff.inject", itemKey, {
@@ -315,17 +314,7 @@ const copilotAgentHandler: NodeHandler = {
         fatalError = true;
       }
 
-      // Record failure in pipeline state
-      try {
-        const failResult = await failItem(slug, itemKey, message);
-        if (failResult.halted) {
-          ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: `failed ${failResult.failCount} times` });
-          fatalError = true;
-        }
-      } catch {
-        ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Could not record failure" });
-        fatalError = true;
-      }
+      // State transition deferred to kernel — handler is an observer.
     } finally {
       isSessionActive = false;
       await session.disconnect();
@@ -378,7 +367,6 @@ const copilotAgentHandler: NodeHandler = {
         errorMessage: sessionError,
         summary: telemetry,
         signal: "halt",
-        stateManaged: true,
       };
     }
 
@@ -389,7 +377,6 @@ const copilotAgentHandler: NodeHandler = {
         outcome: telemetry.outcome === "error" ? "error" : "failed",
         errorMessage: sessionError,
         summary: telemetry,
-        stateManaged: true,
       };
     }
 
@@ -405,7 +392,6 @@ const copilotAgentHandler: NodeHandler = {
         outcome: "failed",
         errorMessage: item.error ?? "Unknown failure",
         summary: telemetry,
-        stateManaged: true,
         ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
       };
     }
@@ -414,7 +400,6 @@ const copilotAgentHandler: NodeHandler = {
     return {
       outcome: "completed",
       summary: telemetry,
-      stateManaged: true,
     };
   },
 };

@@ -15,6 +15,7 @@ default:
     - deploy
     - post-deploy
     - finalize
+    - triage
 
   nodes:
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
@@ -28,6 +29,9 @@ default:
       run_if: [Backend, Full-Stack, Infra, App-Only, Backend-Only]
       commit_scope: backend
       diff_attribution_dirs: [packages]
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     infra-architect:
       type: agent
@@ -40,6 +44,9 @@ default:
       commit_scope: infra
       diff_attribution_dirs: [infra]
       injects_infra_rollback: true
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     push-infra:
       type: script
@@ -50,6 +57,9 @@ default:
       run_if: [Backend, Frontend, Full-Stack, Infra]
       script_type: local-exec
       command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     create-draft-pr:
       type: agent
@@ -71,6 +81,9 @@ default:
       script_type: poll
       poll_target: push-infra
       ci_workflow_key: infra
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
@@ -92,6 +105,9 @@ default:
       run_if: [Backend, Frontend, Full-Stack, Infra]
       commit_scope: pipeline
       post: "bash .apm/hooks/validate-infra.sh"
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
@@ -104,6 +120,9 @@ default:
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
       commit_scope: backend
       diff_attribution_dirs: [backend, packages, infra, .github/]
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     frontend-dev:
       type: agent
@@ -115,6 +134,9 @@ default:
       run_if: [Frontend, Full-Stack, App-Only]
       commit_scope: frontend
       diff_attribution_dirs: [frontend, packages, e2e, .github/]
+      circuit_breaker:
+        allows_revert_bypass: true
+        allows_timeout_salvage: true
 
     backend-unit-test:
       type: agent
@@ -125,7 +147,7 @@ default:
       depends_on: [backend-dev]
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
       auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage: full-stack
+      on_failure: triage-full-stack
       commit_scope: backend
       diff_attribution_dirs: [backend, packages, infra, .github/]
 
@@ -138,7 +160,7 @@ default:
       depends_on: [frontend-dev]
       run_if: [Frontend, Full-Stack, App-Only]
       auto_skip_if_no_changes_in: [frontend, e2e]
-      triage: full-stack
+      on_failure: triage-full-stack
       commit_scope: frontend
       diff_attribution_dirs: [frontend, packages, e2e, .github/]
 
@@ -152,6 +174,9 @@ default:
       script_type: local-exec
       command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
       post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     poll-app-ci:
       type: script
@@ -164,6 +189,9 @@ default:
       poll_target: push-app
       ci_workflow_key: app
       post: "bash .apm/hooks/validate-app.sh"
+      captures_head_sha: true
+      circuit_breaker:
+        halt_on_identical: true
 
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
@@ -176,7 +204,7 @@ default:
       requires_data_plane_ready: true
       run_if: [Backend, Full-Stack, App-Only, Backend-Only]
       auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage: full-stack
+      on_failure: triage-full-stack
       template_flags: ["isPostDeploy", "isIntegrationTest"]
       commit_scope: pipeline
       diff_attribution_dirs: [backend, packages, infra, .github/]
@@ -191,7 +219,7 @@ default:
       requires_data_plane_ready: true
       run_if: [Frontend, Full-Stack, App-Only]
       auto_skip_if_no_changes_in: [frontend, infra, e2e]
-      triage: full-stack
+      on_failure: triage-full-stack
       template_flags: ["isPostDeploy", "isLiveUi"]
       force_run_if_changed: ["infra"]
       commit_scope: pipeline
@@ -240,6 +268,17 @@ default:
       command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
       signals_create_pr: true
       salvage_survivor: true
+      circuit_breaker:
+        halt_on_identical: true
+
+    # ── Triage Nodes ───────────────────────────────────────────────────
+    triage-full-stack:
+      type: triage
+      category: finalize
+      phase: triage
+      timeout_minutes: 5
+      depends_on: []
+      triage_profile: full-stack
 
   # ── Unfixable Signals ──────────────────────────────────────────────
   # Error substrings that signal conditions no agent can fix.

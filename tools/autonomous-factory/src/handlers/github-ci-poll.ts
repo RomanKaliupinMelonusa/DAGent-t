@@ -105,6 +105,14 @@ async function postCiArtifactToPr(ctx: NodeContext): Promise<void> {
 const githubCiPollHandler: NodeHandler = {
   name: "github-ci-poll",
 
+  metadata: {
+    description: "Polls GitHub Actions CI workflows for completion, handles transient retries, and downloads artifacts.",
+    inputs: {
+      "lastPushedSha": "optional",  // SHA-pinned polling; gracefully degrades to HEAD-based
+    },
+    outputs: [],
+  },
+
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const { slug, repoRoot, appRoot, apmContext } = ctx;
     const node = getWorkflowNode(ctx);
@@ -123,8 +131,8 @@ const githubCiPollHandler: NodeHandler = {
     const inProgressDir = path.join(appRoot, "in-progress");
     const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
 
-    // Resolve the pushed SHA from the corresponding push item
-    const lastPushedSha = (ctx.handlerData[`lastPushedSha:${pollTarget}`] as string) ?? null;
+    // Resolve the pushed SHA from the corresponding push item's handler output
+    const lastPushedSha = (ctx.handlerData[`${pollTarget}:lastPushedSha`] as string) ?? null;
 
     const pollCmd = buildPollCmd(repoRoot, lastPushedSha);
     const maxRetries = apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;

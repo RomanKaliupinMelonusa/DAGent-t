@@ -23,6 +23,20 @@ export function getWorkflowNode(apmContext: ApmCompiledOutput, itemKey: string):
   return apmContext.workflows?.default?.nodes?.[itemKey];
 }
 
+/**
+ * Get the current HEAD SHA. Returns null on failure (non-fatal).
+ * Single abstraction for all git HEAD operations in the kernel.
+ */
+export function getHeadSha(repoRoot: string): string | null {
+  try {
+    return execSync("git rev-parse HEAD", {
+      cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Resolved circuit breaker config with defaults based on node type/category. */
 export interface ResolvedCircuitBreaker {
   minAttemptsBeforeSkip: number;
@@ -34,18 +48,17 @@ export interface ResolvedCircuitBreaker {
 
 /**
  * Resolve circuit breaker configuration for a workflow node.
- * Uses explicit `circuit_breaker` config when declared; otherwise infers
- * sensible defaults from the node's category and type:
- *   - dev nodes: allows_revert_bypass=true, allows_timeout_salvage=true
- *   - script nodes: halt_on_identical=true
+ * All behavior is config-driven — nodes must declare explicit `circuit_breaker`
+ * settings in workflows.yml. Only `min_attempts_before_skip` and `revert_warning_at`
+ * have universal numeric defaults.
  */
 export function resolveCircuitBreaker(node: ApmWorkflowNode | undefined): ResolvedCircuitBreaker {
   const cb = node?.circuit_breaker;
   return {
     minAttemptsBeforeSkip: cb?.min_attempts_before_skip ?? 3,
-    allowsRevertBypass: cb?.allows_revert_bypass ?? (node?.category === "dev"),
-    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? (node?.category === "dev"),
-    haltOnIdentical: cb?.halt_on_identical ?? (node?.type === "script"),
+    allowsRevertBypass: cb?.allows_revert_bypass ?? false,
+    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? false,
+    haltOnIdentical: cb?.halt_on_identical ?? false,
     revertWarningAt: cb?.revert_warning_at ?? 3,
   };
 }
@@ -57,13 +70,15 @@ export function getTimeout(itemKey: string, apmContext: ApmCompiledOutput): numb
 
 /**
  * Walk the DAG backward from `startKey` to find all upstream nodes
- * where `category === "dev"`. Uses BFS on inverted edges (predecessors).
- * Returns dev-category node keys in discovery order (nearest first).
+ * matching any of the given categories. Uses BFS on inverted edges (predecessors).
+ * Returns matching node keys in discovery order (nearest first).
  */
-export function findUpstreamDevKeys(
+export function findUpstreamKeysByCategory(
   nodes: Record<string, ApmWorkflowNode>,
   startKey: string,
+  categories: ReadonlyArray<string>,
 ): string[] {
+  const categorySet = new Set(categories);
   // Build inverted adjacency list: child → parents
   const parents: Record<string, string[]> = {};
   for (const [key, node] of Object.entries(nodes)) {
@@ -74,7 +89,7 @@ export function findUpstreamDevKeys(
 
   const visited = new Set<string>();
   const queue: string[] = [...(parents[startKey] ?? [])];
-  const devKeys: string[] = [];
+  const matchedKeys: string[] = [];
 
   while (queue.length > 0) {
     const key = queue.shift()!;
@@ -82,13 +97,13 @@ export function findUpstreamDevKeys(
     visited.add(key);
     const node = nodes[key];
     if (!node) continue;
-    if (node.category === "dev") devKeys.push(key);
+    if (node.category && categorySet.has(node.category)) matchedKeys.push(key);
     for (const parent of parents[key] ?? []) {
       if (!visited.has(parent)) queue.push(parent);
     }
   }
 
-  return devKeys;
+  return matchedKeys;
 }
 
 /**
@@ -212,6 +227,35 @@ export function flushReports(config: PipelineRunConfig, state: PipelineRunState)
 }
 
 // ---------------------------------------------------------------------------
+// Telemetry merge
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge partial handler telemetry into the kernel's item summary.
+ * Additive: arrays append (deduplicated for filesChanged), counters accumulate.
+ */
+export function mergeTelemetry(target: ItemSummary, source: Partial<ItemSummary>): void {
+  if (source.intents) target.intents.push(...source.intents);
+  if (source.filesChanged) {
+    for (const f of source.filesChanged) {
+      if (!target.filesChanged.includes(f)) target.filesChanged.push(f);
+    }
+  }
+  if (source.filesRead) target.filesRead.push(...source.filesRead);
+  if (source.shellCommands) target.shellCommands.push(...source.shellCommands);
+  if (source.toolCounts) {
+    for (const [k, v] of Object.entries(source.toolCounts)) {
+      target.toolCounts[k] = (target.toolCounts[k] ?? 0) + v;
+    }
+  }
+  if (source.inputTokens) target.inputTokens += source.inputTokens;
+  if (source.outputTokens) target.outputTokens += source.outputTokens;
+  if (source.cacheReadTokens) target.cacheReadTokens += source.cacheReadTokens;
+  if (source.cacheWriteTokens) target.cacheWriteTokens += source.cacheWriteTokens;
+  if (source.messages) target.messages.push(...source.messages);
+}
+
+// ---------------------------------------------------------------------------
 // Finish-item helper
 // ---------------------------------------------------------------------------
 
@@ -226,7 +270,7 @@ export function finishItem(
   stepStart: number,
   config: PipelineRunConfig,
   state: PipelineRunState,
-  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; intents?: string[] },
+  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; approvalPending?: boolean; intents?: string[] },
 ): SessionResult {
   itemSummary.outcome = outcome;
   if (opts?.errorMessage) itemSummary.errorMessage = opts.errorMessage;
@@ -235,5 +279,5 @@ export function finishItem(
   itemSummary.durationMs = Date.now() - stepStart;
   state.pipelineSummaries.push(itemSummary);
   flushReports(config, state);
-  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false };
+  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false, approvalPending: opts?.approvalPending ?? false };
 }

@@ -6,20 +6,20 @@
  * feature logic and return results.
  *
  * State ownership model:
- * - By default, handlers are OBSERVERS — they must NOT call
- *   completeItem/failItem. The kernel is the sole state mutator.
- * - Handlers that set `stateManaged: true` in NodeResult signal that
- *   the handler (or the agent running inside it) already performed
- *   state transitions. The kernel skips its own mutations to avoid
- *   duplicates. Currently only copilot-agent uses this mode.
+ * - Handlers are OBSERVERS — they must NOT call completeItem/failItem.
+ *   The kernel is the sole state mutator.
+ * - For copilot-agent sessions where the SDK agent calls pipeline:complete/fail
+ *   during the session, the kernel's idempotent state transitions handle this
+ *   gracefully (no double writes).
  *
- * Built-in handlers: copilot-agent, github-ci-poll, local-exec
+ * Built-in handlers: copilot-agent, github-ci-poll, local-exec, triage
  * Custom handlers: local .ts files resolved via dynamic import (sandboxed to repo)
  */
 
 import type { ApmCompiledOutput } from "../apm-types.js";
 import type { PipelineState, ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
+import type { CopilotClient } from "@github/copilot-sdk";
 
 // ---------------------------------------------------------------------------
 // NodeContext — input to every handler
@@ -71,11 +71,11 @@ export interface NodeContext {
    */
   readonly onHeartbeat: () => void;
   /**
-   * Copilot SDK client instance. Typed as `unknown` to keep the handler
-   * interface SDK-agnostic. The copilot-agent handler casts this internally.
-   * Undefined for non-agent handlers.
+   * Copilot SDK client instance for LLM-powered handlers.
+   * Undefined for non-agent handlers (local-exec, barrier, approval, etc.).
+   * Agent handlers use this to create sessions and run LLM interactions.
    */
-  readonly client?: unknown;
+  readonly client?: CopilotClient;
   /** Pipeline event logger — single entry point for all telemetry. */
   readonly logger: PipelineLogger;
 
@@ -112,8 +112,9 @@ export interface NodeResult {
    * - "halt": stop the pipeline immediately (fatal error)
    * - "create-pr": trigger archive + PR publish (used by publish handler)
    * - "salvage-draft": degrade to Draft PR (unfixable error)
+   * - "approval-pending": item awaits external approval (watchdog pauses)
    */
-  signal?: "halt" | "create-pr" | "salvage-draft";
+  signal?: "halt" | "create-pr" | "salvage-draft" | "approval-pending";
   /**
    * Opaque output data for downstream handlers.
    * The kernel stores this in `handlerData` for subsequent handler invocations.
@@ -126,13 +127,6 @@ export interface NodeResult {
    * is valid TriageDiagnostic JSON.
    */
   diagnosticTrace?: string;
-  /**
-   * If true, the handler (or the agent running inside it) already managed
-   * pipeline state transitions (completeItem/failItem). The kernel will
-   * skip its own state mutation calls to avoid duplicates.
-   * Used by copilot-agent handler where the SDK agent self-reports via tools.
-   */
-  stateManaged?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +146,43 @@ export interface SkipResult {
 }
 
 // ---------------------------------------------------------------------------
+// HandlerMetadata — optional self-describing contract for handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional metadata a handler can declare to describe its data contracts.
+ * The kernel uses this for:
+ * - Pre-dispatch validation: warn/fail if required inputs are missing from handlerData
+ * - Documentation: auto-generate pipeline data-flow diagrams
+ * - Handoff tracing: log which handler produced/consumed which keys
+ *
+ * All fields are optional — handlers without metadata work exactly as before.
+ */
+export interface HandlerMetadata {
+  /** Human-readable description of what this handler does. */
+  description?: string;
+
+  /**
+   * Keys this handler expects to find in `ctx.handlerData`.
+   * Each entry maps a key name to its requirement level.
+   * - "required": kernel warns/fails if key is missing at dispatch time
+   * - "optional": handler gracefully handles absence
+   *
+   * Example: `{ "lastPushedSha": "required", "planOutput": "optional" }`
+   */
+  inputs?: Record<string, "required" | "optional">;
+
+  /**
+   * Keys this handler may produce in `result.handlerOutput`.
+   * Purely declarative — used for documentation, tracing, and
+   * downstream validation (does the consumer's input exist in any upstream's outputs?).
+   *
+   * Example: `["lastPushedSha", "ciRunId"]`
+   */
+  outputs?: string[];
+}
+
+// ---------------------------------------------------------------------------
 // NodeHandler — the plugin interface
 // ---------------------------------------------------------------------------
 
@@ -164,14 +195,20 @@ export interface SkipResult {
  * Contract:
  * - `execute()` performs the handler's work and returns a result
  * - `shouldSkip()` optionally checks if the item can be skipped before execution
- * - By default, handlers are OBSERVERS: they must NOT call completeItem/failItem
- * - Handlers that need self-managed state (e.g. copilot-agent) set `stateManaged: true`
+ * - Handlers are OBSERVERS: they must NOT call completeItem/failItem
  * - Handlers may call shell commands, read/write files, and interact with external APIs
- * - The kernel is the default owner of pipeline state transitions
+ * - The kernel is the sole owner of pipeline state transitions
  */
 export interface NodeHandler {
   /** Unique handler identifier (e.g. "copilot-agent", "local-exec") */
   readonly name: string;
+
+  /**
+   * Optional self-describing metadata. When present, the kernel validates
+   * input contracts before dispatch and traces output keys in the event log.
+   * Handlers without metadata are fully backward compatible.
+   */
+  readonly metadata?: HandlerMetadata;
 
   /**
    * Execute the handler's main logic.

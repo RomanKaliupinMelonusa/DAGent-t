@@ -27,6 +27,7 @@ import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, completeItem, salvageForDraft, resetNodes, setLastTriageRecord } from "./state.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
+import { RESET_OPS } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
 import {
@@ -36,10 +37,12 @@ import {
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
   getWorkflowNode,
+  getHeadSha,
   resolveCircuitBreaker,
   shouldSkipRetry,
   flushReports,
   finishItem,
+  mergeTelemetry,
 } from "./session/shared.js";
 import { pollReadiness } from "./session/readiness-probe.js";
 import { runPreHook, runPostHook, captureHeadSha } from "./session/lifecycle-hooks.js";
@@ -48,11 +51,6 @@ import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index
 import type { NodeContext, NodeResult, TriageHandlerOutput } from "./handlers/index.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
 
-// ── Backward-compatible re-exports ─────────────────────────────────────────
-// External consumers (watchdog.ts, tests) import these from session-runner.
-export { normalizeDiagnosticTrace, shouldSkipRetry, resolveCircuitBreaker } from "./session/shared.js";
-export type { ResolvedCircuitBreaker } from "./session/shared.js";
-export { appendToToolResult } from "./session/session-events.js";
 
 // ---------------------------------------------------------------------------
 // Shared mutable state passed from the orchestrator
@@ -75,17 +73,10 @@ export interface PipelineRunState {
    */
   baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
   /**
-   * Last pushed commit SHA per push-item key (e.g. "push-<scope>").
-   * Captured by kernel after deploy-category script nodes complete,
-   * consumed by github-ci-poll handler for SHA-pinned CI polling.
-   * Scoped per-item to prevent cross-contamination if multiple push items ever
-   * run in the same batch.
-   */
-  lastPushedShas: Record<string, string>;
-  /**
    * Accumulated handler output from all preceding items in this pipeline run.
    * Keyed by item key. The kernel propagates the full bag into handlerData
    * so downstream handlers can access output from any upstream handler.
+   * Also stores `lastPushedSha` for deploy nodes (previously in a separate map).
    */
   handlerOutputs: Record<string, Record<string, unknown>>;
   /** Per-item flag: whether force_run_if_changed dirs had changes (set by evaluateAutoSkip, consumed by copilot-agent handler via ctx.forceRunChanges). Keyed by item key to prevent cross-contamination in parallel batches. */
@@ -107,144 +98,433 @@ export interface SessionResult {
   summary: ItemSummary;
   halt: boolean;
   createPr: boolean;
+  approvalPending?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Unified dispatch — single entry point for all pipeline items
+// Dispatch pipeline — composable middleware for item execution
+// ---------------------------------------------------------------------------
+
+import type { ApmWorkflowNode } from "./apm-types.js";
+import type { NodeHandler } from "./handlers/index.js";
+import type { ResolvedCircuitBreaker } from "./session/shared.js";
+
+/**
+ * Mutable context that flows through the dispatch pipeline.
+ * Accumulated by each step — earlier steps populate fields that later
+ * steps read. Avoids re-computation and makes each step independently testable.
+ */
+export interface DispatchContext {
+  // ── Immutable inputs (set once at pipeline entry) ─────────────────
+  readonly client: CopilotClient;
+  readonly next: NextAction & { key: string };
+  readonly config: PipelineRunConfig;
+  readonly state: PipelineRunState;
+
+  // ── Mutable fields (accumulated by steps) ─────────────────────────
+  /** Resolved workflow node (populated by stepInit) */
+  node: ApmWorkflowNode | undefined;
+  /** Resolved circuit breaker config (populated by stepInit) */
+  cb: ResolvedCircuitBreaker;
+  /** Item telemetry summary (populated by stepInit) */
+  itemSummary: ItemSummary;
+  /** Step start timestamp in ms (populated by stepInit) */
+  stepStart: number;
+  /** Resolved handler (populated by stepResolve) */
+  handler?: NodeHandler;
+  /** Assembled NodeContext for the handler (populated by stepResolve) */
+  handlerCtx?: NodeContext;
+  /** Lifecycle hook context (populated by stepResolve) */
+  hookCtx?: HookContext;
+  /** Handler execution result (populated by stepExecute) */
+  result?: NodeResult;
+}
+
+/**
+ * A dispatch step is a named async function that may:
+ * - Return a SessionResult to short-circuit the pipeline (early exit)
+ * - Return undefined to continue to the next step
+ * - Mutate the DispatchContext to pass data downstream
+ */
+export type DispatchStep = (dc: DispatchContext) => Promise<SessionResult | undefined | void>;
+
+// ---------------------------------------------------------------------------
+// Failure-edge dispatch — on_failure triage routing
 // ---------------------------------------------------------------------------
 
 /**
- * Run a single pipeline item — the core of each DAG step.
- *
- * Flow: circuit breaker → auto-skip → readiness probe → infer handler →
- *       resolve handler → build context → shouldSkip → execute → state transitions
+ * Resolve the on_failure target for a workflow node.
+ * Supports both new `on_failure` field and deprecated `triage` field (shim).
+ * Returns the triage node key, or undefined if no failure routing is configured.
  */
-export async function runItemSession(
+function resolveOnFailureTarget(
+  apmContext: ApmCompiledOutput,
+  itemKey: string,
+): string | undefined {
+  const node = getWorkflowNode(apmContext, itemKey);
+  if (!node) return undefined;
+  // New path: explicit on_failure → triage node key
+  if (node.on_failure) return node.on_failure;
+  // Deprecated shim: triage → resolve to an implicit triage node key
+  // Convention: if node declares `triage: "full-stack"`, look for a node named
+  // "triage-full-stack" (or any triage node with triage_profile matching).
+  if (node.triage) {
+    const workflow = apmContext.workflows?.default;
+    if (workflow) {
+      for (const [key, n] of Object.entries(workflow.nodes)) {
+        if (n.type === "triage" && n.triage_profile === node.triage) return key;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Dispatch failure to a triage node via the on_failure edge.
+ * Returns a SessionResult if triage handled the failure, or null if no
+ * on_failure target is configured (caller continues with normal failure flow).
+ */
+async function dispatchOnFailure(
+  failingKey: string,
+  rawError: string,
+  itemSummary: ItemSummary,
+  config: PipelineRunConfig,
+  state: PipelineRunState,
   client: CopilotClient,
-  next: NextAction & { key: string },
+): Promise<SessionResult | null> {
+  const { slug, appRoot, repoRoot, apmContext, roamAvailable, logger } = config;
+
+  const triageNodeKey = resolveOnFailureTarget(apmContext, failingKey);
+  if (!triageNodeKey) return null;
+
+  // Push summary and flush before triage dispatch
+  state.pipelineSummaries.push(itemSummary);
+  flushReports(config, state);
+
+  const errorSig = computeErrorSignature(rawError);
+
+  // Resolve the triage handler
+  const triageNode = getWorkflowNode(apmContext, triageNodeKey);
+  const handlerRef = triageNode?.handler ?? inferHandler(triageNode?.type ?? "triage", triageNode?.script_type, apmContext.config?.handler_defaults);
+  if (!handlerRef) {
+    logger.event("item.end", failingKey, { outcome: "error", error_preview: `on_failure target "${triageNodeKey}" has no resolvable handler` });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
+  const handler = await resolveHandler(handlerRef, appRoot, repoRoot, apmContext.config?.handlers);
+
+  // Build triage context with failure-specific fields
+  const currentState = await getStatus(slug);
+  const triageCtx: NodeContext = {
+    itemKey: triageNodeKey,
+    slug,
+    appRoot,
+    repoRoot,
+    baseBranch: config.baseBranch,
+    attempt: 1,
+    effectiveAttempts: 1,
+    environment: (apmContext.config?.environment as Record<string, string>) ?? {},
+    apmContext,
+    pipelineState: currentState,
+    pipelineSummaries: [...state.pipelineSummaries],
+    handlerData: {},
+    onHeartbeat: () => {},
+    client,
+    logger,
+    // Failure context — populated for on_failure dispatch
+    failingNodeKey: failingKey,
+    rawError,
+    errorSignature: errorSig,
+    failingNodeSummary: { ...itemSummary },
+  };
+
+  logger.event("triage.evaluate", failingKey, {
+    triage_node: triageNodeKey,
+    handler: handler.name,
+    error_signature: errorSig,
+    dispatch: true,
+  });
+
+  // Execute the triage handler
+  let triageResult: NodeResult;
+  try {
+    triageResult = await handler.execute(triageCtx);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.event("item.end", triageNodeKey, { outcome: "error", error_preview: message });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
+
+  // Process the triage handler's output — execute DAG mutations
+  return handleTriageResult(triageResult, failingKey, rawError, itemSummary, config, state);
+}
+
+/**
+ * Process triage handler output — execute DAG resets and persist records.
+ * The kernel owns DAG mutations; the triage handler only classifies and recommends.
+ */
+async function handleTriageResult(
+  triageResult: NodeResult,
+  failingKey: string,
+  rawError: string,
+  itemSummary: ItemSummary,
   config: PipelineRunConfig,
   state: PipelineRunState,
 ): Promise<SessionResult> {
-  const { slug, appRoot, repoRoot, baseBranch, apmContext, roamAvailable, logger } = config;
-  const { pipelineSummaries, attemptCounts, circuitBreakerBypassed, preStepRefs } = state;
+  const { slug, repoRoot, apmContext, roamAvailable, logger } = config;
 
-  attemptCounts[next.key] = (attemptCounts[next.key] ?? 0) + 1;
+  if (triageResult.outcome !== "completed" || !triageResult.handlerOutput) {
+    logger.event("item.end", failingKey, { outcome: "error", error_preview: triageResult.errorMessage ?? "Triage handler failed" });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
 
-  // --- Circuit breaker: skip if identical error + no code changed since last attempt ---
-  const nodeForBreaker = getWorkflowNode(apmContext, next.key);
-  const cb = resolveCircuitBreaker(nodeForBreaker);
+  const output = triageResult.handlerOutput as unknown as TriageHandlerOutput;
+  const { routeToKey, triageRecord } = output;
 
-  if (attemptCounts[next.key] >= cb.minAttemptsBeforeSkip && shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) {
-    if (cb.allowsRevertBypass && !circuitBreakerBypassed.has(next.key)) {
-      logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "deferred — granting clean-slate revert opportunity" });
-      circuitBreakerBypassed.add(next.key);
-    } else {
-      logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "identical error with no code changes since last attempt" });
-      const skipSummary: ItemSummary = {
-        key: next.key,
-        label: next.label,
-        agent: next.agent ?? "unknown",
-        phase: next.phase ?? "unknown",
-        attempt: attemptCounts[next.key],
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        durationMs: 0,
-        outcome: "failed",
-        intents: ["Circuit breaker: identical error, no code changes — skipped"],
-        messages: [],
-        filesRead: [],
-        filesChanged: [],
-        shellCommands: [],
-        toolCounts: {},
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        errorMessage: "Circuit breaker: identical error repeated without code changes",
-      };
-      try { skipSummary.headAfterAttempt = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim(); } catch { /* non-fatal */ }
-      pipelineSummaries.push(skipSummary);
-      flushReports(config, state);
+  // --- Graceful degradation: routeToKey is null ---
+  if (routeToKey === null) {
+    return triggerGracefulDegradation(slug, failingKey, rawError, config, itemSummary, triageRecord);
+  }
 
-      const lastError = pipelineSummaries
-        .filter((s) => s.key === next.key && s.outcome !== "completed")
-        .pop()?.errorMessage ?? "";
-      const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
+  // --- Execute DAG reset: target node + all downstream dependents ---
+  // Resolve max_reroutes from the triage node's profile
+  const triageNodeKey = resolveOnFailureTarget(apmContext, failingKey);
+  const triageNode = triageNodeKey ? getWorkflowNode(apmContext, triageNodeKey) : undefined;
+  const profileName = triageNode?.triage_profile;
+  const profile = profileName ? apmContext.triage_profiles?.[`default.${profileName}`] : undefined;
+  const maxReroutes = profile?.max_reroutes ?? 5;
 
-      if (cb.allowsTimeoutSalvage && isTimeoutLoop) {
-        logger.event("state.salvage", next.key, { reason: `timeout loop after ${attemptCounts[next.key]} attempts` });
+  const taggedReason = `[domain:${output.domain}] [source:${output.source}] ${output.reason}`;
+  try {
+    const result = await resetNodes(slug, routeToKey, taggedReason, maxReroutes, RESET_OPS.RESET_FOR_REROUTE);
+    if (result.halted) {
+      logger.event("item.end", failingKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
+      return { summary: itemSummary, halt: true, createPr: false };
+    }
+
+    // Enrich triage record with cascade info from resetNodes
+    const enrichedRecord: TriageRecord = {
+      ...triageRecord,
+      cascade: result.state.items
+        .filter((it) => it.status === "pending" && it.key !== routeToKey)
+        .map((it) => it.key),
+      cycle_count: result.cycleCount,
+    };
+
+    // Persist the triage record for downstream context injection
+    try { await setLastTriageRecord(slug, enrichedRecord); } catch { /* non-fatal */ }
+
+    // Re-index semantic graph after reroute if target category is in reindex_categories
+    if (roamAvailable) {
+      const targetCat = getWorkflowNode(apmContext, routeToKey)?.category;
+      const reindexCats = new Set(apmContext.config?.reindex_categories ?? ["dev", "test"]);
+      if (targetCat && reindexCats.has(targetCat)) {
+        logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
         try {
-          await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
-          await salvageForDraft(slug, next.key);
-          const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
-          fs.writeFileSync(draftFlagPath, `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`, "utf-8");
-        } catch (e) {
-          logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: `Failed to salvage pipeline state: ${e instanceof Error ? e.message : String(e)}` });
-          return { summary: skipSummary, halt: true, createPr: false };
-        }
-        return { summary: skipSummary, halt: false, createPr: false };
+          execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
+        } catch { /* non-fatal */ }
       }
+    }
+  } catch {
+    logger.event("item.end", failingKey, { outcome: "error", halted: true, error_preview: "Could not execute reroute" });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
 
+  return { summary: itemSummary, halt: false, createPr: false };
+}
+
+/**
+ * Trigger graceful degradation — salvage partial work to a Draft PR.
+ * Unified salvage helper used by:
+ * - on_failure dispatch (triage handler returns routeToKey=null)
+ * - circuit breaker timeout-salvage
+ * - handler "salvage-draft" signal
+ *
+ * Calls kernelFail (unless failState="skip"), then salvageForDraft, writes
+ * the `.blocked-draft` sentinel, and optionally persists a triage record.
+ */
+async function kernelSalvage(
+  slug: string,
+  itemKey: string,
+  errorMsg: string,
+  config: PipelineRunConfig,
+  opts?: { skipFail?: boolean; triageRecord?: TriageRecord },
+): Promise<void> {
+  config.logger.event("state.salvage", itemKey, { reason: errorMsg.slice(0, 500) });
+  if (!opts?.skipFail) {
+    await kernelFail(slug, itemKey, `BLOCKED: ${errorMsg}`, config.logger);
+  }
+  await salvageForDraft(slug, itemKey);
+  const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
+  fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
+  if (opts?.triageRecord) {
+    try { await setLastTriageRecord(slug, opts.triageRecord); } catch { /* non-fatal */ }
+  }
+}
+
+/**
+ * Trigger graceful degradation from triage — delegates to `kernelSalvage`.
+ * Generic kernel capability: any on_failure handler returning routeToKey=null triggers this.
+ */
+async function triggerGracefulDegradation(
+  slug: string,
+  itemKey: string,
+  errorMsg: string,
+  config: PipelineRunConfig,
+  itemSummary: ItemSummary,
+  triageRecord?: TriageRecord,
+): Promise<SessionResult> {
+  try {
+    await kernelSalvage(slug, itemKey, errorMsg, config, { triageRecord });
+  } catch (e) {
+    config.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
+  return { summary: itemSummary, halt: false, createPr: false };
+}
+
+// ---------------------------------------------------------------------------
+// Unified kernel state transitions — single authority
+// ---------------------------------------------------------------------------
+
+/**
+ * Idempotent kernel completion. Checks pipeline state before mutating to
+ * gracefully handle the case where the SDK agent already called
+ * `pipeline:complete` during its session.
+ */
+async function kernelComplete(
+  slug: string,
+  key: string,
+  logger: PipelineLogger,
+): Promise<void> {
+  const state = await getStatus(slug);
+  const item = state.items.find((i) => i.key === key);
+  if (item?.status === "done") {
+    logger.event("item.end", key, { outcome: "completed", note: "already completed by handler/agent" });
+    return;
+  }
+  await completeItem(slug, key);
+  logger.event("item.end", key, { outcome: "completed" });
+}
+
+/**
+ * Idempotent kernel failure. Checks pipeline state before mutating to
+ * gracefully handle the case where the SDK agent already called
+ * `pipeline:fail` during its session.
+ * Returns `{ failCount, halted }` like `failItem()`.
+ */
+async function kernelFail(
+  slug: string,
+  key: string,
+  error: string,
+  logger: PipelineLogger,
+): Promise<{ failCount: number; halted: boolean }> {
+  const state = await getStatus(slug);
+  const item = state.items.find((i) => i.key === key);
+  if (item?.status === "failed") {
+    // Already failed by agent — derive count from existing error log
+    const failCount = state.errorLog.filter((e: { itemKey: string }) => e.itemKey === key).length;
+    const halted = failCount >= 10;
+    logger.event("item.end", key, { outcome: "failed", note: "already failed by handler/agent", fail_count: failCount });
+    return { failCount, halted };
+  }
+  const result = await failItem(slug, key, error);
+  return { failCount: result.failCount, halted: result.halted };
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Dispatch steps — composable middleware for runItemSession
+// ---------------------------------------------------------------------------
+
+/**
+ * Step 1: Circuit breaker — skip if identical error + no code changed.
+ * Handles revert bypass, timeout salvage, and hard-halt on repeated errors.
+ */
+const stepCircuitBreaker: DispatchStep = async (dc) => {
+  const { next, config, state } = dc;
+  const { slug, repoRoot, logger } = config;
+  const { pipelineSummaries, attemptCounts, circuitBreakerBypassed } = state;
+  const { cb } = dc;
+
+  if (attemptCounts[next.key] < cb.minAttemptsBeforeSkip) return;
+  if (!shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) return;
+
+  // Grant one bypass for clean-slate revert
+  if (cb.allowsRevertBypass && !circuitBreakerBypassed.has(next.key)) {
+    logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "deferred — granting clean-slate revert opportunity" });
+    circuitBreakerBypassed.add(next.key);
+    return;
+  }
+
+  logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "identical error with no code changes since last attempt" });
+  const skipSummary: ItemSummary = {
+    key: next.key,
+    label: next.label,
+    agent: next.agent ?? "unknown",
+    phase: next.phase ?? "unknown",
+    attempt: attemptCounts[next.key],
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    durationMs: 0,
+    outcome: "failed",
+    intents: ["Circuit breaker: identical error, no code changes — skipped"],
+    messages: [],
+    filesRead: [],
+    filesChanged: [],
+    shellCommands: [],
+    toolCounts: {},
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    errorMessage: "Circuit breaker: identical error repeated without code changes",
+  };
+  try { skipSummary.headAfterAttempt = getHeadSha(repoRoot) ?? undefined; } catch { /* non-fatal */ }
+  pipelineSummaries.push(skipSummary);
+  flushReports(config, state);
+
+  // Timeout-salvage path
+  const lastError = pipelineSummaries
+    .filter((s) => s.key === next.key && s.outcome !== "completed")
+    .pop()?.errorMessage ?? "";
+  if (cb.allowsTimeoutSalvage && lastError.toLowerCase().includes("timeout")) {
+    const salvageMsg = `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`;
+    try {
+      await kernelSalvage(slug, next.key, salvageMsg, config);
+    } catch (e) {
+      logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: `Failed to salvage pipeline state: ${e instanceof Error ? e.message : String(e)}` });
       return { summary: skipSummary, halt: true, createPr: false };
     }
+    return { summary: skipSummary, halt: false, createPr: false };
   }
 
-  // --- Early node lookup (needed for barrier short-circuit before heavy banner) ---
-  // nodeForBreaker already resolved above — reuse it
-  const node = nodeForBreaker;
+  return { summary: skipSummary, halt: true, createPr: false };
+};
 
-  // --- Barrier node: zero-execution sync point (auto-complete immediately) ---
-  // Checked before the banner/HEAD-snapshot to avoid noisy logs for zero-work nodes.
-  if (node?.type === "barrier") {
-    const stepStart = Date.now();
-    const barrierSummary: ItemSummary = {
-      key: next.key,
-      label: next.label,
-      agent: "barrier",
-      phase: next.phase ?? "unknown",
-      attempt: attemptCounts[next.key],
-      startedAt: new Date().toISOString(),
-      finishedAt: "",
-      durationMs: 0,
-      outcome: "completed",
-      intents: [],
-      messages: [],
-      filesRead: [],
-      filesChanged: [],
-      shellCommands: [],
-      toolCounts: {},
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    };
-    await completeItem(slug, next.key);
-    logger.event("item.barrier", next.key, { upstream_resolved: [] });
-    return finishItem(barrierSummary, "completed", stepStart, config, state, {
-      intents: ["barrier-sync: all upstream dependencies resolved"],
-    });
-  }
+/**
+ * Step 2: Init — logging, HEAD snapshot, create ItemSummary.
+ */
+const stepInit: DispatchStep = async (dc) => {
+  const { next, config, state } = dc;
+  const { repoRoot, logger } = config;
+  const { attemptCounts, preStepRefs } = state;
 
   logger.setAttempt(next.key, attemptCounts[next.key]);
   logger.event("item.start", next.key, {
     label: next.label,
     agent: next.agent,
     phase: next.phase,
-    node_type: node?.type ?? "agent",
-    category: node?.category ?? "unknown",
+    node_type: dc.node?.type ?? "agent",
+    category: dc.node?.category ?? "unknown",
   });
 
-  // Snapshot HEAD before ALL items for accurate filesChanged tracking
   if (!preStepRefs[next.key]) {
-    try {
-      preStepRefs[next.key] = execSync("git rev-parse HEAD", {
-        cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
-      }).trim();
-    } catch { /* non-fatal */ }
+    const ref = getHeadSha(repoRoot);
+    if (ref) preStepRefs[next.key] = ref;
   }
 
-  const stepStart = Date.now();
-  const itemSummary: ItemSummary = {
+  dc.stepStart = Date.now();
+  dc.itemSummary = {
     key: next.key,
     label: next.label,
     agent: next.agent ?? "unknown",
@@ -265,25 +545,50 @@ export async function runItemSession(
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
   };
+  return;
+};
 
-  // --- Auto-skip evaluation ---
+/**
+ * Step 3: Auto-skip — skip if no changes in declared directories.
+ */
+const stepAutoSkip: DispatchStep = async (dc) => {
+  const { next, config, state } = dc;
+  const { slug, appRoot, repoRoot, baseBranch, apmContext, logger } = config;
+  const { preStepRefs } = state;
+
   const skipDecision = evaluateAutoSkip(next.key, apmContext, repoRoot, baseBranch, appRoot, preStepRefs);
   state.forceRunChangesDetected[next.key] = skipDecision.forceRunChanges;
   if (skipDecision.skip) {
-    await completeItem(slug, next.key);
+    await kernelComplete(slug, next.key, logger);
     logger.event("item.skip", next.key, { skip_type: "auto_skip", reason: skipDecision.skip.reason });
-    return finishItem(itemSummary, "completed", stepStart, config, state, {
+    return finishItem(dc.itemSummary, "completed", dc.stepStart, config, state, {
       intents: [skipDecision.skip.reason],
     });
   }
+  return;
+};
 
-  // --- Readiness probe ---
-  if (node?.requires_data_plane_ready) {
-    await pollReadiness(config);
+/**
+ * Step 4: Readiness probe — poll data-plane health if required.
+ */
+const stepReadiness: DispatchStep = async (dc) => {
+  if (dc.node?.requires_data_plane_ready) {
+    await pollReadiness(dc.config);
   }
+  return;
+};
 
-  // --- Resolve handler via manifest or inference ---
-  const handlerRef = node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type);
+/**
+ * Step 5: Resolve handler + build NodeContext.
+ * Populates dc.handler, dc.handlerCtx, dc.hookCtx.
+ */
+const stepResolve: DispatchStep = async (dc) => {
+  const { next, config, state, node, cb, client } = dc;
+  const { slug, appRoot, repoRoot, baseBranch, apmContext, logger } = config;
+  const { pipelineSummaries, attemptCounts, preStepRefs } = state;
+
+  // Resolve handler
+  const handlerRef = node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type, apmContext.config?.handler_defaults);
   if (!handlerRef) {
     throw new Error(
       node?.type === "script"
@@ -291,12 +596,12 @@ export async function runItemSession(
         : `Could not resolve handler for "${next.key}" (type=${node?.type}, script_type=${node?.script_type})`,
     );
   }
-  const handler = await resolveHandler(handlerRef, appRoot, repoRoot);
+  dc.handler = await resolveHandler(handlerRef, appRoot, repoRoot, apmContext.config?.handlers);
 
-  // --- Build handler context ---
+  // Build handler context
   const currentState = await getStatus(slug);
   const effectiveAttempts = await computeEffectiveDevAttempts(
-    next.key, attemptCounts[next.key], slug, node?.category, cb.allowsRevertBypass,
+    next.key, attemptCounts[next.key], slug, cb.allowsRevertBypass,
   );
 
   const previousAttempt = attemptCounts[next.key] > 1
@@ -313,14 +618,11 @@ export async function runItemSession(
   const onHeartbeat = () => {
     if (Date.now() - lastHeartbeat < 1500) return;
     lastHeartbeat = Date.now();
-    const liveSummaries = [...pipelineSummaries, { ...itemSummary, outcome: "in-progress" as const }];
+    const liveSummaries = [...pipelineSummaries, { ...dc.itemSummary, outcome: "in-progress" as const }];
     writeFlightData(appRoot, slug, liveSummaries, true);
   };
 
   const handlerData: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(state.lastPushedShas)) {
-    handlerData[`lastPushedSha:${k}`] = v;
-  }
   for (const [itemKey, outputs] of Object.entries(state.handlerOutputs)) {
     for (const [k, v] of Object.entries(outputs)) {
       handlerData[`${itemKey}:${k}`] = v;
@@ -330,7 +632,7 @@ export async function runItemSession(
     handlerData["preStepRef"] = preStepRefs[next.key];
   }
 
-  const ctx: NodeContext = {
+  dc.handlerCtx = {
     itemKey: next.key,
     slug,
     appRoot,
@@ -351,102 +653,151 @@ export async function runItemSession(
     logger,
   };
 
-  // --- Handler-specific shouldSkip ---
-  if (handler.shouldSkip) {
-    const skipResult = await handler.shouldSkip(ctx);
-    if (skipResult) {
-      logger.event("item.skip", next.key, { skip_type: "handler_skip", reason: skipResult.reason });
-      await completeItem(slug, next.key);
-      if (skipResult.filesChanged) {
-        for (const f of skipResult.filesChanged) {
-          if (!itemSummary.filesChanged.includes(f)) itemSummary.filesChanged.push(f);
-        }
-      }
-      return finishItem(itemSummary, "completed", stepStart, config, state, {
-        intents: [skipResult.reason],
-      });
+  dc.hookCtx = { node, itemKey: next.key, slug, appRoot, repoRoot, baseBranch, logger };
+
+  // ── Handoff contract validation ──────────────────────────────────────
+  // Check `consumes` from workflows.yml and `metadata.inputs` from handler.
+  // Warns on missing optional keys, fails on missing required keys.
+  const consumeEntries = node?.consumes ?? [];
+  const handlerInputs = dc.handler?.metadata?.inputs ?? {};
+
+  // Merge: YAML consumes + handler metadata inputs (handler metadata is authoritative for "required" level)
+  const allRequired: Array<{ key: string; from: string; required: boolean }> = [...consumeEntries];
+  for (const [inputKey, level] of Object.entries(handlerInputs)) {
+    // Only add if not already declared in YAML consumes
+    if (!allRequired.some((c) => c.key === inputKey)) {
+      allRequired.push({ key: inputKey, from: "*", required: level === "required" });
     }
   }
 
-  // --- Kernel pre-hook (node.pre) ---
-  // Runs for ALL handler types before execute(). Previously only ran inside local-exec.
-  // Must be idempotent — runs on every attempt.
-  const hookCtx: HookContext = { node, itemKey: next.key, slug, appRoot, repoRoot, baseBranch, logger };
+  const missingRequired: string[] = [];
+  for (const entry of allRequired) {
+    // Look up the key in handlerData: "from:key" if from is specific, any "*:key" suffix match if from is "*"
+    let found = false;
+    if (entry.from !== "*") {
+      found = `${entry.from}:${entry.key}` in handlerData;
+    } else {
+      found = Object.keys(handlerData).some((k) => k.endsWith(`:${entry.key}`));
+    }
+    if (!found) {
+      if (entry.required) {
+        missingRequired.push(`${entry.key} (from: ${entry.from})`);
+      } else {
+        logger.event("handoff.inject", next.key, {
+          injection_types: [`missing_optional:${entry.key}`],
+          note: `Optional handoff key "${entry.key}" not available from upstream`,
+        });
+      }
+    }
+  }
+  if (missingRequired.length > 0) {
+    logger.event("handoff.inject", next.key, {
+      injection_types: missingRequired.map((k) => `missing_required:${k}`),
+      note: `Required handoff keys missing — upstream nodes may not have produced them`,
+    });
+    // Log warning but don't fail — handler may have fallback logic.
+    // In strict mode (future), this could return an error result.
+  }
+
+  return;
+};
+
+/**
+ * Step 6: Handler shouldSkip — handler-specific skip check.
+ */
+const stepHandlerSkip: DispatchStep = async (dc) => {
+  const { next, config, state, handler, handlerCtx } = dc;
+  const { slug, logger } = config;
+
+  if (!handler?.shouldSkip || !handlerCtx) return;
+  const skipResult = await handler.shouldSkip(handlerCtx);
+  if (skipResult) {
+    logger.event("item.skip", next.key, { skip_type: "handler_skip", reason: skipResult.reason });
+    await kernelComplete(slug, next.key, logger);
+    if (skipResult.filesChanged) {
+      for (const f of skipResult.filesChanged) {
+        if (!dc.itemSummary.filesChanged.includes(f)) dc.itemSummary.filesChanged.push(f);
+      }
+    }
+    return finishItem(dc.itemSummary, "completed", dc.stepStart, config, state, {
+      intents: [skipResult.reason],
+    });
+  }
+  return;
+};
+
+/**
+ * Step 7: Pre-hook — execute node.pre lifecycle hook.
+ */
+const stepPreHook: DispatchStep = async (dc) => {
+  const { next, config, state, hookCtx } = dc;
+  const { slug, logger } = config;
+
+  if (!hookCtx) return;
   const preHookResult = runPreHook(hookCtx);
   if (!preHookResult.ok) {
     logger.event("item.end", next.key, { outcome: "failed", error_preview: preHookResult.errorMessage?.slice(0, 200) });
-    itemSummary.outcome = "failed";
-    itemSummary.errorMessage = preHookResult.errorMessage;
-    try { await failItem(slug, next.key, preHookResult.errorMessage ?? "pre-hook failed"); } catch { /* best-effort */ }
-    return finishItem(itemSummary, "failed", stepStart, config, state, { halt: false });
+    dc.itemSummary.outcome = "failed";
+    dc.itemSummary.errorMessage = preHookResult.errorMessage;
+    try { await kernelFail(slug, next.key, preHookResult.errorMessage ?? "pre-hook failed", logger); } catch { /* best-effort */ }
+    return finishItem(dc.itemSummary, "failed", dc.stepStart, config, state, { halt: false });
+  }
+  return;
+};
+
+/**
+ * Step 8: Execute handler + post-execute (telemetry, state transitions, signals, post-hook).
+ */
+const stepExecute: DispatchStep = async (dc) => {
+  const { next, config, state, client, handler, handlerCtx, hookCtx, cb } = dc;
+  const { slug, repoRoot, apmContext, logger } = config;
+  const { pipelineSummaries, attemptCounts } = state;
+  const { itemSummary, stepStart, node } = dc;
+
+  if (!handler || !handlerCtx) {
+    throw new Error(`BUG: stepExecute called without handler/context for "${next.key}"`);
   }
 
   // --- Execute handler ---
   let result: NodeResult;
   try {
-    result = await handler.execute(ctx);
+    result = await handler.execute(handlerCtx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.event("item.end", next.key, { outcome: "error", error_preview: message, handler: handler.name });
     result = { outcome: "error", errorMessage: message, summary: {} };
   }
+  dc.result = result;
 
-  // --- K2: Non-retryable detection for deterministic handlers ---
-  // If halt_on_identical is set (defaults true for script nodes) and the handler
-  // fails with identical error + unchanged HEAD, halt immediately. Retrying an
-  // identical command with identical input is futile.
+  // --- Non-retryable detection for deterministic handlers ---
+  const previousAttempt = handlerCtx.previousAttempt;
   if (
     result.outcome !== "completed" &&
     cb.haltOnIdentical &&
     previousAttempt?.errorMessage &&
     result.errorMessage === previousAttempt.errorMessage
   ) {
-    let headUnchanged = false;
-    try {
-      const currentHead = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 }).trim();
-      headUnchanged = currentHead === previousAttempt.headAfterAttempt;
-    } catch { /* non-fatal — skip optimization */ }
-    if (headUnchanged) {
+    const currentHead = getHeadSha(repoRoot);
+    if (currentHead !== null && currentHead === previousAttempt.headAfterAttempt) {
       logger.event("item.skip", next.key, { skip_type: "non_retryable", reason: `deterministic handler "${handler.name}" produced identical error with no code changes` });
       itemSummary.outcome = result.outcome;
       itemSummary.errorMessage = `Non-retryable: identical error on attempt ${attemptCounts[next.key]} with no code changes. ${result.errorMessage}`;
       try {
-        await failItem(slug, next.key, itemSummary.errorMessage);
-      } catch { /* best-effort — pipeline is halting anyway */ }
+        await kernelFail(slug, next.key, itemSummary.errorMessage, logger);
+      } catch { /* best-effort */ }
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
   }
 
-  // --- Merge handler telemetry into kernel summary ---
-  if (result.summary.intents) itemSummary.intents.push(...result.summary.intents);
-  if (result.summary.filesChanged) {
-    for (const f of result.summary.filesChanged) {
-      if (!itemSummary.filesChanged.includes(f)) itemSummary.filesChanged.push(f);
-    }
-  }
-  if (result.summary.filesRead) itemSummary.filesRead.push(...result.summary.filesRead);
-  if (result.summary.shellCommands) itemSummary.shellCommands.push(...result.summary.shellCommands);
-  if (result.summary.toolCounts) {
-    for (const [k, v] of Object.entries(result.summary.toolCounts)) {
-      itemSummary.toolCounts[k] = (itemSummary.toolCounts[k] ?? 0) + v;
-    }
-  }
-  if (result.summary.inputTokens) itemSummary.inputTokens += result.summary.inputTokens;
-  if (result.summary.outputTokens) itemSummary.outputTokens += result.summary.outputTokens;
-  if (result.summary.cacheReadTokens) itemSummary.cacheReadTokens += result.summary.cacheReadTokens;
-  if (result.summary.cacheWriteTokens) itemSummary.cacheWriteTokens += result.summary.cacheWriteTokens;
-  if (result.summary.messages) itemSummary.messages.push(...result.summary.messages);
+  // --- Merge handler telemetry ---
+  mergeTelemetry(itemSummary, result.summary);
 
-  // Store cross-handler output for downstream access
+  // Store cross-handler output
   if (result.handlerOutput) {
     state.handlerOutputs[next.key] = {
       ...(state.handlerOutputs[next.key] ?? {}),
       ...result.handlerOutput,
     };
-    const sha = result.handlerOutput.lastPushedSha;
-    if (typeof sha === "string") {
-      state.lastPushedShas[next.key] = sha;
-    }
     logger.event("handoff.emit", next.key, {
       channel: "handler_data",
       keys: Object.keys(result.handlerOutput),
@@ -454,52 +805,29 @@ export async function runItemSession(
   }
 
   // Record HEAD for circuit breaker
-  try {
-    itemSummary.headAfterAttempt = execSync("git rev-parse HEAD", {
-      cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
-    }).trim();
-  } catch { /* non-fatal */ }
+  itemSummary.headAfterAttempt = getHeadSha(repoRoot) ?? undefined;
 
   // --- State transitions ---
-  if (result.stateManaged) {
-    if (result.outcome === "completed") {
-      logger.event("item.end", next.key, { outcome: "completed", note: "state managed by handler" });
-    } else {
-      itemSummary.outcome = result.outcome;
-      itemSummary.errorMessage = result.errorMessage;
-      const triageProfile1 = resolveTriageProfile(config.apmContext, next.key);
-      if (triageProfile1) {
-        const rawError = result.errorMessage ?? "Unknown failure";
-        pipelineSummaries.push(itemSummary);
-        flushReports(config, state);
-        return handleTriageReroute(slug, next.key, rawError, triageProfile1, config, itemSummary, roamAvailable, client);
-      }
-      logger.event("item.end", next.key, { outcome: result.outcome, error_preview: result.errorMessage });
-    }
-  } else if (result.outcome === "completed") {
-    await completeItem(slug, next.key);
-    logger.event("item.end", next.key, { outcome: "completed" });
+  if (result.signal === "approval-pending") {
+    return finishItem(itemSummary, "completed", stepStart, config, state, { approvalPending: true });
+  }
+
+  if (result.outcome === "completed") {
+    await kernelComplete(slug, next.key, logger);
   } else {
     itemSummary.outcome = result.outcome;
     itemSummary.errorMessage = result.errorMessage;
     try {
-      const failResult = await failItem(slug, next.key, result.errorMessage ?? "Unknown failure");
+      const failResult = await kernelFail(slug, next.key, result.errorMessage ?? "Unknown failure", logger);
       if (failResult.halted) {
-        logger.event("item.end", next.key, { outcome: result.outcome, halted: true, error_preview: `failed ${failResult.failCount} times` });
         return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
       }
     } catch {
       logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Could not record failure in pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
-    const triageProfile2 = resolveTriageProfile(config.apmContext, next.key);
-    if (triageProfile2) {
-      const rawError = result.errorMessage ?? "Unknown failure";
-      pipelineSummaries.push(itemSummary);
-      flushReports(config, state);
-      return handleTriageReroute(slug, next.key, rawError, triageProfile2, config, itemSummary, roamAvailable, client);
-    }
-    logger.event("item.end", next.key, { outcome: result.outcome, error_preview: result.errorMessage });
+    const onFailureResult = await dispatchOnFailure(next.key, result.errorMessage ?? "Unknown failure", itemSummary, config, state, client);
+    if (onFailureResult) return onFailureResult;
   }
 
   // --- Signal handling ---
@@ -511,40 +839,33 @@ export async function runItemSession(
   }
   if (result.signal === "salvage-draft") {
     try {
-      await salvageForDraft(slug, next.key);
-      const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
-      fs.writeFileSync(draftFlagPath, result.errorMessage ?? "Handler signaled salvage", "utf-8");
-    } catch (e) {
+      await kernelSalvage(slug, next.key, result.errorMessage ?? "Handler signaled salvage", config, { skipFail: true });
+    } catch {
       logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
     return finishItem(itemSummary, result.outcome, stepStart, config, state);
   }
 
-  // --- Kernel post-hook (node.post) + SHA capture ---
-  if (result.outcome === "completed") {
+  // --- Post-hook + SHA capture ---
+  if (result.outcome === "completed" && hookCtx) {
     const postHookResult = runPostHook(hookCtx);
     if (!postHookResult.ok) {
       const failMsg = postHookResult.errorMessage ?? "post-hook failed";
       logger.event("state.fail", next.key, { error_signature: null, error_preview: failMsg.slice(0, 200) });
-      try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
+      try { await kernelFail(slug, next.key, failMsg, logger); } catch { /* best-effort */ }
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
-      const triageProfile3 = resolveTriageProfile(config.apmContext, next.key);
-      if (triageProfile3) {
-        return handleTriageReroute(slug, next.key, failMsg, triageProfile3, config, itemSummary, roamAvailable, client);
-      }
+      const triageResult3 = await dispatchOnFailure(next.key, failMsg, itemSummary, config, state, client);
+      if (triageResult3) return triageResult3;
       return finishItem(itemSummary, "failed", stepStart, config, state, { halt: true });
     }
 
-    // Auto-capture HEAD SHA for nodes that declare captures_head_sha
-    // (or deploy+script nodes for backward compat). Placed AFTER post-hook
-    // so post-hook commits (e.g. deploy sentinels) are reflected.
-    if (!state.lastPushedShas[next.key]) {
+    const existing = state.handlerOutputs[next.key]?.lastPushedSha;
+    if (!existing) {
       const capturedSha = captureHeadSha(hookCtx);
       if (capturedSha) {
-        state.lastPushedShas[next.key] = capturedSha;
         state.handlerOutputs[next.key] = {
           ...(state.handlerOutputs[next.key] ?? {}),
           lastPushedSha: capturedSha,
@@ -553,5 +874,75 @@ export async function runItemSession(
     }
   }
 
+  // Validate declared `produces` AFTER post-hook SHA capture so kernel-injected
+  // keys (e.g. lastPushedSha from captures_head_sha) are already in handlerOutputs.
+  const declaredProduces = node?.produces ?? [];
+  if (declaredProduces.length > 0 && result.outcome === "completed") {
+    const allOutputKeys = new Set(Object.keys(state.handlerOutputs[next.key] ?? {}));
+    const missing = declaredProduces.filter((k: string) => !allOutputKeys.has(k));
+    if (missing.length > 0) {
+      logger.event("handoff.emit", next.key, {
+        channel: "produces_missing",
+        keys: missing,
+        note: `Node declared produces [${missing.join(", ")}] but handler did not emit them`,
+      });
+    }
+  }
+
   return finishItem(itemSummary, result.outcome === "completed" ? "completed" : result.outcome, stepStart, config, state);
+};
+
+/**
+ * The ordered dispatch pipeline. Each step runs in sequence.
+ * A step returning a SessionResult short-circuits the pipeline.
+ */
+const DISPATCH_PIPELINE: readonly DispatchStep[] = [
+  stepCircuitBreaker,
+  stepInit,
+  stepAutoSkip,
+  stepReadiness,
+  stepResolve,
+  stepHandlerSkip,
+  stepPreHook,
+  stepExecute,
+];
+
+// ---------------------------------------------------------------------------
+// Unified dispatch — single entry point for all pipeline items
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a single pipeline item — the core of each DAG step.
+ *
+ * Executes a linear pipeline of named steps:
+ * circuit breaker → init → auto-skip → readiness → resolve → handler-skip → pre-hook → execute
+ */
+export async function runItemSession(
+  client: CopilotClient,
+  next: NextAction & { key: string },
+  config: PipelineRunConfig,
+  state: PipelineRunState,
+): Promise<SessionResult> {
+  state.attemptCounts[next.key] = (state.attemptCounts[next.key] ?? 0) + 1;
+
+  // Bootstrap dispatch context with minimal fields — steps populate the rest
+  const node = getWorkflowNode(config.apmContext, next.key);
+  const dc: DispatchContext = {
+    client,
+    next,
+    config,
+    state,
+    node,
+    cb: resolveCircuitBreaker(node),
+    itemSummary: undefined as unknown as ItemSummary, // populated by stepInit
+    stepStart: 0,
+  };
+
+  for (const step of DISPATCH_PIPELINE) {
+    const earlyResult = await step(dc);
+    if (earlyResult) return earlyResult;
+  }
+
+  // Pipeline exhausted without returning — this shouldn't happen (stepExecute always returns)
+  throw new Error(`BUG: dispatch pipeline exhausted for "${next.key}" without producing a result`);
 }

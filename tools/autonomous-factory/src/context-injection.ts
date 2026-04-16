@@ -10,6 +10,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary, TriageRecord } from "./types.js";
+import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "./types.js";
 import { readState } from "./state.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
 
@@ -64,8 +65,6 @@ export function buildDownstreamFailureContext(
   itemKey: string,
   pipelineSummaries: readonly ItemSummary[],
   ciWorkflowFilePatterns?: string[],
-  /** @deprecated Use allowsRevertBypass instead. Still accepted for backward compat. */
-  nodeCategory?: string,
   /** Config-driven commit scope warning text (from apm.yml config.ci_scope_warning). */
   ciScopeWarning?: string,
   /** Feature slug — used for cross-cycle error signature comparison. */
@@ -73,8 +72,7 @@ export function buildDownstreamFailureContext(
   /** Whether this node receives downstream failure context (from resolveCircuitBreaker). */
   allowsRevertBypass?: boolean,
 ): string {
-  const shouldInject = allowsRevertBypass ?? (nodeCategory === "dev");
-  if (!shouldInject) return "";
+  if (!allowsRevertBypass) return "";
 
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed",
@@ -82,9 +80,8 @@ export function buildDownstreamFailureContext(
   if (downstreamFailures.length === 0) return "";
 
   // --- K2: Extract structured diagnosis from triage system ---
-  // Reads `lastTriageRecord` from pipeline state — the triage-dispatcher persists
-  // the full TriageRecord after every triage evaluation. This replaces the fragile
-  // header-parsing approach (FAULT_DOMAIN_HINT, ROOT_CAUSE, etc.).
+  // Reads `lastTriageRecord` from pipeline state — the kernel persists the full
+  // TriageRecord after every triage node execution (via handleTriageResult).
   const diagnosisSection = extractDiagnosisFromState(slug);
 
   const failureDetails = downstreamFailures
@@ -120,7 +117,7 @@ export function buildDownstreamFailureContext(
 
 /**
  * Extract structured diagnosis from the pipeline state's `lastTriageRecord`.
- * The triage-dispatcher persists this after every triage evaluation — it contains
+ * The kernel persists this after every triage node execution — it contains
  * the full classification result (domain, reason, RAG matches, LLM output).
  *
  * Returns a formatted "### Automated Diagnosis" section, or empty string if
@@ -186,7 +183,7 @@ function buildIdenticalErrorWarning(
 
   try {
     const priorRedevEntries = errorLog.filter(
-      (e) => (e.itemKey === "reset-for-dev" || e.itemKey === "reset-for-reroute") && e.errorSignature,
+      (e) => (REDEVELOPMENT_RESET_OPS as readonly string[]).includes(e.itemKey) && e.errorSignature,
     );
     const matchCount = priorRedevEntries.filter(
       (e) => e.errorSignature === currentSig,
@@ -214,17 +211,13 @@ function buildIdenticalErrorWarning(
 export function buildRevertWarning(
   itemKey: string,
   effectiveDevAttempts: number,
-  /** @deprecated Use allowsRevertBypass + revertWarningAt instead. Still accepted for backward compat. */
-  nodeCategory?: string,
   /** Whether this node allows revert bypass (from resolveCircuitBreaker). */
   allowsRevertBypass?: boolean,
   /** Threshold for injecting revert warning (from resolveCircuitBreaker). */
   revertWarningAt?: number,
 ): string {
-  // Resolve: explicit flags take precedence over category-based inference
-  const canRevert = allowsRevertBypass ?? (nodeCategory === "dev");
   const threshold = revertWarningAt ?? 3;
-  if (!canRevert || effectiveDevAttempts < threshold) return "";
+  if (!allowsRevertBypass || effectiveDevAttempts < threshold) return "";
 
   return `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
     + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
@@ -246,7 +239,7 @@ export async function buildPhaseRejectionContext(
 ): Promise<string> {
   try {
     const state = await readState(slug);
-    const phaseEntries = state.errorLog.filter((e) => e.itemKey === "reset-phases");
+    const phaseEntries = state.errorLog.filter((e) => e.itemKey === RESET_OPS.RESET_PHASES);
     if (phaseEntries.length === 0) return "";
     const latest = phaseEntries[phaseEntries.length - 1];
     const header = narrative
@@ -278,17 +271,14 @@ export async function computeEffectiveDevAttempts(
   itemKey: string,
   inMemoryAttempts: number,
   slug: string,
-  /** @deprecated Use allowsRevertBypass instead. Still accepted for backward compat. */
-  nodeCategory?: string,
   /** Whether this node tracks persisted cycles (from resolveCircuitBreaker). */
   allowsRevertBypass?: boolean,
 ): Promise<number> {
-  const shouldTrack = allowsRevertBypass ?? (nodeCategory === "dev");
-  if (!shouldTrack) return inMemoryAttempts;
+  if (!allowsRevertBypass) return inMemoryAttempts;
   try {
     const pipeState = await readState(slug);
     const persistedCycles = pipeState.errorLog.filter(
-      (e) => e.itemKey === "reset-for-dev" || e.itemKey === "reset-for-reroute",
+      (e) => (REDEVELOPMENT_RESET_OPS as readonly string[]).includes(e.itemKey),
     ).length;
     return Math.max(inMemoryAttempts, persistedCycles);
   } catch {

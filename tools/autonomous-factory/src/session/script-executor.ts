@@ -1,9 +1,9 @@
 /**
  * session/script-executor.ts — Deterministic script-type item handlers.
  *
- * Extracted from session-runner.ts for Single Responsibility.
- * Contains runPushCode and runPollCi — zero-LLM-token
- * deterministic handlers for script-type pipeline nodes.
+ * @deprecated This module predates the handler plugin system. Active execution
+ * now flows through handlers/local-exec.ts and handlers/github-ci-poll.ts.
+ * Retained for backward compatibility only — do not add new logic here.
  */
 
 import fs from "node:fs";
@@ -14,7 +14,6 @@ import { getStatus, failItem, completeItem } from "../state.js";
 import { getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "../auto-skip.js";
 import { getWorkflowNode, flushReports, finishItem } from "./shared.js";
 import { runValidateApp } from "./readiness-probe.js";
-import { handleTriageReroute } from "./triage-dispatcher.js";
 import {
   DEFAULT_TRANSIENT_RETRIES,
   DEFAULT_TRANSIENT_BACKOFF_MS,
@@ -147,9 +146,13 @@ export async function runPushCode(
 
     // Capture the exact commit SHA that was pushed (for SHA-pinned CI polling)
     try {
-      state.lastPushedShas[itemKey] = execSync("git rev-parse HEAD", {
+      const sha = execSync("git rev-parse HEAD", {
         cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
       }).trim();
+      state.handlerOutputs[itemKey] = {
+        ...(state.handlerOutputs[itemKey] ?? {}),
+        lastPushedSha: sha,
+      };
     } catch { /* non-fatal */ }
 
     // ── State-aware force-deploy sentinel ────────────────────────────────
@@ -197,9 +200,13 @@ export async function runPushCode(
             });
             // Update SHA to the sentinel commit for CI polling
             try {
-              state.lastPushedShas[itemKey] = execSync("git rev-parse HEAD", {
+              const sha = execSync("git rev-parse HEAD", {
                 cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
               }).trim();
+              state.handlerOutputs[itemKey] = {
+                ...(state.handlerOutputs[itemKey] ?? {}),
+                lastPushedSha: sha,
+              };
             } catch { /* non-fatal */ }
           }
         }
@@ -245,7 +252,7 @@ export async function runPollCi(
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
 
   // Resolve the pushed SHA from the corresponding push item
-  const lastPushedSha = state.lastPushedShas[pollTarget] ?? null;
+  const lastPushedSha = (state.handlerOutputs[pollTarget]?.lastPushedSha as string) ?? null;
 
   const pollCmd = buildPollCmd(repoRoot, lastPushedSha);
   const maxRetries = config.apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;
@@ -290,9 +297,8 @@ export async function runPollCi(
           try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
           finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failMsg, intents: ["App validation failed — blocking before post-deploy agents"] });
           const triageProfileApp = resolveTriageProfile(config.apmContext, itemKey);
-          if (triageProfileApp) {
-            return handleTriageReroute(slug, itemKey, failMsg, triageProfileApp, config, itemSummary, roamAvailable);
-          }
+          // Note: triage routing now handled by the kernel via on_failure edges.
+          // This legacy path returns halt:true — the kernel will dispatch triage.
           return { summary: itemSummary, halt: true, createPr: false };
         }
       }
@@ -333,9 +339,8 @@ export async function runPollCi(
       finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failureContext });
 
       const triageProfileCi = resolveTriageProfile(config.apmContext, itemKey);
-      if (triageProfileCi) {
-        return handleTriageReroute(slug, itemKey, failureContext, triageProfileCi, config, itemSummary, roamAvailable);
-      }
+      // Note: triage routing now handled by the kernel via on_failure edges.
+      // This legacy path returns halt:true — the kernel will dispatch triage.
       return { summary: itemSummary, halt: true, createPr: false };
     }
   }

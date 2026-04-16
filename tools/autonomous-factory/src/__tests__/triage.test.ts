@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { isUnfixableError, isOrchestratorTimeout } from "../triage.js";
-import { normalizeDiagnosticTrace } from "../session-runner.js";
+import { normalizeDiagnosticTrace } from "../session/shared.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
