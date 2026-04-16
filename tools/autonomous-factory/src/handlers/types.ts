@@ -78,6 +78,17 @@ export interface NodeContext {
   readonly client?: unknown;
   /** Pipeline event logger — single entry point for all telemetry. */
   readonly logger: PipelineLogger;
+
+  // ── Failure context (populated when dispatched via on_failure edge) ──
+
+  /** Key of the node that failed and triggered this dispatch (on_failure only). */
+  readonly failingNodeKey?: string;
+  /** Raw error message from the failing node (on_failure only). */
+  readonly rawError?: string;
+  /** Computed error signature from the failing node (on_failure only). */
+  readonly errorSignature?: string;
+  /** Summary snapshot of the failing node's last attempt (on_failure only). */
+  readonly failingNodeSummary?: Readonly<ItemSummary>;
 }
 
 // ---------------------------------------------------------------------------

@@ -23,12 +23,12 @@ import { getStatus, failItem } from "../state.js";
 import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { getAgentDirectoryPrefixes } from "../session/shared.js";
+import { getAgentDirectoryPrefixes, resolveCircuitBreaker } from "../session/shared.js";
 import { writeFlightData } from "../reporting.js";
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
-  buildInfraRollbackContext,
+  buildPhaseRejectionContext,
   buildRevertWarning,
   writeChangeManifest,
 } from "../context-injection.js";
@@ -210,7 +210,11 @@ const copilotAgentHandler: NodeHandler = {
       writeFlightData(appRoot, slug, liveSummaries, true);
     };
 
-    wireToolLogging(session, telemetry, repoRoot, breaker, timeout, ctx.logger, triggerHeartbeat);
+    // Resolve per-agent tool limits with config-driven overrides
+    const resolvedWriteThreshold = agentToolLimits?.writeThreshold ?? manifestDefaults?.writeThreshold;
+    const resolvedPreTimeoutPercent = agentToolLimits?.preTimeoutPercent ?? manifestDefaults?.preTimeoutPercent;
+
+    wireToolLogging(session, telemetry, repoRoot, breaker, timeout, ctx.logger, triggerHeartbeat, resolvedWriteThreshold, resolvedPreTimeoutPercent);
     const mcpServers = (agentConfig.mcpServers as Record<string, unknown>) ?? {};
     const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, itemKey, ctx.logger, triggerHeartbeat);
     wireIntentLogging(session, telemetry, ctx.logger);
@@ -236,6 +240,9 @@ const copilotAgentHandler: NodeHandler = {
       });
     }
 
+    // Resolve circuit breaker config for downstream + revert warning injection
+    const cbConfig = resolveCircuitBreaker(node);
+
     // Inject downstream failure context
     const downstreamCtx = buildDownstreamFailureContext(
       itemKey,
@@ -244,6 +251,7 @@ const copilotAgentHandler: NodeHandler = {
       node?.category,
       apmContext.config?.ci_scope_warning as string | undefined,
       slug,
+      cbConfig.allowsRevertBypass,
     );
     if (downstreamCtx) {
       taskPrompt += downstreamCtx;
@@ -256,7 +264,7 @@ const copilotAgentHandler: NodeHandler = {
     }
 
     // Inject clean-slate revert warning
-    const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, node?.category);
+    const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, node?.category, cbConfig.allowsRevertBypass, cbConfig.revertWarningAt);
     if (revertWarning) {
       taskPrompt += revertWarning;
       ctx.logger.event("handoff.inject", itemKey, {
@@ -265,13 +273,13 @@ const copilotAgentHandler: NodeHandler = {
       });
     }
 
-    // Inject infra rollback context for redevelopment (manifest-driven)
-    if (node?.injects_infra_rollback) {
-      const infraCtx = await buildInfraRollbackContext(slug);
-      if (infraCtx) {
-        taskPrompt += infraCtx;
+    // Inject phase-rejection context for redevelopment (manifest-driven)
+    if (node?.injects_phase_rejection || node?.injects_infra_rollback) {
+      const rejectionCtx = await buildPhaseRejectionContext(slug);
+      if (rejectionCtx) {
+        taskPrompt += rejectionCtx;
         ctx.logger.event("handoff.inject", itemKey, {
-          injection_types: ["infra_rollback"],
+          injection_types: ["phase_rejection"],
         });
       }
     }
@@ -300,7 +308,8 @@ const copilotAgentHandler: NodeHandler = {
       }
 
       // Fast-fail for fatal SDK / authentication errors (non-retryable)
-      const fatalPatterns = ["authentication info", "custom provider", "rate limit"];
+      const defaultFatalPatterns = ["authentication info", "custom provider", "rate limit"];
+      const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? defaultFatalPatterns;
       if (fatalPatterns.some((p) => message.toLowerCase().includes(p))) {
         ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Non-retryable SDK/Auth error" });
         fatalError = true;

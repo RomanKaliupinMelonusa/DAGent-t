@@ -43,6 +43,10 @@ export const ApmMcpConfigSchema = z.discriminatedUnion("type", [
 export const ApmToolLimitsSchema = z.object({
   soft: z.number().int().positive().optional(),
   hard: z.number().int().positive().optional(),
+  /** Number of writes to the same file before injecting a thrashing warning. */
+  writeThreshold: z.number().int().positive().optional(),
+  /** Fraction of session timeout at which to inject a wrap-up directive (0–1). */
+  preTimeoutPercent: z.number().min(0).max(1).optional(),
 }).optional();
 
 /**
@@ -133,6 +137,55 @@ export const ApmConfigSchema = z.object({
   /** Config-driven commit scope warning injected into dev agents when CI/CD files are involved.
    *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */
   ci_scope_warning: z.string().optional(),
+
+  // -----------------------------------------------------------------------
+  // Kernel tuning — extracted from hardcoded constants (Phase 1 refactor)
+  // -----------------------------------------------------------------------
+
+  /** Pipeline cycle limits for reset functions. Controls how many times
+   *  each reset path can fire before the pipeline halts. */
+  cycle_limits: z.object({
+    /** Max reroute cycles via triage profiles (resetNodes). */
+    reroute: z.number().int().positive().default(5),
+    /** Max phase-level reset cycles (resetPhases, resumeAfterElevated). */
+    phases: z.number().int().positive().default(5),
+    /** Max script-only reset cycles per phase (resetScripts). */
+    scripts: z.number().int().positive().default(10),
+  }).optional(),
+
+  /** Number of identical error signatures before declaring a death spiral
+   *  and triggering graceful degradation (salvage to draft). */
+  max_same_error_cycles: z.number().int().positive().default(3),
+
+  /** Transient retry policy for CI poll and script executor handlers.
+   *  Applies to exit-code-2 (transient/network) failures. */
+  transient_retry: z.object({
+    /** Max retry attempts for transient errors. */
+    max: z.number().int().nonnegative().default(5),
+    /** Backoff delay between retries in milliseconds. */
+    backoff_ms: z.number().int().nonnegative().default(30_000),
+  }).optional(),
+
+  /** Error substrings that indicate fatal, non-retryable SDK/auth errors.
+   *  When matched, the pipeline halts immediately (no retry). */
+  fatal_sdk_errors: z.array(z.string()).optional(),
+
+  /** LLM token pricing (USD per million tokens) for cost estimation.
+   *  Defaults to Anthropic Claude Opus 4 direct pricing. */
+  model_pricing: z.object({
+    inputPerMillion: z.number().nonnegative().default(15),
+    outputPerMillion: z.number().nonnegative().default(75),
+    cacheReadPerMillion: z.number().nonnegative().default(1.5),
+    cacheWritePerMillion: z.number().nonnegative().default(3.75),
+  }).optional(),
+
+  /** Node categories whose failures trigger redevelopment context injection
+   *  into upstream dev agents. Default: ["test"]. */
+  redevelopment_categories: z.array(z.string()).default(["test"]),
+
+  /** Human-readable labels for phase slugs, used in TRANS.md and reports.
+   *  Falls back to title-casing the slug. E.g. { "pre-deploy": "Pre-Deploy", "infra": "Infrastructure (Wave 1)" }. */
+  phase_labels: z.record(z.string(), z.string()).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -140,8 +193,8 @@ export const ApmConfigSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const ApmWorkflowNodeSchema = z.object({
-  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate, barrier = DAG sync point. */
-  type: z.enum(["agent", "script", "approval", "barrier"]).default("agent"),
+  /** Execution type: agent = LLM session, script = deterministic shell, approval = human gate, barrier = DAG sync point, triage = failure classification node. */
+  type: z.enum(["agent", "script", "approval", "barrier", "triage"]).default("agent"),
   /** Semantic category — replaces hardcoded DEV_ITEMS / TEST_ITEMS / POST_DEPLOY_ITEMS sets. */
   category: z.enum(["dev", "test", "deploy", "finalize"]),
   /** Agent key from the agents section (required when type is "agent"). */
@@ -167,8 +220,15 @@ export const ApmWorkflowNodeSchema = z.object({
   auto_skip_if_no_changes_in: z.array(z.string()).default([]),
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
-  /** Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
+  /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
   triage: z.string().optional(),
+  /** Key of a triage node to dispatch to when this node fails.
+   *  Replaces `triage` — decouples failure routing from inline profile resolution.
+   *  The referenced node must have `type: "triage"` and exist in the same workflow. */
+  on_failure: z.string().optional(),
+  /** Triage profile name — only used on nodes with `type: "triage"`.
+   *  References a profile from the workflow's `triage` section. */
+  triage_profile: z.string().optional(),
   /** Handlebars template flags — injected as boolean `true` keys into the template context.
    *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
   template_flags: z.array(z.string()).default([]),
@@ -187,8 +247,12 @@ export const ApmWorkflowNodeSchema = z.object({
   post_ci_artifact_to_pr: z.string().optional(),
   /** When true, writeChangeManifest() is called before the agent session starts. */
   generates_change_manifest: z.boolean().default(false),
-  /** When true, buildInfraRollbackContext() is injected into the agent prompt. */
+  /** When true, buildPhaseRejectionContext() is injected into the agent prompt
+   *  during redevelopment cycles triggered by `pipeline:reset-phases`.
+   *  @deprecated field name — use `injects_phase_rejection` in new workflows. */
   injects_infra_rollback: z.boolean().default(false),
+  /** Alias for `injects_infra_rollback` — preferred name for new workflows. */
+  injects_phase_rejection: z.boolean().optional(),
   /** Deterministic handler type for script nodes: poll or local-exec.
    *  Push and publish are now expressed as local-exec with pre/command/post hooks. */
   script_type: z.enum(["poll", "local-exec"]).optional(),
@@ -201,18 +265,50 @@ export const ApmWorkflowNodeSchema = z.object({
   /** Shell command to run BEFORE the handler body as a pre-flight check.
    *  If it exits non-zero, the node fails immediately. Runs on every attempt
    *  (including first), so should be idempotent (e.g. kill stale processes,
-   *  then validate environment health). The kernel executes this generically;
-   *  all framework-specific knowledge lives in the command itself. */
+   *  then validate environment health). The kernel executes this generically
+   *  for ALL handler types (agent, script, etc.); all framework-specific
+   *  knowledge lives in the command itself. */
   pre: z.string().optional(),
   /** Shell command to run AFTER the handler body completes successfully.
    *  If it exits non-zero, the node fails. Use for cleanup, validation hooks,
-   *  or any post-processing that doesn't need LLM involvement. */
+   *  or any post-processing that doesn't need LLM involvement.
+   *  Executed by the kernel for ALL handler types. */
   post: z.string().optional(),
+  /** When true, the kernel auto-captures git HEAD SHA after post-hook completion
+   *  and stores it in handlerData.lastPushedSha for downstream poll nodes.
+   *  Replaces the hardcoded `category === "deploy" && type === "script"` check. */
+  captures_head_sha: z.boolean().default(false),
   /** When true, successful completion signals the watchdog to archive feature files.
    *  Used by the publish-pr node to trigger post-pipeline archiving. */
   signals_create_pr: z.boolean().default(false),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
+
+  // -----------------------------------------------------------------------
+  // Circuit breaker — per-node retry and failure handling config (Phase 2)
+  // -----------------------------------------------------------------------
+
+  /** Per-node circuit breaker configuration. Controls retry behavior, identical-error
+   *  detection, and failure escalation. Replaces hardcoded category-based checks. */
+  circuit_breaker: z.object({
+    /** Minimum in-memory attempts before the identical-error detector activates.
+     *  Default 3 (skip triggered on attempt 3+ if error and HEAD unchanged). */
+    min_attempts_before_skip: z.number().int().positive().default(3),
+    /** When true and the CB fires, defer once for a clean-slate revert opportunity
+     *  (agent-branch.sh revert) instead of halting immediately.
+     *  Replaces the hardcoded `category === "dev"` check. Default: true for dev nodes. */
+    allows_revert_bypass: z.boolean().optional(),
+    /** When true, a timeout loop triggers salvageForDraft instead of halting.
+     *  Replaces the hardcoded `category === "dev" && isTimeoutLoop` check. Default: true for dev nodes. */
+    allows_timeout_salvage: z.boolean().optional(),
+    /** When true, identical error + identical HEAD causes immediate halt on attempt 2+.
+     *  Intended for deterministic (script) handlers where retry with same input is futile.
+     *  Replaces the hardcoded `type === "script"` K2 check. Default: true for script nodes. */
+    halt_on_identical: z.boolean().optional(),
+    /** Effective attempt count at which a revert warning is injected into the agent prompt.
+     *  Only applies when allows_revert_bypass is true. Default: 3. */
+    revert_warning_at: z.number().int().positive().default(3),
+  }).optional(),
 }).refine(
   (node) => node.type !== "agent" || typeof node.agent === "string",
   { message: "Workflow node with type 'agent' must declare an 'agent' field." },
@@ -234,6 +330,15 @@ export const ApmWorkflowNodeSchema = z.object({
 ).refine(
   (node) => node.type !== "barrier" || !node.script_type,
   { message: "Barrier node must not declare a 'script_type' field (barriers have zero execution)." },
+).refine(
+  (node) => node.type !== "triage" || typeof node.triage_profile === "string",
+  { message: "Triage node must declare a 'triage_profile' field referencing a triage profile." },
+).refine(
+  (node) => node.type !== "triage" || !node.agent,
+  { message: "Triage node must not declare an 'agent' field." },
+).refine(
+  (node) => node.type !== "triage" || !node.command,
+  { message: "Triage node must not declare a 'command' field." },
 );
 
 /**
@@ -281,8 +386,14 @@ export const TriageRouteEntrySchema = z.object({
 export const TriageProfileSchema = z.object({
   /** Names of triage packs (from .apm/triage-packs/<name>.json) used by the RAG layer. */
   packs: z.array(z.string()).default([]),
-  /** Enable LLM fallback when the RAG layer has no match. */
+  /** @deprecated Use `classifier` instead. Enable LLM fallback when the RAG layer has no match. */
   llm_fallback: z.boolean().default(true),
+  /** Classification strategy for the triage engine.
+   *  - `"rag+llm"` (default): RAG first, LLM fallback if no match.
+   *  - `"rag-only"`: Deterministic RAG only — no LLM cost.
+   *  - `"llm-only"`: Skip RAG, always use LLM cognitive classification.
+   *  When set, overrides `llm_fallback`. */
+  classifier: z.enum(["rag+llm", "rag-only", "llm-only"]).optional(),
   /** Maximum total reroutes allowed for this profile before the pipeline halts.
    *  Replaces the separate max_redevelopment_cycles / max_redeploy_cycles budgets. */
   max_reroutes: z.number().int().positive().default(5),
@@ -357,6 +468,29 @@ export const ApmWorkflowSchema = z.object({
     return true;
   },
   { message: "Workflow node references an undefined triage profile." },
+).refine(
+  (wf) => {
+    // Validate: every on_failure reference points to a triage node in this workflow
+    const nodeKeys = new Set(Object.keys(wf.nodes));
+    for (const [key, node] of Object.entries(wf.nodes)) {
+      if (node.on_failure) {
+        if (!nodeKeys.has(node.on_failure)) return false;
+        const target = wf.nodes[node.on_failure];
+        if (target.type !== "triage") return false;
+      }
+    }
+    return true;
+  },
+  { message: "on_failure must reference a node with type 'triage' that exists in the workflow." },
+).refine(
+  (wf) => {
+    // Validate: every triage node's triage_profile references a defined triage profile
+    for (const [key, node] of Object.entries(wf.nodes)) {
+      if (node.type === "triage" && node.triage_profile && !(node.triage_profile in wf.triage)) return false;
+    }
+    return true;
+  },
+  { message: "Triage node's triage_profile references an undefined triage profile." },
 );
 
 // ---------------------------------------------------------------------------
@@ -382,7 +516,10 @@ export const TriagePackSchema = z.object({
 
 /** A compiled triage profile — profile with pack signatures resolved inline. */
 export const CompiledTriageProfileSchema = z.object({
+  /** @deprecated Use `classifier` instead. */
   llm_fallback: z.boolean(),
+  /** Classification strategy — resolved from profile. When absent, derive from llm_fallback. */
+  classifier: z.enum(["rag+llm", "rag-only", "llm-only"]).optional(),
   max_reroutes: z.number().int().positive(),
   routing: z.record(z.string(), TriageRouteEntrySchema),
   /** Resolved signatures from the referenced packs. */

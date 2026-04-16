@@ -53,7 +53,12 @@ export type EventKind =
   | "git.commit"
   | "git.push"
   // Breaker
-  | "breaker.fire";
+  | "breaker.fire"
+  // Lifecycle hooks
+  | "hook.pre.start"
+  | "hook.pre.end"
+  | "hook.post.start"
+  | "hook.post.end";
 
 // ---------------------------------------------------------------------------
 // Core types

@@ -64,14 +64,17 @@ export function buildDownstreamFailureContext(
   itemKey: string,
   pipelineSummaries: readonly ItemSummary[],
   ciWorkflowFilePatterns?: string[],
-  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  /** @deprecated Use allowsRevertBypass instead. Still accepted for backward compat. */
   nodeCategory?: string,
   /** Config-driven commit scope warning text (from apm.yml config.ci_scope_warning). */
   ciScopeWarning?: string,
   /** Feature slug — used for cross-cycle error signature comparison. */
   slug?: string,
+  /** Whether this node receives downstream failure context (from resolveCircuitBreaker). */
+  allowsRevertBypass?: boolean,
 ): string {
-  if (nodeCategory !== "dev") return "";
+  const shouldInject = allowsRevertBypass ?? (nodeCategory === "dev");
+  if (!shouldInject) return "";
 
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed",
@@ -204,16 +207,24 @@ function buildIdenticalErrorWarning(
 }
 
 /**
- * Build the clean-slate revert warning for dev agents stuck in a loop.
- * Returns empty string if the threshold hasn't been reached.
+ * Build the clean-slate revert warning for agents stuck in a loop.
+ * Returns empty string if the threshold hasn't been reached or the node
+ * doesn't allow revert bypass (per circuit_breaker config).
  */
 export function buildRevertWarning(
   itemKey: string,
   effectiveDevAttempts: number,
-  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  /** @deprecated Use allowsRevertBypass + revertWarningAt instead. Still accepted for backward compat. */
   nodeCategory?: string,
+  /** Whether this node allows revert bypass (from resolveCircuitBreaker). */
+  allowsRevertBypass?: boolean,
+  /** Threshold for injecting revert warning (from resolveCircuitBreaker). */
+  revertWarningAt?: number,
 ): string {
-  if (nodeCategory !== "dev" || effectiveDevAttempts < 3) return "";
+  // Resolve: explicit flags take precedence over category-based inference
+  const canRevert = allowsRevertBypass ?? (nodeCategory === "dev");
+  const threshold = revertWarningAt ?? 3;
+  if (!canRevert || effectiveDevAttempts < threshold) return "";
 
   return `\n\n## 🚨 CRITICAL SYSTEM WARNING\nYou have failed to fix this feature ${effectiveDevAttempts} times. You are likely trapped in a hallucination loop. `
     + `RECOMMENDED ACTION: Run \`bash tools/autonomous-factory/agent-branch.sh revert\` to physically wipe the codebase clean back to the main branch. `
@@ -221,40 +232,59 @@ export function buildRevertWarning(
 }
 
 /**
- * Build infra rollback context when `@infra-architect` is re-invoked after
- * a Wave 2 app agent called `pipeline:reset-phases`.
- * Returns the rejection reason so the infra agent knows what to fix.
+ * Build phase-rejection context when an agent is re-invoked after a
+ * downstream phase called `pipeline:reset-phases`.
+ * Returns the rejection reason so the agent knows what to fix.
+ *
+ * @param slug - Feature slug
+ * @param narrative - Domain-specific explanation injected into the prompt.
+ *   Default: generic "previous deployment wave failed" message.
  */
-export async function buildInfraRollbackContext(slug: string): Promise<string> {
+export async function buildPhaseRejectionContext(
+  slug: string,
+  narrative?: string,
+): Promise<string> {
   try {
     const state = await readState(slug);
-    const infraEntries = state.errorLog.filter((e) => e.itemKey === "reset-phases");
-    if (infraEntries.length === 0) return "";
-    const latest = infraEntries[infraEntries.length - 1];
+    const phaseEntries = state.errorLog.filter((e) => e.itemKey === "reset-phases");
+    if (phaseEntries.length === 0) return "";
+    const latest = phaseEntries[phaseEntries.length - 1];
+    const header = narrative
+      ?? "The previous deployment wave failed because a dependency was missing or misconfigured:";
     return (
-      `\n\n## ⚠️ INFRASTRUCTURE REJECTED BY APPLICATION TEAM\n`
-      + `The previous application deployment wave failed because the following infrastructure was missing or misconfigured:\n\n`
+      `\n\n## ⚠️ PHASE REJECTION — REDEVELOPMENT REQUIRED\n`
+      + `${header}\n\n`
       + `> ${latest.message}\n\n`
-      + `You MUST update your Terraform code to fulfill this requirement before completing this task.`
+      + `You MUST address this requirement before completing this task.`
     );
   } catch {
     return "";
   }
 }
 
+/** @deprecated Use `buildPhaseRejectionContext`. */
+export const buildInfraRollbackContext = (slug: string) => buildPhaseRejectionContext(slug,
+  "The previous application deployment wave failed because the following infrastructure was missing or misconfigured:");
+
 /**
- * Compute the effective attempt count for DEV items.
+ * Compute the effective attempt count for items that track persisted cycles.
  * Combines in-memory attemptCounts (resets on orchestrator restart) with
  * persisted redevelopment cycle count from state (survives restarts).
+ *
+ * When `allowsRevertBypass` is true (or nodeCategory is "dev" for backward
+ * compat), persisted cycles are factored in. Otherwise returns inMemoryAttempts.
  */
 export async function computeEffectiveDevAttempts(
   itemKey: string,
   inMemoryAttempts: number,
   slug: string,
-  /** Caller-resolved node.category for itemKey (from workflow manifest) */
+  /** @deprecated Use allowsRevertBypass instead. Still accepted for backward compat. */
   nodeCategory?: string,
+  /** Whether this node tracks persisted cycles (from resolveCircuitBreaker). */
+  allowsRevertBypass?: boolean,
 ): Promise<number> {
-  if (nodeCategory !== "dev") return inMemoryAttempts;
+  const shouldTrack = allowsRevertBypass ?? (nodeCategory === "dev");
+  if (!shouldTrack) return inMemoryAttempts;
   try {
     const pipeState = await readState(slug);
     const persistedCycles = pipeState.errorLog.filter(

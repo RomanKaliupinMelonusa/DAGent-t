@@ -68,6 +68,21 @@ const APP_ROOT = process.env.APP_ROOT
   : REPO_ROOT;
 const IN_PROGRESS = join(APP_ROOT, "in-progress");
 
+// ─── Phase Heading Formatting ───────────────────────────────────────────────
+
+/**
+ * Format a phase slug into a human-readable heading.
+ * Checks config-driven `phaseLabels` first, then falls back to title-casing the slug.
+ * @param {string} phase - Phase slug (e.g. "pre-deploy", "infra")
+ * @param {Record<string, string>} [phaseLabels] - Optional config-driven label map
+ * @returns {string} Human-readable heading (e.g. "Pre-Deploy", "Infrastructure (Wave 1)")
+ */
+export function formatPhaseHeading(phase, phaseLabels) {
+  if (phaseLabels && phaseLabels[phase]) return phaseLabels[phase];
+  // Title-case: "pre-deploy" → "Pre Deploy", "infra" → "Infra"
+  return phase.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+}
+
 // ─── Graph Utilities ────────────────────────────────────────────────────────
 
 /**
@@ -196,17 +211,9 @@ function renderTrans(slug, state) {
 
   // Group items by phase (use state.phases if available, else derive from items)
   const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
-  /** Map well-known phase slugs to human-readable headings; unknown phases are title-cased. */
-  const PHASE_HEADINGS = {
-    infra: "Infrastructure (Wave 1)",
-    approval: "Approval Gate",
-    "pre-deploy": "Pre-Deploy (Wave 2)",
-    deploy: "Deploy",
-    "post-deploy": "Post-Deploy",
-    finalize: "Finalize",
-  };
+  const phaseLabels = state.phaseLabels || undefined;
   for (const phase of phases) {
-    const heading = PHASE_HEADINGS[phase] ?? phase.replace(/(^|\-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+    const heading = formatPhaseHeading(phase, phaseLabels);
     lines.push(`### ${heading}`);
     for (const item of state.items.filter((i) => i.phase === phase)) {
       const box =
@@ -410,6 +417,7 @@ export function initState(slug, workflowType, contextJsonPath) {
     // ── Dynamic graph (persisted in _STATE.json) ──────────────────────
     dependencies,
     phases,
+    phaseLabels: context.config?.phase_labels || null,
     nodeTypes,
     nodeCategories,
     naByType,
@@ -565,7 +573,7 @@ export function salvageForDraft(slug, failedItemKey) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function resumeAfterElevated(slug) {
+export function resumeAfterElevated(slug, maxCycles = 5) {
   if (!slug) {
     throw new Error("resumeAfterElevated requires slug");
   }
@@ -574,7 +582,7 @@ export function resumeAfterElevated(slug) {
   const state = readStateOrThrow(slug);
 
   const cycleCount = state.errorLog.filter((e) => e.itemKey === "resume-elevated").length;
-  if (cycleCount >= 5) {
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
@@ -610,7 +618,7 @@ export function resumeAfterElevated(slug) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: "resume-elevated",
-    message: `Elevated apply resume cycle ${cycleCount + 1}/5. Reset ${resetCount} items to pending for standard CI re-verification.`,
+    message: `Elevated apply resume cycle ${cycleCount + 1}/${maxCycles}. Reset ${resetCount} items to pending for standard CI re-verification.`,
   });
 
   writeState(slug, state);
@@ -620,86 +628,49 @@ export function resumeAfterElevated(slug) {
 
 /**
  * Recover pipeline after a failed elevated infrastructure apply.
- * Fails poll-ci with the error, then resets backend-dev + push-code + poll-ci
- * so the infra-expert agent can diagnose the error and fix the Terraform code.
+ * Records the failure on the infra CI observer, then delegates to resetNodes()
+ * to cascade-reset from the infra dev entry point.
+ *
+ * CLI convenience — derives infra phase keys from the DAG instead of requiring
+ * the caller to know specific node keys.
  *
  * @param {string} slug - Feature slug
  * @param {string} errorMessage - Terraform error output
+ * @param {number} maxFailCount - Max failures on the infra poll node before halt
+ * @param {number} maxDevCycles - Max redevelopment cycles before halt
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function recoverElevated(slug, errorMessage) {
+export function recoverElevated(slug, errorMessage, maxFailCount = 10, maxDevCycles = 5) {
   if (!slug) {
     throw new Error("recoverElevated requires slug");
   }
 
-  return withLock(slug, () => {
-    const state = readStateOrThrow(slug);
-
-    // Derive infra CI observer: last script-type node in the infra phase
-    const infraPollKey = state.items
-      .filter((i) => i.phase === "infra" && (state.nodeTypes || {})[i.key] === "script")
-      .at(-1)?.key;
-    // Derive infra entry point: first dev-category node in the infra phase
-    const infraDevKey = state.items
-      .find((i) => i.phase === "infra" && (state.nodeCategories || {})[i.key] === "dev")?.key;
-
-    // Step 1: Record the failure on the infra CI observer (inlined from failItem)
-    if (infraPollKey) {
-      const item = state.items.find((i) => i.key === infraPollKey);
-      if (item) {
-        item.status = "failed";
-        item.error = `Elevated apply failed: ${errorMessage}`;
-        state.errorLog.push({
-          timestamp: new Date().toISOString(),
-          itemKey: infraPollKey,
-          message: `Elevated apply failed: ${errorMessage}`,
-        });
-      }
+  // Step 1: Record the failure on the infra CI observer via failItem
+  const state = readStateOrThrow(slug);
+  const infraPollKey = state.items
+    .filter((i) => i.phase === "infra" && (state.nodeTypes || {})[i.key] === "script")
+    .at(-1)?.key;
+  if (infraPollKey) {
+    const failResult = failItem(slug, infraPollKey, `Elevated apply failed: ${errorMessage}`);
+    const pollLogKey = infraPollKey;
+    const failCount = failResult.state.errorLog.filter((e) => e.itemKey === pollLogKey).length;
+    if (failCount >= maxFailCount) {
+      return { state: failResult.state, failCount, halted: true };
     }
-    const pollLogKey = infraPollKey || "poll-infra-plan";
-    const failCount = state.errorLog.filter((e) => e.itemKey === pollLogKey).length;
-    if (failCount >= 10) {
-      writeState(slug, state);
-      return { state, failCount, halted: true };
-    }
+  }
 
-    // Step 2: Reset infra dev items for redevelopment cycle (inlined from resetForDev)
-    const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
-    if (cycleCount >= 5) {
-      writeState(slug, state);
-      return { state, cycleCount, halted: true };
-    }
+  // Step 2: Derive the infra dev entry point and delegate to resetNodes
+  // Re-read state after failItem to avoid stale reference across lock boundaries
+  const freshState = infraPollKey ? readStateOrThrow(slug) : state;
+  const infraDevKey = freshState.items
+    .find((i) => i.phase === "infra" && (freshState.nodeCategories || {})[i.key] === "dev")?.key;
+  if (!infraDevKey) {
+    throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
+  }
 
-    const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-    // Reset infra dev entry + all downstream dependents
-    if (!infraDevKey) {
-      writeState(slug, state);
-      throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
-    }
-    const resetSeed = infraDevKey;
-    const keysToReset = new Set(getDownstream(state, [resetSeed]));
-    // Cascade barrier nodes defensively (getDownstream already includes barriers
-    // in the transitive set, but cascadeBarriers catches cross-branch barriers
-    // whose deps span multiple seed branches).
-    cascadeBarriers(state, keysToReset);
-    let resetCount = 0;
-    for (const it of state.items) {
-      if (keysToReset.has(it.key) && it.status !== "na") {
-        it.status = "pending";
-        it.error = null;
-        resetCount++;
-      }
-    }
-    state.errorLog.push({
-      timestamp: new Date().toISOString(),
-      itemKey: "reset-for-dev",
-      message: `Redevelopment cycle ${cycleCount + 1}/5: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
-    });
-
-    writeState(slug, state);
-    return { state, cycleCount: cycleCount + 1, halted: false };
-  }); // end withLock
+  const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
+  return resetNodes(slug, infraDevKey, reason, maxDevCycles, "reset-for-dev");
 }
 
 /**
@@ -707,7 +678,7 @@ export function recoverElevated(slug, errorMessage) {
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function resetScripts(slug, phase) {
+export function resetScripts(slug, phase, maxCycles = 10) {
   if (!slug || !phase) {
     throw new Error("resetScripts requires slug and phase");
   }
@@ -717,7 +688,7 @@ export function resetScripts(slug, phase) {
 
   const logKey = `reset-scripts:${phase}`;
   const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
-  if (cycleCount >= 10) {
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
@@ -743,7 +714,7 @@ export function resetScripts(slug, phase) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: logKey,
-    message: `Script re-push cycle for phase "${phase}" (cycle ${cycleCount + 1}/10). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
+    message: `Script re-push cycle for phase "${phase}" (cycle ${cycleCount + 1}/${maxCycles}). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -752,39 +723,34 @@ export function resetScripts(slug, phase) {
 }
 
 /**
- * Reset deploy + post-deploy items for a re-deployment cycle.
- * Called when triage classifies the failure as `deployment-stale` — the code
- * on the branch is correct but the deployed artifact is outdated.
-/**
  * Reset a single node + all transitive downstream dependents to pending.
- * Used by triage v2 profile-based routing: triage classifies a domain,
- * the profile maps it to a single `route_to` entry-point node, and this
- * function cascades the reset through the DAG.
+ * Generic kernel primitive for DAG-cascading resets.
  *
- * Unified cycle budget — replaces the separate resetForDev / resetForRedeploy
- * budgets with a single `maxReroutes` counter per triage profile.
+ * The triage subsystem classifies a domain, resolves a `route_to` entry-point
+ * node, and calls this function. The kernel handles the DAG cascade.
  *
  * @param {string} slug - Feature slug
- * @param {string} routeToKey - Single node key to reset (entry point)
+ * @param {string} seedKey - Single node key to reset (entry point for DAG cascade)
  * @param {string} reason - Human-readable reason (tagged with domain)
- * @param {number} maxReroutes - Maximum total reroutes before halt (default: 5)
+ * @param {number} maxCycles - Maximum total reset cycles before halt (default: 5)
+ * @param {string} [logKey="reset-nodes"] - Cycle-budget counter key in errorLog
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  */
-export function resetForReroute(slug, routeToKey, reason, maxReroutes = 5) {
-  if (!slug || !routeToKey) {
-    throw new Error("resetForReroute requires slug and routeToKey");
+export function resetNodes(slug, seedKey, reason, maxCycles = 5, logKey = "reset-nodes") {
+  if (!slug || !seedKey) {
+    throw new Error("resetNodes requires slug and seedKey");
   }
 
   return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-for-reroute").length;
-  if (cycleCount >= maxReroutes) {
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
+  if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
-  // Route to the target node + all transitive downstream dependents
-  const keysToReset = new Set(getDownstream(state, [routeToKey]));
+  // Seed node + all transitive downstream dependents
+  const keysToReset = new Set(getDownstream(state, [seedKey]));
 
   // Cascade barrier nodes
   cascadeBarriers(state, keysToReset);
@@ -800,8 +766,8 @@ export function resetForReroute(slug, routeToKey, reason, maxReroutes = 5) {
 
   state.errorLog.push({
     timestamp: new Date().toISOString(),
-    itemKey: "reset-for-reroute",
-    message: `Reroute cycle ${cycleCount + 1}/${maxReroutes}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
+    itemKey: logKey,
+    message: `Reset cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset ${resetCount} items: ${[...keysToReset].join(", ")}`,
     errorSignature: reason ? computeErrorSignature(reason) : null,
   });
 
@@ -809,6 +775,9 @@ export function resetForReroute(slug, routeToKey, reason, maxReroutes = 5) {
   return { state, cycleCount: cycleCount + 1, halted: false };
   }); // end withLock
 }
+
+/** @deprecated Use `resetNodes` — backward-compat alias. */
+export const resetForReroute = resetNodes;
 
 /**
  * Reset all nodes in the specified phases back to pending.
@@ -1336,23 +1305,6 @@ switch (command) {
     break;
   case "reset-phases":
     cmdResetPhases(args[0], args[1], args.slice(2).join(" "));
-    break;
-  // ── Deprecation shims ──────────────────────────────────────────────
-  case "reset-ci":
-    console.warn("⚠ Deprecated: use 'reset-scripts <slug> deploy' instead of 'reset-ci'");
-    cmdResetScripts(args[0], "deploy");
-    break;
-  case "reset-infra-plan":
-    console.warn("⚠ Deprecated: use 'reset-scripts <slug> infra' instead of 'reset-infra-plan'");
-    cmdResetScripts(args[0], "infra");
-    break;
-  case "reset-infra-ci":
-    console.warn("⚠ Deprecated: use 'reset-scripts <slug> infra' instead of 'reset-infra-ci'");
-    cmdResetScripts(args[0], "infra");
-    break;
-  case "redevelop-infra":
-    console.warn("⚠ Deprecated: use 'reset-phases <slug> infra,approval <reason>' instead of 'redevelop-infra'");
-    cmdResetPhases(args[0], "infra,approval", args.slice(1).join(" "));
     break;
   case "resume":
     cmdResume(args[0]);

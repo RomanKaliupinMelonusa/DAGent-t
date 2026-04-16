@@ -14,15 +14,13 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Max retries for transient network errors (exit code 2) before giving up */
-const MAX_TRANSIENT_RETRIES = 5;
-/** Backoff between transient retries (ms) */
-const TRANSIENT_BACKOFF_MS = 30_000;
+import {
+  DEFAULT_TRANSIENT_RETRIES,
+  DEFAULT_TRANSIENT_BACKOFF_MS,
+  buildPollCmd,
+  buildPollEnv,
+  runPollWithRetries,
+} from "../session/transient-poll.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helper
@@ -128,50 +126,28 @@ const githubCiPollHandler: NodeHandler = {
     // Resolve the pushed SHA from the corresponding push item
     const lastPushedSha = (ctx.handlerData[`lastPushedSha:${pollTarget}`] as string) ?? null;
 
-    // Build poll command args — pass commit SHA if available for pinned filtering
-    const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
-    const pollCmd = lastPushedSha
-      ? `bash "${pollScript}" --commit "${lastPushedSha}"`
-      : `bash "${pollScript}"`;
+    const pollCmd = buildPollCmd(repoRoot, lastPushedSha);
+    const maxRetries = apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;
+    const backoffMs = apmContext.config?.transient_retry?.backoff_ms ?? DEFAULT_TRANSIENT_BACKOFF_MS;
 
     ctx.logger.event("item.start", ctx.itemKey, { agent: "ci-poll", phase: "poll", node_type: "poll", category: "deploy" });
     if (lastPushedSha) {
       ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` SHA-pinned to ${lastPushedSha.slice(0, 8)}`, is_write: false });
     }
 
-    // Transient retry loop — exit code 2 from poll-ci.sh means network error.
-    // Sleep and retry WITHOUT touching DAG state.
-    const CI_LOG_CHAR_LIMIT = 15_000;
-    for (let transientAttempt = 0; transientAttempt <= MAX_TRANSIENT_RETRIES; transientAttempt++) {
-      try {
-        const pollOutput = execSync(pollCmd, {
-          cwd: repoRoot,
-          stdio: "pipe",
-          maxBuffer: 5 * 1024 * 1024,
-          timeout: 1_200_000,
-          env: {
-            ...process.env,
-            POLL_MAX_RETRIES: "60",
-            IN_PROGRESS_DIR: inProgressDir,
-            SLUG: slug,
-            ...(apmContext.config?.ciWorkflows
-              ? {
-                  CI_WORKFLOW_FILTER: (apmContext.config.ciWorkflows as Record<string, string>)[
-                    ciWorkflowKey
-                  ] ?? "",
-                }
-              : {}),
-            ...(apmContext.config?.ciJobs
-              ? Object.fromEntries(
-                  Object.entries(apmContext.config.ciJobs as Record<string, string>)
-                    .map(([key, value]) => [`CI_JOB_MATCH_${key.toUpperCase()}`, value]),
-                )
-              : {}),
-          },
-        });
+    const pollResult = await runPollWithRetries({
+      pollCmd,
+      cwd: repoRoot,
+      env: buildPollEnv(inProgressDir, slug, apmContext.config, ciWorkflowKey),
+      maxRetries,
+      backoffMs,
+      onTransientRetry: (attempt, max) => {
+        ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` transient error (attempt ${attempt}/${max})`, is_write: false });
+      },
+    });
 
-        const successLog = pollOutput.toString();
-
+    switch (pollResult.type) {
+      case "success": {
         // ── Download CI artifact and post to Draft PR (if node declares it) ──
         if (node?.post_ci_artifact_to_pr) {
           try {
@@ -180,68 +156,45 @@ const githubCiPollHandler: NodeHandler = {
             ctx.logger.event("tool.call", ctx.itemKey, { tool: "post-ci-artifact", category: "ci", detail: ` failed: ${planErr instanceof Error ? planErr.message : String(planErr)}`, is_write: false });
           }
         }
-
         ctx.logger.event("item.end", ctx.itemKey, { outcome: "completed", note: "all workflows passed" });
         return {
           outcome: "completed",
           summary: { intents: ["Deterministic CI poll — all workflows passed"] },
         };
+      }
 
-      } catch (err: unknown) {
-        const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
-        const ciLogs = execErr.stdout?.toString() ?? "";
-        const ciStderr = execErr.stderr?.toString() ?? "";
+      case "transient_exhausted": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `Exhausted ${maxRetries} transient retries` });
+        return {
+          outcome: "failed",
+          errorMessage: `CI polling hit ${maxRetries} transient network errors — will retry`,
+          summary: {},
+        };
+      }
 
-        let capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
-        if (capturedOutput.length > CI_LOG_CHAR_LIMIT) {
-          capturedOutput = "[...TRUNCATED CI LOGS...]\n" + capturedOutput.slice(-CI_LOG_CHAR_LIMIT);
-        }
-        const message = execErr.message ?? String(err);
+      case "cancelled": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: "CI polling manually cancelled" });
+        return {
+          outcome: "failed",
+          errorMessage: "CI polling was manually cancelled — will retry",
+          summary: {},
+        };
+      }
 
-        // ── Exit code 2: Transient network error — sleep and retry ────
-        if (execErr.status === 2) {
-          if (transientAttempt < MAX_TRANSIENT_RETRIES) {
-            ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` transient error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES})`, is_write: false });
-            await new Promise((resolve) => setTimeout(resolve, TRANSIENT_BACKOFF_MS));
-            continue; // Retry — no state mutation
-          }
-          // Exhausted transient retries — treat as timeout
-          ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `Exhausted ${MAX_TRANSIENT_RETRIES} transient retries` });
-          return {
-            outcome: "failed",
-            errorMessage: `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`,
-            summary: {},
-          };
-        }
-
-        // Re-echo for terminal visibility (CI output may be needed for debugging)
-        if (ciLogs) console.log(ciLogs);
-        if (ciStderr) console.error(ciStderr);
-
-        // ── Exit code 3 (cancellation) — NOT a code bug ────────────────────────
-        if (execErr.status === 3) {
-          ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: "CI polling manually cancelled" });
-          return {
-            outcome: "failed",
-            errorMessage: "CI polling was manually cancelled — will retry",
-            summary: {},
-          };
-        }
-
-        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `CI poll failed: ${message.slice(0, 200)}` });
+      case "failed": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `CI poll failed: ${pollResult.message.slice(0, 200)}` });
 
         // ── File-based diagnostic handoff ──────────────────────────────
         let failureContext: string;
         try {
           const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
-          failureContext = diagContent || capturedOutput || message;
+          failureContext = diagContent || pollResult.capturedOutput || pollResult.message;
           if (diagContent) {
             ctx.logger.event("tool.call", ctx.itemKey, { tool: "read-ci-diag", category: "diagnostic", detail: ` → ${path.relative(repoRoot, diagFile)}`, is_write: false });
           }
         } catch {
-          failureContext = capturedOutput || message;
+          failureContext = pollResult.capturedOutput || pollResult.message;
         }
-
         return {
           outcome: "failed",
           errorMessage: failureContext,
@@ -249,13 +202,6 @@ const githubCiPollHandler: NodeHandler = {
         };
       }
     }
-
-    // Should not reach here, but safety net
-    return {
-      outcome: "error",
-      errorMessage: "CI poll loop exited unexpectedly",
-      summary: {},
-    };
   },
 };
 

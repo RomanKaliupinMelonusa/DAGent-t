@@ -24,13 +24,27 @@ import type { ItemSummary } from "./types.js";
  * Model pricing per million tokens (USD).
  * Default: Anthropic Claude Opus 4 direct pricing.
  * Note: actual cost may differ under GitHub Copilot API billing.
+ * Override via config.model_pricing in apm.yml.
  */
-export const MODEL_PRICING = {
+let modelPricing = {
   inputPerMillion: 15,
   outputPerMillion: 75,
   cacheReadPerMillion: 1.5,
   cacheWritePerMillion: 3.75,
-} as const;
+};
+
+/** Override model pricing from APM config (call once at startup). */
+export function setModelPricing(pricing: Partial<typeof modelPricing>): void {
+  modelPricing = { ...modelPricing, ...pricing };
+}
+
+/** Read-only access to current model pricing. */
+export function getModelPricing() { return modelPricing; }
+
+/**
+ * @deprecated Use getModelPricing() instead. Kept for backward compatibility.
+ */
+export const MODEL_PRICING = modelPricing;
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -51,6 +65,13 @@ export function outcomeIcon(outcome: string): string {
   return outcome === "completed" ? "✅" : outcome === "failed" ? "❌" : "💥";
 }
 
+/** Format phase slug to human-readable heading using config-driven labels. */
+function fmtPhase(phase: string, apmCtx?: ApmCompiledOutput): string {
+  const labels = apmCtx?.config?.phase_labels;
+  if (labels && labels[phase]) return labels[phase];
+  return phase.replace(/(^|-)(\w)/g, (_, _sep: string, c: string) => (_sep ? " " : "") + c.toUpperCase());
+}
+
 /** Check if a step was a barrier sync point (zero-execution DAG join) */
 function isBarrierStep(item: ItemSummary): boolean {
   return item.intents.some((i) => i.startsWith("barrier-sync"));
@@ -65,10 +86,10 @@ function stepIcon(item: ItemSummary): string {
 /** Compute estimated USD cost for a single pipeline step based on token usage */
 export function computeStepCost(s: ItemSummary): number {
   return (
-    s.inputTokens * MODEL_PRICING.inputPerMillion +
-    s.outputTokens * MODEL_PRICING.outputPerMillion +
-    s.cacheReadTokens * MODEL_PRICING.cacheReadPerMillion +
-    s.cacheWriteTokens * MODEL_PRICING.cacheWritePerMillion
+    s.inputTokens * modelPricing.inputPerMillion +
+    s.outputTokens * modelPricing.outputPerMillion +
+    s.cacheReadTokens * modelPricing.cacheReadPerMillion +
+    s.cacheWriteTokens * modelPricing.cacheWritePerMillion
   ) / 1_000_000;
 }
 
@@ -255,13 +276,7 @@ export function writePipelineSummary(
     // Phase header
     if (item.phase !== currentPhase) {
       currentPhase = item.phase;
-      const heading = currentPhase === "pre-deploy" ? "Pre-Deploy"
-        : currentPhase === "deploy" ? "Deploy"
-        : currentPhase === "post-deploy" ? "Post-Deploy"
-        : currentPhase === "finalize" ? "Finalize"
-        : currentPhase === "validation" ? "Validation"
-        : currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1);
-      lines.push(`### Phase: ${heading}`, ``);
+      lines.push(`### Phase: ${fmtPhase(currentPhase, apmCtx)}`, ``);
     }
 
     const icon = stepIcon(item);
@@ -481,13 +496,7 @@ export function writeTerminalLog(
     // Phase header (matches terminal output format)
     if (item.phase !== currentPhase) {
       currentPhase = item.phase;
-      const heading = currentPhase === "pre-deploy" ? "Pre-Deploy"
-        : currentPhase === "deploy" ? "Deploy"
-        : currentPhase === "post-deploy" ? "Post-Deploy"
-        : currentPhase === "finalize" ? "Finalize"
-        : currentPhase === "validation" ? "Validation"
-        : currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1);
-      lines.push(`### Phase: ${heading}`, ``);
+      lines.push(`### Phase: ${fmtPhase(currentPhase, apmCtx)}`, ``);
     }
 
     const icon = stepIcon(item);

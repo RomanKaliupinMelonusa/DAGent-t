@@ -15,6 +15,13 @@ import { getMergeBase, getGitChangedFiles, getDirectoryPrefixes } from "../auto-
 import { getWorkflowNode, flushReports, finishItem } from "./shared.js";
 import { runValidateApp } from "./readiness-probe.js";
 import { handleTriageReroute } from "./triage-dispatcher.js";
+import {
+  DEFAULT_TRANSIENT_RETRIES,
+  DEFAULT_TRANSIENT_BACKOFF_MS,
+  buildPollCmd,
+  buildPollEnv,
+  runPollWithRetries,
+} from "./transient-poll.js";
 import type { ApmCompiledOutput, CompiledTriageProfile } from "../apm-types.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 import type { ItemSummary } from "../types.js";
@@ -28,15 +35,6 @@ function resolveTriageProfile(
   if (!node?.triage) return undefined;
   return apmContext.triage_profiles?.[`default.${node.triage}`];
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Max retries for transient network errors (exit code 2) before giving up */
-const MAX_TRANSIENT_RETRIES = 5;
-/** Backoff between transient retries (ms) */
-const TRANSIENT_BACKOFF_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // CI artifact → PR comment
@@ -242,7 +240,6 @@ export async function runPollCi(
   postRunHook?: string,
 ): Promise<SessionResult> {
   const { slug, appRoot, repoRoot } = config;
-  const { pipelineSummaries } = state;
 
   const inProgressDir = path.join(appRoot, "in-progress");
   const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
@@ -250,48 +247,29 @@ export async function runPollCi(
   // Resolve the pushed SHA from the corresponding push item
   const lastPushedSha = state.lastPushedShas[pollTarget] ?? null;
 
-  // Build poll command args — pass commit SHA if available for pinned filtering
-  const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
-  const pollCmd = lastPushedSha
-    ? `bash "${pollScript}" --commit "${lastPushedSha}"`
-    : `bash "${pollScript}"`;
+  const pollCmd = buildPollCmd(repoRoot, lastPushedSha);
+  const maxRetries = config.apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;
+  const backoffMs = config.apmContext.config?.transient_retry?.backoff_ms ?? DEFAULT_TRANSIENT_BACKOFF_MS;
 
   console.log(`  ⏳ ${itemKey}: Running deterministic CI poll (no agent session)`);
   if (lastPushedSha) {
     console.log(`     SHA-pinned to ${lastPushedSha.slice(0, 8)}`);
   }
 
-  // Transient retry loop — exit code 2 from poll-ci.sh means network error.
-  // Sleep and retry WITHOUT touching DAG state.
-  for (let transientAttempt = 0; transientAttempt <= MAX_TRANSIENT_RETRIES; transientAttempt++) {
-    try {
-      const pollOutput = execSync(pollCmd, {
-        cwd: repoRoot, stdio: "pipe",
-        maxBuffer: 5 * 1024 * 1024,
-        timeout: 1_200_000,
-        env: {
-          ...process.env,
-          POLL_MAX_RETRIES: "60",
-          IN_PROGRESS_DIR: inProgressDir,
-          SLUG: slug,
-          ...(config.apmContext.config?.ciWorkflows
-            ? {
-                CI_WORKFLOW_FILTER: (config.apmContext.config.ciWorkflows as Record<string, string>)[
-                  ciWorkflowKey
-                ] ?? "",
-              }
-            : {}),
-          ...(config.apmContext.config?.ciJobs
-            ? Object.fromEntries(
-                Object.entries(config.apmContext.config.ciJobs as Record<string, string>)
-                  .map(([key, value]) => [`CI_JOB_MATCH_${key.toUpperCase()}`, value]),
-              )
-            : {}),
-        },
-      });
+  const pollResult = await runPollWithRetries({
+    pollCmd,
+    cwd: repoRoot,
+    env: buildPollEnv(inProgressDir, slug, config.apmContext.config, ciWorkflowKey),
+    maxRetries,
+    backoffMs,
+    onTransientRetry: (attempt, max) => {
+      console.warn(`  ⚠ Transient CI poll error (attempt ${attempt}/${max}), retrying in ${backoffMs / 1000}s...`);
+    },
+  });
 
-      const successLog = pollOutput.toString();
-      if (successLog) console.log(successLog);
+  switch (pollResult.type) {
+    case "success": {
+      if (pollResult.output) console.log(pollResult.output);
 
       // ── Download CI artifact and post to Draft PR (if node declares it) ──
       const pollNode = getWorkflowNode(config.apmContext, itemKey);
@@ -304,9 +282,6 @@ export async function runPollCi(
       }
 
       // ── Declarative post-run validation hook ─────────────────────────
-      // Runs the self-mutating validateApp hook. If the app is dead despite
-      // CI passing, fail immediately and trigger triage before expensive
-      // post-deploy agents (live-ui, integration-test) boot up.
       if (postRunHook === "validateApp") {
         const appFailure = runValidateApp(config);
         if (appFailure) {
@@ -324,63 +299,37 @@ export async function runPollCi(
 
       await completeItem(slug, itemKey);
       console.log(`  ✅ ${itemKey} complete (all workflows passed)`);
-
       return finishItem(itemSummary, "completed", stepStart, config, state, { intents: ["Deterministic CI poll — all workflows passed"] });
-    } catch (err: unknown) {
-      const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
-      const ciLogs = execErr.stdout?.toString() ?? "";
-      const ciStderr = execErr.stderr?.toString() ?? "";
-      // Grab only the tail of CI logs — the actual failure is almost always
-      // at the bottom. Unbounded logs would bloat _STATE.json and overflow
-      // LLM context when injected via buildDownstreamFailureContext.
-      const CI_LOG_CHAR_LIMIT = 15_000;
-      let capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
-      if (capturedOutput.length > CI_LOG_CHAR_LIMIT) {
-        capturedOutput = "[...TRUNCATED CI LOGS...]\n" + capturedOutput.slice(-CI_LOG_CHAR_LIMIT);
-      }
-      const message = execErr.message ?? String(err);
+    }
 
-      // ── Exit code 2: Transient network error — sleep and retry ────
-      // Do NOT alter DAG state. Do NOT call failItem(). Just wait.
-      if (execErr.status === 2) {
-        if (transientAttempt < MAX_TRANSIENT_RETRIES) {
-          console.warn(`  ⚠ Transient CI poll error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES}), retrying in ${TRANSIENT_BACKOFF_MS / 1000}s...`);
-          await new Promise((resolve) => setTimeout(resolve, TRANSIENT_BACKOFF_MS));
-          continue; // Retry — no state mutation
-        }
-        // Exhausted transient retries — treat as timeout
-        console.warn(`  ⏳ Exhausted ${MAX_TRANSIENT_RETRIES} transient retries. Treating as timeout.`);
-        await failItem(slug, itemKey, `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`);
-        return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling transient errors exhausted — will retry" });
-      }
+    case "transient_exhausted": {
+      console.warn(`  ⏳ Exhausted ${maxRetries} transient retries. Treating as timeout.`);
+      await failItem(slug, itemKey, `CI polling hit ${maxRetries} transient network errors — will retry`);
+      return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling transient errors exhausted — will retry" });
+    }
 
-      // Re-echo for terminal visibility
-      if (ciLogs) console.log(ciLogs);
-      if (ciStderr) console.error(ciStderr);
+    case "cancelled": {
+      console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
+      await failItem(slug, itemKey, `CI polling was manually cancelled — will retry`);
+      return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling was manually cancelled — will retry" });
+    }
 
-      // ── Exit code 3 (cancellation) — NOT a code bug ────────────────
-      if (execErr.status === 3) {
-        console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
-        await failItem(slug, itemKey, `CI polling was manually cancelled — will retry`);
-        return finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: "CI polling was manually cancelled — will retry" });
-      }
-
-      console.error(`  ✖ CI poll failed or had failures: ${message}`);
+    case "failed": {
+      console.error(`  ✖ CI poll failed or had failures: ${pollResult.message}`);
 
       // ── File-based diagnostic handoff ──────────────────────────────
       let failureContext: string;
       try {
         const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
-        failureContext = diagContent || capturedOutput || message;
+        failureContext = diagContent || pollResult.capturedOutput || pollResult.message;
         if (diagContent) {
           console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
         }
       } catch {
-        failureContext = capturedOutput || message;
+        failureContext = pollResult.capturedOutput || pollResult.message;
       }
 
       await failItem(slug, itemKey, failureContext);
-
       finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failureContext });
 
       const triageProfileCi = resolveTriageProfile(config.apmContext, itemKey);
@@ -390,7 +339,4 @@ export async function runPollCi(
       return { summary: itemSummary, halt: true, createPr: false };
     }
   }
-
-  // Should not reach here, but safety net
-  return { summary: itemSummary, halt: false, createPr: false };
 }

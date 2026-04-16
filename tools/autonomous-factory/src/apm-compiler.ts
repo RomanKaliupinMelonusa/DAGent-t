@@ -328,6 +328,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       const compiledKey = `${wfName}.${profileName}`;
       triageProfiles[compiledKey] = {
         llm_fallback: profile.llm_fallback,
+        ...(profile.classifier ? { classifier: profile.classifier } : {}),
         max_reroutes: profile.max_reroutes,
         routing: profile.routing,
         signatures,

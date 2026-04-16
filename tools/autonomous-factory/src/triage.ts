@@ -38,8 +38,15 @@ export async function evaluateTriage(
   appRoot?: string,
   logger?: PipelineLogger,
 ): Promise<TriageResult> {
+  // Resolve classifier strategy: explicit `classifier` field overrides legacy `llm_fallback`
+  const classifier = profile.classifier
+    ?? (profile.llm_fallback ? "rag+llm" : "rag-only");
+
+  const useRag = classifier !== "llm-only";
+  const useLlm = classifier !== "rag-only";
+
   // --- Layer 1: RAG — deterministic substring match ---
-  const topMatches = profile.signatures.length > 0
+  const topMatches = useRag && profile.signatures.length > 0
     ? retrieveTopMatches(errorTrace, profile.signatures)
     : [];
 
@@ -51,7 +58,7 @@ export async function evaluateTriage(
     rank: i + 1,
   }));
 
-  if (topMatches.length > 0) {
+  if (useRag && topMatches.length > 0) {
     const bestMatch = topMatches[0];
     // Validate that the matched domain exists in this profile's routing
     if (bestMatch.fault_domain in profile.routing) {
@@ -72,7 +79,7 @@ export async function evaluateTriage(
   }
 
   // --- Layer 2: LLM — cognitive classification ---
-  if (profile.llm_fallback && client && slug && appRoot) {
+  if (useLlm && client && slug && appRoot) {
     const domains = Object.keys(profile.routing);
     const routingDescriptions: Record<string, { description?: string }> = {};
     for (const [d, entry] of Object.entries(profile.routing)) {

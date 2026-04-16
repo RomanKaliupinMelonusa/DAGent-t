@@ -21,7 +21,6 @@ const execAsync = promisify(exec);
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
 const DEFAULT_TIMEOUT_MINUTES = 15;
-const PRE_TIMEOUT_MS = 120_000; // 2 min — pre-hooks should be fast
 
 const localExecHandler: NodeHandler = {
   name: "local-exec",
@@ -59,34 +58,9 @@ const localExecHandler: NodeHandler = {
     // --- Pre-hook (optional) ---
     // Runs before the main command on every attempt (idempotent).
     // Use for: killing stale processes, validating environment health (SSR smoke check).
-    // All framework-specific knowledge lives in the command itself.
-    const preCommand = node?.pre?.replace(/\$\{featureSlug\}/g, slug);
-    if (preCommand) {
-      ctx.logger.event("item.start", itemKey, { agent: "pre-hook", phase: "pre", node_type: "hook", category: "pre-hook" });
-      try {
-        await execAsync(preCommand, {
-          cwd: appRoot,
-          maxBuffer: MAX_BUFFER,
-          timeout: PRE_TIMEOUT_MS,
-          env: execEnv,
-        });
-        ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "pre-hook passed" });
-      } catch (preErr: unknown) {
-        onHeartbeat();
-        const e = preErr as { stdout?: string; stderr?: string; message?: string };
-        const preOut = ((e.stdout ?? "") + (e.stderr ?? "")).trim() || e.message || "pre-hook failed";
-        const msg = `Pre-hook failed — aborting "${command}" without running it.\n` +
-          `Pre command:\n${preCommand}\n` +
-          `Output:\n${preOut.slice(-2048)}`;
-        ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `pre-hook: ${preOut.slice(0, 200)}` });
-        return {
-          outcome: "failed",
-          errorMessage: msg,
-          summary: { intents: ["Native script execution — pre-hook failed"] },
-          handlerOutput: { scriptOutput: preOut, exitCode: 1, preHookFailed: true },
-        };
-      }
-    }
+    // NOTE: node.pre is now executed by the kernel (session-runner) before
+    // handler.execute() is called. This handler no longer runs its own pre-hook.
+    // See session/lifecycle-hooks.ts for the centralized pre-hook runner.
 
     ctx.logger.event("tool.call", itemKey, { tool: "local-exec", category: "shell", detail: ` → ${command}`, is_write: false });
 

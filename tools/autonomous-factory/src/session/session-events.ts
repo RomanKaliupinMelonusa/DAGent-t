@@ -163,17 +163,21 @@ export function wireToolLogging(
   sessionTimeout: number,
   logger: PipelineLogger,
   triggerHeartbeat?: () => void,
+  /** Override write-density threshold (default 3). From config.defaultToolLimits.writeThreshold or per-agent toolLimits.writeThreshold. */
+  writeThreshold?: number,
+  /** Override pre-timeout wrap-up percentage (default 0.8). From config.defaultToolLimits.preTimeoutPercent or per-agent toolLimits.preTimeoutPercent. */
+  preTimeoutPercent?: number,
 ): void {
-  /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
+  /** Pre-timeout wrap-up signal — fires at configured percentage of session timeout */
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
-  const preTimeoutThresholdMs = sessionTimeout * 0.8;
+  const preTimeoutThresholdMs = sessionTimeout * (preTimeoutPercent ?? 0.8);
 
   /** Write-density circuit breaker — detects file thrashing */
   const fileWriteCounts = new Map<string, number>();
   const writeDensityWarned = new Set<string>();
   /** Threshold: inject warning after this many writes to the same file */
-  const WRITE_DENSITY_THRESHOLD = 3;
+  const WRITE_DENSITY_THRESHOLD = writeThreshold ?? 3;
 
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events

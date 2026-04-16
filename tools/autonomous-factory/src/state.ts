@@ -25,12 +25,14 @@ interface PipelineStateMod {
   initState: (slug: string, workflowType: string, contextJsonPath?: string) => InitResult;
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
-  resetScripts: (slug: string, phase: string) => ResetResult;
+  resetScripts: (slug: string, phase: string, maxCycles?: number) => ResetResult;
   resetPhases: (slug: string, phasesCsv: string, reason: string, maxCycles?: number) => ResetResult;
-  resetForReroute: (slug: string, routeToKey: string, reason: string, maxReroutes?: number) => ResetResult;
+  resetNodes: (slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string) => ResetResult;
+  /** @deprecated Use `resetNodes`. */
+  resetForReroute: (slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string) => ResetResult;
   salvageForDraft: (slug: string, failedItemKey: string) => PipelineState;
-  resumeAfterElevated: (slug: string) => ResetResult;
-  recoverElevated: (slug: string, errorMessage: string) => ResetResult;
+  resumeAfterElevated: (slug: string, maxCycles?: number) => ResetResult;
+  recoverElevated: (slug: string, errorMessage: string, maxFailCount?: number, maxDevCycles?: number) => ResetResult;
   getStatus: (slug: string) => PipelineState;
   getNext: (slug: string) => NextAction;
   getNextAvailable: (slug: string) => NextAction[];
@@ -42,6 +44,7 @@ interface PipelineStateMod {
   readState: (slug: string) => PipelineState;
   getDownstream: (state: PipelineState, seedKeys: string[]) => string[];
   getUpstream: (state: PipelineState, seedKeys: string[]) => string[];
+  formatPhaseHeading: (phase: string, phaseLabels?: Record<string, string>) => string;
 }
 
 async function getMod(): Promise<PipelineStateMod> {
@@ -77,6 +80,8 @@ export const completeItem = stateProxy.completeItem;
 export const failItem = stateProxy.failItem;
 export const resetScripts = stateProxy.resetScripts;
 export const resetPhases = stateProxy.resetPhases;
+export const resetNodes = stateProxy.resetNodes;
+/** @deprecated Use `resetNodes`. */
 export const resetForReroute = stateProxy.resetForReroute;
 export const salvageForDraft = stateProxy.salvageForDraft;
 export const resumeAfterElevated = stateProxy.resumeAfterElevated;
@@ -92,3 +97,4 @@ export const setLastTriageRecord = stateProxy.setLastTriageRecord;
 export const readState = stateProxy.readState;
 export const getDownstream = stateProxy.getDownstream;
 export const getUpstream = stateProxy.getUpstream;
+export const formatPhaseHeading = stateProxy.formatPhaseHeading;

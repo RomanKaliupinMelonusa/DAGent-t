@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, resetForReroute, salvageForDraft, setLastTriageRecord } from "../state.js";
+import { getStatus, failItem, resetNodes, salvageForDraft, setLastTriageRecord } from "../state.js";
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
@@ -24,7 +24,7 @@ import { computeErrorSignature } from "../triage/error-fingerprint.js";
 /**
  * Handle failure rerouting using triage v2 profiles.
  * Evaluates the error via 2-layer triage, resolves route_to from the profile,
- * and resets that node + all downstream dependents via resetForReroute().
+ * and resets that node + all downstream dependents via resetNodes().
  */
 export async function handleTriageReroute(
   slug: string,
@@ -73,7 +73,7 @@ export async function handleTriageReroute(
   if (isOrchestratorTimeout(rawError)) {
     await persistGuardRecord("timeout_bypass", "SDK session timeout", "$SELF", "SDK timeout — transient retry");
     try {
-      const result = await resetForReroute(slug, itemKey, `SDK timeout in ${itemKey}`, profile.max_reroutes);
+      const result = await resetNodes(slug, itemKey, `SDK timeout in ${itemKey}`, profile.max_reroutes, "reset-for-reroute");
       if (result.halted) {
         config.logger.event("item.end", itemKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
         return { summary: itemSummary, halt: true, createPr: false };
@@ -91,11 +91,12 @@ export async function handleTriageReroute(
     return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
   }
 
-  // --- Pre-triage guard: death spiral (same error ≥3 times) ---
+  // --- Pre-triage guard: death spiral (same error ≥N times, default 3) ---
+  const deathSpiralThreshold = config.apmContext.config?.max_same_error_cycles ?? 3;
   try {
     const pipeState = await getStatus(slug);
     const sameSigCount = pipeState.errorLog.filter((e) => e.errorSignature === errorSig).length;
-    if (sameSigCount >= 3) {
+    if (sameSigCount >= deathSpiralThreshold) {
       await persistGuardRecord("death_spiral", `signature ${errorSig} seen ${sameSigCount + 1}×`, "blocked", `death spiral — error signature ${errorSig} seen ${sameSigCount + 1} times`);
       return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
     }
@@ -158,7 +159,7 @@ export async function handleTriageReroute(
   });
 
   try {
-    const result = await resetForReroute(slug, routeToKey, taggedReason, profile.max_reroutes);
+    const result = await resetNodes(slug, routeToKey, taggedReason, profile.max_reroutes, "reset-for-reroute");
     if (result.halted) {
       config.logger.event("item.end", itemKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
       return { summary: itemSummary, halt: true, createPr: false };

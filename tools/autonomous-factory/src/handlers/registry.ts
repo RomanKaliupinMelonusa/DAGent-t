@@ -26,6 +26,7 @@ const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
   "github-ci-poll": async () => (await import("./github-ci-poll.js")).default,
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
   "local-exec": async () => (await import("./local-exec.js")).default,
+  "triage": async () => (await import("./triage.js")).default,
 };
 
 /** Cache to avoid re-importing handlers on every dispatch */
@@ -60,6 +61,7 @@ export function inferHandler(
   if (nodeType === "agent") return "copilot-agent";
   if (nodeType === "approval") return null;
   if (nodeType === "barrier") return null;
+  if (nodeType === "triage") return "triage";
   return null;
 }
 

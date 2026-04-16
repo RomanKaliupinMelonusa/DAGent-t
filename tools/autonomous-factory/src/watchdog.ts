@@ -28,7 +28,7 @@ import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction } from "./types.js";
 import { checkJunkFiles, checkInProgressArtifacts, checkPreflightAuth, checkGitHubLogin, checkStateContextDrift, buildRoamIndex } from "./preflight.js";
 import { getWorkflowNode } from "./session/shared.js";
-import { writePipelineSummary, writeTerminalLog, loadPreviousSummary } from "./reporting.js";
+import { writePipelineSummary, writeTerminalLog, loadPreviousSummary, setModelPricing } from "./reporting.js";
 import { archiveFeatureFiles, commitAndPushState } from "./archive.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
@@ -146,6 +146,11 @@ async function main(): Promise<void> {
   try {
     apmContext = loadApmContext(appRoot);
     console.log("  ✔ APM context loaded — all agent budgets within limits\n");
+
+    // Apply config-driven overrides for kernel tuning constants
+    if (apmContext.config?.model_pricing) {
+      setModelPricing(apmContext.config.model_pricing);
+    }
   } catch (err) {
     if (err instanceof ApmBudgetExceededError) {
       console.error(`\n  ✖ FATAL: ${err.message}`);
@@ -238,7 +243,7 @@ async function main(): Promise<void> {
         break;
       }
 
-      // --- Approval gate: orchestrator pauses for human `/dagent approve-infra` ---
+      // --- Approval gate: orchestrator pauses for human approval ---
       // Only `type: approval` nodes are true human gates. Script nodes (local-exec, push, poll)
       // have agent=null but are executed by handlers and must NOT trigger the approval pause.
       // Barrier nodes (type: barrier) are zero-execution sync points — they are dispatched
@@ -249,9 +254,10 @@ async function main(): Promise<void> {
       if (approvalGateItems.length > 0 && available.every(
         (i) => i.key && getWorkflowNode(apmContext, i.key)?.type === "approval",
       )) {
+        const gateKeys = approvalGateItems.map((i) => i.key).join(", ");
         console.log(`\n${"─".repeat(70)}`);
-        console.log("  ⏸  Awaiting human approval — comment /dagent approve-infra on the Draft PR to continue.");
-        console.log(`     Pending gate items: ${approvalGateItems.map((i) => i.key).join(", ")}`);
+        console.log(`  ⏸  Awaiting human approval for: ${gateKeys}`);
+        console.log(`     Complete via: npm run pipeline:complete <slug> <gate-key>`);
         console.log(`${"─".repeat(70)}\n`);
         logger.event("run.end", null, { outcome: "approval_gate", duration_ms: Date.now() - runStartMs });
         // Clean exit — ChatOps will pipeline:complete + re-trigger the orchestrator

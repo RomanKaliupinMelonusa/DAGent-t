@@ -7,24 +7,26 @@
  *   - handlers/local-exec.ts      — Generic local script execution (push, publish, tests)
  *   - handlers/github-ci-poll.ts  — CI workflow polling with transient retry
  *   - handlers/copilot-agent.ts   — Full Copilot SDK agent session lifecycle
+ *   - handlers/triage.ts          — Failure classification (RAG + LLM)
  *
  * Supporting modules:
  *   - session/shared.ts           — Workflow node helpers, reporting utilities
  *   - session/readiness-probe.ts  — Data-plane readiness polling and validation hooks
- *   - session/triage-dispatcher.ts — Post-deploy failure triage and rerouting
  *
  * Retained here:
  *   - PipelineRunState / PipelineRunConfig / SessionResult interfaces
  *   - runItemSession()  — Unified dispatch (auto-skip, readiness, handler routing, state transitions)
+ *   - dispatchOnFailure()  — Failure-edge dispatch to triage nodes via on_failure
+ *   - handleTriageResult() — Post-triage DAG reset and state persistence
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
-import type { ApmCompiledOutput, CompiledTriageProfile } from "./apm-types.js";
-import type { NextAction, ItemSummary } from "./types.js";
+import { getStatus, failItem, completeItem, salvageForDraft, resetNodes, setLastTriageRecord } from "./state.js";
+import type { ApmCompiledOutput } from "./apm-types.js";
+import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
 import {
@@ -34,31 +36,22 @@ import {
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
   getWorkflowNode,
+  resolveCircuitBreaker,
   shouldSkipRetry,
   flushReports,
   finishItem,
 } from "./session/shared.js";
 import { pollReadiness } from "./session/readiness-probe.js";
-import { handleTriageReroute } from "./session/triage-dispatcher.js";
+import { runPreHook, runPostHook, captureHeadSha } from "./session/lifecycle-hooks.js";
+import type { HookContext } from "./session/lifecycle-hooks.js";
 import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
-import type { NodeContext, NodeResult } from "./handlers/index.js";
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/** Resolve compiled triage profile for a workflow node (v2 path). */
-function resolveTriageProfile(
-  apmContext: ApmCompiledOutput,
-  itemKey: string,
-): CompiledTriageProfile | undefined {
-  const node = getWorkflowNode(apmContext, itemKey);
-  if (!node?.triage) return undefined;
-  // Key convention: "<workflowName>.<profileName>" — currently always "default"
-  return apmContext.triage_profiles?.[`default.${node.triage}`];
-}
+import type { NodeContext, NodeResult, TriageHandlerOutput } from "./handlers/index.js";
+import { computeErrorSignature } from "./triage/error-fingerprint.js";
 
 // ── Backward-compatible re-exports ─────────────────────────────────────────
 // External consumers (watchdog.ts, tests) import these from session-runner.
-export { normalizeDiagnosticTrace, shouldSkipRetry } from "./session/shared.js";
+export { normalizeDiagnosticTrace, shouldSkipRetry, resolveCircuitBreaker } from "./session/shared.js";
+export type { ResolvedCircuitBreaker } from "./session/shared.js";
 export { appendToToolResult } from "./session/session-events.js";
 
 // ---------------------------------------------------------------------------
@@ -138,9 +131,11 @@ export async function runItemSession(
   attemptCounts[next.key] = (attemptCounts[next.key] ?? 0) + 1;
 
   // --- Circuit breaker: skip if identical error + no code changed since last attempt ---
-  if (attemptCounts[next.key] > 2 && shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) {
-    const nodeForBreaker = getWorkflowNode(apmContext, next.key);
-    if (nodeForBreaker?.category === "dev" && !circuitBreakerBypassed.has(next.key)) {
+  const nodeForBreaker = getWorkflowNode(apmContext, next.key);
+  const cb = resolveCircuitBreaker(nodeForBreaker);
+
+  if (attemptCounts[next.key] >= cb.minAttemptsBeforeSkip && shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) {
+    if (cb.allowsRevertBypass && !circuitBreakerBypassed.has(next.key)) {
       logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "deferred — granting clean-slate revert opportunity" });
       circuitBreakerBypassed.add(next.key);
     } else {
@@ -176,7 +171,7 @@ export async function runItemSession(
         .pop()?.errorMessage ?? "";
       const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
 
-      if (nodeForBreaker?.category === "dev" && isTimeoutLoop) {
+      if (cb.allowsTimeoutSalvage && isTimeoutLoop) {
         logger.event("state.salvage", next.key, { reason: `timeout loop after ${attemptCounts[next.key]} attempts` });
         try {
           await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
@@ -195,7 +190,8 @@ export async function runItemSession(
   }
 
   // --- Early node lookup (needed for barrier short-circuit before heavy banner) ---
-  const node = getWorkflowNode(apmContext, next.key);
+  // nodeForBreaker already resolved above — reuse it
+  const node = nodeForBreaker;
 
   // --- Barrier node: zero-execution sync point (auto-complete immediately) ---
   // Checked before the banner/HEAD-snapshot to avoid noisy logs for zero-work nodes.
@@ -300,16 +296,17 @@ export async function runItemSession(
   // --- Build handler context ---
   const currentState = await getStatus(slug);
   const effectiveAttempts = await computeEffectiveDevAttempts(
-    next.key, attemptCounts[next.key], slug, node?.category,
+    next.key, attemptCounts[next.key], slug, node?.category, cb.allowsRevertBypass,
   );
 
   const previousAttempt = attemptCounts[next.key] > 1
     ? [...pipelineSummaries].reverse().find((s) => s.key === next.key)
     : undefined;
 
+  const redevCategories = new Set(apmContext.config?.redevelopment_categories ?? ["test"]);
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed" && s.key !== next.key &&
-      getWorkflowNode(apmContext, s.key)?.category === "test",
+      redevCategories.has(getWorkflowNode(apmContext, s.key)?.category ?? ""),
   );
 
   let lastHeartbeat = 0;
@@ -371,6 +368,19 @@ export async function runItemSession(
     }
   }
 
+  // --- Kernel pre-hook (node.pre) ---
+  // Runs for ALL handler types before execute(). Previously only ran inside local-exec.
+  // Must be idempotent — runs on every attempt.
+  const hookCtx: HookContext = { node, itemKey: next.key, slug, appRoot, repoRoot, baseBranch, logger };
+  const preHookResult = runPreHook(hookCtx);
+  if (!preHookResult.ok) {
+    logger.event("item.end", next.key, { outcome: "failed", error_preview: preHookResult.errorMessage?.slice(0, 200) });
+    itemSummary.outcome = "failed";
+    itemSummary.errorMessage = preHookResult.errorMessage;
+    try { await failItem(slug, next.key, preHookResult.errorMessage ?? "pre-hook failed"); } catch { /* best-effort */ }
+    return finishItem(itemSummary, "failed", stepStart, config, state, { halt: false });
+  }
+
   // --- Execute handler ---
   let result: NodeResult;
   try {
@@ -382,12 +392,12 @@ export async function runItemSession(
   }
 
   // --- K2: Non-retryable detection for deterministic handlers ---
-  // If a deterministic (script) handler fails with the same error as the previous
-  // attempt AND no code has changed (HEAD unchanged), halt immediately instead of
-  // exhausting all retries. Retrying an identical command with identical input is futile.
+  // If halt_on_identical is set (defaults true for script nodes) and the handler
+  // fails with identical error + unchanged HEAD, halt immediately. Retrying an
+  // identical command with identical input is futile.
   if (
     result.outcome !== "completed" &&
-    node?.type === "script" &&
+    cb.haltOnIdentical &&
     previousAttempt?.errorMessage &&
     result.errorMessage === previousAttempt.errorMessage
   ) {
@@ -511,28 +521,12 @@ export async function runItemSession(
     return finishItem(itemSummary, result.outcome, stepStart, config, state);
   }
 
-  // Post-run hook (driven by workflow manifest "post" field)
-  if (result.outcome === "completed" && node?.post) {
-    logger.event("item.start", next.key, { agent: "post-hook", phase: next.phase ?? "unknown", node_type: "hook", category: node.category ?? "unknown" });
-    try {
-      execSync(node.post, {
-        cwd: appRoot,
-        stdio: "pipe",
-        timeout: 120_000,
-        env: {
-          ...process.env,
-          SLUG: slug,
-          APP_ROOT: appRoot,
-          REPO_ROOT: repoRoot,
-          BASE_BRANCH: baseBranch,
-        },
-      });
-      logger.event("item.end", next.key, { outcome: "completed", note: `post-hook passed for ${next.key}` });
-    } catch (postErr: unknown) {
-      const execErr = postErr as { stderr?: Buffer; message?: string };
-      const postFailure = execErr.stderr?.toString().trim() || execErr.message || "post-hook failed";
-      logger.event("state.fail", next.key, { error_signature: null, error_preview: `post-hook: ${postFailure}` });
-      const failMsg = `post-hook: ${postFailure}`;
+  // --- Kernel post-hook (node.post) + SHA capture ---
+  if (result.outcome === "completed") {
+    const postHookResult = runPostHook(hookCtx);
+    if (!postHookResult.ok) {
+      const failMsg = postHookResult.errorMessage ?? "post-hook failed";
+      logger.event("state.fail", next.key, { error_signature: null, error_preview: failMsg.slice(0, 200) });
       try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
@@ -543,35 +537,20 @@ export async function runItemSession(
       }
       return finishItem(itemSummary, "failed", stepStart, config, state, { halt: true });
     }
-  }
 
-  // Auto-capture HEAD SHA for deploy-category script nodes (push → local-exec migration).
-  // Placed AFTER the post-hook so that if the post-hook pushes additional commits
-  // (e.g. deploy-trigger sentinels), the captured SHA reflects the final pushed state.
-  // Downstream poll nodes use this for SHA-pinned CI filtering.
-  if (
-    result.outcome === "completed" &&
-    node?.category === "deploy" &&
-    node?.type === "script" &&
-    !state.lastPushedShas[next.key]
-  ) {
-    try {
-      const headSha = execSync("git rev-parse HEAD", {
-        cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
-      }).trim();
-      if (headSha) {
-        state.lastPushedShas[next.key] = headSha;
+    // Auto-capture HEAD SHA for nodes that declare captures_head_sha
+    // (or deploy+script nodes for backward compat). Placed AFTER post-hook
+    // so post-hook commits (e.g. deploy sentinels) are reflected.
+    if (!state.lastPushedShas[next.key]) {
+      const capturedSha = captureHeadSha(hookCtx);
+      if (capturedSha) {
+        state.lastPushedShas[next.key] = capturedSha;
         state.handlerOutputs[next.key] = {
           ...(state.handlerOutputs[next.key] ?? {}),
-          lastPushedSha: headSha,
+          lastPushedSha: capturedSha,
         };
-        logger.event("handoff.emit", next.key, {
-          channel: "handler_data",
-          keys: ["lastPushedSha"],
-          auto_captured: true,
-        });
       }
-    } catch { /* non-fatal */ }
+    }
   }
 
   return finishItem(itemSummary, result.outcome === "completed" ? "completed" : result.outcome, stepStart, config, state);

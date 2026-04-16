@@ -39,6 +39,8 @@ export interface PipelineState {
   dependencies: Record<string, string[]>;
   /** Explicit ordered phase names — persisted at init from workflows.yml */
   phases: string[];
+  /** Human-readable labels for phase slugs (from config.phase_labels) */
+  phaseLabels?: Record<string, string> | null;
   /** Node execution types — persisted at init from workflows.yml */
   nodeTypes: Record<string, "agent" | "script" | "approval" | "barrier">;
   /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */

@@ -23,6 +23,33 @@ export function getWorkflowNode(apmContext: ApmCompiledOutput, itemKey: string):
   return apmContext.workflows?.default?.nodes?.[itemKey];
 }
 
+/** Resolved circuit breaker config with defaults based on node type/category. */
+export interface ResolvedCircuitBreaker {
+  minAttemptsBeforeSkip: number;
+  allowsRevertBypass: boolean;
+  allowsTimeoutSalvage: boolean;
+  haltOnIdentical: boolean;
+  revertWarningAt: number;
+}
+
+/**
+ * Resolve circuit breaker configuration for a workflow node.
+ * Uses explicit `circuit_breaker` config when declared; otherwise infers
+ * sensible defaults from the node's category and type:
+ *   - dev nodes: allows_revert_bypass=true, allows_timeout_salvage=true
+ *   - script nodes: halt_on_identical=true
+ */
+export function resolveCircuitBreaker(node: ApmWorkflowNode | undefined): ResolvedCircuitBreaker {
+  const cb = node?.circuit_breaker;
+  return {
+    minAttemptsBeforeSkip: cb?.min_attempts_before_skip ?? 3,
+    allowsRevertBypass: cb?.allows_revert_bypass ?? (node?.category === "dev"),
+    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? (node?.category === "dev"),
+    haltOnIdentical: cb?.halt_on_identical ?? (node?.type === "script"),
+    revertWarningAt: cb?.revert_warning_at ?? 3,
+  };
+}
+
 export function getTimeout(itemKey: string, apmContext: ApmCompiledOutput): number {
   const node = getWorkflowNode(apmContext, itemKey);
   return (node?.timeout_minutes ?? 15) * 60_000;
