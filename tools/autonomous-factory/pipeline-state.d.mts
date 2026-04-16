@@ -47,6 +47,29 @@ interface PipelineState {
   naByType: string[];
   /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
   salvageSurvivors: string[];
+  /** Last triage record — persisted for downstream context injection. */
+  lastTriageRecord?: TriageRecord | null;
+}
+
+/** Full triage record assembled by the triage-dispatcher. */
+interface TriageRecord {
+  failing_item: string;
+  error_signature: string;
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral";
+  guard_detail?: string;
+  rag_matches: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
+  rag_selected: string | null;
+  llm_invoked: boolean;
+  llm_domain?: string;
+  llm_reason?: string;
+  llm_response_ms?: number;
+  domain: string;
+  reason: string;
+  source: "rag" | "llm" | "fallback";
+  route_to: string;
+  cascade: string[];
+  cycle_count: number;
+  domain_retry_count: number;
 }
 
 interface NextAction {
@@ -99,6 +122,7 @@ export function setNote(slug: string, note: string): PipelineState;
 export function setDocNote(slug: string, itemKey: string, note: string): PipelineState;
 export function setHandoffArtifact(slug: string, itemKey: string, artifactJson: string): PipelineState;
 export function setUrl(slug: string, url: string): PipelineState;
+export function setLastTriageRecord(slug: string, record: TriageRecord): PipelineState;
 export function readState(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
 export function getUpstream(state: PipelineState, seedKeys: string[]): string[];

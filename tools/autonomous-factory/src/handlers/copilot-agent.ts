@@ -24,7 +24,7 @@ import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { getAgentDirectoryPrefixes } from "../session/shared.js";
-import { writePlaywrightLog, writeFlightData } from "../reporting.js";
+import { writeFlightData } from "../reporting.js";
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
@@ -86,6 +86,16 @@ const copilotAgentHandler: NodeHandler = {
 
     // Build agent context — manifest-driven fields replace hardcoded constants
     const currentState = ctx.pipelineState;
+
+    // Collect handoff artifacts from upstream completed items
+    const upstreamArtifacts: Record<string, unknown> = {};
+    for (const item of currentState.items) {
+      if (item.status === "done" && item.handoffArtifact) {
+        try { upstreamArtifacts[item.key] = JSON.parse(item.handoffArtifact); } catch { /* skip malformed */ }
+      }
+    }
+    const hasArtifacts = Object.keys(upstreamArtifacts).length > 0;
+
     const agentContext: AgentContext = {
       featureSlug: slug,
       specPath: path.join(appRoot, "in-progress", `${slug}_SPEC.md`),
@@ -99,7 +109,15 @@ const copilotAgentHandler: NodeHandler = {
       environment: apmContext.config?.environment as Record<string, string> | undefined,
       testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
       commitScopes: apmContext.config?.commitScopes,
+      ...(hasArtifacts && { upstreamArtifacts }),
     };
+
+    if (hasArtifacts) {
+      ctx.logger.event("handoff.inject", itemKey, {
+        injection_types: ["upstream_artifacts"],
+        artifact_sources: Object.keys(upstreamArtifacts),
+      });
+    }
 
     const agentConfig = getAgentConfig(itemKey, agentContext, apmContext);
     const timeout = getTimeout(ctx);
@@ -145,10 +163,11 @@ const copilotAgentHandler: NodeHandler = {
       resolvedToolLimits.soft,
       resolvedToolLimits.hard,
       (total) => {
-        console.error(
-          `\n  ✖ HARD LIMIT: Agent exceeded ${total} tool calls. ` +
-          `Force-disconnecting session to prevent runaway compute waste.\n`,
-        );
+        ctx.logger.event("breaker.fire", itemKey, {
+          type: "hard",
+          tool_count: total,
+          threshold: resolvedToolLimits.hard,
+        });
         telemetry.errorMessage = `Cognitive circuit breaker: exceeded ${total} tool calls`;
         telemetry.outcome = "error";
         session.disconnect().catch(() => { /* best-effort */ });
@@ -191,12 +210,12 @@ const copilotAgentHandler: NodeHandler = {
       writeFlightData(appRoot, slug, liveSummaries, true);
     };
 
-    wireToolLogging(session, telemetry, repoRoot, breaker, timeout, triggerHeartbeat);
+    wireToolLogging(session, telemetry, repoRoot, breaker, timeout, ctx.logger, triggerHeartbeat);
     const mcpServers = (agentConfig.mcpServers as Record<string, unknown>) ?? {};
-    const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, triggerHeartbeat);
-    wireIntentLogging(session, telemetry);
-    wireMessageCapture(session, telemetry);
-    wireUsageTracking(session, telemetry, triggerHeartbeat);
+    const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, itemKey, ctx.logger, triggerHeartbeat);
+    wireIntentLogging(session, telemetry, ctx.logger);
+    wireMessageCapture(session, telemetry, ctx.logger);
+    wireUsageTracking(session, telemetry, ctx.logger, triggerHeartbeat);
 
     // Build task prompt with context injection
     const node = getWorkflowNode(ctx);
@@ -211,7 +230,10 @@ const copilotAgentHandler: NodeHandler = {
     if (attempt > 1 && previousAttempt) {
       const atRevertThreshold = node?.category === "dev" && effectiveAttempts >= 3;
       taskPrompt += buildRetryContext(previousAttempt, atRevertThreshold);
-      console.log(`  📎 Injected retry context from attempt ${previousAttempt.attempt}`);
+      ctx.logger.event("handoff.inject", itemKey, {
+        injection_types: ["retry_context"],
+        source_attempt: previousAttempt.attempt,
+      });
     }
 
     // Inject downstream failure context
@@ -227,18 +249,20 @@ const copilotAgentHandler: NodeHandler = {
       taskPrompt += downstreamCtx;
       const downstreamCount = (ctx.downstreamFailures ?? []).length;
       const involvesCicd = downstreamCtx.includes("Commit Scope Warning") || downstreamCtx.includes("scope");
-      console.log(
-        `  🔗 Injected downstream failure context from ${downstreamCount} post-deploy item(s)${involvesCicd ? " (with CI/CD scope guidance)" : ""}`,
-      );
+      ctx.logger.event("handoff.inject", itemKey, {
+        injection_types: ["downstream_failure", ...(involvesCicd ? ["ci_scope_guidance"] : [])],
+        downstream_count: downstreamCount,
+      });
     }
 
     // Inject clean-slate revert warning
     const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, node?.category);
     if (revertWarning) {
       taskPrompt += revertWarning;
-      console.log(
-        `  🚨 Injected clean-slate revert warning (effective: ${effectiveAttempts})`,
-      );
+      ctx.logger.event("handoff.inject", itemKey, {
+        injection_types: ["revert_warning"],
+        effective_attempts: effectiveAttempts,
+      });
     }
 
     // Inject infra rollback context for redevelopment (manifest-driven)
@@ -246,7 +270,9 @@ const copilotAgentHandler: NodeHandler = {
       const infraCtx = await buildInfraRollbackContext(slug);
       if (infraCtx) {
         taskPrompt += infraCtx;
-        console.log(`  🏗 Injected infra rollback context from reset-phases error log`);
+        ctx.logger.event("handoff.inject", itemKey, {
+          injection_types: ["infra_rollback"],
+        });
       }
     }
 
@@ -262,7 +288,7 @@ const copilotAgentHandler: NodeHandler = {
       await session.sendAndWait({ prompt: taskPrompt }, timeout);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`  ✖ Session error: ${message}`);
+      ctx.logger.event("state.fail", itemKey, { error_preview: message });
 
       // Don't overwrite circuit breaker messages
       if (!telemetry.errorMessage?.includes("Cognitive circuit breaker")) {
@@ -276,7 +302,7 @@ const copilotAgentHandler: NodeHandler = {
       // Fast-fail for fatal SDK / authentication errors (non-retryable)
       const fatalPatterns = ["authentication info", "custom provider", "rate limit"];
       if (fatalPatterns.some((p) => message.toLowerCase().includes(p))) {
-        console.error(`  ✖ FATAL: Non-retryable SDK/Auth error. Halting pipeline immediately.`);
+        ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Non-retryable SDK/Auth error" });
         fatalError = true;
       }
 
@@ -284,11 +310,11 @@ const copilotAgentHandler: NodeHandler = {
       try {
         const failResult = await failItem(slug, itemKey, message);
         if (failResult.halted) {
-          console.error(`  ✖ HALTED: ${itemKey} failed ${failResult.failCount} times. Exiting.`);
+          ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: `failed ${failResult.failCount} times` });
           fatalError = true;
         }
       } catch {
-        console.error("  ✖ Could not record failure in pipeline state. Exiting.");
+        ctx.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Could not record failure" });
         fatalError = true;
       }
     } finally {
@@ -327,15 +353,13 @@ const copilotAgentHandler: NodeHandler = {
             }
           }
           if (scopedFiles.length > 0) {
-            console.log(`  📂 Git-diff fallback: attributed ${scopedFiles.length} file(s) to ${itemKey}`);
+            ctx.logger.event("handoff.emit", itemKey, {
+              channel: "git_diff_fallback",
+              file_count: scopedFiles.length,
+            });
           }
         }
       } catch { /* non-fatal — SDK tracking is the primary source */ }
-    }
-
-    // Write Playwright telemetry log if any
-    if (mcpTelemetryLog.length > 0) {
-      writePlaywrightLog(appRoot, repoRoot, slug, mcpTelemetryLog);
     }
 
     // --- Handle fatal errors (session catch block set fatalError) ---
@@ -377,7 +401,7 @@ const copilotAgentHandler: NodeHandler = {
       };
     }
 
-    console.log(`  ✅ ${itemKey} complete`);
+    ctx.logger.event("item.end", itemKey, { outcome: "completed" });
     return {
       outcome: "completed",
       summary: telemetry,

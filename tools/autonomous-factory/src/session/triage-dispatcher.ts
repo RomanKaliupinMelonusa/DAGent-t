@@ -9,12 +9,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, resetForReroute, salvageForDraft } from "../state.js";
+import { getStatus, failItem, resetForReroute, salvageForDraft, setLastTriageRecord } from "../state.js";
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
 import type { PipelineRunConfig, SessionResult } from "../session-runner.js";
-import type { ItemSummary } from "../types.js";
+import type { ItemSummary, TriageRecord } from "../types.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 
 // ---------------------------------------------------------------------------
@@ -39,14 +39,43 @@ export async function handleTriageReroute(
   const { repoRoot } = config;
   const workflow = config.apmContext.workflows?.default;
   const unfixableSignals = workflow?.unfixable_signals ?? [];
+  const errorSig = computeErrorSignature(rawError);
+
+  // Helper to build and persist a TriageRecord for guard-terminated paths
+  const persistGuardRecord = async (
+    guardResult: TriageRecord["guard_result"],
+    guardDetail: string,
+    domain: string,
+    reason: string,
+  ): Promise<void> => {
+    const record: TriageRecord = {
+      failing_item: itemKey,
+      error_signature: errorSig,
+      guard_result: guardResult,
+      guard_detail: guardDetail,
+      rag_matches: [],
+      rag_selected: null,
+      llm_invoked: false,
+      domain,
+      reason,
+      source: "fallback",
+      route_to: itemKey,
+      cascade: [],
+      cycle_count: 0,
+      domain_retry_count: 0,
+    };
+    const evId = config.logger.event("triage.evaluate", itemKey, { ...record });
+    config.logger.blob(evId, "error_trace", rawError);
+    try { await setLastTriageRecord(slug, record); } catch { /* non-fatal */ }
+  };
 
   // --- Pre-triage guard: SDK timeout → transient retry ---
   if (isOrchestratorTimeout(rawError)) {
-    console.log(`  ⚠ SDK Timeout detected in ${itemKey}. Bypassing triage — transient retry via $SELF.`);
+    await persistGuardRecord("timeout_bypass", "SDK session timeout", "$SELF", "SDK timeout — transient retry");
     try {
       const result = await resetForReroute(slug, itemKey, `SDK timeout in ${itemKey}`, profile.max_reroutes);
       if (result.halted) {
-        console.error(`  ✖ HALTED: ${result.cycleCount} reroute cycles exhausted.`);
+        config.logger.event("item.end", itemKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
         return { summary: itemSummary, halt: true, createPr: false };
       }
     } catch {
@@ -58,34 +87,38 @@ export async function handleTriageReroute(
   // --- Pre-triage guard: unfixable signals → immediate halt ---
   const unfixableReason = isUnfixableError(rawError, unfixableSignals);
   if (unfixableReason) {
-    console.error(`\n  🛑 BLOCKED: Unfixable error "${unfixableReason}" in ${itemKey} — Graceful Degradation.`);
+    await persistGuardRecord("unfixable_halt", unfixableReason, "blocked", `unfixable signal: ${unfixableReason}`);
     return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
   }
 
   // --- Pre-triage guard: death spiral (same error ≥3 times) ---
-  const errorSig = computeErrorSignature(rawError);
   try {
     const pipeState = await getStatus(slug);
     const sameSigCount = pipeState.errorLog.filter((e) => e.errorSignature === errorSig).length;
     if (sameSigCount >= 3) {
-      console.error(`\n  🛑 BLOCKED: Error signature ${errorSig} seen ${sameSigCount + 1} times — death spiral prevention.`);
+      await persistGuardRecord("death_spiral", `signature ${errorSig} seen ${sameSigCount + 1}×`, "blocked", `death spiral — error signature ${errorSig} seen ${sameSigCount + 1} times`);
       return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
     }
   } catch { /* continue to triage */ }
 
   // --- Evaluate triage (2-layer: RAG → LLM → fallback) ---
-  const triageResult = await evaluateTriage(rawError, profile, client, slug, config.appRoot);
+  const triageResult = await evaluateTriage(rawError, profile, client, slug, config.appRoot, config.logger);
 
   // --- Resolve route_to from profile routing ---
   let routeToKey: string | null;
+  let domainRetryCount = 0;
   if (triageResult.domain === "$SELF") {
     // Fallback: retry the failing node itself
     routeToKey = itemKey;
   } else {
     const routeEntry = profile.routing[triageResult.domain];
     if (!routeEntry || routeEntry.route_to === null) {
-      // Domain is "blocked" or unknown → graceful degradation
-      console.error(`\n  🛑 BLOCKED: Triage classified as "${triageResult.domain}" (route_to: null) — Graceful Degradation.`);
+      config.logger.event("triage.evaluate", itemKey, {
+        domain: triageResult.domain,
+        reason: triageResult.reason,
+        source: triageResult.source,
+        route_to: null,
+      });
       return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
     }
     routeToKey = routeEntry.route_to === "$SELF" ? itemKey : routeEntry.route_to;
@@ -103,8 +136,13 @@ export async function handleTriageReroute(
           break;
         }
       }
+      domainRetryCount = consecutiveCount;
       if (consecutiveCount >= routeEntry.retries) {
-        console.warn(`\n  ⚠ Domain "${triageResult.domain}" hit retry cap (${consecutiveCount}/${routeEntry.retries}) — treating as blocked.`);
+        config.logger.event("triage.evaluate", itemKey, {
+          domain: triageResult.domain,
+          reason: `domain retry cap reached (${consecutiveCount}/${routeEntry.retries})`,
+          source: triageResult.source,
+        });
         return triggerGracefulDegradation(slug, itemKey, rawError, config, itemSummary);
       }
     }
@@ -112,28 +150,59 @@ export async function handleTriageReroute(
 
   // --- Execute reroute: reset target node + DAG cascade ---
   const taggedReason = `[domain:${triageResult.domain}] [source:${triageResult.source}] ${triageResult.reason}`;
-  console.log(`\n  🔄 Triage reroute: ${itemKey} → route_to: ${routeToKey} (domain: ${triageResult.domain}, source: ${triageResult.source})`);
+  config.logger.event("state.reset", itemKey, {
+    route_to: routeToKey,
+    domain: triageResult.domain,
+    source: triageResult.source,
+    reason: triageResult.reason,
+  });
 
   try {
     const result = await resetForReroute(slug, routeToKey, taggedReason, profile.max_reroutes);
     if (result.halted) {
-      console.error(`  ✖ HALTED: ${result.cycleCount} reroute cycles exhausted.`);
+      config.logger.event("item.end", itemKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
       return { summary: itemSummary, halt: true, createPr: false };
     }
-    console.log(`     Reroute cycle ${result.cycleCount}/${profile.max_reroutes} — pipeline will restart from ${routeToKey}`);
+
+
+    // Assemble and persist the full TriageRecord
+    const cascadeKeys = result.state.items
+      .filter((it) => it.status === "pending" && it.key !== routeToKey)
+      .map((it) => it.key);
+    const record: TriageRecord = {
+      failing_item: itemKey,
+      error_signature: errorSig,
+      guard_result: "passed",
+      rag_matches: triageResult.rag_matches ?? [],
+      rag_selected: triageResult.source === "rag" ? (triageResult.rag_matches?.[0]?.snippet ?? null) : null,
+      llm_invoked: triageResult.source === "llm",
+      llm_domain: triageResult.source === "llm" ? triageResult.domain : undefined,
+      llm_reason: triageResult.source === "llm" ? triageResult.reason : undefined,
+      llm_response_ms: triageResult.llm_response_ms,
+      domain: triageResult.domain,
+      reason: triageResult.reason,
+      source: triageResult.source,
+      route_to: routeToKey,
+      cascade: cascadeKeys,
+      cycle_count: result.cycleCount,
+      domain_retry_count: domainRetryCount,
+    };
+    const evId = config.logger.event("triage.evaluate", itemKey, { ...record });
+    config.logger.blob(evId, "error_trace", rawError);
+    try { await setLastTriageRecord(slug, record); } catch { /* non-fatal */ }
 
     // Re-index semantic graph after reroute if target involves dev/test nodes
     if (roamAvailable) {
       const targetCat = getWorkflowNode(config.apmContext, routeToKey)?.category;
       if (targetCat === "dev" || targetCat === "test") {
-        console.log("  🧠 Re-indexing semantic graph after reroute...");
+        config.logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
         try {
           execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
         } catch { /* non-fatal */ }
       }
     }
   } catch {
-    console.error("  ✖ Could not execute reroute. Exiting.");
+    config.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Could not execute reroute" });
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
@@ -151,14 +220,14 @@ async function triggerGracefulDegradation(
   config: PipelineRunConfig,
   itemSummary: ItemSummary,
 ): Promise<SessionResult> {
-  console.error(`  🛑 Triggering Graceful Degradation — pipeline will open a Draft PR for human remediation.`);
+  config.logger.event("state.salvage", itemKey, { reason: errorMsg.slice(0, 500) });
   try {
     await failItem(slug, itemKey, `BLOCKED: ${errorMsg}`);
     await salvageForDraft(slug, itemKey);
     const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
     fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
   } catch (e) {
-    console.error("  ✖ Failed to salvage pipeline state", e);
+    config.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
     return { summary: itemSummary, halt: true, createPr: false };
   }
   return { summary: itemSummary, halt: false, createPr: false };

@@ -14,6 +14,7 @@
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { TriageResult } from "./types.js";
 import type { CompiledTriageProfile, TriageSignature } from "./apm-types.js";
+import type { PipelineLogger } from "./logger.js";
 import { retrieveTopMatches } from "./triage/retriever.js";
 import { askLlmRouter } from "./triage/llm-router.js";
 export { computeErrorSignature } from "./triage/error-fingerprint.js";
@@ -35,50 +36,66 @@ export async function evaluateTriage(
   client?: CopilotClient,
   slug?: string,
   appRoot?: string,
+  logger?: PipelineLogger,
 ): Promise<TriageResult> {
   // --- Layer 1: RAG — deterministic substring match ---
   const topMatches = profile.signatures.length > 0
     ? retrieveTopMatches(errorTrace, profile.signatures)
     : [];
 
+  // Build structured rag_matches for the result record
+  const ragMatches = topMatches.map((m, i) => ({
+    snippet: m.error_snippet,
+    domain: m.fault_domain,
+    reason: m.reason,
+    rank: i + 1,
+  }));
+
   if (topMatches.length > 0) {
     const bestMatch = topMatches[0];
     // Validate that the matched domain exists in this profile's routing
     if (bestMatch.fault_domain in profile.routing) {
-      console.log(`  🔍 RAG triage: matched "${bestMatch.error_snippet}" → ${bestMatch.fault_domain} (${bestMatch.reason})`);
       return {
         domain: bestMatch.fault_domain,
         reason: bestMatch.reason,
         source: "rag",
+        rag_matches: ragMatches,
       };
     }
     // RAG matched a domain not in this profile's routing — fall through to LLM
-    console.log(`  ⚠ RAG match domain "${bestMatch.fault_domain}" not in profile routing — falling through to LLM`);
+    logger?.event("triage.evaluate", null, {
+      domain: bestMatch.fault_domain,
+      reason: `RAG match domain "${bestMatch.fault_domain}" not in profile routing — falling through to LLM`,
+      source: "fallback",
+      rag_match_count: topMatches.length,
+    });
   }
 
   // --- Layer 2: LLM — cognitive classification ---
   if (profile.llm_fallback && client && slug && appRoot) {
-    console.log("  🤖 LLM triage: classifying novel error via Copilot SDK");
     const domains = Object.keys(profile.routing);
     const routingDescriptions: Record<string, { description?: string }> = {};
     for (const [d, entry] of Object.entries(profile.routing)) {
       if (entry.description) routingDescriptions[d] = { description: entry.description };
     }
+    const t0 = Date.now();
     const result = await askLlmRouter(client, errorTrace, domains, topMatches, slug, appRoot, routingDescriptions);
-    console.log(`  🤖 LLM triage result: fault_domain=${result.fault_domain} (${result.reason})`);
+    const llmResponseMs = Date.now() - t0;
     return {
       domain: result.fault_domain,
       reason: result.reason,
       source: "llm",
+      rag_matches: ragMatches,
+      llm_response_ms: llmResponseMs,
     };
   }
 
   // --- Fallback: unclassified — retry $SELF ---
-  console.warn("  ⚠ Triage could not determine root cause (no RAG matches, LLM unavailable/disabled). Falling back to $SELF retry.");
   return {
     domain: "$SELF",
     reason: "unclassified — no RAG matches, LLM unavailable",
     source: "fallback",
+    rag_matches: ragMatches,
   };
 }
 

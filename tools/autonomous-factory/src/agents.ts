@@ -33,6 +33,8 @@ export interface AgentContext {
   testCommands?: Record<string, string | null>;
   /** Commit scope path overrides from manifest. Keys are scope names, values are arrays of paths relative to appRoot. */
   commitScopes?: Record<string, string[]>;
+  /** Structured handoff artifacts from upstream completed items (parsed JSON). */
+  upstreamArtifacts?: Record<string, unknown>;
 }
 
 export interface McpLocalServerConfig {
@@ -222,6 +224,9 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
 
     // Generic resolved commit paths — templates use {{resolvedCommitPaths.<scope>}} etc.
     resolvedCommitPaths,
+
+    // Upstream handoff artifacts — templates use {{handoffArtifacts.<itemKey>.<field>}}
+    handoffArtifacts: ctx.upstreamArtifacts ?? {},
 
     // Scope for the completion partial (driven by workflow manifest)
     scope: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",

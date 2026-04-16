@@ -25,6 +25,7 @@ import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
 import type { ApmCompiledOutput, CompiledTriageProfile } from "./apm-types.js";
 import type { NextAction, ItemSummary } from "./types.js";
+import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
 import {
   computeEffectiveDevAttempts,
@@ -106,6 +107,7 @@ export interface PipelineRunConfig {
   baseBranch: string;
   apmContext: ApmCompiledOutput;
   roamAvailable: boolean;
+  logger: PipelineLogger;
 }
 
 export interface SessionResult {
@@ -130,7 +132,7 @@ export async function runItemSession(
   config: PipelineRunConfig,
   state: PipelineRunState,
 ): Promise<SessionResult> {
-  const { slug, appRoot, repoRoot, baseBranch, apmContext, roamAvailable } = config;
+  const { slug, appRoot, repoRoot, baseBranch, apmContext, roamAvailable, logger } = config;
   const { pipelineSummaries, attemptCounts, circuitBreakerBypassed, preStepRefs } = state;
 
   attemptCounts[next.key] = (attemptCounts[next.key] ?? 0) + 1;
@@ -139,10 +141,10 @@ export async function runItemSession(
   if (attemptCounts[next.key] > 2 && shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) {
     const nodeForBreaker = getWorkflowNode(apmContext, next.key);
     if (nodeForBreaker?.category === "dev" && !circuitBreakerBypassed.has(next.key)) {
-      console.log(`\n  ⚡ Circuit breaker deferred for ${next.key} — granting clean-slate revert opportunity`);
+      logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "deferred — granting clean-slate revert opportunity" });
       circuitBreakerBypassed.add(next.key);
     } else {
-      console.log(`\n  ⚡ Circuit breaker: skipping ${next.key} — identical error with no code changes since last attempt`);
+      logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "identical error with no code changes since last attempt" });
       const skipSummary: ItemSummary = {
         key: next.key,
         label: next.label,
@@ -175,14 +177,14 @@ export async function runItemSession(
       const isTimeoutLoop = lastError.toLowerCase().includes("timeout");
 
       if (nodeForBreaker?.category === "dev" && isTimeoutLoop) {
-        console.log(`  📝 DEV item ${next.key} stuck in timeout loop — triggering Graceful Degradation to Draft PR`);
+        logger.event("state.salvage", next.key, { reason: `timeout loop after ${attemptCounts[next.key]} attempts` });
         try {
           await failItem(slug, next.key, "Circuit breaker: timeout loop — salvaging to Draft PR");
           await salvageForDraft(slug, next.key);
           const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
           fs.writeFileSync(draftFlagPath, `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`, "utf-8");
         } catch (e) {
-          console.error("  ✖ Failed to salvage pipeline state", e);
+          logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: `Failed to salvage pipeline state: ${e instanceof Error ? e.message : String(e)}` });
           return { summary: skipSummary, halt: true, createPr: false };
         }
         return { summary: skipSummary, halt: false, createPr: false };
@@ -221,15 +223,20 @@ export async function runItemSession(
       cacheWriteTokens: 0,
     };
     await completeItem(slug, next.key);
-    console.log(`  ⊕ Barrier ${next.key} — all upstream resolved, auto-completing`);
+    logger.event("item.barrier", next.key, { upstream_resolved: [] });
     return finishItem(barrierSummary, "completed", stepStart, config, state, {
       intents: ["barrier-sync: all upstream dependencies resolved"],
     });
   }
 
-  console.log(
-    `\n${"═".repeat(70)}\n  Phase: ${next.phase} | Item: ${next.key} | Agent: ${next.agent}\n${"═".repeat(70)}`,
-  );
+  logger.setAttempt(next.key, attemptCounts[next.key]);
+  logger.event("item.start", next.key, {
+    label: next.label,
+    agent: next.agent,
+    phase: next.phase,
+    node_type: node?.type ?? "agent",
+    category: node?.category ?? "unknown",
+  });
 
   // Snapshot HEAD before ALL items for accurate filesChanged tracking
   if (!preStepRefs[next.key]) {
@@ -268,7 +275,7 @@ export async function runItemSession(
   state.forceRunChangesDetected[next.key] = skipDecision.forceRunChanges;
   if (skipDecision.skip) {
     await completeItem(slug, next.key);
-    console.log(`  ✅ ${next.key} complete (auto-skipped)`);
+    logger.event("item.skip", next.key, { skip_type: "auto_skip", reason: skipDecision.skip.reason });
     return finishItem(itemSummary, "completed", stepStart, config, state, {
       intents: [skipDecision.skip.reason],
     });
@@ -344,13 +351,14 @@ export async function runItemSession(
     handlerData,
     onHeartbeat,
     client,
+    logger,
   };
 
   // --- Handler-specific shouldSkip ---
   if (handler.shouldSkip) {
     const skipResult = await handler.shouldSkip(ctx);
     if (skipResult) {
-      console.log(`  ⏭ Handler skip: ${next.key} — ${skipResult.reason}`);
+      logger.event("item.skip", next.key, { skip_type: "handler_skip", reason: skipResult.reason });
       await completeItem(slug, next.key);
       if (skipResult.filesChanged) {
         for (const f of skipResult.filesChanged) {
@@ -369,7 +377,7 @@ export async function runItemSession(
     result = await handler.execute(ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`  ✖ Handler "${handler.name}" threw: ${message}`);
+    logger.event("item.end", next.key, { outcome: "error", error_preview: message, handler: handler.name });
     result = { outcome: "error", errorMessage: message, summary: {} };
   }
 
@@ -389,7 +397,7 @@ export async function runItemSession(
       headUnchanged = currentHead === previousAttempt.headAfterAttempt;
     } catch { /* non-fatal — skip optimization */ }
     if (headUnchanged) {
-      console.log(`  ⚡ Non-retryable: deterministic handler "${handler.name}" produced identical error with no code changes — halting`);
+      logger.event("item.skip", next.key, { skip_type: "non_retryable", reason: `deterministic handler "${handler.name}" produced identical error with no code changes` });
       itemSummary.outcome = result.outcome;
       itemSummary.errorMessage = `Non-retryable: identical error on attempt ${attemptCounts[next.key]} with no code changes. ${result.errorMessage}`;
       try {
@@ -429,6 +437,10 @@ export async function runItemSession(
     if (typeof sha === "string") {
       state.lastPushedShas[next.key] = sha;
     }
+    logger.event("handoff.emit", next.key, {
+      channel: "handler_data",
+      keys: Object.keys(result.handlerOutput),
+    });
   }
 
   // Record HEAD for circuit breaker
@@ -441,7 +453,7 @@ export async function runItemSession(
   // --- State transitions ---
   if (result.stateManaged) {
     if (result.outcome === "completed") {
-      console.log(`  ✅ ${next.key} complete (state managed by handler)`);
+      logger.event("item.end", next.key, { outcome: "completed", note: "state managed by handler" });
     } else {
       itemSummary.outcome = result.outcome;
       itemSummary.errorMessage = result.errorMessage;
@@ -452,22 +464,22 @@ export async function runItemSession(
         flushReports(config, state);
         return handleTriageReroute(slug, next.key, rawError, triageProfile1, config, itemSummary, roamAvailable, client);
       }
-      console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
+      logger.event("item.end", next.key, { outcome: result.outcome, error_preview: result.errorMessage });
     }
   } else if (result.outcome === "completed") {
     await completeItem(slug, next.key);
-    console.log(`  ✅ ${next.key} complete`);
+    logger.event("item.end", next.key, { outcome: "completed" });
   } else {
     itemSummary.outcome = result.outcome;
     itemSummary.errorMessage = result.errorMessage;
     try {
       const failResult = await failItem(slug, next.key, result.errorMessage ?? "Unknown failure");
       if (failResult.halted) {
-        console.error(`  ✖ HALTED: ${next.key} failed ${failResult.failCount} times. Exiting.`);
+        logger.event("item.end", next.key, { outcome: result.outcome, halted: true, error_preview: `failed ${failResult.failCount} times` });
         return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
       }
     } catch {
-      console.error("  ✖ Could not record failure in pipeline state.");
+      logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Could not record failure in pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
     const triageProfile2 = resolveTriageProfile(config.apmContext, next.key);
@@ -477,7 +489,7 @@ export async function runItemSession(
       flushReports(config, state);
       return handleTriageReroute(slug, next.key, rawError, triageProfile2, config, itemSummary, roamAvailable, client);
     }
-    console.log(`  ⚠ ${next.key} failed — retrying on next loop iteration`);
+    logger.event("item.end", next.key, { outcome: result.outcome, error_preview: result.errorMessage });
   }
 
   // --- Signal handling ---
@@ -493,7 +505,7 @@ export async function runItemSession(
       const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
       fs.writeFileSync(draftFlagPath, result.errorMessage ?? "Handler signaled salvage", "utf-8");
     } catch (e) {
-      console.error("  ✖ Failed to salvage pipeline state", e);
+      logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
     return finishItem(itemSummary, result.outcome, stepStart, config, state);
@@ -501,7 +513,7 @@ export async function runItemSession(
 
   // Post-run hook (driven by workflow manifest "post" field)
   if (result.outcome === "completed" && node?.post) {
-    console.log(`  🔧 Running post-hook for ${next.key}...`);
+    logger.event("item.start", next.key, { agent: "post-hook", phase: next.phase ?? "unknown", node_type: "hook", category: node.category ?? "unknown" });
     try {
       execSync(node.post, {
         cwd: appRoot,
@@ -515,11 +527,11 @@ export async function runItemSession(
           BASE_BRANCH: baseBranch,
         },
       });
-      console.log(`  ✅ Post-hook passed for ${next.key}`);
+      logger.event("item.end", next.key, { outcome: "completed", note: `post-hook passed for ${next.key}` });
     } catch (postErr: unknown) {
       const execErr = postErr as { stderr?: Buffer; message?: string };
       const postFailure = execErr.stderr?.toString().trim() || execErr.message || "post-hook failed";
-      console.error(`  🚫 Post-hook failed after ${next.key}: ${postFailure}`);
+      logger.event("state.fail", next.key, { error_signature: null, error_preview: `post-hook: ${postFailure}` });
       const failMsg = `post-hook: ${postFailure}`;
       try { await failItem(slug, next.key, failMsg); } catch { /* best-effort */ }
       itemSummary.outcome = "failed";
@@ -553,6 +565,11 @@ export async function runItemSession(
           ...(state.handlerOutputs[next.key] ?? {}),
           lastPushedSha: headSha,
         };
+        logger.event("handoff.emit", next.key, {
+          channel: "handler_data",
+          keys: ["lastPushedSha"],
+          auto_captured: true,
+        });
       }
     } catch { /* non-fatal */ }
   }

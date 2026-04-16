@@ -9,6 +9,7 @@
 
 import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
+import type { PipelineLogger } from "../logger.js";
 import { extractShellWrittenFiles } from "../tool-harness.js";
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ export function wireToolLogging(
   repoRoot: string,
   breaker: SessionCircuitBreaker,
   sessionTimeout: number,
+  logger: PipelineLogger,
   triggerHeartbeat?: () => void,
 ): void {
   /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
@@ -178,12 +180,19 @@ export function wireToolLogging(
     if (breaker.tripped) return;
 
     const name = event.data.toolName;
-    const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
     const args = event.data.arguments as Record<string, unknown> | undefined;
     const detail = toolSummary(repoRoot, name, args);
-    console.log(`  ${label}${detail}`);
-
     const category = TOOL_CATEGORIES[name] ?? name;
+    const isWrite = name === "write_file" || name === "edit_file" || name === "create_file" || name === "create" || name === "write_bash";
+
+    logger.event("tool.call", itemSummary.key, {
+      tool: name,
+      category,
+      detail,
+      is_write: isWrite,
+      file: args?.filePath ? path.relative(repoRoot, String(args.filePath)) : undefined,
+    });
+
     breaker.recordCall(category, itemSummary.toolCounts);
 
     const filePath = args?.filePath ? path.relative(repoRoot, String(args.filePath)) : null;
@@ -243,14 +252,13 @@ export function wireToolLogging(
         `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
         `cycle. DO NOT continue debugging — decide now.`;
 
-      // Safely append to the result content — never destroy existing data.
-      // SDK tool results may have string content, array-of-blocks content,
-      // or no content at all.
       appendToToolResult(event.data, frustrationPrompt);
 
-      console.warn(
-        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${breaker.soft} calls.\n`,
-      );
+      logger.event("breaker.fire", itemSummary.key, {
+        type: "soft",
+        tool_count: totalCalls,
+        threshold: breaker.soft,
+      });
     }
 
     // Write-density circuit breaker — detect file thrashing.
@@ -266,7 +274,12 @@ export function wireToolLogging(
           `(e.g. {"fault_domain":"frontend","diagnostic_trace":"<test output>"}).`;
 
         appendToToolResult(event.data, writeDensityPrompt);
-        console.warn(`\n  ⚠️  WRITE-DENSITY BREAKER: "${file}" written ${count} times.\n`);
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "density",
+          file,
+          write_count: count,
+          threshold: WRITE_DENSITY_THRESHOLD,
+        });
       }
     }
 
@@ -285,9 +298,10 @@ export function wireToolLogging(
 
       appendToToolResult(event.data, wrapUpPrompt);
 
-      console.warn(
-        `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,
-      );
+      logger.event("breaker.fire", itemSummary.key, {
+        type: "timeout",
+        remaining_sec: remainingSec,
+      });
     }
 
     triggerHeartbeat?.();
@@ -299,7 +313,7 @@ const MCP_SERVER_LABELS: Record<string, string> = {
   playwright: "🎭",
 };
 
-export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknown>, triggerHeartbeat?: () => void): McpToolLogEntry[] {
+export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknown>, itemKey: string, logger: PipelineLogger, triggerHeartbeat?: () => void): McpToolLogEntry[] {
   const mcpLog: McpToolLogEntry[] = [];
   const serverNames = Object.keys(mcpServers);
   if (serverNames.length === 0) return mcpLog;
@@ -325,7 +339,13 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
     if (args?.url) detail = ` → ${args.url}`;
     else if (args?.selector) detail = ` → ${args.selector}`;
     else if (args?.code) detail = ` → ${String(args.code).split("\n")[0].slice(0, 80)}`;
-    console.log(`  ${emoji} ${shortName}${detail}`);
+    logger.event("tool.call", itemKey, {
+      tool: name,
+      category: "mcp",
+      mcp_server: server,
+      detail: ` → ${shortName}${detail}`,
+      is_write: false,
+    });
   });
 
   session.on("tool.execution_complete", (event: any) => {
@@ -345,6 +365,11 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
       const server = last.server ?? "mcp";
       const emoji = MCP_SERVER_LABELS[server] ?? "🔌";
       const status = event.data.success ? "✅" : "❌";
+      logger.event("tool.result", itemKey, {
+        tool: last.tool,
+        mcp_server: server,
+        success: event.data.success,
+      });
       console.log(`  ${emoji} ${status} ${last.tool.replace(`${server}-`, "")} completed`);
     }
 
@@ -354,23 +379,28 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
   return mcpLog;
 }
 
-export function wireIntentLogging(session: any, itemSummary: ItemSummary): void {
+export function wireIntentLogging(session: any, itemSummary: ItemSummary, logger: PipelineLogger): void {
   session.on("assistant.intent", (event: any) => {
-    console.log(`\n  💡 ${event.data.intent}\n`);
+    logger.event("agent.intent", itemSummary.key, { text: event.data.intent });
     itemSummary.intents.push(event.data.intent);
   });
 }
 
-export function wireMessageCapture(session: any, itemSummary: ItemSummary): void {
+export function wireMessageCapture(session: any, itemSummary: ItemSummary, logger: PipelineLogger): void {
   session.on("assistant.message", (event: any) => {
     const content = event.data.content.replace(/\n/g, " ").trim();
     if (content) {
       itemSummary.messages.push(content);
+      logger.event("agent.message", itemSummary.key, {
+        role: "assistant",
+        preview: content.slice(0, 200),
+        token_count: content.length,
+      });
     }
   });
 }
 
-export function wireUsageTracking(session: any, itemSummary: ItemSummary, triggerHeartbeat?: () => void): void {
+export function wireUsageTracking(session: any, itemSummary: ItemSummary, logger: PipelineLogger, triggerHeartbeat?: () => void): void {
   session.on("assistant.usage", (event: any) => {
     const d = event.data;
     const inp = d.inputTokens ?? 0;
@@ -382,7 +412,12 @@ export function wireUsageTracking(session: any, itemSummary: ItemSummary, trigge
     itemSummary.outputTokens += out;
     itemSummary.cacheReadTokens += cacheR;
     itemSummary.cacheWriteTokens += cacheC;
-    console.log(`  📊 Tokens: +${inp}in / +${out}out / +${cacheR}cache-read / +${cacheC}cache-write`);
+    logger.event("agent.usage", itemSummary.key, {
+      input_tokens: inp,
+      output_tokens: out,
+      cache_read_tokens: cacheR,
+      cache_write_tokens: cacheC,
+    });
     triggerHeartbeat?.();
   });
 }

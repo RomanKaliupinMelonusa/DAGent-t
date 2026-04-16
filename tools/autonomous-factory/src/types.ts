@@ -13,6 +13,10 @@ export interface PipelineItem {
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
   docNote?: string | null;
+  /** Structured handoff artifact (JSON string) for downstream agent contracts.
+   *  Dev agents use this to communicate typed data (testid maps, affected routes,
+   *  SSR-safety flags) to SDET and test runner agents. */
+  handoffArtifact?: string | null;
 }
 
 export interface PipelineState {
@@ -36,11 +40,17 @@ export interface PipelineState {
   /** Explicit ordered phase names — persisted at init from workflows.yml */
   phases: string[];
   /** Node execution types — persisted at init from workflows.yml */
-  nodeTypes: Record<string, "agent" | "script" | "approval">;
+  nodeTypes: Record<string, "agent" | "script" | "approval" | "barrier">;
   /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
   nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Whether pipeline:fail messages must be valid TriageDiagnostic JSON — persisted at init from workflows.yml */
+  jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
+  /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
+  salvageSurvivors: string[];
+  /** Last triage record — persisted for downstream context injection. */
+  lastTriageRecord?: TriageRecord | null;
 }
 
 export interface NextAction {
@@ -81,6 +91,48 @@ export interface TriageResult {
   reason: string;
   /** Which layer produced the classification. */
   source: "rag" | "llm" | "fallback";
+  /** Top RAG matches (up to 3), regardless of which layer won. */
+  rag_matches?: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
+  /** LLM response latency in ms (only set when LLM layer was invoked). */
+  llm_response_ms?: number;
+}
+
+/**
+ * Full triage record assembled by the triage-dispatcher.
+ * Captures everything about a failure classification for retrospective analysis.
+ * Persisted to `_STATE.json.lastTriageRecord` and emitted as a `triage.evaluate` event.
+ */
+export interface TriageRecord {
+  /** The DAG node that failed. */
+  failing_item: string;
+  /** Stable error fingerprint (SHA-256 prefix of normalized trace). */
+  error_signature: string;
+
+  /** Pre-guard result (set by triage-dispatcher, not evaluateTriage). */
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral";
+  guard_detail?: string;
+
+  /** RAG layer matches (up to 3, ranked by specificity). */
+  rag_matches: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
+  /** The RAG snippet selected for routing (null if LLM or fallback won). */
+  rag_selected: string | null;
+
+  /** Whether the LLM layer was invoked. */
+  llm_invoked: boolean;
+  llm_domain?: string;
+  llm_reason?: string;
+  llm_response_ms?: number;
+
+  /** Final classification. */
+  domain: string;
+  reason: string;
+  source: "rag" | "llm" | "fallback";
+
+  /** Routing decision (set by triage-dispatcher after evaluateTriage). */
+  route_to: string;
+  cascade: string[];
+  cycle_count: number;
+  domain_retry_count: number;
 }
 
 /**
@@ -156,6 +208,3 @@ export interface McpToolLogEntry {
   success?: boolean;
   result?: string;
 }
-
-/** @deprecated Use McpToolLogEntry instead */
-export type PlaywrightLogEntry = McpToolLogEntry;

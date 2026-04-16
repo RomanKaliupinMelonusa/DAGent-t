@@ -9,7 +9,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { ItemSummary } from "./types.js";
+import type { ItemSummary, TriageRecord } from "./types.js";
 import { readState } from "./state.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
 
@@ -79,10 +79,10 @@ export function buildDownstreamFailureContext(
   if (downstreamFailures.length === 0) return "";
 
   // --- K2: Extract structured diagnosis from triage system ---
-  // The triage cascade may prepend structured headers (FAULT_DOMAIN_HINT, ROOT_CAUSE,
-  // ERROR_TYPE, EVIDENCE) to error messages. Surface these prominently so the dev
-  // agent sees the diagnosis immediately instead of re-discovering it from raw output.
-  const diagnosisSection = extractDiagnosisFromFailures(downstreamFailures);
+  // Reads `lastTriageRecord` from pipeline state — the triage-dispatcher persists
+  // the full TriageRecord after every triage evaluation. This replaces the fragile
+  // header-parsing approach (FAULT_DOMAIN_HINT, ROOT_CAUSE, etc.).
+  const diagnosisSection = extractDiagnosisFromState(slug);
 
   const failureDetails = downstreamFailures
     .map((f) => [
@@ -116,44 +116,37 @@ export function buildDownstreamFailureContext(
 }
 
 /**
- * Extract structured diagnosis headers (FAULT_DOMAIN_HINT, ROOT_CAUSE, etc.)
- * from downstream failure error messages. The triage system or post-hook
- * failures may prepend these headers to error messages.
+ * Extract structured diagnosis from the pipeline state's `lastTriageRecord`.
+ * The triage-dispatcher persists this after every triage evaluation — it contains
+ * the full classification result (domain, reason, RAG matches, LLM output).
  *
- * Returns a formatted "## Automated Diagnosis" section if any diagnosis is found,
- * or empty string if raw errors have no structured headers.
- *
- * Stack-agnostic: parses `KEY: value` header lines with no framework assumptions.
+ * Returns a formatted "### Automated Diagnosis" section, or empty string if
+ * no triage record is available.
  */
-function extractDiagnosisFromFailures(
-  failures: readonly ItemSummary[],
-): string {
-  const diagFields: Record<string, string> = {};
+function extractDiagnosisFromState(slug?: string): string {
+  if (!slug) return "";
 
-  for (const f of failures) {
-    if (!f.errorMessage) continue;
-    // Parse structured headers from the beginning of the error message
-    // Format: "FAULT_DOMAIN_HINT: frontend\nROOT_CAUSE: ...\nERROR_TYPE: ...\nEVIDENCE: ..."
-    const lines = f.errorMessage.split("\n");
-    for (const line of lines) {
-      const match = line.match(/^(FAULT_DOMAIN_HINT|ROOT_CAUSE|ERROR_TYPE|EVIDENCE):\s*(.+)/);
-      if (match) {
-        // Use the most recent value if multiple failures have headers
-        diagFields[match[1]] = match[2].trim();
-      } else if (Object.keys(diagFields).length > 0 && !line.match(/^\w+:/)) {
-        // Stop parsing headers once we hit a non-header line
-        break;
-      }
+  let record: TriageRecord | null | undefined;
+  try {
+    const appRoot = process.env.APP_ROOT || "";
+    const stateDir = path.join(appRoot, "in-progress");
+    const statePath = path.join(stateDir, `${slug}_STATE.json`);
+    if (fs.existsSync(statePath)) {
+      const raw = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      record = raw.lastTriageRecord;
     }
+  } catch { /* noop */ }
+
+  if (!record) return "";
+
+  const parts = ["\n### Automated Diagnosis (from triage system)"];
+  parts.push(`**Root Cause:** ${record.reason}`);
+  parts.push(`**Fault Domain:** ${record.domain}`);
+  parts.push(`**Classification Source:** ${record.source}${record.rag_matches?.[0]?.snippet ? ` (RAG match: "${record.rag_matches[0].snippet}")` : ""}`);
+  parts.push(`**Error Signature:** ${record.error_signature}`);
+  if (record.llm_invoked && record.llm_reason) {
+    parts.push(`**LLM Assessment:** ${record.llm_reason}`);
   }
-
-  if (Object.keys(diagFields).length === 0) return "";
-
-  const parts = ["\n### Automated Diagnosis (from previous run's triage system)"];
-  if (diagFields.ROOT_CAUSE) parts.push(`**Root Cause:** ${diagFields.ROOT_CAUSE}`);
-  if (diagFields.FAULT_DOMAIN_HINT) parts.push(`**Fault Domain:** ${diagFields.FAULT_DOMAIN_HINT}`);
-  if (diagFields.ERROR_TYPE) parts.push(`**Error Type:** ${diagFields.ERROR_TYPE}`);
-  if (diagFields.EVIDENCE) parts.push(`**Evidence:** ${diagFields.EVIDENCE}`);
   parts.push("\n**Use this diagnosis as your starting point. Do NOT re-investigate from scratch.**");
 
   return parts.join("\n");
@@ -190,7 +183,7 @@ function buildIdenticalErrorWarning(
 
   try {
     const priorRedevEntries = errorLog.filter(
-      (e) => e.itemKey === "reset-for-dev" && e.errorSignature,
+      (e) => (e.itemKey === "reset-for-dev" || e.itemKey === "reset-for-reroute") && e.errorSignature,
     );
     const matchCount = priorRedevEntries.filter(
       (e) => e.errorSignature === currentSig,
@@ -264,7 +257,9 @@ export async function computeEffectiveDevAttempts(
   if (nodeCategory !== "dev") return inMemoryAttempts;
   try {
     const pipeState = await readState(slug);
-    const persistedCycles = pipeState.errorLog.filter((e) => e.itemKey === "reset-for-dev").length;
+    const persistedCycles = pipeState.errorLog.filter(
+      (e) => e.itemKey === "reset-for-dev" || e.itemKey === "reset-for-reroute",
+    ).length;
     return Math.max(inMemoryAttempts, persistedCycles);
   } catch {
     return inMemoryAttempts;

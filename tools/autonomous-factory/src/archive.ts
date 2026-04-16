@@ -69,6 +69,9 @@ export function archiveFeatureFiles(featureSlug: string, root: string, repoRootD
       `${featureSlug}_TERMINAL-LOG.md`,
       `${featureSlug}_PLAYWRIGHT-LOG.md`,
       `${featureSlug}_CHANGES.json`,
+      `${featureSlug}_EVENTS.jsonl`,
+      `${featureSlug}_BLOBS.jsonl`,
+      `${featureSlug}_NOVEL_TRIAGE.jsonl`,
     ];
 
     // Dynamically find the SPEC file

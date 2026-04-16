@@ -37,6 +37,7 @@ function makeConfig(): PipelineRunConfig {
     baseBranch: "main",
     apmContext: { agents: {}, config: {} } as any,
     roamAvailable: false,
+    logger: { event: () => "noop", blob: () => {}, query: () => [], setAttempt: () => {}, materializeItemSummary: () => null, runId: "test" } as any,
   };
 }
 

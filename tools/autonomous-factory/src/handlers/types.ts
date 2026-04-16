@@ -19,6 +19,7 @@
 
 import type { ApmCompiledOutput } from "../apm-types.js";
 import type { PipelineState, ItemSummary } from "../types.js";
+import type { PipelineLogger } from "../logger.js";
 
 // ---------------------------------------------------------------------------
 // NodeContext — input to every handler
@@ -75,6 +76,8 @@ export interface NodeContext {
    * Undefined for non-agent handlers.
    */
   readonly client?: unknown;
+  /** Pipeline event logger — single entry point for all telemetry. */
+  readonly logger: PipelineLogger;
 }
 
 // ---------------------------------------------------------------------------

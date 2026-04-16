@@ -134,9 +134,9 @@ const githubCiPollHandler: NodeHandler = {
       ? `bash "${pollScript}" --commit "${lastPushedSha}"`
       : `bash "${pollScript}"`;
 
-    console.log(`  ⏳ ${ctx.itemKey}: Running deterministic CI poll (no agent session)`);
+    ctx.logger.event("item.start", ctx.itemKey, { agent: "ci-poll", phase: "poll", node_type: "poll", category: "deploy" });
     if (lastPushedSha) {
-      console.log(`     SHA-pinned to ${lastPushedSha.slice(0, 8)}`);
+      ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` SHA-pinned to ${lastPushedSha.slice(0, 8)}`, is_write: false });
     }
 
     // Transient retry loop — exit code 2 from poll-ci.sh means network error.
@@ -171,18 +171,17 @@ const githubCiPollHandler: NodeHandler = {
         });
 
         const successLog = pollOutput.toString();
-        if (successLog) console.log(successLog);
 
         // ── Download CI artifact and post to Draft PR (if node declares it) ──
         if (node?.post_ci_artifact_to_pr) {
           try {
             await postCiArtifactToPr(ctx);
           } catch (planErr) {
-            console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+            ctx.logger.event("tool.call", ctx.itemKey, { tool: "post-ci-artifact", category: "ci", detail: ` failed: ${planErr instanceof Error ? planErr.message : String(planErr)}`, is_write: false });
           }
         }
 
-        console.log(`  ✅ ${ctx.itemKey} complete (all workflows passed)`);
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "completed", note: "all workflows passed" });
         return {
           outcome: "completed",
           summary: { intents: ["Deterministic CI poll — all workflows passed"] },
@@ -202,12 +201,12 @@ const githubCiPollHandler: NodeHandler = {
         // ── Exit code 2: Transient network error — sleep and retry ────
         if (execErr.status === 2) {
           if (transientAttempt < MAX_TRANSIENT_RETRIES) {
-            console.warn(`  ⚠ Transient CI poll error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES}), retrying in ${TRANSIENT_BACKOFF_MS / 1000}s...`);
+            ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` transient error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES})`, is_write: false });
             await new Promise((resolve) => setTimeout(resolve, TRANSIENT_BACKOFF_MS));
             continue; // Retry — no state mutation
           }
           // Exhausted transient retries — treat as timeout
-          console.warn(`  ⏳ Exhausted ${MAX_TRANSIENT_RETRIES} transient retries. Treating as timeout.`);
+          ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `Exhausted ${MAX_TRANSIENT_RETRIES} transient retries` });
           return {
             outcome: "failed",
             errorMessage: `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`,
@@ -215,13 +214,13 @@ const githubCiPollHandler: NodeHandler = {
           };
         }
 
-        // Re-echo for terminal visibility
+        // Re-echo for terminal visibility (CI output may be needed for debugging)
         if (ciLogs) console.log(ciLogs);
         if (ciStderr) console.error(ciStderr);
 
-        // ── Exit code 3 (cancellation) — NOT a code bug ────────────────
+        // ── Exit code 3 (cancellation) — NOT a code bug ────────────────────────
         if (execErr.status === 3) {
-          console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
+          ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: "CI polling manually cancelled" });
           return {
             outcome: "failed",
             errorMessage: "CI polling was manually cancelled — will retry",
@@ -229,7 +228,7 @@ const githubCiPollHandler: NodeHandler = {
           };
         }
 
-        console.error(`  ✖ CI poll failed or had failures: ${message}`);
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `CI poll failed: ${message.slice(0, 200)}` });
 
         // ── File-based diagnostic handoff ──────────────────────────────
         let failureContext: string;
@@ -237,7 +236,7 @@ const githubCiPollHandler: NodeHandler = {
           const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
           failureContext = diagContent || capturedOutput || message;
           if (diagContent) {
-            console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
+            ctx.logger.event("tool.call", ctx.itemKey, { tool: "read-ci-diag", category: "diagnostic", detail: ` → ${path.relative(repoRoot, diagFile)}`, is_write: false });
           }
         } catch {
           failureContext = capturedOutput || message;

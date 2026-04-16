@@ -1055,6 +1055,25 @@ export function setUrl(slug, url) {
   });
 }
 
+/**
+ * Persist the last triage record to state for downstream context injection.
+ * @param {string} slug
+ * @param {object} record - TriageRecord object
+ * @returns {object} Updated state
+ */
+export function setLastTriageRecord(slug, record) {
+  if (!slug || !record) {
+    throw new Error("setLastTriageRecord requires slug and record");
+  }
+
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    state.lastTriageRecord = record;
+    writeState(slug, state);
+    return state;
+  });
+}
+
 // ─── Commands (CLI wrappers) ────────────────────────────────────────────────
 // These delegate to the exported API functions above, converting errors to
 // console.error + process.exit for CLI usage.

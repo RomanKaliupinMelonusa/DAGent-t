@@ -11,7 +11,7 @@ import type { ApmCompiledOutput } from "../apm-types.js";
 import type { ApmWorkflowNode } from "../apm-types.js";
 import type { ItemSummary } from "../types.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { writePipelineSummary, writeTerminalLog } from "../reporting.js";
+import { writeFlightData } from "../reporting.js";
 import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
 
 // ---------------------------------------------------------------------------
@@ -178,11 +178,10 @@ export function shouldSkipRetry(
 // Report flushing
 // ---------------------------------------------------------------------------
 
-/** Flush both report files (summary + terminal log) after each item completes */
+/** Flush flight data after each item completes (summary + terminal log are generated once at pipeline end) */
 export function flushReports(config: PipelineRunConfig, state: PipelineRunState): void {
-  const { appRoot, repoRoot, baseBranch, slug, apmContext } = config;
-  writePipelineSummary(appRoot, repoRoot, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
-  writeTerminalLog(appRoot, repoRoot, baseBranch, slug, state.pipelineSummaries, apmContext, state.baseTelemetry);
+  const { appRoot, slug } = config;
+  writeFlightData(appRoot, slug, state.pipelineSummaries);
 }
 
 // ---------------------------------------------------------------------------

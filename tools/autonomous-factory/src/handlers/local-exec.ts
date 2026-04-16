@@ -62,7 +62,7 @@ const localExecHandler: NodeHandler = {
     // All framework-specific knowledge lives in the command itself.
     const preCommand = node?.pre?.replace(/\$\{featureSlug\}/g, slug);
     if (preCommand) {
-      console.log(`  🔍 local-exec: Running pre-hook before main command...`);
+      ctx.logger.event("item.start", itemKey, { agent: "pre-hook", phase: "pre", node_type: "hook", category: "pre-hook" });
       try {
         await execAsync(preCommand, {
           cwd: appRoot,
@@ -70,7 +70,7 @@ const localExecHandler: NodeHandler = {
           timeout: PRE_TIMEOUT_MS,
           env: execEnv,
         });
-        console.log(`  ✅ local-exec: Pre-hook passed`);
+        ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "pre-hook passed" });
       } catch (preErr: unknown) {
         onHeartbeat();
         const e = preErr as { stdout?: string; stderr?: string; message?: string };
@@ -78,7 +78,7 @@ const localExecHandler: NodeHandler = {
         const msg = `Pre-hook failed — aborting "${command}" without running it.\n` +
           `Pre command:\n${preCommand}\n` +
           `Output:\n${preOut.slice(-2048)}`;
-        console.error(`  ✖ local-exec: ${msg}`);
+        ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `pre-hook: ${preOut.slice(0, 200)}` });
         return {
           outcome: "failed",
           errorMessage: msg,
@@ -88,7 +88,7 @@ const localExecHandler: NodeHandler = {
       }
     }
 
-    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot} (timeout: ${timeoutMinutes}m)`);
+    ctx.logger.event("tool.call", itemKey, { tool: "local-exec", category: "shell", detail: ` → ${command}`, is_write: false });
 
     try {
       const { stdout, stderr } = await execAsync(command, {
@@ -102,7 +102,7 @@ const localExecHandler: NodeHandler = {
 
       const output = (stdout + stderr).trim();
 
-      console.log(`  ✅ local-exec: Command completed successfully`);
+      ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "local-exec" });
 
       return {
         outcome: "completed",
@@ -123,7 +123,7 @@ const localExecHandler: NodeHandler = {
       if (execErr.killed && execErr.signal === "SIGTERM") {
         const timeoutMsg = `local-exec: Process killed after ${timeoutMinutes}m timeout (SIGTERM). ` +
           `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
-        console.error(`  ✖ ${timeoutMsg}`);
+      ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `Process killed after ${timeoutMinutes}m timeout` });
         return {
           outcome: "failed",
           errorMessage: timeoutMsg,
@@ -138,7 +138,7 @@ const localExecHandler: NodeHandler = {
       // Sanitize raw output — cap to 8KB and extract test stats for triage
       const sanitized = sanitizeOutput(output);
 
-      console.error(`  ✖ local-exec: Command failed (exit code ${exitCode})`);
+      ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `exit code ${exitCode}` });
 
       return {
         outcome: "failed",
