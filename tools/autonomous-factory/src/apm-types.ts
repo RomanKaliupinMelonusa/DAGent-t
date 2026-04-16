@@ -228,7 +228,53 @@ export const ApmConfigSchema = z.object({
 // Workflow DAG schemas (workflows.yml)
 // ---------------------------------------------------------------------------
 
-const ApmWorkflowNodeSchemaBase = z.object({
+// ---------------------------------------------------------------------------
+// Shared node body fields — reused by both the node catalog and workflow nodes.
+// These describe WHAT a node does (execution config), NOT how it connects (graph).
+// ---------------------------------------------------------------------------
+
+const circuitBreakerSchema = z.object({
+  /** Minimum in-memory attempts before the identical-error detector activates.
+   *  Default 3 (skip triggered on attempt 3+ if error and HEAD unchanged). */
+  min_attempts_before_skip: z.number().int().positive().default(3),
+  /** When true and the CB fires, defer once for a clean-slate revert opportunity
+   *  (agent-branch.sh revert) instead of halting immediately.
+   *  Replaces the hardcoded `category === "dev"` check. Default: true for dev nodes. */
+  allows_revert_bypass: z.boolean().optional(),
+  /** When true, a timeout loop triggers salvageForDraft instead of halting.
+   *  Replaces the hardcoded `category === "dev" && isTimeoutLoop` check. Default: true for dev nodes. */
+  allows_timeout_salvage: z.boolean().optional(),
+  /** When true, identical error + identical HEAD causes immediate halt on attempt 2+.
+   *  Intended for deterministic (script) handlers where retry with same input is futile.
+   *  Replaces the hardcoded `type === "script"` K2 check. Default: true for script nodes. */
+  halt_on_identical: z.boolean().optional(),
+  /** Effective attempt count at which a revert warning is injected into the agent prompt.
+   *  Only applies when allows_revert_bypass is true. Default: 3. */
+  revert_warning_at: z.number().int().positive().default(3),
+});
+
+const consumesEntrySchema = z.object({
+  key: z.string(),
+  from: z.string().default("*"),
+  required: z.boolean().default(true),
+});
+
+/** On-failure routing shape — used by both default_on_failure and per-node on_failure. */
+export const OnFailureSchema = z.object({
+  /** Key of the triage node that classifies this failure. */
+  triage: z.string(),
+  /** Domain → target node key. "$SELF" retries the failing node; null halts the pipeline. */
+  routes: z.record(z.string(), z.string().nullable()).default({}),
+});
+
+/**
+ * Node body fields — the execution shape of a node.
+ * Shared between the node catalog (ApmNodeCatalogEntrySchema) and
+ * the full merged workflow node (ApmWorkflowNodeSchemaBase).
+ * Graph-only fields (phase, depends_on, on_failure, poll_target, triage_profile,
+ * post_ci_artifact_to_pr) are NOT included here.
+ */
+const nodeBodyFields = {
   /** Execution type: built-in types are "agent", "script", "approval", "barrier", "triage".
    *  Custom types are allowed — declare a matching handler in config.handler_defaults or node.handler. */
   type: z.string().default("agent"),
@@ -244,34 +290,14 @@ const ApmWorkflowNodeSchemaBase = z.object({
    * If omitted, inferred from `type` + `script_type` for backward compatibility.
    */
   handler: z.string().optional(),
-  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
-  phase: z.string(),
   /** Session timeout in minutes. */
   timeout_minutes: z.number().positive().default(15),
-  /** DAG edges — keys of nodes that must complete before this one can run. */
-  depends_on: z.array(z.string()).default([]),
   /** Whether pollReadiness() must pass before the agent session starts. */
   requires_data_plane_ready: z.boolean().default(false),
   /** Directory keys (from config.directories) to check for git changes; skip if none. */
   auto_skip_if_no_changes_in: z.array(z.string()).default([]),
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
-  /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
-  triage: z.string().optional(),
-  /** Failure routing config — declares which triage node classifies failures
-   *  and where each classified domain routes to.
-   *  `triage`: key of a triage node in this workflow.
-   *  `routes`: domain → target node key (or "$SELF" to retry, or null to halt).
-   *  Unmatched domains default to "$SELF". */
-  on_failure: z.object({
-    /** Key of the triage node that classifies this failure. */
-    triage: z.string(),
-    /** Domain → target node key. "$SELF" retries the failing node; null halts the pipeline. */
-    routes: z.record(z.string(), z.string().nullable()).default({}),
-  }).optional(),
-  /** Triage profile name — only used on nodes with `type: "triage"`.
-   *  References a profile from the workflow's `triage` section. */
-  triage_profile: z.string().optional(),
   /** Handlebars template flags — injected as boolean `true` keys into the template context.
    *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
   template_flags: z.array(z.string()).default([]),
@@ -286,8 +312,6 @@ const ApmWorkflowNodeSchemaBase = z.object({
   diff_attribution_dirs: z.array(z.string()).default([]),
   /** @deprecated — push is now local-exec; sentinel logic lives in hooks/write-deploy-sentinels.sh. */
   writes_deploy_sentinel: z.boolean().default(false),
-  /** When set, runPollCi downloads the named CI artifact and posts it to the PR (e.g. "plan-output"). */
-  post_ci_artifact_to_pr: z.string().optional(),
   /** When true, writeChangeManifest() is called before the agent session starts. */
   generates_change_manifest: z.boolean().default(false),
   /** When true, buildPhaseRejectionContext() is injected into the agent prompt
@@ -302,8 +326,6 @@ const ApmWorkflowNodeSchemaBase = z.object({
   script_type: z.string().optional(),
   /** Shell command to execute (required when script_type is "local-exec"). */
   command: z.string().optional(),
-  /** For poll nodes — the key of the push node whose SHA to look up in handlerOutputs. */
-  poll_target: z.string().optional(),
   /** For poll nodes — the key into config.ciWorkflows for CI_WORKFLOW_FILTER (e.g. "infra", "app"). */
   ci_workflow_key: z.string().optional(),
   /** Shell command to run BEFORE the handler body as a pre-flight check.
@@ -333,39 +355,83 @@ const ApmWorkflowNodeSchemaBase = z.object({
    *  Each entry: { key: "lastPushedSha", from: "push-app", required: true }.
    *  `from` = upstream node key (or "*" = any). `required` defaults to true.
    *  The kernel warns/fails at dispatch if required keys are missing. */
-  consumes: z.array(z.object({
-    key: z.string(),
-    from: z.string().default("*"),
-    required: z.boolean().default(true),
-  })).default([]),
+  consumes: z.array(consumesEntrySchema).default([]),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
-
-  // -----------------------------------------------------------------------
-  // Circuit breaker — per-node retry and failure handling config (Phase 2)
-  // -----------------------------------------------------------------------
-
   /** Per-node circuit breaker configuration. Controls retry behavior, identical-error
    *  detection, and failure escalation. Replaces hardcoded category-based checks. */
-  circuit_breaker: z.object({
-    /** Minimum in-memory attempts before the identical-error detector activates.
-     *  Default 3 (skip triggered on attempt 3+ if error and HEAD unchanged). */
-    min_attempts_before_skip: z.number().int().positive().default(3),
-    /** When true and the CB fires, defer once for a clean-slate revert opportunity
-     *  (agent-branch.sh revert) instead of halting immediately.
-     *  Replaces the hardcoded `category === "dev"` check. Default: true for dev nodes. */
-    allows_revert_bypass: z.boolean().optional(),
-    /** When true, a timeout loop triggers salvageForDraft instead of halting.
-     *  Replaces the hardcoded `category === "dev" && isTimeoutLoop` check. Default: true for dev nodes. */
-    allows_timeout_salvage: z.boolean().optional(),
-    /** When true, identical error + identical HEAD causes immediate halt on attempt 2+.
-     *  Intended for deterministic (script) handlers where retry with same input is futile.
-     *  Replaces the hardcoded `type === "script"` K2 check. Default: true for script nodes. */
-    halt_on_identical: z.boolean().optional(),
-    /** Effective attempt count at which a revert warning is injected into the agent prompt.
-     *  Only applies when allows_revert_bypass is true. Default: 3. */
-    revert_warning_at: z.number().int().positive().default(3),
-  }).optional(),
+  circuit_breaker: circuitBreakerSchema.optional(),
+} as const;
+
+// ---------------------------------------------------------------------------
+// Node Catalog Entry — the "pool" definition of a reusable node (apm.yml → nodes:)
+// No graph-only fields (phase, depends_on, on_failure, poll_target, triage_profile, post_ci_artifact_to_pr).
+// ---------------------------------------------------------------------------
+
+export const ApmNodeCatalogEntrySchema = z.object(nodeBodyFields);
+
+// ---------------------------------------------------------------------------
+// Workflow Node Ref — how a workflow references a pool node + graph wiring.
+// Graph-only fields are required/present; body fields are optional overrides.
+// After the compiler merges pool defaults + ref overrides, the result matches
+// ApmWorkflowNodeSchema (the full merged shape used by the runtime).
+// ---------------------------------------------------------------------------
+
+/** Make all node body fields optional for workflow ref overrides. */
+const optionalNodeBodyFields = Object.fromEntries(
+  Object.entries(nodeBodyFields).map(([key, schema]) => [key, (schema as z.ZodTypeAny).optional()]),
+) as { [K in keyof typeof nodeBodyFields]: z.ZodOptional<(typeof nodeBodyFields)[K]> };
+
+export const ApmWorkflowNodeRefSchema = z.object({
+  /** Explicit reference to a node catalog entry by key. If omitted, the compiler
+   *  matches by workflow node key against the catalog. Replaces `_template`. */
+  _node: z.string().optional(),
+  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
+  phase: z.string(),
+  /** DAG edges — keys of nodes that must complete before this one can run. */
+  depends_on: z.array(z.string()).default([]),
+  /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). */
+  triage: z.string().optional(),
+  /** Failure routing config — merged with workflow-level default_on_failure.
+   *  Per-node routes override defaults. If triage is omitted here but present in
+   *  default_on_failure, the default is inherited. */
+  on_failure: OnFailureSchema.partial().optional(),
+  /** Triage profile name — only used on nodes with `type: "triage"`. */
+  triage_profile: z.string().optional(),
+  /** For poll nodes — the key of the push node whose SHA to look up in handlerOutputs. */
+  poll_target: z.string().optional(),
+  /** When set, runPollCi downloads the named CI artifact and posts it to the PR (e.g. "plan-output"). */
+  post_ci_artifact_to_pr: z.string().optional(),
+  // --- All body fields as optional overrides ---
+  ...optionalNodeBodyFields,
+});
+
+// ---------------------------------------------------------------------------
+// Full merged workflow node — the shape after compiler merges pool + ref + defaults.
+// This is what the runtime (session-runner, agents.ts) consumes.
+// ---------------------------------------------------------------------------
+
+const ApmWorkflowNodeSchemaBase = z.object({
+  ...nodeBodyFields,
+  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
+  phase: z.string(),
+  /** DAG edges — keys of nodes that must complete before this one can run. */
+  depends_on: z.array(z.string()).default([]),
+  /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
+  triage: z.string().optional(),
+  /** Failure routing config — declares which triage node classifies failures
+   *  and where each classified domain routes to.
+   *  `triage`: key of a triage node in this workflow.
+   *  `routes`: domain → target node key (or "$SELF" to retry, or null to halt).
+   *  Unmatched domains default to "$SELF". */
+  on_failure: OnFailureSchema.optional(),
+  /** Triage profile name — only used on nodes with `type: "triage"`.
+   *  References a profile from the workflow's `triage` section. */
+  triage_profile: z.string().optional(),
+  /** For poll nodes — the key of the push node whose SHA to look up in handlerOutputs. */
+  poll_target: z.string().optional(),
+  /** When set, runPollCi downloads the named CI artifact and posts it to the PR (e.g. "plan-output"). */
+  post_ci_artifact_to_pr: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -512,6 +578,10 @@ export const ApmWorkflowSchema = z.object({
   phases: z.array(z.string()),
   /** Pipeline nodes keyed by item key. */
   nodes: z.record(z.string(), ApmWorkflowNodeSchema),
+  /** Workflow-level default failure routing — inherited by nodes that declare on_failure.
+   *  Per-node on_failure.routes override/extend these defaults.
+   *  Nodes without on_failure are unaffected (no implicit opt-in). */
+  default_on_failure: OnFailureSchema.optional(),
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
@@ -677,6 +747,10 @@ export const ApmManifestSchema = z.object({
   description: z.string().optional(),
   tokenBudget: z.number().int().positive(),
   agents: z.record(z.string(), ApmAgentDeclSchema),
+  /** Reusable node pool — all node types (agent, script, barrier, triage, approval).
+   *  Replaces `_templates` from workflows.yml. Nodes define WHAT to execute;
+   *  workflows define HOW to connect them (phase, edges, failure routing). */
+  nodes: z.record(z.string(), ApmNodeCatalogEntrySchema).default({}),
   generatedInstructions: z
     .record(z.string(), ApmGeneratedInstructionSchema)
     .optional(),
@@ -736,8 +810,11 @@ export type ApmAgentSecurity = z.infer<typeof ApmAgentSecuritySchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmWorkflowNode = z.infer<typeof ApmWorkflowNodeSchema>;
+export type ApmWorkflowNodeRef = z.infer<typeof ApmWorkflowNodeRefSchema>;
+export type ApmNodeCatalogEntry = z.infer<typeof ApmNodeCatalogEntrySchema>;
 export type ApmWorkflow = z.infer<typeof ApmWorkflowSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;
+export type OnFailure = z.infer<typeof OnFailureSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;
 export type ApmGeneratedInstruction = z.infer<typeof ApmGeneratedInstructionSchema>;

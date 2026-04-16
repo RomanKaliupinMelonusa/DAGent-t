@@ -1,206 +1,12 @@
 # workflows.yml — Declarative DAG for the agentic pipeline.
 #
 # Structure:
-#   _templates: Reusable node bodies (palette for UI drag-and-drop).
 #   <workflow-name>: Named workflow DAGs. Each is self-contained.
 #
-# Compiler merges template → node (node fields win). Graph-only fields
-# (depends_on, on_failure) are NEVER inherited from templates.
-
-# ═══════════════════════════════════════════════════════════════════════
-# Node Templates — Reusable palette of node bodies
-# ═══════════════════════════════════════════════════════════════════════
-_templates:
-  schema-dev:
-    type: agent
-    category: dev
-    agent: "@schema-dev"
-    timeout_minutes: 20
-    commit_scope: backend
-    diff_attribution_dirs: [packages]
-    circuit_breaker:
-      allows_revert_bypass: true
-      allows_timeout_salvage: true
-
-  infra-architect:
-    type: agent
-    category: dev
-    agent: "@infra-architect"
-    timeout_minutes: 20
-    commit_scope: infra
-    diff_attribution_dirs: [infra]
-    injects_infra_rollback: true
-    circuit_breaker:
-      allows_revert_bypass: true
-      allows_timeout_salvage: true
-
-  push-code:
-    type: script
-    category: deploy
-    timeout_minutes: 15
-    script_type: local-exec
-    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
-    captures_head_sha: true
-    circuit_breaker:
-      halt_on_identical: true
-
-  create-draft-pr:
-    type: agent
-    category: deploy
-    agent: "@pr-creator"
-    timeout_minutes: 15
-    commit_scope: pipeline
-
-  poll-ci:
-    type: script
-    category: deploy
-    timeout_minutes: 15
-    script_type: poll
-    captures_head_sha: true
-    circuit_breaker:
-      halt_on_identical: true
-
-  await-approval:
-    type: approval
-    category: deploy
-    timeout_minutes: 15
-    commit_scope: pipeline
-
-  infra-handoff:
-    type: agent
-    category: dev
-    agent: "@infra-handoff"
-    timeout_minutes: 20
-    commit_scope: pipeline
-    post: "bash .apm/hooks/validate-infra.sh"
-    circuit_breaker:
-      allows_revert_bypass: true
-      allows_timeout_salvage: true
-
-  backend-dev:
-    type: agent
-    category: dev
-    agent: "@backend-dev"
-    timeout_minutes: 20
-    commit_scope: backend
-    diff_attribution_dirs: [backend, packages, infra, .github/]
-    circuit_breaker:
-      allows_revert_bypass: true
-      allows_timeout_salvage: true
-
-  frontend-dev:
-    type: agent
-    category: dev
-    agent: "@frontend-dev"
-    timeout_minutes: 20
-    commit_scope: frontend
-    diff_attribution_dirs: [frontend, packages, e2e, .github/]
-    circuit_breaker:
-      allows_revert_bypass: true
-      allows_timeout_salvage: true
-
-  backend-unit-test:
-    type: agent
-    category: test
-    agent: "@backend-test"
-    timeout_minutes: 10
-    auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-    commit_scope: backend
-    diff_attribution_dirs: [backend, packages, infra, .github/]
-
-  frontend-unit-test:
-    type: agent
-    category: test
-    agent: "@frontend-ui-test"
-    timeout_minutes: 10
-    auto_skip_if_no_changes_in: [frontend, e2e]
-    commit_scope: frontend
-    diff_attribution_dirs: [frontend, packages, e2e, .github/]
-
-  push-app:
-    type: script
-    category: deploy
-    timeout_minutes: 15
-    script_type: local-exec
-    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
-    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
-    captures_head_sha: true
-    circuit_breaker:
-      halt_on_identical: true
-
-  poll-app-ci:
-    type: script
-    category: deploy
-    timeout_minutes: 15
-    script_type: poll
-    ci_workflow_key: app
-    post: "bash .apm/hooks/validate-app.sh"
-    captures_head_sha: true
-    circuit_breaker:
-      halt_on_identical: true
-
-  integration-test:
-    type: agent
-    category: test
-    agent: "@backend-test"
-    timeout_minutes: 20
-    requires_data_plane_ready: true
-    auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-    template_flags: ["isPostDeploy", "isIntegrationTest"]
-    commit_scope: pipeline
-    diff_attribution_dirs: [backend, packages, infra, .github/]
-
-  live-ui:
-    type: agent
-    category: test
-    agent: "@frontend-ui-test"
-    timeout_minutes: 20
-    requires_data_plane_ready: true
-    auto_skip_if_no_changes_in: [frontend, infra, e2e]
-    template_flags: ["isPostDeploy", "isLiveUi"]
-    force_run_if_changed: ["infra"]
-    commit_scope: pipeline
-    diff_attribution_dirs: [frontend, packages, e2e, .github/]
-
-  code-cleanup:
-    type: agent
-    category: finalize
-    agent: "@code-cleanup"
-    timeout_minutes: 20
-    auto_skip_if_no_deletions: true
-    commit_scope: pipeline
-
-  docs-archived:
-    type: agent
-    category: finalize
-    agent: "@docs-expert"
-    timeout_minutes: 20
-    commit_scope: docs
-    generates_change_manifest: true
-    salvage_survivor: true
-
-  doc-architect:
-    type: agent
-    category: finalize
-    agent: "@doc-architect"
-    timeout_minutes: 20
-    commit_scope: pipeline
-
-  publish-pr:
-    type: script
-    category: finalize
-    timeout_minutes: 15
-    script_type: local-exec
-    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
-    signals_create_pr: true
-    salvage_survivor: true
-    circuit_breaker:
-      halt_on_identical: true
-
-  triage-node:
-    type: triage
-    category: finalize
-    timeout_minutes: 5
+# Node definitions live in apm.yml → nodes: (the pool).
+# Compiler merges pool defaults → workflow node (workflow fields win).
+# Graph-only fields (depends_on, on_failure, phase, poll_target, triage_profile)
+# are NEVER inherited from the pool.
 
 # ═══════════════════════════════════════════════════════════════════════
 # Workflow: full-stack
@@ -216,6 +22,18 @@ full-stack:
     - finalize
     - triage
 
+  # Workflow-level failure routing defaults — inherited by nodes with on_failure.
+  # Per-node routes override these. Nodes without on_failure are unaffected.
+  default_on_failure:
+    triage: triage-full-stack
+    routes:
+      schemas: schema-dev
+      cicd: push-app
+      deployment-stale: push-app
+      test-code: "$SELF"
+      environment: "$SELF"
+      blocked: null
+
   nodes:
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
     schema-dev:
@@ -227,7 +45,7 @@ full-stack:
       depends_on: [schema-dev]
 
     push-infra:
-      _template: push-code
+      _node: push-code
       phase: infra
       depends_on: [infra-architect]
 
@@ -236,7 +54,7 @@ full-stack:
       depends_on: [push-infra]
 
     poll-infra-plan:
-      _template: poll-ci
+      _node: poll-ci
       phase: infra
       depends_on: [create-draft-pr]
       post_ci_artifact_to_pr: "plan-output"
@@ -245,7 +63,7 @@ full-stack:
 
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
-      _template: await-approval
+      _node: await-approval
       phase: approval
       depends_on: [poll-infra-plan]
 
@@ -266,25 +84,13 @@ full-stack:
       phase: pre-deploy
       depends_on: [backend-dev]
       on_failure:
-        triage: triage-full-stack
-        routes:
-          backend: backend-dev
-          schemas: schema-dev
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
+        routes: { backend: backend-dev }
 
     frontend-unit-test:
       phase: pre-deploy
       depends_on: [frontend-dev]
       on_failure:
-        triage: triage-full-stack
-        routes:
-          frontend: frontend-dev
-          schemas: schema-dev
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
+        routes: { frontend: frontend-dev }
 
     push-app:
       phase: deploy
@@ -300,35 +106,21 @@ full-stack:
       phase: post-deploy
       depends_on: [poll-app-ci]
       on_failure:
-        triage: triage-full-stack
         routes:
           backend: backend-dev
           both: schema-dev
-          schemas: schema-dev
           "backend+infra": infra-architect
           infra: infra-architect
-          cicd: push-app
-          deployment-stale: push-app
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
 
     live-ui:
       phase: post-deploy
       depends_on: [poll-app-ci, integration-test]
       on_failure:
-        triage: triage-full-stack
         routes:
           frontend: frontend-dev
           both: schema-dev
-          schemas: schema-dev
           "frontend+infra": infra-architect
           infra: infra-architect
-          cicd: push-app
-          deployment-stale: push-app
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
@@ -349,7 +141,7 @@ full-stack:
 
     # ── Triage ─────────────────────────────────────────────────────────
     triage-full-stack:
-      _template: triage-node
+      _node: triage-node
       phase: triage
       depends_on: []
       triage_profile: full-stack
@@ -414,6 +206,17 @@ backend:
     - finalize
     - triage
 
+  # Workflow-level failure routing defaults
+  default_on_failure:
+    triage: triage-backend
+    routes:
+      schemas: schema-dev
+      cicd: push-app
+      deployment-stale: push-app
+      test-code: "$SELF"
+      environment: "$SELF"
+      blocked: null
+
   nodes:
     schema-dev:
       phase: infra
@@ -424,7 +227,7 @@ backend:
       depends_on: [schema-dev]
 
     push-infra:
-      _template: push-code
+      _node: push-code
       phase: infra
       depends_on: [infra-architect]
 
@@ -433,7 +236,7 @@ backend:
       depends_on: [push-infra]
 
     poll-infra-plan:
-      _template: poll-ci
+      _node: poll-ci
       phase: infra
       depends_on: [create-draft-pr]
       post_ci_artifact_to_pr: "plan-output"
@@ -441,7 +244,7 @@ backend:
       ci_workflow_key: infra
 
     await-infra-approval:
-      _template: await-approval
+      _node: await-approval
       phase: approval
       depends_on: [poll-infra-plan]
 
@@ -457,14 +260,7 @@ backend:
       phase: pre-deploy
       depends_on: [backend-dev]
       on_failure:
-        triage: triage-backend
-        routes:
-          backend: backend-dev
-          schemas: schema-dev
-          infra: infra-architect
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
+        routes: { backend: backend-dev, infra: infra-architect }
 
     push-app:
       phase: deploy
@@ -479,17 +275,10 @@ backend:
       phase: post-deploy
       depends_on: [poll-app-ci]
       on_failure:
-        triage: triage-backend
         routes:
           backend: backend-dev
-          schemas: schema-dev
           "backend+infra": infra-architect
           infra: infra-architect
-          cicd: push-app
-          deployment-stale: push-app
-          test-code: "$SELF"
-          environment: "$SELF"
-          blocked: null
 
     code-cleanup:
       phase: finalize
@@ -508,7 +297,7 @@ backend:
       depends_on: [doc-architect]
 
     triage-backend:
-      _template: triage-node
+      _node: triage-node
       phase: triage
       depends_on: []
       triage_profile: backend

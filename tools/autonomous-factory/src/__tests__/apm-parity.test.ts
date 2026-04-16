@@ -207,11 +207,10 @@ describe("APM Compiler", () => {
 
   it("agents without MCP have empty mcp record", () => {
     const output = compileApm(APP_ROOT);
-    assert.deepEqual(output.agents["push-app"].mcp, {});
-    assert.deepEqual(output.agents["poll-app-ci"].mcp, {});
-    assert.deepEqual(output.agents["push-infra"].mcp, {});
-    assert.deepEqual(output.agents["poll-infra-plan"].mcp, {});
+    // Script/poll/approval nodes no longer have agent declarations (moved to nodes: pool).
+    // Test LLM agents that genuinely have no MCP servers.
     assert.deepEqual(output.agents["integration-test"].mcp, {});
+    assert.deepEqual(output.agents["create-draft-pr"].mcp, {});
   });
 
   it("loads skill descriptions", () => {

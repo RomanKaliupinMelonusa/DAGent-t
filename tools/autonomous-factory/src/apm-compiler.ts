@@ -30,44 +30,98 @@ import {
 // Token estimation
 
 // ---------------------------------------------------------------------------
-// Template merge — merges _templates into workflow nodes before Zod validation
+// Node catalog merge — merges node pool + legacy _templates into workflow nodes
 // ---------------------------------------------------------------------------
 
-/** Graph-only fields that NEVER inherit from templates. */
-const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);
+/** Graph-only fields that NEVER inherit from the node pool/templates. */
+const GRAPH_ONLY_FIELDS = new Set(["phase", "depends_on", "on_failure", "triage", "poll_target", "triage_profile", "post_ci_artifact_to_pr"]);
 
 /**
- * Merge template defaults into a raw workflow object's nodes before Zod validation.
- * For each node in `raw.nodes`, if a matching template exists, shallow-merge
- * template fields as defaults (node fields win). Graph-only fields (depends_on,
- * on_failure) are never inherited from templates.
+ * Merge node catalog (from manifest.nodes) and legacy _templates into workflow
+ * nodes before Zod validation.
+ *
+ * Resolution order per node:
+ *   1. Explicit `_node` (new) or `_template` (legacy) field → catalog/template key
+ *   2. Key-match: workflow node key matches catalog/template key
+ *
+ * Merge: catalog/template body fields as defaults, workflow node fields win.
+ * Graph-only fields (depends_on, on_failure, poll_target, triage_profile,
+ * post_ci_artifact_to_pr) are NEVER inherited from catalog/templates.
+ *
+ * default_on_failure merging:
+ *   - If the workflow declares `default_on_failure` and a node declares `on_failure`,
+ *     the routes are merged (node routes win). If the node omits `triage`, it
+ *     inherits from `default_on_failure.triage`.
+ *   - Nodes without `on_failure` are untouched (no implicit opt-in).
  */
-function mergeTemplatesIntoWorkflow(
+function mergeNodeCatalogIntoWorkflow(
   raw: Record<string, unknown>,
-  templates: Record<string, Record<string, unknown>>,
+  nodeCatalog: Record<string, Record<string, unknown>>,
+  legacyTemplates: Record<string, Record<string, unknown>>,
 ): Record<string, unknown> {
-  if (!raw?.nodes || typeof raw.nodes !== "object" || Object.keys(templates).length === 0) {
+  if (!raw?.nodes || typeof raw.nodes !== "object") {
     return raw;
   }
+
+  // Emit deprecation warning for legacy _templates
+  if (Object.keys(legacyTemplates).length > 0 && Object.keys(nodeCatalog).length > 0) {
+    console.warn(
+      "[APM] DEPRECATED: workflows.yml still contains _templates. " +
+      "Move node definitions to apm.yml → nodes: and remove _templates. " +
+      "Legacy _templates are used as fallback when no catalog match is found.",
+    );
+  } else if (Object.keys(legacyTemplates).length > 0) {
+    console.warn(
+      "[APM] DEPRECATED: workflows.yml contains _templates. " +
+      "Move node definitions to apm.yml → nodes: and remove _templates.",
+    );
+  }
+
+  // Combined pool: node catalog takes precedence over legacy templates
+  const pool: Record<string, Record<string, unknown>> = { ...legacyTemplates, ...nodeCatalog };
+
   const rawNodes = raw.nodes as Record<string, Record<string, unknown>>;
   const mergedNodes: Record<string, Record<string, unknown>> = {};
+  const defaultOnFailure = raw.default_on_failure as Record<string, unknown> | undefined;
+
   for (const [key, nodeRaw] of Object.entries(rawNodes)) {
-    // Resolve template: explicit `_template` field, else match by node key
-    const templateKey = typeof nodeRaw._template === "string" ? nodeRaw._template : key;
-    const template = templates[templateKey];
-    // Strip `_template` from the output — it's a compiler directive, not a runtime field
-    const { _template, ...nodeFields } = nodeRaw;
-    if (template) {
-      // Filter out graph-only fields from template
-      const filteredTemplate: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(template)) {
-        if (!GRAPH_ONLY_FIELDS.has(k)) filteredTemplate[k] = v;
+    // Resolve pool entry: explicit _node (new) or _template (legacy), else key-match
+    const poolKey = typeof nodeRaw._node === "string"
+      ? nodeRaw._node
+      : typeof nodeRaw._template === "string"
+        ? nodeRaw._template
+        : key;
+    const poolEntry = pool[poolKey];
+    // Strip compiler directives from the output
+    const { _node, _template, ...nodeFields } = nodeRaw;
+    let merged: Record<string, unknown>;
+
+    if (poolEntry) {
+      // Filter out graph-only fields from pool entry
+      const filteredPool: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(poolEntry)) {
+        if (!GRAPH_ONLY_FIELDS.has(k)) filteredPool[k] = v;
       }
-      // Merge: node fields override template defaults
-      mergedNodes[key] = { ...filteredTemplate, ...nodeFields };
+      // Merge: pool defaults + workflow overrides (workflow wins)
+      merged = { ...filteredPool, ...nodeFields };
     } else {
-      mergedNodes[key] = nodeFields;
+      merged = nodeFields;
     }
+
+    // Merge default_on_failure into per-node on_failure
+    if (defaultOnFailure && merged.on_failure) {
+      const nodeOnFailure = merged.on_failure as Record<string, unknown>;
+      const defaultRoutes = (defaultOnFailure.routes ?? {}) as Record<string, unknown>;
+      const nodeRoutes = (nodeOnFailure.routes ?? {}) as Record<string, unknown>;
+      merged.on_failure = {
+        // Node triage wins; fallback to default
+        triage: nodeOnFailure.triage ?? defaultOnFailure.triage,
+        // Default routes as base, node routes override
+        routes: { ...defaultRoutes, ...nodeRoutes },
+      };
+    }
+
+    mergedNodes[key] = merged;
   }
   return { ...raw, nodes: mergedNodes };
 }
@@ -222,19 +276,23 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
   // --- 5. Load workflow definitions ---
   // Sources: workflows.yml (multi-key) + workflows/*.yml (one workflow per file).
   // Keys starting with `_` are reserved (e.g. _templates) and skipped as workflows.
+  // Node resolution: manifest.nodes (pool) takes precedence; legacy _templates as fallback.
   const workflowsPath = path.join(apmDir, "workflows.yml");
   const workflows: Record<string, ApmWorkflow> = {};
 
-  // Extract _templates from workflows.yml (node palette for template merging)
-  let templates: Record<string, Record<string, unknown>> = {};
+  // Node catalog from manifest (the pool)
+  const nodeCatalog = (rawManifest.nodes ?? {}) as Record<string, Record<string, unknown>>;
+
+  // Extract legacy _templates from workflows.yml (deprecated, used as fallback)
+  let legacyTemplates: Record<string, Record<string, unknown>> = {};
 
   if (fs.existsSync(workflowsPath)) {
     const workflowsYaml = fs.readFileSync(workflowsPath, "utf-8");
     const rawWorkflows = yaml.load(workflowsYaml) as Record<string, unknown>;
     if (rawWorkflows && typeof rawWorkflows === "object") {
-      // Extract _templates section (node palette)
+      // Extract _templates section (legacy node palette)
       if (rawWorkflows._templates && typeof rawWorkflows._templates === "object") {
-        templates = rawWorkflows._templates as Record<string, Record<string, unknown>>;
+        legacyTemplates = rawWorkflows._templates as Record<string, Record<string, unknown>>;
       }
       for (const [name, raw] of Object.entries(rawWorkflows)) {
         // Skip _-prefixed keys (reserved for templates, anchors, etc.)
@@ -245,8 +303,8 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
             `Invalid workflow name "${name}" in workflows.yml: must be lowercase kebab-case (a-z, 0-9, hyphens).`,
           );
         }
-        // Merge templates into workflow nodes before validation
-        const merged = mergeTemplatesIntoWorkflow(raw as Record<string, unknown>, templates);
+        // Merge node catalog + legacy templates into workflow nodes before validation
+        const merged = mergeNodeCatalogIntoWorkflow(raw as Record<string, unknown>, nodeCatalog, legacyTemplates);
         const result = ApmWorkflowSchema.safeParse(merged);
         if (!result.success) {
           throw new ApmCompileError(
@@ -276,7 +334,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       }
       const filePath = path.join(workflowsDir, file);
       const raw = yaml.load(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-      const merged = mergeTemplatesIntoWorkflow(raw, templates);
+      const merged = mergeNodeCatalogIntoWorkflow(raw, nodeCatalog, legacyTemplates);
       const result = ApmWorkflowSchema.safeParse(merged);
       if (!result.success) {
         throw new ApmCompileError(
