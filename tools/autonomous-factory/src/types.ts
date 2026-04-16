@@ -45,7 +45,7 @@ export interface PipelineItem {
 
 export interface PipelineState {
   feature: string;
-  workflowType: string;
+  workflowName: string;
   started: string;
   deployedUrl: string | null;
   implementationNotes: string | null;

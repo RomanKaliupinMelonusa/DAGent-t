@@ -22,7 +22,7 @@ import type {
 let _mod: PipelineStateMod | null = null;
 
 interface PipelineStateMod {
-  initState: (slug: string, workflowType: string, contextJsonPath?: string) => InitResult;
+  initState: (slug: string, workflowName: string, contextJsonPath?: string) => InitResult;
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
   resetScripts: (slug: string, phase: string, maxCycles?: number) => ResetResult;

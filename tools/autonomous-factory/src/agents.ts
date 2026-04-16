@@ -19,7 +19,7 @@ export interface AgentContext {
   featureSlug: string;
   specPath: string;
   deployedUrl: string | null;
-  workflowType: string;
+  workflowName: string;
   repoRoot: string;
   appRoot: string;
   itemKey: string;
@@ -195,7 +195,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     // Spread all AgentContext fields
     featureSlug: ctx.featureSlug,
     specPath: ctx.specPath,
-    workflowType: ctx.workflowType,
+    workflowName: ctx.workflowName,
     repoRoot: ctx.repoRoot,
     appRoot: ctx.appRoot,
     itemKey: ctx.itemKey,
@@ -209,7 +209,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     deployedUrl: ctx.deployedUrl ?? "DEPLOY_URL_NOT_SET",
 
     // Boolean flags for template branching — driven by workflow manifest template_flags
-    ...((apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.template_flags ?? []) as string[]).reduce(
+    ...((apmContext.workflows?.[ctx.workflowName]?.nodes?.[ctx.itemKey]?.template_flags ?? []) as string[]).reduce(
       (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
     ),
 
@@ -229,7 +229,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     handoffArtifacts: ctx.upstreamArtifacts ?? {},
 
     // Scope for the completion partial (driven by workflow manifest)
-    scope: apmContext.workflows?.default?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",
+    scope: apmContext.workflows?.[ctx.workflowName]?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",
   };
 }
 

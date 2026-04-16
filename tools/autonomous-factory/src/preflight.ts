@@ -162,8 +162,9 @@ export async function checkStateContextDrift(
     return;
   }
 
+  const workflowName = state.workflowName;
   const contextNodes = new Set(
-    Object.keys(apmContext.workflows?.default?.nodes ?? {}),
+    Object.keys(apmContext.workflows?.[workflowName]?.nodes ?? {}),
   );
   const stateNodes = new Set(state.items.map((i) => i.key));
 
@@ -184,7 +185,7 @@ export async function checkStateContextDrift(
   lines.push(
     `  The APM config (apm.yml / workflows.yml) was modified after pipeline:init.`,
     `  Fix: re-run pipeline:init to regenerate state from the current config:`,
-    `    APP_ROOT=<app-path> npm run pipeline:init -- ${slug} <workflowType>`,
+    `    APP_ROOT=<app-path> npm run pipeline:init -- ${slug} <workflowName>`,
   );
 
   throw new Error(lines.join("\n"));

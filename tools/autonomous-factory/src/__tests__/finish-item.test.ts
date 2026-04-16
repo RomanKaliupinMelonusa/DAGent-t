@@ -32,6 +32,7 @@ function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
 function makeConfig(): PipelineRunConfig {
   return {
     slug: "test-feature",
+    workflowName: "full-stack",
     appRoot: "/tmp/app",
     repoRoot: "/tmp/repo",
     baseBranch: "main",

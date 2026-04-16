@@ -36,6 +36,7 @@ import {
 
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
+  getWorkflow,
   getWorkflowNode,
   getHeadSha,
   resolveCircuitBreaker,
@@ -86,6 +87,7 @@ export interface PipelineRunState {
 /** Immutable config for the pipeline run */
 export interface PipelineRunConfig {
   slug: string;
+  workflowName: string;
   appRoot: string;
   repoRoot: string;
   baseBranch: string;
@@ -154,22 +156,26 @@ export type DispatchStep = (dc: DispatchContext) => Promise<SessionResult | unde
 
 /**
  * Resolve the on_failure target for a workflow node.
- * Supports both new `on_failure` field and deprecated `triage` field (shim).
+ * on_failure is an object `{ triage: string, routes: Record<string, string | null> }`.
+ * Supports deprecated `triage` field (shim) for backward compat.
  * Returns the triage node key, or undefined if no failure routing is configured.
  */
 function resolveOnFailureTarget(
   apmContext: ApmCompiledOutput,
+  workflowName: string,
   itemKey: string,
 ): string | undefined {
-  const node = getWorkflowNode(apmContext, itemKey);
+  const node = getWorkflowNode(apmContext, workflowName, itemKey);
   if (!node) return undefined;
-  // New path: explicit on_failure → triage node key
-  if (node.on_failure) return node.on_failure;
+  // New path: on_failure is an object with `.triage` pointing to the triage node
+  if (node.on_failure && typeof node.on_failure === "object" && "triage" in node.on_failure) {
+    return (node.on_failure as { triage: string }).triage;
+  }
+  // String form (backward compat for in-flight compiled contexts)
+  if (typeof node.on_failure === "string") return node.on_failure;
   // Deprecated shim: triage → resolve to an implicit triage node key
-  // Convention: if node declares `triage: "full-stack"`, look for a node named
-  // "triage-full-stack" (or any triage node with triage_profile matching).
   if (node.triage) {
-    const workflow = apmContext.workflows?.default;
+    const workflow = getWorkflow(apmContext, workflowName);
     if (workflow) {
       for (const [key, n] of Object.entries(workflow.nodes)) {
         if (n.type === "triage" && n.triage_profile === node.triage) return key;
@@ -177,6 +183,20 @@ function resolveOnFailureTarget(
     }
   }
   return undefined;
+}
+
+/**
+ * Extract the on_failure.routes map from a workflow node.
+ * Returns the routes map or an empty object if not configured.
+ */
+function resolveOnFailureRoutes(
+  apmContext: ApmCompiledOutput,
+  workflowName: string,
+  itemKey: string,
+): Record<string, string | null> {
+  const node = getWorkflowNode(apmContext, workflowName, itemKey);
+  if (!node?.on_failure || typeof node.on_failure !== "object") return {};
+  return (node.on_failure as { routes?: Record<string, string | null> }).routes ?? {};
 }
 
 /**
@@ -192,10 +212,13 @@ async function dispatchOnFailure(
   state: PipelineRunState,
   client: CopilotClient,
 ): Promise<SessionResult | null> {
-  const { slug, appRoot, repoRoot, apmContext, roamAvailable, logger } = config;
+  const { slug, workflowName, appRoot, repoRoot, apmContext, roamAvailable, logger } = config;
 
-  const triageNodeKey = resolveOnFailureTarget(apmContext, failingKey);
+  const triageNodeKey = resolveOnFailureTarget(apmContext, workflowName, failingKey);
   if (!triageNodeKey) return null;
+
+  // Resolve failure routes from the failing node's on_failure.routes
+  const failureRoutes = resolveOnFailureRoutes(apmContext, workflowName, failingKey);
 
   // Push summary and flush before triage dispatch
   state.pipelineSummaries.push(itemSummary);
@@ -204,7 +227,7 @@ async function dispatchOnFailure(
   const errorSig = computeErrorSignature(rawError);
 
   // Resolve the triage handler
-  const triageNode = getWorkflowNode(apmContext, triageNodeKey);
+  const triageNode = getWorkflowNode(apmContext, workflowName, triageNodeKey);
   const handlerRef = triageNode?.handler ?? inferHandler(triageNode?.type ?? "triage", triageNode?.script_type, apmContext.config?.handler_defaults);
   if (!handlerRef) {
     logger.event("item.end", failingKey, { outcome: "error", error_preview: `on_failure target "${triageNodeKey}" has no resolvable handler` });
@@ -235,6 +258,7 @@ async function dispatchOnFailure(
     rawError,
     errorSignature: errorSig,
     failingNodeSummary: { ...itemSummary },
+    failureRoutes,
   };
 
   logger.event("triage.evaluate", failingKey, {
@@ -287,10 +311,10 @@ async function handleTriageResult(
 
   // --- Execute DAG reset: target node + all downstream dependents ---
   // Resolve max_reroutes from the triage node's profile
-  const triageNodeKey = resolveOnFailureTarget(apmContext, failingKey);
-  const triageNode = triageNodeKey ? getWorkflowNode(apmContext, triageNodeKey) : undefined;
+  const triageNodeKey = resolveOnFailureTarget(apmContext, config.workflowName, failingKey);
+  const triageNode = triageNodeKey ? getWorkflowNode(apmContext, config.workflowName, triageNodeKey) : undefined;
   const profileName = triageNode?.triage_profile;
-  const profile = profileName ? apmContext.triage_profiles?.[`default.${profileName}`] : undefined;
+  const profile = profileName ? apmContext.triage_profiles?.[`${config.workflowName}.${profileName}`] : undefined;
   const maxReroutes = profile?.max_reroutes ?? 5;
 
   const taggedReason = `[domain:${output.domain}] [source:${output.source}] ${output.reason}`;
@@ -315,7 +339,7 @@ async function handleTriageResult(
 
     // Re-index semantic graph after reroute if target category is in reindex_categories
     if (roamAvailable) {
-      const targetCat = getWorkflowNode(apmContext, routeToKey)?.category;
+      const targetCat = getWorkflowNode(apmContext, config.workflowName, routeToKey)?.category;
       const reindexCats = new Set(apmContext.config?.reindex_categories ?? ["dev", "test"]);
       if (targetCat && reindexCats.has(targetCat)) {
         logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
@@ -556,7 +580,7 @@ const stepAutoSkip: DispatchStep = async (dc) => {
   const { slug, appRoot, repoRoot, baseBranch, apmContext, logger } = config;
   const { preStepRefs } = state;
 
-  const skipDecision = evaluateAutoSkip(next.key, apmContext, repoRoot, baseBranch, appRoot, preStepRefs);
+  const skipDecision = evaluateAutoSkip(next.key, apmContext, repoRoot, baseBranch, appRoot, preStepRefs, config.workflowName);
   state.forceRunChangesDetected[next.key] = skipDecision.forceRunChanges;
   if (skipDecision.skip) {
     await kernelComplete(slug, next.key, logger);
@@ -611,7 +635,7 @@ const stepResolve: DispatchStep = async (dc) => {
   const redevCategories = new Set(apmContext.config?.redevelopment_categories ?? ["test"]);
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed" && s.key !== next.key &&
-      redevCategories.has(getWorkflowNode(apmContext, s.key)?.category ?? ""),
+      redevCategories.has(getWorkflowNode(apmContext, config.workflowName, s.key)?.category ?? ""),
   );
 
   let lastHeartbeat = 0;
@@ -926,7 +950,7 @@ export async function runItemSession(
   state.attemptCounts[next.key] = (state.attemptCounts[next.key] ?? 0) + 1;
 
   // Bootstrap dispatch context with minimal fields — steps populate the rest
-  const node = getWorkflowNode(config.apmContext, next.key);
+  const node = getWorkflowNode(config.apmContext, config.workflowName, next.key);
   const dc: DispatchContext = {
     client,
     next,

@@ -18,9 +18,14 @@ import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../sess
 // Workflow node helpers
 // ---------------------------------------------------------------------------
 
-/** Resolve the workflow node definition for an item key. */
-export function getWorkflowNode(apmContext: ApmCompiledOutput, itemKey: string): ApmWorkflowNode | undefined {
-  return apmContext.workflows?.default?.nodes?.[itemKey];
+/** Resolve the workflow definition for a named workflow. */
+export function getWorkflow(apmContext: ApmCompiledOutput, workflowName: string) {
+  return apmContext.workflows?.[workflowName];
+}
+
+/** Resolve the workflow node definition for an item key within a named workflow. */
+export function getWorkflowNode(apmContext: ApmCompiledOutput, workflowName: string, itemKey: string): ApmWorkflowNode | undefined {
+  return apmContext.workflows?.[workflowName]?.nodes?.[itemKey];
 }
 
 /**
@@ -63,8 +68,9 @@ export function resolveCircuitBreaker(node: ApmWorkflowNode | undefined): Resolv
   };
 }
 
-export function getTimeout(itemKey: string, apmContext: ApmCompiledOutput): number {
-  const node = getWorkflowNode(apmContext, itemKey);
+export function getTimeout(itemKey: string, apmContext: ApmCompiledOutput, workflowName?: string): number {
+  const wfName = workflowName ?? Object.keys(apmContext.workflows ?? {})[0] ?? "default";
+  const node = getWorkflowNode(apmContext, wfName, itemKey);
   return (node?.timeout_minutes ?? 15) * 60_000;
 }
 

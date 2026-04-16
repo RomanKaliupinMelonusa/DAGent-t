@@ -27,7 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function getWorkflowNode(ctx: NodeContext) {
-  return ctx.apmContext.workflows?.default?.nodes?.[ctx.itemKey];
+  return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];
 }
 
 // ---------------------------------------------------------------------------

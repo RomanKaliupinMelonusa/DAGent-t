@@ -1,15 +1,170 @@
 # workflows.yml — Declarative DAG for the commerce-storefront pipeline.
 #
+# Structure:
+#   _templates: Reusable node bodies (palette for UI drag-and-drop).
+#   <workflow-name>: Named workflow DAGs. Each is self-contained.
+#
+# Compiler merges template → node (node fields win). Graph-only fields
+# (depends_on, on_failure) are NEVER inherited from templates.
+#
 # 12-node DAG (11 work nodes + 1 barrier): no infra wave (Managed Runtime is SaaS),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
 # PWA Kit runs locally via `npm start`, so Playwright E2E tests
 # execute BEFORE code push — the deploy phase is the final step.
-#
-# Workflow types: Storefront, Full-Stack (future: with backend extensions)
 
-default:
+# ═══════════════════════════════════════════════════════════════════════
+# Node Templates — Reusable palette of node bodies
+# ═══════════════════════════════════════════════════════════════════════
+_templates:
+  storefront-dev:
+    type: agent
+    category: dev
+    agent: "@storefront-dev"
+    timeout_minutes: 25
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+    circuit_breaker:
+      allows_revert_bypass: true
+      allows_timeout_salvage: true
+
+  storefront-unit-test:
+    type: agent
+    category: test
+    agent: "@storefront-test"
+    timeout_minutes: 15
+    auto_skip_if_no_changes_in: [storefront]
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+
+  create-draft-pr:
+    type: agent
+    category: deploy
+    agent: "@pr-creator"
+    timeout_minutes: 15
+    commit_scope: pipeline
+
+  e2e-author:
+    type: agent
+    category: test
+    agent: "@sdet-expert"
+    timeout_minutes: 10
+    auto_skip_if_no_changes_in: [storefront, e2e]
+    commit_scope: all
+    diff_attribution_dirs: [e2e]
+
+  e2e-runner:
+    type: script
+    category: test
+    script_type: local-exec
+    command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
+    auto_skip_if_no_changes_in: [storefront, e2e]
+    pre: |
+      # Kill stale processes from previous runs (idempotent)
+      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
+      pkill -f 'chromium|chrome' 2>/dev/null || true
+      sleep 2
+      # Start dev server (nohup keeps it alive after this shell exits)
+      nohup npm start > /tmp/smoke-server.log 2>&1 &
+      echo $! > /tmp/smoke-server.pid
+      disown
+      echo "Pre: waiting for dev server (PID $(cat /tmp/smoke-server.pid))..."
+      for i in $(seq 1 24); do
+        sleep 5
+        if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
+          echo "Pre: PLP returned HTTP 200 — SSR is healthy"
+          exit 0
+        fi
+      done
+      echo "Pre: PLP failed to return HTTP 200 after 120s — SSR is broken"
+      echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
+      # Clean up the server we started (only on failure)
+      kill "$(cat /tmp/smoke-server.pid)" 2>/dev/null || true
+      exit 1
+    post: |
+      # Kill the dev server started by pre-hook (PID file + pattern match)
+      kill "$(cat /tmp/smoke-server.pid 2>/dev/null)" 2>/dev/null || true
+      rm -f /tmp/smoke-server.pid
+      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
+      pkill -f 'chromium|chrome' 2>/dev/null || true
+      sleep 2
+    circuit_breaker:
+      halt_on_identical: true
+
+  validation-gate:
+    type: barrier
+    category: test
+
+  code-cleanup:
+    type: agent
+    category: finalize
+    agent: "@code-cleanup"
+    timeout_minutes: 15
+    auto_skip_if_no_deletions: true
+    commit_scope: pipeline
+    salvage_survivor: true
+
+  docs-archived:
+    type: agent
+    category: finalize
+    agent: "@docs-expert"
+    timeout_minutes: 15
+    commit_scope: docs
+    generates_change_manifest: true
+    salvage_survivor: true
+
+  doc-architect:
+    type: agent
+    category: finalize
+    agent: "@doc-architect"
+    timeout_minutes: 15
+    commit_scope: pipeline
+
+  push-app:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
+    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  poll-app-ci:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: poll
+    ci_workflow_key: app
+    post: "bash .apm/hooks/validate-app.sh"
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  publish-pr:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
+    signals_create_pr: true
+    salvage_survivor: true
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  triage-node:
+    type: triage
+    category: finalize
+    timeout_minutes: 5
+
+# ═══════════════════════════════════════════════════════════════════════
+# Workflow: storefront
+# ═══════════════════════════════════════════════════════════════════════
+storefront:
+  description: "Storefront pipeline: dev → unit test → E2E → deploy → finalize"
   phases:
     - pre-deploy
     - validation
@@ -20,188 +175,85 @@ default:
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
-      type: agent
-      category: dev
-      agent: "@storefront-dev"
       phase: pre-deploy
-      timeout_minutes: 25
       depends_on: []
-      run_if: [Storefront, Full-Stack]
-      commit_scope: all
-      diff_attribution_dirs: [storefront]
-      circuit_breaker:
-        allows_revert_bypass: true
-        allows_timeout_salvage: true
 
     storefront-unit-test:
-      type: agent
-      category: test
-      agent: "@storefront-test"
       phase: pre-deploy
-      timeout_minutes: 15
       depends_on: [storefront-dev]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront]
-      on_failure: triage-storefront
-      commit_scope: all
-      diff_attribution_dirs: [storefront]
-
-    create-draft-pr:
-      type: agent
-      category: deploy
-      agent: "@pr-creator"
-      phase: validation
-      timeout_minutes: 15
-      depends_on: [storefront-unit-test, e2e-author]
-      commit_scope: pipeline
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: "$SELF"
+          environment: "$SELF"
+          blocked: null
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
     e2e-author:
-      type: agent
-      category: test
-      agent: "@sdet-expert"
       phase: validation
-      timeout_minutes: 10
       depends_on: [storefront-unit-test]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront, e2e]
-      on_failure: triage-storefront
-      commit_scope: all
-      diff_attribution_dirs: [e2e]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: e2e-author
+          test-code-from-dev: storefront-dev
+          environment: "$SELF"
+          blocked: null
 
     e2e-runner:
-      type: script
-      category: test
-      script_type: local-exec
-      command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
       phase: validation
       depends_on: [e2e-author]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront, e2e]
-      on_failure: triage-storefront
-      pre: |
-        # Kill stale processes from previous runs (idempotent)
-        pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
-        pkill -f 'chromium|chrome' 2>/dev/null || true
-        sleep 2
-        # Start dev server (nohup keeps it alive after this shell exits)
-        nohup npm start > /tmp/smoke-server.log 2>&1 &
-        echo $! > /tmp/smoke-server.pid
-        disown
-        echo "Pre: waiting for dev server (PID $(cat /tmp/smoke-server.pid))..."
-        for i in $(seq 1 24); do
-          sleep 5
-          if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
-            echo "Pre: PLP returned HTTP 200 — SSR is healthy"
-            exit 0
-          fi
-        done
-        echo "Pre: PLP failed to return HTTP 200 after 120s — SSR is broken"
-        echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
-        # Clean up the server we started (only on failure)
-        kill "$(cat /tmp/smoke-server.pid)" 2>/dev/null || true
-        exit 1
-      post: |
-        # Kill the dev server started by pre-hook (PID file + pattern match)
-        kill "$(cat /tmp/smoke-server.pid 2>/dev/null)" 2>/dev/null || true
-        rm -f /tmp/smoke-server.pid
-        pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
-        pkill -f 'chromium|chrome' 2>/dev/null || true
-        sleep 2
-      circuit_breaker:
-        halt_on_identical: true
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: e2e-author
+          test-code-from-dev: storefront-dev
+          environment: "$SELF"
+          blocked: null
+
+    create-draft-pr:
+      phase: validation
+      depends_on: [storefront-unit-test, e2e-author]
 
     # ── Barrier: wait for all validation branches before finalize ──────
     validation-gate:
-      type: barrier
-      category: test
       phase: validation
       depends_on: [e2e-runner, create-draft-pr]
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      type: agent
-      category: finalize
-      agent: "@code-cleanup"
       phase: finalize
-      timeout_minutes: 15
       depends_on: [validation-gate]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_deletions: true
-      commit_scope: pipeline
-      salvage_survivor: true
 
     docs-archived:
-      type: agent
-      category: finalize
-      agent: "@docs-expert"
       phase: finalize
-      timeout_minutes: 15
       depends_on: [code-cleanup]
-      commit_scope: docs
-      generates_change_manifest: true
-      salvage_survivor: true
 
     doc-architect:
-      type: agent
-      category: finalize
-      agent: "@doc-architect"
       phase: finalize
-      timeout_minutes: 15
       depends_on: [code-cleanup, docs-archived]
-      run_if: [Storefront, Full-Stack]
-      commit_scope: pipeline
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
     push-app:
-      type: script
-      category: deploy
       phase: deploy
-      timeout_minutes: 15
       depends_on: [doc-architect]
-      run_if: [Storefront, Full-Stack]
-      script_type: local-exec
-      command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
-      post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
-      captures_head_sha: true
-      circuit_breaker:
-        halt_on_identical: true
 
     poll-app-ci:
-      type: script
-      category: deploy
       phase: deploy
-      timeout_minutes: 15
       depends_on: [push-app]
-      run_if: [Storefront, Full-Stack]
-      script_type: poll
       poll_target: push-app
-      ci_workflow_key: app
-      post: "bash .apm/hooks/validate-app.sh"
-      captures_head_sha: true
-      circuit_breaker:
-        halt_on_identical: true
 
     publish-pr:
-      type: script
-      category: deploy
       phase: deploy
-      timeout_minutes: 15
       depends_on: [poll-app-ci]
-      script_type: local-exec
-      command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
-      signals_create_pr: true
-      salvage_survivor: true
-      captures_head_sha: true
-      circuit_breaker:
-        halt_on_identical: true
 
-    # ── Triage Nodes ───────────────────────────────────────────────────
+    # ── Triage ─────────────────────────────────────────────────────────
     triage-storefront:
-      type: triage
-      category: finalize
+      _template: triage-node
       phase: triage
-      timeout_minutes: 5
       depends_on: []
       triage_profile: storefront
 
@@ -222,22 +274,16 @@ default:
       routing:
         frontend:
           description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
-          route_to: storefront-dev
         cicd:
           description: "GitHub Actions workflow file errors, deploy pipeline config"
-          route_to: push-app
         deployment-stale:
-          route_to: push-app
+          description: "Stale deployment requiring re-push"
         test-code:
           description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
-          route_to: e2e-author
         test-code-from-dev:
           description: "Test code is broken, but written by the upstream dev agent, not QA"
-          route_to: storefront-dev
         environment:
           description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
-          route_to: "$SELF"
           retries: 2
         blocked:
           description: "Unfixable without human intervention (permissions, SFCC access)"
-          route_to: null

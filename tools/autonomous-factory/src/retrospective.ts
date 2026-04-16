@@ -232,7 +232,7 @@ function generateTerminal(events: PipelineEvent[], slug: string): string {
 
     switch (evt.kind) {
       case "run.start":
-        lines.push(`${ts} 🚀 ${itemTag} Pipeline started: ${evt.data.slug} (${evt.data.workflow_type})`);
+        lines.push(`${ts} 🚀 ${itemTag} Pipeline started: ${evt.data.slug} (${evt.data.workflow_name})`);
         break;
       case "run.end":
         lines.push(`${ts} ${evt.data.outcome === "complete" ? "✔" : "✖"} ${itemTag} Pipeline ${evt.data.outcome} (${formatDuration(evt.data.duration_ms as number)})`);

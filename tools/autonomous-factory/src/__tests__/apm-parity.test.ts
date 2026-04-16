@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { compileApm } from "../apm-compiler.js";
 import { loadApmContext } from "../apm-context-loader.js";
-import { ApmCompiledOutputSchema, ApmWorkflowSchema, type ApmCompiledOutput } from "../apm-types.js";
+import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm-types.js";
 import Handlebars from "handlebars";
 import yaml from "js-yaml";
 
@@ -26,17 +26,15 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const APP_ROOT = path.join(REPO_ROOT, "apps/sample-app");
 const APM_DIR = path.join(APP_ROOT, ".apm");
 
-// Derive agent keys from the workflow manifest (single source of truth).
+// Derive agent keys from the apm.yml manifest (single source of truth for compiled agents).
+
 function loadAgentKeys(): string[] {
-  const wfPath = path.join(APM_DIR, "workflows.yml");
-  if (!fs.existsSync(wfPath)) return [];
-  const raw = yaml.load(fs.readFileSync(wfPath, "utf-8")) as Record<string, unknown>;
-  // workflows.yml wraps in a workflow name key (e.g. "default")
-  const firstKey = Object.keys(raw)[0];
-  if (!firstKey) return [];
-  const parsed = ApmWorkflowSchema.safeParse(raw[firstKey]);
-  if (!parsed.success) return [];
-  return Object.keys(parsed.data.nodes);
+  const manifestPath = path.join(APM_DIR, "apm.yml");
+  if (!fs.existsSync(manifestPath)) return [];
+  const raw = yaml.load(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+  const agents = raw?.agents;
+  if (!agents || typeof agents !== "object") return [];
+  return Object.keys(agents as Record<string, unknown>);
 }
 
 const ALL_AGENT_KEYS = loadAgentKeys();
@@ -71,7 +69,7 @@ describe("APM Compiler Output", () => {
     assert.ok(result.success, `Schema validation failed: ${JSON.stringify(result.error?.issues)}`);
   });
 
-  it("compiled output has all 19 agent keys", () => {
+  it(`compiled output has all ${ALL_AGENT_KEYS.length} agent keys`, () => {
     for (const key of ALL_AGENT_KEYS) {
       assert.ok(
         compiled.agents[key],
@@ -281,7 +279,7 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
       const mockData = {
         featureSlug: "test-feature",
         specPath: "apps/sample-app/in-progress/test-feature_SPEC.md",
-        workflowType: "Full-Stack",
+        workflowName: "full-stack",
         repoRoot: "/workspaces/test",
         appRoot: "/workspaces/test/apps/sample-app",
         itemKey: agentKey,
@@ -292,7 +290,7 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
         frontendUrl: "https://frontend.example.com",
         backendUrl: "https://backend.example.com",
         // Dynamic template_flags — mirrors buildTemplateData() in agents.ts
-        ...((compiled.workflows?.default?.nodes?.[agentKey]?.template_flags ?? []) as string[]).reduce(
+        ...((compiled.workflows?.["full-stack"]?.nodes?.[agentKey]?.template_flags ?? []) as string[]).reduce(
           (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
         ),
         rules: agent.rules,

@@ -177,7 +177,12 @@ export function readState(slug) {
     console.error(`ERROR: State file not found: ${p}`);
     process.exit(1);
   }
-  return JSON.parse(readFileSync(p, "utf-8"));
+  const state = JSON.parse(readFileSync(p, "utf-8"));
+  // Backward compat: alias workflowType → workflowName for in-flight state files
+  if (state.workflowType && !state.workflowName) {
+    state.workflowName = state.workflowType;
+  }
+  return state;
 }
 
 /** Like readState but throws instead of calling process.exit — for programmatic API use. */
@@ -186,7 +191,12 @@ function readStateOrThrow(slug) {
   if (!existsSync(p)) {
     throw new Error(`State file not found: ${p}`);
   }
-  return JSON.parse(readFileSync(p, "utf-8"));
+  const state = JSON.parse(readFileSync(p, "utf-8"));
+  // Backward compat: alias workflowType → workflowName for in-flight state files
+  if (state.workflowType && !state.workflowName) {
+    state.workflowName = state.workflowType;
+  }
+  return state;
 }
 
 function writeState(slug, state) {
@@ -200,10 +210,9 @@ function renderTrans(slug, state) {
   lines.push(`# Transition Log — ${state.feature}`);
   lines.push("");
   lines.push("## Workflow");
-  lines.push(`- **Type:** ${state.workflowType}`);
+  lines.push(`- **Workflow:** ${state.workflowName}`);
   lines.push(`- **Started:** ${state.started}`);
-  lines.push(`- **Deployed URL:** ${state.deployedUrl || "[To be filled after deployment]"}`);
-  lines.push("");
+  lines.push(`- **Deployed URL:** ${state.deployedUrl || "[To be filled after deployment]"}`);  lines.push("");
   lines.push("## Implementation Notes");
   lines.push(state.implementationNotes || "[To be filled by Dev agents during implementation]");
   lines.push("");
@@ -311,14 +320,14 @@ function withLock(slug, fn) {
  * Bootstraps the DAG from context.json (compiled by APM compiler) and persists
  * the full graph into _STATE.json so all subsequent operations are self-contained.
  * @param {string} slug - Feature slug
- * @param {string} workflowType - Workflow type (e.g. "Full-Stack", "Backend")
+ * @param {string} workflowName - Workflow name (e.g. "full-stack", "backend")
  * @param {string} [contextJsonPath] - Path to .apm/.compiled/context.json. If omitted, attempts to find it via APP_ROOT.
  * @returns {{ state: object, statePath: string, transPath: string }}
- * @throws {Error} if slug, workflowType missing, contextJsonPath invalid, or no workflow found
+ * @throws {Error} if slug, workflowName missing, contextJsonPath invalid, or no workflow found
  */
-export function initState(slug, workflowType, contextJsonPath) {
-  if (!slug || !workflowType) {
-    throw new Error("initState requires slug and workflowType");
+export function initState(slug, workflowName, contextJsonPath) {
+  if (!slug || !workflowName) {
+    throw new Error("initState requires slug and workflowName");
   }
 
   // Resolve context.json path
@@ -353,17 +362,19 @@ export function initState(slug, workflowType, contextJsonPath) {
   }
 
   const context = JSON.parse(readFileSync(contextJsonPath, "utf-8"));
-  const workflow = context.workflows?.default;
+  const availableWorkflows = Object.keys(context.workflows ?? {});
+  const workflow = context.workflows?.[workflowName];
   if (!workflow || !workflow.nodes) {
     throw new Error(
-      `No "default" workflow found in ${contextJsonPath}. ` +
-      `Create .apm/workflows.yml with a "default" workflow and recompile.`,
+      `No workflow "${workflowName}" found in ${contextJsonPath}. ` +
+      `Available workflows: ${availableWorkflows.join(", ") || "(none)"}. ` +
+      `Check .apm/workflows.yml and recompile.`,
     );
   }
 
   const { phases, nodes } = workflow;
   if (!phases || !Array.isArray(phases) || phases.length === 0) {
-    throw new Error(`Workflow "default" has no phases array in ${contextJsonPath}.`);
+    throw new Error(`Workflow "${workflowName}" has no phases array in ${contextJsonPath}.`);
   }
 
   // Build items array from workflow nodes (order: by phase, then alphabetical within phase)
@@ -388,27 +399,21 @@ export function initState(slug, workflowType, contextJsonPath) {
     if (node.salvage_survivor) salvageSurvivors.push(key);
   }
 
-  // Compute N/A keys from run_if: if run_if is non-empty and workflowType is NOT in it, mark N/A
+  // All nodes in a named workflow are active (no run_if filtering)
   const naByType = [];
-  for (const [key, node] of nodeEntries) {
-    if (node.run_if && node.run_if.length > 0 && !node.run_if.includes(workflowType)) {
-      naByType.push(key);
-    }
-  }
-  const naKeys = new Set(naByType);
 
   const items = nodeEntries.map(([key, node]) => ({
     key,
     label: key,
     agent: node.agent ?? null,
     phase: node.phase,
-    status: naKeys.has(key) ? "na" : "pending",
+    status: "pending",
     error: null,
   }));
 
   const state = {
     feature: slug,
-    workflowType,
+    workflowName,
     started: today(),
     deployedUrl: null,
     implementationNotes: null,
@@ -1047,16 +1052,16 @@ export function setLastTriageRecord(slug, record) {
 // These delegate to the exported API functions above, converting errors to
 // console.error + process.exit for CLI usage.
 
-function cmdInit(slug, workflowType) {
-  if (!slug || !workflowType) {
-    console.error("Usage: pipeline-state.mjs init <slug> <workflow-type>");
-    console.error("  workflow-type: Any type defined in workflows.yml run_if arrays");
+function cmdInit(slug, workflowName) {
+  if (!slug || !workflowName) {
+    console.error("Usage: pipeline-state.mjs init <slug> <workflow-name>");
+    console.error("  workflow-name: A workflow defined in workflows.yml (e.g. full-stack, backend)");
     process.exit(1);
   }
 
   try {
-    const result = initState(slug, workflowType);  // contextJsonPath will be derived from APP_ROOT
-    console.log(`✔ Initialized pipeline state for "${slug}" (${workflowType})`);
+    const result = initState(slug, workflowName);  // contextJsonPath will be derived from APP_ROOT
+    console.log(`✔ Initialized pipeline state for "${slug}" (${workflowName})`);
     console.log(`  State: ${result.statePath}`);
     console.log(`  TRANS:  ${result.transPath}`);
   } catch (err) {

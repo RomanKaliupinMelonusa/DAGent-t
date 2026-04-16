@@ -54,7 +54,7 @@ import type { ItemSummary } from "../types.js";
 // ---------------------------------------------------------------------------
 
 function getWorkflowNode(ctx: NodeContext) {
-  return ctx.apmContext.workflows?.default?.nodes?.[ctx.itemKey];
+  return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];
 }
 
 function getTimeout(ctx: NodeContext): number {
@@ -100,7 +100,7 @@ const copilotAgentHandler: NodeHandler = {
       featureSlug: slug,
       specPath: path.join(appRoot, "in-progress", `${slug}_SPEC.md`),
       deployedUrl: currentState.deployedUrl,
-      workflowType: currentState.workflowType,
+      workflowName: currentState.workflowName,
       repoRoot,
       appRoot,
       itemKey,

@@ -89,6 +89,9 @@ export interface NodeContext {
   readonly errorSignature?: string;
   /** Summary snapshot of the failing node's last attempt (on_failure only). */
   readonly failingNodeSummary?: Readonly<ItemSummary>;
+  /** Route map from the failing node's on_failure.routes (on_failure only).
+   *  Keys are fault domains, values are DAG node keys (or null for graceful degradation). */
+  readonly failureRoutes?: Readonly<Record<string, string | null>>;
 }
 
 // ---------------------------------------------------------------------------

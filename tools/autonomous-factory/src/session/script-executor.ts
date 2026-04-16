@@ -28,11 +28,12 @@ import type { ItemSummary } from "../types.js";
 /** Resolve compiled triage profile for a workflow node. */
 function resolveTriageProfile(
   apmContext: ApmCompiledOutput,
+  workflowName: string,
   itemKey: string,
 ): CompiledTriageProfile | undefined {
-  const node = getWorkflowNode(apmContext, itemKey);
+  const node = getWorkflowNode(apmContext, workflowName, itemKey);
   if (!node?.triage) return undefined;
-  return apmContext.triage_profiles?.[`default.${node.triage}`];
+  return apmContext.triage_profiles?.[`${workflowName}.${node.triage}`];
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +162,7 @@ export async function runPushCode(
     // touch a `.deploy-trigger` sentinel file in each directory that actually
     // changed, then commit+push WITHOUT [skip ci]. This is pure Git math —
     // $0.00, fully CI-provider-agnostic.
-    const pushNode = getWorkflowNode(apmContext, itemKey);
+    const pushNode = getWorkflowNode(apmContext, config.workflowName, itemKey);
     if (pushNode?.writes_deploy_sentinel) {
       try {
         const dirs = apmContext.config?.directories as Record<string, string | null> | undefined;
@@ -279,7 +280,7 @@ export async function runPollCi(
       if (pollResult.output) console.log(pollResult.output);
 
       // ── Download CI artifact and post to Draft PR (if node declares it) ──
-      const pollNode = getWorkflowNode(config.apmContext, itemKey);
+      const pollNode = getWorkflowNode(config.apmContext, config.workflowName, itemKey);
       if (pollNode?.post_ci_artifact_to_pr) {
         try {
           await postCiArtifactToPr(config, itemKey, slug);
@@ -296,7 +297,7 @@ export async function runPollCi(
           const failMsg = `validateApp hook: ${appFailure}`;
           try { await failItem(slug, itemKey, failMsg); } catch { /* best-effort */ }
           finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failMsg, intents: ["App validation failed — blocking before post-deploy agents"] });
-          const triageProfileApp = resolveTriageProfile(config.apmContext, itemKey);
+          const triageProfileApp = resolveTriageProfile(config.apmContext, config.workflowName, itemKey);
           // Note: triage routing now handled by the kernel via on_failure edges.
           // This legacy path returns halt:true — the kernel will dispatch triage.
           return { summary: itemSummary, halt: true, createPr: false };
@@ -338,7 +339,7 @@ export async function runPollCi(
       await failItem(slug, itemKey, failureContext);
       finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failureContext });
 
-      const triageProfileCi = resolveTriageProfile(config.apmContext, itemKey);
+      const triageProfileCi = resolveTriageProfile(config.apmContext, config.workflowName, itemKey);
       // Note: triage routing now handled by the kernel via on_failure edges.
       // This legacy path returns halt:true — the kernel will dispatch triage.
       return { summary: itemSummary, halt: true, createPr: false };

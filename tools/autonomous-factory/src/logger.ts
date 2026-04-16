@@ -181,7 +181,7 @@ function renderEventToConsole(evt: PipelineEvent): string | null {
   const d = evt.data;
   switch (evt.kind) {
     case "run.start":
-      return `\n  🚀 Pipeline started: ${d.slug} (${d.workflow_type}) on ${d.base_branch}`;
+      return `\n  🚀 Pipeline started: ${d.slug} (${d.workflow_name}) on ${d.base_branch}`;
     case "run.end":
       return `\n  ${d.outcome === "complete" ? "✔" : "✖"} Pipeline ${d.outcome} (${formatMs(d.duration_ms as number)})`;
 

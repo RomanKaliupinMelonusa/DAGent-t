@@ -250,8 +250,6 @@ const ApmWorkflowNodeSchemaBase = z.object({
   timeout_minutes: z.number().positive().default(15),
   /** DAG edges — keys of nodes that must complete before this one can run. */
   depends_on: z.array(z.string()).default([]),
-  /** Workflow types this node participates in. Empty array = all types. */
-  run_if: z.array(z.string()).default([]),
   /** Whether pollReadiness() must pass before the agent session starts. */
   requires_data_plane_ready: z.boolean().default(false),
   /** Directory keys (from config.directories) to check for git changes; skip if none. */
@@ -260,10 +258,17 @@ const ApmWorkflowNodeSchemaBase = z.object({
   auto_skip_if_no_deletions: z.boolean().default(false),
   /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
   triage: z.string().optional(),
-  /** Key of a triage node to dispatch to when this node fails.
-   *  Replaces `triage` — decouples failure routing from inline profile resolution.
-   *  The referenced node must have `type: "triage"` and exist in the same workflow. */
-  on_failure: z.string().optional(),
+  /** Failure routing config — declares which triage node classifies failures
+   *  and where each classified domain routes to.
+   *  `triage`: key of a triage node in this workflow.
+   *  `routes`: domain → target node key (or "$SELF" to retry, or null to halt).
+   *  Unmatched domains default to "$SELF". */
+  on_failure: z.object({
+    /** Key of the triage node that classifies this failure. */
+    triage: z.string(),
+    /** Domain → target node key. "$SELF" retries the failing node; null halts the pipeline. */
+    routes: z.record(z.string(), z.string().nullable()).default({}),
+  }).optional(),
   /** Triage profile name — only used on nodes with `type: "triage"`.
    *  References a profile from the workflow's `triage` section. */
   triage_profile: z.string().optional(),
@@ -469,13 +474,13 @@ export function topoSort(nodes: Record<string, { depends_on?: string[] }>): stri
 // Triage Profile schemas (v2 — DAG-native routing)
 // ---------------------------------------------------------------------------
 
-/** A single routing entry inside a triage profile — maps a domain to a single DAG entry-point node. */
+/** A single routing entry inside a triage profile — domain classification hint for the triage engine. */
 export const TriageRouteEntrySchema = z.object({
   /** Human-readable description of this fault domain (injected into LLM triage prompt). */
   description: z.string().optional(),
-  /** Single DAG node key to route to. The kernel resets this node + all transitive downstream dependents.
-   *  Use "$SELF" to retry the failing node itself. Use `null` to signal "blocked" (halt pipeline). */
-  route_to: z.string().nullable(),
+  /** @deprecated Routing now lives on the failing node's on_failure.routes. Kept for backward compat.
+   *  Single DAG node key to route to. Use "$SELF" to retry the failing node itself. Use `null` to signal "blocked". */
+  route_to: z.string().nullable().optional(),
   /** Maximum consecutive times this domain can trigger a reroute before escalating to blocked.
    *  Default: unlimited (governed by profile-level max_reroutes). */
   retries: z.number().int().positive().optional(),
@@ -501,6 +506,8 @@ export const TriageProfileSchema = z.object({
 });
 
 export const ApmWorkflowSchema = z.object({
+  /** Human-readable description for UI display. */
+  description: z.string().optional(),
   /** Explicit ordered phase names (human-authored). */
   phases: z.array(z.string()),
   /** Pipeline nodes keyed by item key. */
@@ -546,11 +553,11 @@ export const ApmWorkflowSchema = z.object({
   { message: "Workflow DAG contains a cycle." },
 ).refine(
   (wf) => {
-    // Validate: every triage profile route_to is "$SELF", null, or a valid node key
+    // Validate: every triage profile route_to (deprecated) is "$SELF", null, or a valid node key
     const nodeKeys = new Set(Object.keys(wf.nodes));
     for (const [profileName, profile] of Object.entries(wf.triage)) {
       for (const [domain, entry] of Object.entries(profile.routing)) {
-        if (entry.route_to !== null && entry.route_to !== "$SELF" && !nodeKeys.has(entry.route_to)) {
+        if (entry.route_to !== undefined && entry.route_to !== null && entry.route_to !== "$SELF" && !nodeKeys.has(entry.route_to)) {
           return false;
         }
       }
@@ -569,18 +576,23 @@ export const ApmWorkflowSchema = z.object({
   { message: "Workflow node references an undefined triage profile." },
 ).refine(
   (wf) => {
-    // Validate: every on_failure reference points to a triage node in this workflow
+    // Validate: every on_failure.triage reference points to a triage node in this workflow
     const nodeKeys = new Set(Object.keys(wf.nodes));
     for (const [key, node] of Object.entries(wf.nodes)) {
       if (node.on_failure) {
-        if (!nodeKeys.has(node.on_failure)) return false;
-        const target = wf.nodes[node.on_failure];
+        const triageKey = node.on_failure.triage;
+        if (!nodeKeys.has(triageKey)) return false;
+        const target = wf.nodes[triageKey];
         if (target.type !== "triage") return false;
+        // Validate: every route value is a valid node key, "$SELF", or null
+        for (const [domain, routeTo] of Object.entries(node.on_failure.routes)) {
+          if (routeTo !== null && routeTo !== "$SELF" && !nodeKeys.has(routeTo)) return false;
+        }
       }
     }
     return true;
   },
-  { message: "on_failure must reference a node with type 'triage' that exists in the workflow." },
+  { message: "on_failure.triage must reference a triage node; on_failure.routes values must be valid node keys, '$SELF', or null." },
 ).refine(
   (wf) => {
     // Validate: every triage node's triage_profile references a defined triage profile

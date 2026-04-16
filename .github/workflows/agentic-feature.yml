@@ -30,15 +30,10 @@ on:
         required: true
         type: string
         default: 'apps/sample-app'
-      workflow-type:
-        description: 'Pipeline workflow type'
+      workflow-name:
+        description: 'Pipeline workflow name (e.g., full-stack, backend)'
         required: true
-        type: choice
-        options:
-          - Backend
-          - Frontend
-          - Full-Stack
-          - Infra
+        type: string
       base-branch:
         description: 'Base branch for PR target (default: main)'
         required: false
@@ -91,7 +86,7 @@ jobs:
           if [ -f "$STATE_FILE" ]; then
             echo "✔ Pipeline state already exists — preserving existing state"
           else
-            npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-type }}"
+            npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-name }}"
           fi
         env:
           APP_ROOT: ${{ inputs.app-path }}

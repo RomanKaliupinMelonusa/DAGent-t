@@ -51,10 +51,10 @@ export interface TriageHandlerOutput {
 
 /** Resolve the compiled triage profile for a triage node. */
 function resolveProfile(ctx: NodeContext): CompiledTriageProfile | undefined {
-  const node = getWorkflowNode(ctx.apmContext, ctx.itemKey);
+  const node = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, ctx.itemKey);
   const profileName = node?.triage_profile;
   if (!profileName) return undefined;
-  return ctx.apmContext.triage_profiles?.[`default.${profileName}`];
+  return ctx.apmContext.triage_profiles?.[`${ctx.pipelineState.workflowName}.${profileName}`];
 }
 
 /** Build a TriageRecord for guard-terminated paths (no classification ran). */
@@ -115,7 +115,7 @@ const triageHandler: NodeHandler = {
       };
     }
 
-    const workflow = ctx.apmContext.workflows?.default;
+    const workflow = ctx.apmContext.workflows?.[ctx.pipelineState.workflowName];
     const unfixableSignals = workflow?.unfixable_signals ?? [];
     const errorSig = ctx.errorSignature ?? computeErrorSignature(rawError);
 
@@ -200,15 +200,22 @@ const triageHandler: NodeHandler = {
       rawError, profile, client, slug, ctx.appRoot, logger,
     );
 
-    // --- Resolve route_to from profile routing ---
+    // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---
+    // Fallback: profile.routing[domain].route_to (backward compat)
     let routeToKey: string | null;
     let domainRetryCount = 0;
+    const failureRoutes = ctx.failureRoutes ?? {};
 
     if (triageResult.domain === "$SELF") {
       routeToKey = failingNodeKey;
     } else {
+      // Primary: on_failure.routes from the failing node
+      const routeFromGraph = failureRoutes[triageResult.domain];
+      // Fallback: profile routing table (backward compat for compiled contexts without on_failure.routes)
       const routeEntry = profile.routing[triageResult.domain];
-      if (!routeEntry || routeEntry.route_to === null) {
+      const resolvedRoute = routeFromGraph !== undefined ? routeFromGraph : (routeEntry?.route_to ?? undefined);
+
+      if (resolvedRoute === null || resolvedRoute === undefined) {
         logger.event("triage.evaluate", failingNodeKey, {
           domain: triageResult.domain,
           reason: triageResult.reason,
@@ -247,10 +254,10 @@ const triageHandler: NodeHandler = {
           } satisfies TriageHandlerOutput,
         };
       }
-      routeToKey = routeEntry.route_to === "$SELF" ? failingNodeKey : routeEntry.route_to;
+      routeToKey = resolvedRoute === "$SELF" ? failingNodeKey : resolvedRoute;
 
-      // Per-domain retry cap
-      if (routeEntry.retries) {
+      // Per-domain retry cap (from profile routing table)
+      if (routeEntry?.retries) {
         try {
           const pipeState = await getStatus(slug);
           const domainTag = `[domain:${triageResult.domain}]`;

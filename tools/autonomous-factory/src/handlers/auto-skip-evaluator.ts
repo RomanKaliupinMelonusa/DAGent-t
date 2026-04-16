@@ -48,8 +48,10 @@ export function evaluateAutoSkip(
   baseBranch: string,
   appRoot: string,
   preStepRefs: Readonly<Record<string, string>>,
+  workflowName?: string,
 ): AutoSkipDecision {
-  const node = apmContext.workflows?.default?.nodes?.[itemKey];
+  const wfName = workflowName ?? Object.keys(apmContext.workflows ?? {})[0] ?? "default";
+  const node = apmContext.workflows?.[wfName]?.nodes?.[itemKey];
   if (!node) return { skip: null, forceRunChanges: false };
 
   let forceRunChanges = false;
@@ -64,7 +66,7 @@ export function evaluateAutoSkip(
   // ── Data-driven auto-skip: check directory changes ────────────────────
   if (node.auto_skip_if_no_changes_in && node.auto_skip_if_no_changes_in.length > 0) {
     // Find the best base ref — walk DAG backward to find nearest upstream dev node
-    const workflow = apmContext.workflows?.default;
+    const workflow = apmContext.workflows?.[wfName];
     const upstreamDevKeys = workflow ? findUpstreamKeysByCategory(workflow.nodes, itemKey, ["dev"]) : [];
     let devRef: string | null = null;
     for (const dk of upstreamDevKeys) {

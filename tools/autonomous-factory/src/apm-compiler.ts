@@ -28,6 +28,49 @@ import {
 
 // ---------------------------------------------------------------------------
 // Token estimation
+
+// ---------------------------------------------------------------------------
+// Template merge — merges _templates into workflow nodes before Zod validation
+// ---------------------------------------------------------------------------
+
+/** Graph-only fields that NEVER inherit from templates. */
+const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);
+
+/**
+ * Merge template defaults into a raw workflow object's nodes before Zod validation.
+ * For each node in `raw.nodes`, if a matching template exists, shallow-merge
+ * template fields as defaults (node fields win). Graph-only fields (depends_on,
+ * on_failure) are never inherited from templates.
+ */
+function mergeTemplatesIntoWorkflow(
+  raw: Record<string, unknown>,
+  templates: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  if (!raw?.nodes || typeof raw.nodes !== "object" || Object.keys(templates).length === 0) {
+    return raw;
+  }
+  const rawNodes = raw.nodes as Record<string, Record<string, unknown>>;
+  const mergedNodes: Record<string, Record<string, unknown>> = {};
+  for (const [key, nodeRaw] of Object.entries(rawNodes)) {
+    // Resolve template: explicit `_template` field, else match by node key
+    const templateKey = typeof nodeRaw._template === "string" ? nodeRaw._template : key;
+    const template = templates[templateKey];
+    // Strip `_template` from the output — it's a compiler directive, not a runtime field
+    const { _template, ...nodeFields } = nodeRaw;
+    if (template) {
+      // Filter out graph-only fields from template
+      const filteredTemplate: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(template)) {
+        if (!GRAPH_ONLY_FIELDS.has(k)) filteredTemplate[k] = v;
+      }
+      // Merge: node fields override template defaults
+      mergedNodes[key] = { ...filteredTemplate, ...nodeFields };
+    } else {
+      mergedNodes[key] = nodeFields;
+    }
+  }
+  return { ...raw, nodes: mergedNodes };
+}
 // ---------------------------------------------------------------------------
 
 /**
@@ -177,14 +220,34 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
   }
 
   // --- 5. Load workflow definitions ---
+  // Sources: workflows.yml (multi-key) + workflows/*.yml (one workflow per file).
+  // Keys starting with `_` are reserved (e.g. _templates) and skipped as workflows.
   const workflowsPath = path.join(apmDir, "workflows.yml");
   const workflows: Record<string, ApmWorkflow> = {};
+
+  // Extract _templates from workflows.yml (node palette for template merging)
+  let templates: Record<string, Record<string, unknown>> = {};
+
   if (fs.existsSync(workflowsPath)) {
     const workflowsYaml = fs.readFileSync(workflowsPath, "utf-8");
     const rawWorkflows = yaml.load(workflowsYaml) as Record<string, unknown>;
     if (rawWorkflows && typeof rawWorkflows === "object") {
+      // Extract _templates section (node palette)
+      if (rawWorkflows._templates && typeof rawWorkflows._templates === "object") {
+        templates = rawWorkflows._templates as Record<string, Record<string, unknown>>;
+      }
       for (const [name, raw] of Object.entries(rawWorkflows)) {
-        const result = ApmWorkflowSchema.safeParse(raw);
+        // Skip _-prefixed keys (reserved for templates, anchors, etc.)
+        if (name.startsWith("_")) continue;
+        // Validate workflow name: lowercase kebab-case
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+          throw new ApmCompileError(
+            `Invalid workflow name "${name}" in workflows.yml: must be lowercase kebab-case (a-z, 0-9, hyphens).`,
+          );
+        }
+        // Merge templates into workflow nodes before validation
+        const merged = mergeTemplatesIntoWorkflow(raw as Record<string, unknown>, templates);
+        const result = ApmWorkflowSchema.safeParse(merged);
         if (!result.success) {
           throw new ApmCompileError(
             `Invalid workflow "${name}" in workflows.yml: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
@@ -192,6 +255,35 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
         }
         workflows[name] = result.data;
       }
+    }
+  }
+
+  // Load additional workflows from .apm/workflows/*.yml (one workflow per file)
+  const workflowsDir = path.join(apmDir, "workflows");
+  if (fs.existsSync(workflowsDir)) {
+    const wfFiles = fs.readdirSync(workflowsDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+    for (const file of wfFiles) {
+      const name = file.replace(/\.(yml|yaml)$/, "");
+      if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+        throw new ApmCompileError(
+          `Invalid workflow filename "${file}" in workflows/: must be lowercase kebab-case.`,
+        );
+      }
+      if (workflows[name]) {
+        throw new ApmCompileError(
+          `Duplicate workflow name "${name}": defined in both workflows.yml and workflows/${file}.`,
+        );
+      }
+      const filePath = path.join(workflowsDir, file);
+      const raw = yaml.load(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+      const merged = mergeTemplatesIntoWorkflow(raw, templates);
+      const result = ApmWorkflowSchema.safeParse(merged);
+      if (!result.success) {
+        throw new ApmCompileError(
+          `Invalid workflow "${name}" in workflows/${file}: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")}`,
+        );
+      }
+      workflows[name] = result.data;
     }
   }
 

@@ -10,7 +10,7 @@ You run ONLY after all tests pass — your changes must not break anything.
 # Context
 
 - Feature: {{featureSlug}}
-- Workflow type: {{workflowType}}
+- Workflow name: {{workflowName}}
 - Spec: `{{specPath}}`
 - Repo root: `{{repoRoot}}`
 - App root: `{{appRoot}}`
@@ -19,7 +19,7 @@ You run ONLY after all tests pass — your changes must not break anything.
 
 ## Scope & Efficiency Restrictions
 
-You are running in a **{{workflowType}}** workflow.
+You are running in a **{{workflowName}}** workflow.
 
 1. **Strict directory scoping:**
    - If this is a `Frontend` workflow: only scan `{{appRoot}}/frontend/` and `{{appRoot}}/e2e/`. Ignore `backend/`, `infra/`, and `packages/`.

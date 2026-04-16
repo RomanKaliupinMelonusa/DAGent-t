@@ -19,7 +19,7 @@ interface PipelineItem {
 
 interface PipelineState {
   feature: string;
-  workflowType: string;
+  workflowName: string;
   started: string;
   deployedUrl: string | null;
   implementationNotes: string | null;
@@ -100,7 +100,7 @@ interface InitResult {
   transPath: string;
 }
 
-export function initState(slug: string, workflowType: string, contextJsonPath?: string): InitResult;
+export function initState(slug: string, workflowName: string, contextJsonPath?: string): InitResult;
 export function completeItem(slug: string, itemKey: string): PipelineState;
 /**
  * Record a failure for a pipeline item.

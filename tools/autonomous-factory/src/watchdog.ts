@@ -185,9 +185,14 @@ async function main(): Promise<void> {
   // --- Instantiate event logger ---
   const logger = createPipelineLogger(appRoot, slug);
 
+  // --- Read workflow name from persisted state ---
+  const initialState = await readState(slug);
+  const workflowName = initialState.workflowName;
+
   // --- Pipeline run state ---
   const runConfig: PipelineRunConfig = {
     slug,
+    workflowName,
     appRoot,
     repoRoot,
     baseBranch,
@@ -220,7 +225,7 @@ async function main(): Promise<void> {
   logger.event("run.start", null, {
     slug,
     app: path.relative(repoRoot, appRoot),
-    workflow_type: (apmContext.config as Record<string, unknown>)?.workflowType as string ?? "unknown",
+    workflow_name: workflowName,
     base_branch: baseBranch,
   });
   const runStartMs = Date.now();

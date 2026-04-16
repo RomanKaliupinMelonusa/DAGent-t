@@ -40,7 +40,7 @@ export async function handleTriageReroute(
   client?: CopilotClient,
 ): Promise<SessionResult> {
   const { repoRoot } = config;
-  const workflow = config.apmContext.workflows?.default;
+  const workflow = config.apmContext.workflows?.[config.workflowName];
   const unfixableSignals = workflow?.unfixable_signals ?? [];
   const errorSig = computeErrorSignature(rawError);
 
@@ -109,14 +109,14 @@ export async function handleTriageReroute(
   const triageResult = await evaluateTriage(rawError, profile, client, slug, config.appRoot, config.logger);
 
   // --- Resolve route_to from profile routing ---
-  let routeToKey: string | null;
+  let routeToKey: string;
   let domainRetryCount = 0;
   if (triageResult.domain === "$SELF") {
     // Fallback: retry the failing node itself
     routeToKey = itemKey;
   } else {
     const routeEntry = profile.routing[triageResult.domain];
-    if (!routeEntry || routeEntry.route_to === null) {
+    if (!routeEntry || routeEntry.route_to == null) {
       config.logger.event("triage.evaluate", itemKey, {
         domain: triageResult.domain,
         reason: triageResult.reason,
@@ -197,7 +197,7 @@ export async function handleTriageReroute(
 
     // Re-index semantic graph after reroute if target involves dev/test nodes
     if (roamAvailable) {
-      const targetCat = getWorkflowNode(config.apmContext, routeToKey)?.category;
+      const targetCat = getWorkflowNode(config.apmContext, config.workflowName, routeToKey)?.category;
       if (targetCat === "dev" || targetCat === "test") {
         config.logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
         try {

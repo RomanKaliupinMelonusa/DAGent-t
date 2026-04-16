@@ -12,8 +12,31 @@ import path from "node:path";
 import yaml from "js-yaml";
 import { ApmWorkflowSchema, topoSort } from "../apm-types.js";
 
+/** Graph-only fields that are never inherited from templates. */
+const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);
+
 const APP_ROOT = path.resolve(import.meta.dirname, "../../../../apps/sample-app");
 const WF_PATH = path.join(APP_ROOT, ".apm", "workflows.yml");
+
+/** Merge _templates into workflow nodes (mirrors apm-compiler.ts logic). */
+function mergeTemplates(
+  wfRaw: Record<string, unknown>,
+  templates: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const nodes = (wfRaw.nodes ?? {}) as Record<string, Record<string, unknown>>;
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const [key, nodeRaw] of Object.entries(nodes)) {
+    const templateKey = typeof nodeRaw._template === "string" ? nodeRaw._template : key;
+    const tpl = templates[templateKey] ?? {};
+    const { _template, ...nodeFields } = nodeRaw;
+    const base: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(tpl)) {
+      if (!GRAPH_ONLY_FIELDS.has(k)) base[k] = v;
+    }
+    merged[key] = { ...base, ...nodeFields };
+  }
+  return { ...wfRaw, nodes: merged };
+}
 
 describe("Workflow Schema", () => {
   const exists = fs.existsSync(WF_PATH);
@@ -23,9 +46,10 @@ describe("Workflow Schema", () => {
   }
 
   const raw = yaml.load(fs.readFileSync(WF_PATH, "utf-8")) as Record<string, unknown>;
-// workflows.yml wraps in a workflow name key (e.g. "default")
-const firstKey = Object.keys(raw)[0];
-const wfRaw = firstKey ? raw[firstKey] as Record<string, unknown> : raw;
+  const templates = (raw._templates ?? {}) as Record<string, Record<string, unknown>>;
+// Find the first non-underscore key as the test target workflow.
+const firstWorkflowKey = Object.keys(raw).find((k) => !k.startsWith("_"));
+const wfRaw = firstWorkflowKey ? mergeTemplates(raw[firstWorkflowKey] as Record<string, unknown>, templates) : raw;
 
   it("parses and validates against ApmWorkflowSchema", () => {
     const result = ApmWorkflowSchema.safeParse(wfRaw);

@@ -34,7 +34,7 @@ const localExecHandler: NodeHandler = {
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch } = ctx;
 
-    const node = getWorkflowNode(apmContext, itemKey);
+    const node = getWorkflowNode(apmContext, ctx.pipelineState.workflowName, itemKey);
     let command = node?.command;
     if (!command) {
       return {
