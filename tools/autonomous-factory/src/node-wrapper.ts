@@ -1,28 +1,34 @@
 /**
- * node-wrapper.ts — Generic self-protection decorator for DAG node execution.
+ * node-wrapper.ts — Execution envelope decorator for DAG node handlers.
  *
  * Sits between the kernel (thin scheduler) and handler plugins (copilot-agent,
- * local-exec, etc.). Encapsulates cross-cutting failure intelligence that
- * doesn't belong in the kernel:
+ * local-exec, etc.). Provides cross-cutting execution tracking that doesn't
+ * belong in the kernel or the handler:
  *
- *   1. **Pre-execute guards** — retry dedup (same error + same HEAD = halt),
- *      pendingContext injection, revert warning, max-attempts check.
- *   2. **Post-execute signals** — timeout salvage escalation, on_failure
- *      routing signal to the dispatch layer.
+ *   1. **Execution identity** — generates a unique executionId (UUID v4) per invocation.
+ *   2. **HEAD snapshots** — records git HEAD before and after handler execution.
+ *   3. **Execution record persistence** — writes a durable ExecutionRecord that
+ *      survives orchestrator restarts and feeds triage dedup/analysis.
+ *   4. **PendingContext lifecycle** — notes existence, clears after consumption.
+ *   5. **Error classification** — tags infrastructure timeouts with errorClass
+ *      so triage can make routing decisions.
+ *   6. **Error signature** — computes stable fingerprints for failed executions.
  *
- * The wrapper reads persisted ExecutionRecords from the pipeline state and
- * writes pendingContext (consumed by copilot-agent prompt builders).
+ * The wrapper does NOT make routing decisions (retry, halt, salvage). All
+ * routing authority belongs to the triage system. The wrapper only tracks
+ * and classifies.
  *
  * Design: The wrapper does NOT mutate pipeline state (no completeItem/failItem).
- * It returns enriched NodeResult with control signals that the kernel acts on.
+ * It returns enriched NodeResult with metadata that the kernel and triage act on.
  */
 
+import { randomUUID } from "node:crypto";
 import type { NodeHandler, NodeContext, NodeResult, SkipResult } from "./handlers/types.js";
 import type { ExecutionRecord, PipelineState } from "./types.js";
 import type { ResolvedCircuitBreaker } from "./session/shared.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
 import { getHeadSha } from "./session/shared.js";
-import { setPendingContext } from "./state.js";
+import { setPendingContext, persistExecutionRecord } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,73 +39,17 @@ export interface NodeWrapperConfig {
   circuitBreaker: ResolvedCircuitBreaker;
   /** In-memory attempt count for this item (1-based). */
   attempt: number;
-  /** Effective attempt count (in-memory + persisted redevelopment cycles). */
-  effectiveAttempts: number;
   /** Feature slug. */
   slug: string;
   /** Repository root path. */
   repoRoot: string;
+  /** Git HEAD before handler execution (from kernel's preStepRefs). */
+  headBefore?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Pre-execute guards
+// Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Check whether the execution log shows a repeated identical error with no
- * code changes. If the same error signature was produced at the same HEAD,
- * retrying is pointless — return a halt signal.
- *
- * Returns a NodeResult if the item should be halted, null to proceed.
- */
-function checkRetryDedup(
-  ctx: NodeContext,
-  config: NodeWrapperConfig,
-  executionLog: ExecutionRecord[],
-): NodeResult | null {
-  if (config.attempt <= 1) return null;
-
-  const priorRecords = executionLog
-    .filter((r) => r.nodeKey === ctx.itemKey && r.outcome !== "completed")
-    .sort((a, b) => b.attempt - a.attempt);
-
-  if (priorRecords.length === 0) return null;
-
-  const lastRecord = priorRecords[0];
-  if (!lastRecord.errorSignature) return null;
-
-  const currentHead = getHeadSha(config.repoRoot);
-  if (!currentHead || currentHead !== lastRecord.headAfter) return null;
-
-  // Same HEAD, same error signature on last attempt — halt unless circuit
-  // breaker allows a revert bypass (one-time escape hatch for dev agents).
-  if (!config.circuitBreaker.allowsRevertBypass) {
-    return {
-      outcome: "failed",
-      errorMessage: `Non-retryable: identical error signature (${lastRecord.errorSignature}) at unchanged HEAD ${currentHead.slice(0, 8)}. Halting to avoid retry loop.`,
-      summary: {},
-      signals: { halt: true },
-    };
-  }
-
-  // Dev agents: check if we've already granted the bypass (via >1 identical records)
-  const identicalCount = priorRecords.filter(
-    (r) => r.errorSignature === lastRecord.errorSignature && r.headAfter === currentHead,
-  ).length;
-
-  if (identicalCount >= 2) {
-    // Already bypassed once — now truly halt
-    return {
-      outcome: "failed",
-      errorMessage: `Non-retryable after revert bypass: identical error signature (${lastRecord.errorSignature}) persisted across ${identicalCount} attempts at HEAD ${currentHead.slice(0, 8)}.`,
-      summary: {},
-      signals: { halt: true },
-    };
-  }
-
-  // First time: allow bypass (the revert warning will be in pendingContext)
-  return null;
-}
 
 /**
  * Check whether the pipeline item has pending context that will be consumed
@@ -110,36 +60,17 @@ function hasPendingContext(pipelineState: Readonly<PipelineState>, itemKey: stri
   return !!item?.pendingContext;
 }
 
-// ---------------------------------------------------------------------------
-// Post-execute analysis
-// ---------------------------------------------------------------------------
-
 /**
- * Check if a failed result from a timeout-susceptible node should trigger
- * the salvage-draft signal (open a Draft PR for human review rather than
- * losing all work).
+ * Classify infrastructure timeout errors.
+ * Returns "infrastructure-timeout" if the error is a session/SDK timeout,
+ * null otherwise. The triage system uses this for routing decisions.
  */
-function checkTimeoutSalvage(
-  result: NodeResult,
-  config: NodeWrapperConfig,
-): NodeResult {
-  if (result.outcome === "completed") return result;
-  if (!config.circuitBreaker.allowsTimeoutSalvage) return result;
-
-  const isTimeout = result.errorMessage?.includes("Timeout") ||
-    result.errorMessage?.includes("timeout") ||
-    result.errorMessage?.includes("SIGTERM");
-
-  if (!isTimeout) return result;
-
-  // Signal the kernel to salvage as draft instead of full failure
-  return {
-    ...result,
-    signals: {
-      ...result.signals,
-      "salvage-draft": true,
-    },
-  };
+function classifyTimeoutError(errorMessage?: string): string | null {
+  if (!errorMessage) return null;
+  const isTimeout = errorMessage.includes("Timeout") ||
+    errorMessage.includes("timeout") ||
+    errorMessage.includes("SIGTERM");
+  return isTimeout ? "infrastructure-timeout" : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +78,7 @@ function checkTimeoutSalvage(
 // ---------------------------------------------------------------------------
 
 /**
- * Create a node wrapper that decorates a handler with self-protection logic.
+ * Create a node wrapper that decorates a handler with execution tracking.
  *
  * Usage in the kernel:
  * ```ts
@@ -166,17 +97,8 @@ export function createNodeWrapper(
     shouldSkip: inner.shouldSkip?.bind(inner),
 
     async execute(ctx: NodeContext): Promise<NodeResult> {
-      const executionLog = ctx.pipelineState.executionLog ?? [];
-
-      // --- Pre-execute guard: retry dedup ---
-      const dedupResult = checkRetryDedup(ctx, config, executionLog);
-      if (dedupResult) {
-        ctx.logger.event("item.skip", ctx.itemKey, {
-          skip_type: "retry_dedup",
-          reason: dedupResult.errorMessage,
-        });
-        return dedupResult;
-      }
+      const executionId = ctx.executionId;
+      const stepStart = Date.now();
 
       // --- Pre-execute: note if pendingContext exists (handler reads it from ctx.pipelineState) ---
       const hadPendingContext = hasPendingContext(ctx.pipelineState, ctx.itemKey);
@@ -202,8 +124,19 @@ export function createNodeWrapper(
         } catch { /* non-fatal — stale context is misleading but not fatal */ }
       }
 
-      // --- Post-execute: timeout salvage ---
-      result = checkTimeoutSalvage(result, config);
+      // --- Post-execute: classify infrastructure timeouts ---
+      if (result.outcome !== "completed" && result.errorMessage) {
+        const errorClass = classifyTimeoutError(result.errorMessage);
+        if (errorClass) {
+          result = {
+            ...result,
+            handlerOutput: {
+              ...result.handlerOutput,
+              errorClass,
+            },
+          };
+        }
+      }
 
       // --- Post-execute: compute error signature for failed results ---
       if (result.outcome !== "completed" && result.errorMessage) {
@@ -216,6 +149,42 @@ export function createNodeWrapper(
           },
         };
       }
+
+      // --- Post-execute: persist execution record ---
+      const headAfter = getHeadSha(config.repoRoot) ?? undefined;
+      try {
+        const execRecord: ExecutionRecord = {
+          executionId,
+          nodeKey: ctx.itemKey,
+          attempt: config.attempt,
+          outcome: result.outcome,
+          errorMessage: result.outcome !== "completed" ? result.errorMessage : undefined,
+          errorSignature: result.outcome !== "completed" && result.errorMessage
+            ? computeErrorSignature(result.errorMessage)
+            : undefined,
+          headBefore: config.headBefore,
+          headAfter,
+          filesChanged: [...(result.summary.filesChanged ?? [])],
+          durationMs: Date.now() - stepStart,
+          startedAt: new Date(stepStart).toISOString(),
+          finishedAt: new Date().toISOString(),
+        };
+        await persistExecutionRecord(config.slug, execRecord);
+      } catch {
+        ctx.logger.event("item.end", ctx.itemKey, {
+          outcome: result.outcome,
+          note: "failed to persist execution record",
+        });
+      }
+
+      // Expose headAfter in handlerOutput for the kernel to merge into itemSummary
+      result = {
+        ...result,
+        handlerOutput: {
+          ...result.handlerOutput,
+          headAfterAttempt: headAfter,
+        },
+      };
 
       return result;
     },

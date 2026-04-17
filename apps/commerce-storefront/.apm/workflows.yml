@@ -21,6 +21,8 @@
 storefront:
   description: "Storefront pipeline: dev → unit test → E2E → deploy → finalize"
 
+  default_triage: triage-storefront
+
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
@@ -48,6 +50,7 @@ storefront:
           frontend: storefront-dev
           test-code: e2e-author
           test-code-from-dev: storefront-dev
+          ssr-hydration: storefront-debugger
           environment: "$SELF"
           blocked: null
 
@@ -85,6 +88,11 @@ storefront:
       depends_on: []
       triage_profile: storefront
 
+    # ── Dormant Debug Agent (activated by triage only) ─────────────────
+    storefront-debugger:
+      depends_on: []
+      activation: triage-only
+
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:
     - "unauthorized_client"
@@ -113,5 +121,8 @@ storefront:
         environment:
           description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
           retries: 2
+        ssr-hydration:
+          description: "SSR hydration mismatch, server-render crash, React hydration errors"
+          route_to: storefront-debugger
         blocked:
           description: "Unfixable without human intervention (permissions, SFCC access)"

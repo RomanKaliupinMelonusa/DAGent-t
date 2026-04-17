@@ -89,6 +89,19 @@ agents:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
+  storefront-debugger:
+    instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: storefront-debugger.agent.md
+    mcp: [roam-code]
+    skills: [test-storefront-unit, dev-local]
+    toolLimits: { soft: 50, hard: 70 }
+    security:
+      allowedWritePaths: ["^app/", "^config/", "^worker/", "^e2e/"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
+    tools:
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
+      mcp:
+        roam-code: "*"
 
 # ═══════════════════════════════════════════════════════════════════════
 # Node Pool — Reusable work units (agent, script, barrier, triage)
@@ -236,6 +249,18 @@ nodes:
     type: triage
     category: finalize
     timeout_minutes: 5
+
+  storefront-debugger:
+    type: agent
+    category: dev
+    agent: "@storefront-debugger"
+    timeout_minutes: 20
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+    activation: triage-only
+    circuit_breaker:
+      allows_revert_bypass: true
+      allows_timeout_salvage: true
 
 config:
   defaultToolLimits: { soft: 60, hard: 80 }

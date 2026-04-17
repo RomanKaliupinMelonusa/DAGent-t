@@ -24,13 +24,9 @@ import { getStatus } from "../state.js";
 import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { getAgentDirectoryPrefixes, resolveCircuitBreaker } from "../session/shared.js";
+import { getAgentDirectoryPrefixes } from "../session/shared.js";
 import { writeFlightData } from "../reporting.js";
 import {
-  buildRetryContext,
-  buildDownstreamFailureContext,
-  buildTriageRejectionContext,
-  buildRevertWarning,
   writeChangeManifest,
 } from "../context-injection.js";
 import { buildSessionHooks, buildCustomTools } from "../tool-harness.js";
@@ -72,7 +68,7 @@ const copilotAgentHandler: NodeHandler = {
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const {
       itemKey, slug, appRoot, repoRoot, baseBranch, apmContext,
-      attempt, effectiveAttempts, previousAttempt, pipelineSummaries,
+      attempt, pipelineSummaries,
     } = ctx;
 
     const client = ctx.client;
@@ -229,50 +225,10 @@ const copilotAgentHandler: NodeHandler = {
       apmContext,
     );
 
-    // Resolve circuit breaker config for injection gates
-    const cbConfig = resolveCircuitBreaker(node);
-
-    // Inject retry context from previous attempt
-    if (attempt > 1 && previousAttempt) {
-      const atRevertThreshold = cbConfig.allowsRevertBypass && effectiveAttempts >= (cbConfig.revertWarningAt ?? 3);
-      taskPrompt += buildRetryContext(previousAttempt, atRevertThreshold);
-      ctx.logger.event("handoff.inject", itemKey, {
-        injection_types: ["retry_context"],
-        source_attempt: previousAttempt.attempt,
-      });
-    }
-
-    // Inject downstream failure context
-    const downstreamCtx = buildDownstreamFailureContext(
-      itemKey,
-      pipelineSummaries as ItemSummary[],
-      apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
-      apmContext.config?.ci_scope_warning as string | undefined,
-      slug,
-      cbConfig.allowsRevertBypass,
-    );
-    if (downstreamCtx) {
-      taskPrompt += downstreamCtx;
-      const downstreamCount = (ctx.downstreamFailures ?? []).length;
-      const involvesCicd = downstreamCtx.includes("Commit Scope Warning") || downstreamCtx.includes("scope");
-      ctx.logger.event("handoff.inject", itemKey, {
-        injection_types: ["downstream_failure", ...(involvesCicd ? ["ci_scope_guidance"] : [])],
-        downstream_count: downstreamCount,
-      });
-    }
-
-    // Inject clean-slate revert warning
-    const revertWarning = buildRevertWarning(itemKey, effectiveAttempts, cbConfig.allowsRevertBypass, cbConfig.revertWarningAt);
-    if (revertWarning) {
-      taskPrompt += revertWarning;
-      ctx.logger.event("handoff.inject", itemKey, {
-        injection_types: ["revert_warning"],
-        effective_attempts: effectiveAttempts,
-      });
-    }
-
-    // Inject triage-rejection context for redevelopment (manifest-driven)
-    // Primary path: pendingContext (set by triage handler via setPendingContext)
+    // Inject pendingContext — the single entry point for all failure context.
+    // The triage handler composes retry context, downstream failures, revert
+    // warnings, and rejection narratives into a single pendingContext string
+    // via setPendingContext. The copilot-agent handler only reads it.
     const pendingItem = ctx.pipelineState.items.find((i) => i.key === itemKey);
     if (pendingItem?.pendingContext) {
       taskPrompt += pendingItem.pendingContext;
@@ -280,15 +236,6 @@ const copilotAgentHandler: NodeHandler = {
         injection_types: ["pending_context"],
         context_length: pendingItem.pendingContext.length,
       });
-    } else if (node?.injects_triage_rejection || node?.injects_infra_rollback) {
-      // Fallback: legacy flag-based injection (for backward compat with older compiled contexts)
-      const rejectionCtx = await buildTriageRejectionContext(slug);
-      if (rejectionCtx) {
-        taskPrompt += rejectionCtx;
-        ctx.logger.event("handoff.inject", itemKey, {
-          injection_types: ["triage_rejection"],
-        });
-      }
     }
 
     // Write change manifest (manifest-driven)

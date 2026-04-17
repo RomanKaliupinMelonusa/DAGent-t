@@ -24,14 +24,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, completeItem, salvageForDraft, persistExecutionRecord } from "./state.js";
+import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
-import type { NextAction, ItemSummary, ExecutionRecord } from "./types.js";
+import type { NextAction, ItemSummary } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
-import {
-  computeEffectiveDevAttempts,
-} from "./context-injection.js";
 
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
@@ -153,9 +150,14 @@ export type DispatchStep = (dc: DispatchContext) => Promise<SessionResult | unde
 
 /**
  * Resolve the on_failure target for a workflow node.
- * on_failure is an object `{ triage: string, routes: Record<string, string | null> }`.
- * Supports deprecated `triage` field (shim) for backward compat.
- * Returns the triage node key, or undefined if no failure routing is configured.
+ * Resolution order:
+ *   1. Node-level `on_failure.triage` (explicit per-node target)
+ *   2. Node-level `on_failure` string (backward compat)
+ *   3. Deprecated `triage` field shim (look up triage node by profile name)
+ *   4. Workflow-level `default_triage` (catch-all for the entire workflow)
+ *
+ * Returns the triage node key, or undefined if no failure routing is configured
+ * at any level.
  */
 function resolveOnFailureTarget(
   apmContext: ApmCompiledOutput,
@@ -179,12 +181,16 @@ function resolveOnFailureTarget(
       }
     }
   }
+  // Fallback: workflow-level default_triage (catch-all)
+  const workflow = getWorkflow(apmContext, workflowName);
+  if (workflow?.default_triage) return workflow.default_triage;
   return undefined;
 }
 
 /**
  * Extract the on_failure.routes map from a workflow node.
- * Returns the routes map or an empty object if not configured.
+ * Falls back to workflow-level default_routes if node has none.
+ * Returns the routes map or an empty object if not configured at any level.
  */
 function resolveOnFailureRoutes(
   apmContext: ApmCompiledOutput,
@@ -192,14 +198,19 @@ function resolveOnFailureRoutes(
   itemKey: string,
 ): Record<string, string | null> {
   const node = getWorkflowNode(apmContext, workflowName, itemKey);
-  if (!node?.on_failure || typeof node.on_failure !== "object") return {};
-  return (node.on_failure as { routes?: Record<string, string | null> }).routes ?? {};
+  if (node?.on_failure && typeof node.on_failure === "object") {
+    const nodeRoutes = (node.on_failure as { routes?: Record<string, string | null> }).routes;
+    if (nodeRoutes && Object.keys(nodeRoutes).length > 0) return nodeRoutes;
+  }
+  // Fallback: workflow-level default_routes
+  const workflow = getWorkflow(apmContext, workflowName);
+  return workflow?.default_routes ?? {};
 }
 
 /**
- * Dispatch failure to a triage node via the on_failure edge.
- * Returns a SessionResult if triage handled the failure, or null if no
- * on_failure target is configured (caller continues with normal failure flow).
+ * Dispatch failure to a triage node via on_failure edge or workflow default_triage.
+ * Always returns a SessionResult — triage dispatch is unconditional.
+ * If no triage target can be resolved, halts with a diagnostic message.
  */
 async function dispatchOnFailure(
   failingKey: string,
@@ -208,11 +219,18 @@ async function dispatchOnFailure(
   config: PipelineRunConfig,
   state: PipelineRunState,
   client: CopilotClient,
-): Promise<SessionResult | null> {
+): Promise<SessionResult> {
   const { slug, workflowName, appRoot, repoRoot, apmContext, logger } = config;
 
   const triageNodeKey = resolveOnFailureTarget(apmContext, workflowName, failingKey);
-  if (!triageNodeKey) return null;
+  if (!triageNodeKey) {
+    logger.event("item.end", failingKey, {
+      outcome: "error",
+      halted: true,
+      error_preview: `No triage target found for "${failingKey}" (no on_failure, no default_triage, no triage-type node in workflow "${workflowName}")`,
+    });
+    return { summary: itemSummary, halt: true, createPr: false };
+  }
 
   // Resolve failure routes from the failing node's on_failure.routes
   const failureRoutes = resolveOnFailureRoutes(apmContext, workflowName, failingKey);
@@ -236,6 +254,7 @@ async function dispatchOnFailure(
   const currentState = await getStatus(slug);
   const triageCtx: NodeContext = {
     itemKey: triageNodeKey,
+    executionId: randomUUID(),
     slug,
     appRoot,
     repoRoot,
@@ -438,17 +457,15 @@ const stepResolve: DispatchStep = async (dc) => {
 
   // Build handler context
   const currentState = await getStatus(slug);
-  const effectiveAttempts = await computeEffectiveDevAttempts(
-    next.key, attemptCounts[next.key], slug, cb.allowsRevertBypass,
-  );
+  const executionId = randomUUID();
 
-  // Wrap the handler with the node wrapper for cross-cutting self-protection
+  // Wrap the handler with the node wrapper for execution tracking
   dc.handler = createNodeWrapper(dc.handler, {
     circuitBreaker: cb,
     attempt: attemptCounts[next.key],
-    effectiveAttempts,
     slug,
     repoRoot,
+    headBefore: state.preStepRefs[next.key],
   });
 
   const previousAttempt = attemptCounts[next.key] > 1
@@ -481,12 +498,13 @@ const stepResolve: DispatchStep = async (dc) => {
 
   dc.handlerCtx = {
     itemKey: next.key,
+    executionId,
     slug,
     appRoot,
     repoRoot,
     baseBranch,
     attempt: attemptCounts[next.key],
-    effectiveAttempts,
+    effectiveAttempts: attemptCounts[next.key],
     environment: (apmContext.config?.environment as Record<string, string>) ?? {},
     apmContext,
     pipelineState: currentState,
@@ -624,31 +642,9 @@ const stepExecute: DispatchStep = async (dc) => {
     });
   }
 
-  // Record HEAD for circuit breaker
-  itemSummary.headAfterAttempt = getHeadSha(repoRoot) ?? undefined;
-
-  // --- Persist execution record (survives orchestrator restarts) ---
-  try {
-    const execRecord: ExecutionRecord = {
-      executionId: randomUUID(),
-      nodeKey: next.key,
-      attempt: attemptCounts[next.key],
-      outcome: result.outcome,
-      errorMessage: result.outcome !== "completed" ? result.errorMessage : undefined,
-      errorSignature: result.outcome !== "completed" && result.errorMessage
-        ? computeErrorSignature(result.errorMessage)
-        : undefined,
-      headBefore: state.preStepRefs[next.key],
-      headAfter: itemSummary.headAfterAttempt,
-      filesChanged: [...itemSummary.filesChanged],
-      durationMs: Date.now() - stepStart,
-      startedAt: itemSummary.startedAt,
-      finishedAt: new Date().toISOString(),
-    };
-    await persistExecutionRecord(slug, execRecord);
-  } catch {
-    logger.event("item.end", next.key, { outcome: result.outcome, note: "failed to persist execution record" });
-  }
+  // Record HEAD for circuit breaker (from wrapper's handlerOutput if available)
+  itemSummary.headAfterAttempt = (result.handlerOutput?.headAfterAttempt as string | undefined)
+    ?? getHeadSha(repoRoot) ?? undefined;
 
   // --- State transitions ---
   if (result.signal === "approval-pending") {
@@ -670,7 +666,7 @@ const stepExecute: DispatchStep = async (dc) => {
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
     const onFailureResult = await dispatchOnFailure(next.key, result.errorMessage ?? "Unknown failure", itemSummary, config, state, client);
-    if (onFailureResult) return onFailureResult;
+    return onFailureResult;
   }
 
   // --- Signal handling ---
@@ -704,8 +700,7 @@ const stepExecute: DispatchStep = async (dc) => {
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
       const triageResult3 = await dispatchOnFailure(next.key, failMsg, itemSummary, config, state, client);
-      if (triageResult3) return triageResult3;
-      return finishItem(itemSummary, "failed", stepStart, config, state, { halt: true });
+      return triageResult3;
     }
 
     const existing = state.handlerOutputs[next.key]?.lastPushedSha;

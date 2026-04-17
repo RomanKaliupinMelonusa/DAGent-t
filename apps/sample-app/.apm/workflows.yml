@@ -14,6 +14,9 @@
 full-stack:
   description: "Full-stack pipeline: infra → backend + frontend → test → deploy → finalize"
 
+  # Default triage node — used when a failing node has no explicit on_failure.triage.
+  default_triage: triage-full-stack
+
   # Workflow-level failure routing defaults — inherited by nodes with on_failure.
   # Per-node routes override these. Nodes without on_failure are unaffected.
   default_on_failure:
@@ -169,6 +172,8 @@ full-stack:
 # ═══════════════════════════════════════════════════════════════════════
 backend:
   description: "Backend-only pipeline: schema → backend → test → deploy → finalize"
+
+  default_triage: triage-backend
 
   # Workflow-level failure routing defaults
   default_on_failure:

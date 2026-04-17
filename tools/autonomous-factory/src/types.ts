@@ -33,7 +33,7 @@ export interface PipelineItem {
   key: string;
   label: string;
   agent: string | null;
-  status: "pending" | "done" | "failed" | "na";
+  status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
   /** Structured handoff artifact (JSON string) for downstream agent contracts.
@@ -114,6 +114,8 @@ export interface PipelineState {
   naByType: string[];
   /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
   salvageSurvivors: string[];
+  /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
+  dormantByActivation?: string[];
   /** Last triage record — persisted for downstream context injection. */
   lastTriageRecord?: TriageRecord | null;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
@@ -175,7 +177,7 @@ export interface TriageRecord {
   error_signature: string;
 
   /** Pre-guard result (set by triage handler, not evaluateTriage). */
-  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral";
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup";
   guard_detail?: string;
 
   /** RAG layer matches (up to 3, ranked by specificity). */

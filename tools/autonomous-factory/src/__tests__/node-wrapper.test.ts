@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { createNodeWrapper } from "../node-wrapper.js";
 import type { NodeHandler, NodeContext, NodeResult } from "../handlers/types.js";
 import type { ResolvedCircuitBreaker } from "../session/shared.js";
-import type { PipelineState, ExecutionRecord } from "../types.js";
+import type { PipelineState } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -53,6 +53,7 @@ function makeMinimalState(overrides: Partial<PipelineState> = {}): PipelineState
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   return {
     itemKey: "dev",
+    executionId: "00000000-0000-4000-a000-000000000001",
     slug: "test-feature",
     appRoot: "/tmp/app",
     repoRoot: "/tmp/repo",
@@ -80,7 +81,6 @@ describe("createNodeWrapper", () => {
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });
@@ -92,7 +92,6 @@ describe("createNodeWrapper", () => {
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });
@@ -108,7 +107,6 @@ describe("createNodeWrapper", () => {
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });
@@ -126,7 +124,6 @@ describe("createNodeWrapper", () => {
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });
@@ -135,75 +132,38 @@ describe("createNodeWrapper", () => {
     assert.ok(result.handlerOutput?.errorSignature, "should have computed error signature");
   });
 
-  it("adds salvage-draft signal for timeout errors when allowed", async () => {
+  it("tags infrastructure-timeout errorClass for timeout errors", async () => {
     const inner = makeHandler({
       outcome: "error",
       errorMessage: "Timeout waiting for response",
       summary: {},
     });
-    const wrapped = createNodeWrapper(inner, {
-      circuitBreaker: makeCircuitBreaker({ allowsTimeoutSalvage: true }),
-      attempt: 1,
-      effectiveAttempts: 1,
-      slug: "test",
-      repoRoot: "/tmp",
-    });
-    const result = await wrapped.execute(makeCtx());
-    assert.equal(result.outcome, "error");
-    assert.equal(result.signals?.["salvage-draft"], true);
-  });
-
-  it("does NOT add salvage-draft when timeout salvage not allowed", async () => {
-    const inner = makeHandler({
-      outcome: "error",
-      errorMessage: "Timeout waiting for response",
-      summary: {},
-    });
-    const wrapped = createNodeWrapper(inner, {
-      circuitBreaker: makeCircuitBreaker({ allowsTimeoutSalvage: false }),
-      attempt: 1,
-      effectiveAttempts: 1,
-      slug: "test",
-      repoRoot: "/tmp",
-    });
-    const result = await wrapped.execute(makeCtx());
-    assert.equal(result.outcome, "error");
-    assert.equal(result.signals?.["salvage-draft"], undefined);
-  });
-
-  it("halts on identical error signature at same HEAD (retry dedup)", async () => {
-    const executionLog: ExecutionRecord[] = [{
-      executionId: "test-1",
-      nodeKey: "dev",
-      attempt: 1,
-      outcome: "failed",
-      errorMessage: "connection refused",
-      errorSignature: "abc123deadbeef00",
-      headBefore: "aaa",
-      headAfter: "bbb111222333",
-      filesChanged: [],
-      durationMs: 1000,
-      startedAt: "2025-01-01T00:00:00Z",
-      finishedAt: "2025-01-01T00:00:01Z",
-    }];
-
-    // The wrapper needs getHeadSha to return the same HEAD as headAfter
-    // Since we can't easily mock getHeadSha, we test the logic path by
-    // verifying the wrapper proceeds when attempt=1 (dedup skipped)
-    const inner = makeHandler({ outcome: "completed", summary: {} });
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });
-    const ctx = makeCtx({
-      pipelineState: makeMinimalState({ executionLog }),
+    const result = await wrapped.execute(makeCtx());
+    assert.equal(result.outcome, "error");
+    assert.equal(result.handlerOutput?.errorClass, "infrastructure-timeout");
+  });
+
+  it("does NOT tag errorClass for non-timeout errors", async () => {
+    const inner = makeHandler({
+      outcome: "error",
+      errorMessage: "SyntaxError: Unexpected token",
+      summary: {},
     });
-    const result = await wrapped.execute(ctx);
-    // attempt=1, so dedup is skipped → handler executes normally
-    assert.equal(result.outcome, "completed");
+    const wrapped = createNodeWrapper(inner, {
+      circuitBreaker: makeCircuitBreaker(),
+      attempt: 1,
+      slug: "test",
+      repoRoot: "/tmp",
+    });
+    const result = await wrapped.execute(makeCtx());
+    assert.equal(result.outcome, "error");
+    assert.equal(result.handlerOutput?.errorClass, undefined);
   });
 
   it("delegates shouldSkip to inner handler", async () => {
@@ -215,7 +175,6 @@ describe("createNodeWrapper", () => {
     const wrapped = createNodeWrapper(inner, {
       circuitBreaker: makeCircuitBreaker(),
       attempt: 1,
-      effectiveAttempts: 1,
       slug: "test",
       repoRoot: "/tmp",
     });

@@ -204,9 +204,10 @@ function renderTrans(slug, state) {
 
   for (const item of state.items) {
     const box =
-      item.status === "done"   ? "[x]" :
-      item.status === "na"     ? "[x] [N/A]" :
-      item.status === "failed" ? "[ ] ⚠️" :
+      item.status === "done"    ? "[x]" :
+      item.status === "na"      ? "[x] [N/A]" :
+      item.status === "failed"  ? "[ ] ⚠️" :
+      item.status === "dormant" ? "[ ] 💤" :
       "[ ]";
     lines.push(`- ${box} ${item.label} (${item.agent})`);
   }
@@ -383,11 +384,18 @@ export function initState(slug, workflowName, contextJsonPath) {
   // All nodes in a named workflow are active (no run_if filtering)
   const naByType = [];
 
+  // Nodes with `activation: "triage-only"` start as dormant — invisible to the
+  // scheduler until explicitly activated by triage via resetNodes().
+  const dormantByActivation = [];
+  for (const [key, node] of nodeEntries) {
+    if (node.activation === "triage-only") dormantByActivation.push(key);
+  }
+
   const items = nodeEntries.map(([key, node]) => ({
     key,
     label: key,
     agent: node.agent ?? null,
-    status: "pending",
+    status: node.activation === "triage-only" ? "dormant" : "pending",
     error: null,
   }));
 
@@ -404,6 +412,7 @@ export function initState(slug, workflowName, contextJsonPath) {
     nodeTypes,
     nodeCategories,
     naByType,
+    dormantByActivation,
     salvageSurvivors,
   };
 
@@ -513,6 +522,10 @@ export function salvageForDraft(slug, failedItemKey) {
       // Finalization nodes always stay pending (for draft PR creation)
       item.status = "pending";
       item.error = null;
+    } else if (item.status === "dormant") {
+      // Dormant nodes (triage-only activation) stay dormant during salvage —
+      // they were never active in this pipeline run.
+      continue;
     } else if ((skipKeys.has(item.key) || item.key === failedItemKey) && item.status !== "done") {
       item.status = "na";
       skippedKeys.push(item.key);
@@ -733,6 +746,10 @@ export function resetNodes(slug, seedKey, reason, maxCycles = 5, logKey = "reset
   let resetCount = 0;
   for (const item of state.items) {
     if (keysToReset.has(item.key) && item.status !== "na") {
+      // Dormant nodes in the cascade are only activated if they are the
+      // explicit seed target (triage route_to). Transitive dormant dependents
+      // stay dormant to avoid unintentional activation.
+      if (item.status === "dormant" && item.key !== seedKey) continue;
       item.status = "pending";
       item.error = null;
       resetCount++;
@@ -779,7 +796,7 @@ export function getNext(slug) {
 
   // Find the first incomplete item in topological order (items are stored in topo order)
   for (const item of state.items) {
-    if (item.status !== "done" && item.status !== "na") {
+    if (item.status !== "done" && item.status !== "na" && item.status !== "dormant") {
       return { key: item.key, label: item.label, agent: item.agent, status: item.status };
     }
   }
@@ -823,7 +840,7 @@ export function getNextAvailable(slug) {
   }
 
   if (available.length === 0) {
-    const allDone = state.items.every((i) => i.status === "done" || i.status === "na");
+    const allDone = state.items.every((i) => i.status === "done" || i.status === "na" || i.status === "dormant");
     if (allDone) {
       return [{ key: null, label: "Pipeline complete", agent: null, status: "complete" }];
     }

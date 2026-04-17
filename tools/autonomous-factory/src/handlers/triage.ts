@@ -27,9 +27,10 @@ import type { TriageRecord, TriageResult } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
-import { getWorkflowNode } from "../session/shared.js";
+import { getWorkflowNode, resolveCircuitBreaker, getHeadSha } from "../session/shared.js";
 import { getStatus, resetNodes, salvageForDraft, setLastTriageRecord, setPendingContext } from "../state.js";
-import { buildTriageRejectionContext } from "../context-injection.js";
+import { buildTriageRejectionContext, composeTriageContext, checkRetryDedup } from "../triage/context-builder.js";
+import { computeEffectiveDevAttempts } from "../context-injection.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -172,6 +173,47 @@ const triageHandler: NodeHandler = {
         } satisfies TriageHandlerOutput,
       };
     }
+
+    // --- Pre-triage guard: retry dedup (same error at same HEAD → halt) ---
+    try {
+      const pipeState = await getStatus(slug);
+      const executionLog = pipeState.executionLog ?? [];
+      const failingNode = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, failingNodeKey);
+      const cbConfig = resolveCircuitBreaker(failingNode);
+      // Derive attempt count from execution log (in-memory attemptCounts not visible here)
+      const failingRecords = executionLog.filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey);
+      const attemptCount = failingRecords.length > 0 ? Math.max(...failingRecords.map((r: { attempt: number }) => r.attempt)) + 1 : 1;
+      const dedupResult = checkRetryDedup(
+        failingNodeKey, attemptCount, executionLog,
+        ctx.repoRoot, cbConfig.allowsRevertBypass,
+      );
+      if (dedupResult) {
+        const record = buildGuardRecord(
+          failingNodeKey, errorSig,
+          "retry_dedup", dedupResult.reason,
+          dedupResult.halt ? "blocked" : "$SELF",
+          dedupResult.reason,
+        );
+        const evId = logger.event("triage.evaluate", failingNodeKey, { ...record });
+        logger.blob(evId, "error_trace", rawError);
+        if (dedupResult.halt) {
+          await executeSalvage(ctx, failingNodeKey, rawError, record, logger);
+          return {
+            outcome: "completed",
+            summary: { intents: [`triage: retry dedup → halt (${dedupResult.reason})`] },
+            signals: { halt: false },
+            handlerOutput: {
+              routeToKey: null,
+              domain: "blocked",
+              reason: dedupResult.reason,
+              source: "fallback",
+              triageRecord: record,
+              guardResult: "retry_dedup",
+            } satisfies TriageHandlerOutput,
+          };
+        }
+      }
+    } catch { /* continue to next guard */ }
 
     // --- Pre-triage guard: death spiral (same error ≥N times) ---
     const deathSpiralThreshold = ctx.apmContext.config?.max_same_error_cycles ?? 3;
@@ -393,11 +435,38 @@ const triageHandler: NodeHandler = {
       // Persist the triage record
       try { await setLastTriageRecord(slug, enrichedRecord); } catch { /* non-fatal */ }
 
-      // Build and persist pendingContext for the target node
+      // Build and persist full pendingContext for the target node
       try {
+        const targetNode = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey);
+        const targetCb = resolveCircuitBreaker(targetNode);
+        // Derive target attempt count from execution log (PipelineItem has no
+        // `attempt` field — attempts are tracked per-invocation in the log).
+        const pipeStateForCtx = await getStatus(slug);
+        const targetExecLog = (pipeStateForCtx.executionLog ?? [])
+          .filter((r: { nodeKey: string }) => r.nodeKey === routeToKey);
+        const targetAttempt = targetExecLog.length > 0
+          ? Math.max(...targetExecLog.map((r: { attempt: number }) => r.attempt)) + 1
+          : 1;
+        const targetEffective = await computeEffectiveDevAttempts(
+          routeToKey, targetAttempt, slug, targetCb.allowsRevertBypass,
+        );
+        const lastSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === routeToKey);
         const rejectionCtx = await buildTriageRejectionContext(slug);
-        if (rejectionCtx) {
-          await setPendingContext(slug, routeToKey, rejectionCtx);
+        const composed = composeTriageContext({
+          slug,
+          itemKey: routeToKey,
+          attempt: targetAttempt,
+          effectiveAttempts: targetEffective,
+          pipelineSummaries: ctx.pipelineSummaries,
+          previousAttempt: lastSummary,
+          allowsRevertBypass: targetCb.allowsRevertBypass,
+          revertWarningAt: targetCb.revertWarningAt,
+          ciWorkflowFilePatterns: ctx.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
+          ciScopeWarning: ctx.apmContext.config?.ci_scope_warning as string | undefined,
+          rejectionContext: rejectionCtx || undefined,
+        });
+        if (composed) {
+          await setPendingContext(slug, routeToKey, composed);
         }
       } catch { /* non-fatal */ }
 

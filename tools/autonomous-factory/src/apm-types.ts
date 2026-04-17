@@ -357,6 +357,11 @@ const nodeBodyFields = {
   /** Per-node circuit breaker configuration. Controls retry behavior, identical-error
    *  detection, and failure escalation. Replaces hardcoded category-based checks. */
   circuit_breaker: circuitBreakerSchema.optional(),
+  /** Activation mode for this node.
+   *  - `"triage-only"`: Node starts as `dormant` at init and is invisible to the scheduler.
+   *    Only activated when triage `resetNodes()` targets it. Dependents are blocked until activation.
+   *  - Omitted (default): Node starts as `pending` and participates in normal DAG scheduling. */
+  activation: z.enum(["triage-only"]).optional(),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -572,6 +577,12 @@ export const ApmWorkflowSchema = z.object({
    *  Per-node on_failure.routes override/extend these defaults.
    *  Nodes without on_failure are unaffected (no implicit opt-in). */
   default_on_failure: OnFailureSchema.optional(),
+  /** Default triage node for this workflow. Used when a failing node has no explicit
+   *  `on_failure.triage` declaration. Falls back to auto-detecting any triage-type node. */
+  default_triage: z.string().optional(),
+  /** Workflow-level default failure routes. Used by the triage handler when a failing node
+   *  has no explicit `on_failure.routes`. Per-node routes override these. */
+  default_routes: z.record(z.string(), z.string().nullable()).optional(),
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
