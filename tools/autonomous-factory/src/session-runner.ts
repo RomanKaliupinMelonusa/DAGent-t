@@ -16,8 +16,7 @@
  * Retained here:
  *   - PipelineRunState / PipelineRunConfig / SessionResult interfaces
  *   - runItemSession()  — Unified dispatch (auto-skip, readiness, handler routing, state transitions)
- *   - dispatchOnFailure()  — Failure-edge dispatch to triage nodes via on_failure
- *   - handleTriageResult() — Post-triage DAG reset and state persistence
+ *   - resolveTriageActivation() — Builds TriageActivation payload for watchdog dispatch
  */
 
 import fs from "node:fs";
@@ -44,9 +43,14 @@ import { pollReadiness } from "./session/readiness-probe.js";
 import { runPreHook, runPostHook, captureHeadSha } from "./session/lifecycle-hooks.js";
 import type { HookContext } from "./session/lifecycle-hooks.js";
 import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
-import type { NodeContext, NodeResult } from "./handlers/index.js";
+import type { NodeContext, NodeResult, DagCommand } from "./handlers/index.js";
+import type { TriageRecord } from "./types.js";
+import { RESET_OPS } from "./types.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
+import { isOrchestratorTimeout, isUnfixableError } from "./triage.js";
+import { checkRetryDedup } from "./triage/context-builder.js";
 import { createNodeWrapper } from "./node-wrapper.js";
+import { executeCommands } from "./command-executor.js";
 
 
 // ---------------------------------------------------------------------------
@@ -76,6 +80,13 @@ export interface PipelineRunState {
   handlerOutputs: Record<string, Record<string, unknown>>;
   /** Per-item flag: whether force_run_if_changed dirs had changes (set by evaluateAutoSkip, consumed by copilot-agent handler via ctx.forceRunChanges). Keyed by item key to prevent cross-contamination in parallel batches. */
   forceRunChangesDetected: Record<string, boolean>;
+  /**
+   * Temporary payload for triage dispatch through the standard pipeline.
+   * Set by the watchdog before calling runItemSession for a triage node,
+   * consumed by stepResolve to populate failure context on NodeContext.
+   * Cleared by the watchdog after the triage session completes.
+   */
+  pendingTriageActivation?: TriageActivation | undefined;
 }
 
 /** Immutable config for the pipeline run */
@@ -95,6 +106,29 @@ export interface SessionResult {
   halt: boolean;
   createPr: boolean;
   approvalPending?: boolean;
+  /** When set, the kernel should dispatch a triage node for failure classification.
+   *  The watchdog reads this after runItemSession returns and dispatches the
+   *  triage node through the standard pipeline (runItemSession again). */
+  triageActivation?: TriageActivation;
+}
+
+/**
+ * Payload for activating a triage node via the standard dispatch pipeline.
+ * Carries the failure context that the triage handler needs.
+ */
+export interface TriageActivation {
+  /** Key of the triage node to dispatch. */
+  triageNodeKey: string;
+  /** Key of the node that failed. */
+  failingKey: string;
+  /** Raw error message from the failing node. */
+  rawError: string;
+  /** Stable error fingerprint (SHA-256 prefix). */
+  errorSignature: string;
+  /** Route map from the failing node's on_failure.routes. */
+  failureRoutes: Record<string, string | null>;
+  /** Summary snapshot of the failing node's last attempt. */
+  failingNodeSummary: ItemSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,19 +242,20 @@ function resolveOnFailureRoutes(
 }
 
 /**
- * Dispatch failure to a triage node via on_failure edge or workflow default_triage.
- * Always returns a SessionResult — triage dispatch is unconditional.
- * If no triage target can be resolved, halts with a diagnostic message.
+ * Resolve the triage activation payload for a failing node.
+ * Returns a TriageActivation if a triage target can be resolved,
+ * or undefined if no failure routing is configured.
+ *
+ * This is the new path that replaces dispatchOnFailure — the watchdog
+ * dispatches the triage node through the standard runItemSession pipeline.
  */
-async function dispatchOnFailure(
+function resolveTriageActivation(
   failingKey: string,
   rawError: string,
   itemSummary: ItemSummary,
   config: PipelineRunConfig,
-  state: PipelineRunState,
-  client: CopilotClient,
-): Promise<SessionResult> {
-  const { slug, workflowName, appRoot, repoRoot, apmContext, logger } = config;
+): TriageActivation | undefined {
+  const { workflowName, apmContext, logger } = config;
 
   const triageNodeKey = resolveOnFailureTarget(apmContext, workflowName, failingKey);
   if (!triageNodeKey) {
@@ -229,81 +264,20 @@ async function dispatchOnFailure(
       halted: true,
       error_preview: `No triage target found for "${failingKey}" (no on_failure, no default_triage, no triage-type node in workflow "${workflowName}")`,
     });
-    return { summary: itemSummary, halt: true, createPr: false };
+    return undefined;
   }
 
-  // Resolve failure routes from the failing node's on_failure.routes
   const failureRoutes = resolveOnFailureRoutes(apmContext, workflowName, failingKey);
-
-  // Push summary and flush before triage dispatch
-  state.pipelineSummaries.push(itemSummary);
-  flushReports(config, state);
-
   const errorSig = computeErrorSignature(rawError);
 
-  // Resolve the triage handler
-  const triageNode = getWorkflowNode(apmContext, workflowName, triageNodeKey);
-  const handlerRef = triageNode?.handler ?? inferHandler(triageNode?.type ?? "triage", triageNode?.script_type, apmContext.config?.handler_defaults);
-  if (!handlerRef) {
-    logger.event("item.end", failingKey, { outcome: "error", error_preview: `on_failure target "${triageNodeKey}" has no resolvable handler` });
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-  const handler = await resolveHandler(handlerRef, appRoot, repoRoot, apmContext.config?.handlers);
-
-  // Build triage context with failure-specific fields
-  const currentState = await getStatus(slug);
-  const triageCtx: NodeContext = {
-    itemKey: triageNodeKey,
-    executionId: randomUUID(),
-    slug,
-    appRoot,
-    repoRoot,
-    baseBranch: config.baseBranch,
-    attempt: 1,
-    effectiveAttempts: 1,
-    environment: (apmContext.config?.environment as Record<string, string>) ?? {},
-    apmContext,
-    pipelineState: currentState,
-    pipelineSummaries: [...state.pipelineSummaries],
-    handlerData: {},
-    onHeartbeat: () => {},
-    client,
-    logger,
-    // Failure context — populated for on_failure dispatch
-    failingNodeKey: failingKey,
+  return {
+    triageNodeKey,
+    failingKey,
     rawError,
     errorSignature: errorSig,
-    failingNodeSummary: { ...itemSummary },
     failureRoutes,
+    failingNodeSummary: { ...itemSummary },
   };
-
-  logger.event("triage.evaluate", failingKey, {
-    triage_node: triageNodeKey,
-    handler: handler.name,
-    error_signature: errorSig,
-    dispatch: true,
-  });
-
-  // Execute the triage handler — it now owns all state mutations
-  let triageResult: NodeResult;
-  try {
-    triageResult = await handler.execute(triageCtx);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.event("item.end", triageNodeKey, { outcome: "error", error_preview: message });
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-
-  // The triage handler has already executed DAG mutations (resetNodes,
-  // salvageForDraft, setLastTriageRecord, setPendingContext). The kernel
-  // only needs to read the signal to decide halt vs continue.
-  if (triageResult.outcome !== "completed") {
-    logger.event("item.end", failingKey, { outcome: "error", error_preview: triageResult.errorMessage ?? "Triage handler failed" });
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-
-  const halt = triageResult.signals?.halt === true;
-  return { summary: itemSummary, halt, createPr: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,6 +492,21 @@ const stepResolve: DispatchStep = async (dc) => {
     logger,
   };
 
+  // ── Triage activation: inject failure context from pendingTriageActivation ──
+  // When the watchdog dispatches a triage node through the standard pipeline,
+  // it stores the activation payload in state.pendingTriageActivation.
+  // stepResolve populates the failure-specific NodeContext fields from it.
+  const triageActivation = state.pendingTriageActivation;
+  if (triageActivation && next.key === triageActivation.triageNodeKey) {
+    Object.assign(dc.handlerCtx, {
+      failingNodeKey: triageActivation.failingKey,
+      rawError: triageActivation.rawError,
+      errorSignature: triageActivation.errorSignature,
+      failingNodeSummary: triageActivation.failingNodeSummary,
+      failureRoutes: triageActivation.failureRoutes,
+    });
+  }
+
   dc.hookCtx = { node, itemKey: next.key, slug, appRoot, repoRoot, baseBranch, logger };
 
   // ── Handoff contract validation ──────────────────────────────────────
@@ -610,6 +599,163 @@ const stepPreHook: DispatchStep = async (dc) => {
   return;
 };
 
+// ---------------------------------------------------------------------------
+// Pre-triage guards — kernel responsibility (Phase 5)
+// ---------------------------------------------------------------------------
+
+/** Build a TriageRecord for guard-terminated paths (no classification ran). */
+function buildGuardRecord(
+  failingItem: string,
+  errorSig: string,
+  guardResult: TriageRecord["guard_result"],
+  guardDetail: string,
+  domain: string,
+  reason: string,
+): TriageRecord {
+  return {
+    failing_item: failingItem,
+    error_signature: errorSig,
+    guard_result: guardResult,
+    guard_detail: guardDetail,
+    rag_matches: [],
+    rag_selected: null,
+    llm_invoked: false,
+    domain,
+    reason,
+    source: "fallback",
+    route_to: failingItem,
+    cascade: [],
+    cycle_count: 0,
+    domain_retry_count: 0,
+  };
+}
+
+/** Build DagCommands for graceful degradation (salvage to Draft PR). */
+function buildSalvageCommands(
+  failingKey: string,
+  errorMsg: string,
+  triageRecord: TriageRecord,
+): DagCommand[] {
+  return [
+    { type: "set-triage-record", record: triageRecord },
+    { type: "salvage-draft", failedItemKey: failingKey, reason: errorMsg },
+  ];
+}
+
+/**
+ * Step 7b: Triage guard — kernel pre-checks before the triage handler runs.
+ * Only activates when the dispatch context carries a pendingTriageActivation
+ * targeting this node. Four guards short-circuit classification:
+ *   1. SDK timeout → transient retry (re-schedule $SELF)
+ *   2. Unfixable signals → graceful degradation (salvage to Draft PR)
+ *   3. Retry dedup (same error at same HEAD) → halt
+ *   4. Death spiral (same error signature ≥ N times) → graceful degradation
+ */
+const stepTriageGuard: DispatchStep = async (dc) => {
+  const { next, config, state } = dc;
+  const { slug, appRoot, repoRoot, apmContext, logger } = config;
+  const { itemSummary, stepStart } = dc;
+
+  const activation = state.pendingTriageActivation;
+  if (!activation || next.key !== activation.triageNodeKey) return;
+
+  const { failingKey, rawError, errorSignature } = activation;
+  const errorSig = errorSignature;
+
+  // --- Guard 1: SDK timeout → transient retry ($SELF) ---
+  if (isOrchestratorTimeout(rawError)) {
+    const record = buildGuardRecord(
+      failingKey, errorSig,
+      "timeout_bypass", "SDK session timeout",
+      "$SELF", "SDK timeout — transient retry",
+    );
+    const evId = logger.event("triage.evaluate", failingKey, { ...record });
+    logger.blob(evId, "error_trace", rawError);
+    const cmds: DagCommand[] = [{ type: "set-triage-record", record }];
+    const reindexCats = new Set((apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+    await executeCommands(cmds, slug, appRoot, repoRoot, reindexCats, logger);
+    return finishItem(itemSummary, "completed", stepStart, config, state, {
+      intents: [`triage-guard: SDK timeout → retry ${failingKey}`],
+    });
+  }
+
+  // --- Guard 2: Unfixable signals → graceful degradation ---
+  const workflow = apmContext.workflows?.[config.workflowName];
+  const unfixableSignals = workflow?.unfixable_signals ?? [];
+  const unfixableReason = isUnfixableError(rawError, unfixableSignals);
+  if (unfixableReason) {
+    const record = buildGuardRecord(
+      failingKey, errorSig,
+      "unfixable_halt", unfixableReason,
+      "blocked", `unfixable signal: ${unfixableReason}`,
+    );
+    const evId = logger.event("triage.evaluate", failingKey, { ...record });
+    logger.blob(evId, "error_trace", rawError);
+    const cmds = buildSalvageCommands(failingKey, rawError, record);
+    const reindexCats = new Set((apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+    await executeCommands(cmds, slug, appRoot, repoRoot, reindexCats, logger);
+    return finishItem(itemSummary, "completed", stepStart, config, state, {
+      intents: [`triage-guard: unfixable signal "${unfixableReason}" → degradation`],
+    });
+  }
+
+  // --- Guard 3: Retry dedup (same error at same HEAD → halt) ---
+  try {
+    const pipeState = await getStatus(slug);
+    const executionLog = pipeState.executionLog ?? [];
+    const failingNode = getWorkflowNode(apmContext, config.workflowName, failingKey);
+    const cbConfig = resolveCircuitBreaker(failingNode);
+    const failingRecords = executionLog.filter((r: { nodeKey: string }) => r.nodeKey === failingKey);
+    const attemptCount = failingRecords.length > 0
+      ? Math.max(...failingRecords.map((r: { attempt: number }) => r.attempt)) + 1
+      : 1;
+    const dedupResult = checkRetryDedup(
+      failingKey, attemptCount, executionLog,
+      repoRoot, cbConfig.allowsRevertBypass,
+    );
+    if (dedupResult?.halt) {
+      const record = buildGuardRecord(
+        failingKey, errorSig,
+        "retry_dedup", dedupResult.reason,
+        "blocked", dedupResult.reason,
+      );
+      const evId = logger.event("triage.evaluate", failingKey, { ...record });
+      logger.blob(evId, "error_trace", rawError);
+      const cmds = buildSalvageCommands(failingKey, rawError, record);
+      const reindexCats = new Set((apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+      await executeCommands(cmds, slug, appRoot, repoRoot, reindexCats, logger);
+      return finishItem(itemSummary, "completed", stepStart, config, state, {
+        intents: [`triage-guard: retry dedup → halt (${dedupResult.reason})`],
+      });
+    }
+  } catch { /* continue to next guard */ }
+
+  // --- Guard 4: Death spiral (same error ≥N times) ---
+  const deathSpiralThreshold = apmContext.config?.max_same_error_cycles ?? 3;
+  try {
+    const pipeState = await getStatus(slug);
+    const sameSigCount = pipeState.errorLog.filter((e) => e.errorSignature === errorSig).length;
+    if (sameSigCount >= deathSpiralThreshold) {
+      const record = buildGuardRecord(
+        failingKey, errorSig,
+        "death_spiral", `signature ${errorSig} seen ${sameSigCount + 1}×`,
+        "blocked", `death spiral — error signature ${errorSig} seen ${sameSigCount + 1} times`,
+      );
+      const evId = logger.event("triage.evaluate", failingKey, { ...record });
+      logger.blob(evId, "error_trace", rawError);
+      const cmds = buildSalvageCommands(failingKey, rawError, record);
+      const reindexCats = new Set((apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+      await executeCommands(cmds, slug, appRoot, repoRoot, reindexCats, logger);
+      return finishItem(itemSummary, "completed", stepStart, config, state, {
+        intents: [`triage-guard: death spiral (${sameSigCount + 1}× same error) → degradation`],
+      });
+    }
+  } catch { /* continue to triage handler */ }
+
+  // All guards passed — continue to stepExecute (triage handler)
+  return;
+};
+
 /**
  * Step 8: Execute handler + post-execute (telemetry, state transitions, signals, post-hook).
  */
@@ -665,8 +811,13 @@ const stepExecute: DispatchStep = async (dc) => {
       logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Could not record failure in pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
     }
-    const onFailureResult = await dispatchOnFailure(next.key, result.errorMessage ?? "Unknown failure", itemSummary, config, state, client);
-    return onFailureResult;
+    // Resolve triage activation — watchdog will dispatch the triage node
+    // through the standard pipeline on the next turn.
+    const activation = resolveTriageActivation(next.key, result.errorMessage ?? "Unknown failure", itemSummary, config);
+    if (!activation) {
+      return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
+    }
+    return finishItem(itemSummary, result.outcome, stepStart, config, state, { triageActivation: activation });
   }
 
   // --- Signal handling ---
@@ -699,8 +850,12 @@ const stepExecute: DispatchStep = async (dc) => {
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
-      const triageResult3 = await dispatchOnFailure(next.key, failMsg, itemSummary, config, state, client);
-      return triageResult3;
+      // Resolve triage activation — watchdog dispatches triage through standard pipeline
+      const postHookActivation = resolveTriageActivation(next.key, failMsg, itemSummary, config);
+      if (!postHookActivation) {
+        return finishItem(itemSummary, "failed", stepStart, config, state, { halt: true });
+      }
+      return finishItem(itemSummary, "failed", stepStart, config, state, { triageActivation: postHookActivation });
     }
 
     const existing = state.handlerOutputs[next.key]?.lastPushedSha;
@@ -730,6 +885,15 @@ const stepExecute: DispatchStep = async (dc) => {
     }
   }
 
+  // --- Execute declarative DagCommands returned by handler ---
+  if (result.commands && result.commands.length > 0) {
+    const reindexCats = new Set((apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+    const cmdResult = await executeCommands(result.commands, slug, config.appRoot, repoRoot, reindexCats, logger);
+    if (cmdResult.halt) {
+      return finishItem(itemSummary, result.outcome === "completed" ? "completed" : result.outcome, stepStart, config, state, { halt: true });
+    }
+  }
+
   return finishItem(itemSummary, result.outcome === "completed" ? "completed" : result.outcome, stepStart, config, state);
 };
 
@@ -744,6 +908,7 @@ const DISPATCH_PIPELINE: readonly DispatchStep[] = [
   stepResolve,
   stepHandlerSkip,
   stepPreHook,
+  stepTriageGuard,
   stepExecute,
 ];
 

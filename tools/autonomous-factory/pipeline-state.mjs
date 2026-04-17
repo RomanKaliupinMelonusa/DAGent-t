@@ -386,16 +386,18 @@ export function initState(slug, workflowName, contextJsonPath) {
 
   // Nodes with `activation: "triage-only"` start as dormant — invisible to the
   // scheduler until explicitly activated by triage via resetNodes().
+  // Triage nodes (type: "triage") also start dormant — they are dispatched
+  // exclusively via the watchdog's triageActivation path, never by the scheduler.
   const dormantByActivation = [];
   for (const [key, node] of nodeEntries) {
-    if (node.activation === "triage-only") dormantByActivation.push(key);
+    if (node.activation === "triage-only" || node.type === "triage") dormantByActivation.push(key);
   }
 
   const items = nodeEntries.map(([key, node]) => ({
     key,
     label: key,
     agent: node.agent ?? null,
-    status: node.activation === "triage-only" ? "dormant" : "pending",
+    status: (node.activation === "triage-only" || node.type === "triage") ? "dormant" : "pending",
     error: null,
   }));
 

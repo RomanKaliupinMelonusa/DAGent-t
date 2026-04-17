@@ -31,7 +31,8 @@ import { writePipelineSummary, writeTerminalLog, loadPreviousSummary, setModelPr
 import { archiveFeatureFiles, commitAndPushState } from "./archive.js";
 import { runResolveEnvironment } from "./hooks.js";
 import { runItemSession } from "./session-runner.js";
-import type { PipelineRunConfig, PipelineRunState } from "./session-runner.js";
+import type { PipelineRunConfig, PipelineRunState, TriageActivation } from "./session-runner.js";
+import { getWorkflowNode } from "./session/shared.js";
 import { createPipelineLogger } from "./logger.js";
 import type { JsonlPipelineLogger } from "./logger.js";
 
@@ -251,7 +252,12 @@ async function main(): Promise<void> {
       }
 
       const runnableItems = available.filter(
-        (item): item is NextAction & { key: string } => item.key !== null,
+        (item): item is NextAction & { key: string } => {
+          if (!item.key) return false;
+          // Triage nodes are dispatched exclusively via triageActivation, never by the scheduler.
+          const node = getWorkflowNode(apmContext, workflowName, item.key);
+          return node?.type !== "triage";
+        },
       );
 
       // Pre-batch sync: single pull before parallel execution
@@ -320,6 +326,52 @@ async function main(): Promise<void> {
 
       if (pipelineDone || shouldHalt) {
         if (shouldHalt) process.exitCode = 1;
+        break;
+      }
+
+      // --- Triage dispatch: handle triageActivation from failed nodes ---
+      // Dispatched sequentially (triage may reset nodes affecting the next batch).
+      for (const result of results) {
+        if (result.status !== "fulfilled" || !result.value.triageActivation) continue;
+        const activation = result.value.triageActivation;
+
+        // Store activation payload so stepResolve can inject failure context
+        runState.pendingTriageActivation = activation;
+
+        // Dispatch triage node through the standard dispatch pipeline
+        const triageItem: NextAction & { key: string } = {
+          key: activation.triageNodeKey,
+          label: `triage(${activation.failingKey})`,
+          agent: null,
+          status: "pending",
+        };
+        logger.event("triage.evaluate", activation.failingKey, {
+          triage_node: activation.triageNodeKey,
+          error_signature: activation.errorSignature,
+          dispatch: true,
+        });
+
+        try {
+          const triageSessionResult = await runItemSession(client!, triageItem, runConfig, runState);
+          if (triageSessionResult.halt) shouldHalt = true;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.event("item.end", activation.triageNodeKey, { outcome: "error", error_preview: msg });
+          shouldHalt = true;
+        } finally {
+          runState.pendingTriageActivation = undefined;
+        }
+
+        if (shouldHalt) break;
+      }
+
+      // Post-triage sync: commit any state changes from triage
+      if (!shouldHalt && !pipelineDone) {
+        commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
+      }
+
+      if (shouldHalt) {
+        process.exitCode = 1;
         break;
       }
 

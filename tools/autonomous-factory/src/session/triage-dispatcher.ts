@@ -5,7 +5,7 @@
  * The kernel dispatches triage via on_failure edges instead of calling this module.
  * This file is retained for backward compatibility only — do not add new logic here.
  * The active triage handler is: tools/autonomous-factory/src/handlers/triage.ts
- * The kernel failure-edge dispatch is in: session-runner.ts (dispatchOnFailure)
+ * The kernel failure-edge dispatch is in: session-runner.ts (resolveTriageActivation → watchdog triage dispatch loop)
  */
 
 import fs from "node:fs";

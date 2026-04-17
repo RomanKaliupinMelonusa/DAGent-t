@@ -11,7 +11,7 @@ import type { ApmCompiledOutput } from "../apm-types.js";
 import type { ApmWorkflowNode } from "../apm-types.js";
 import type { ItemSummary } from "../types.js";
 import { writeFlightData } from "../reporting.js";
-import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
+import type { PipelineRunConfig, PipelineRunState, SessionResult, TriageActivation } from "../session-runner.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helpers
@@ -191,7 +191,7 @@ export function finishItem(
   stepStart: number,
   config: PipelineRunConfig,
   state: PipelineRunState,
-  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; approvalPending?: boolean; intents?: string[] },
+  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; approvalPending?: boolean; intents?: string[]; triageActivation?: TriageActivation },
 ): SessionResult {
   itemSummary.outcome = outcome;
   if (opts?.errorMessage) itemSummary.errorMessage = opts.errorMessage;
@@ -200,5 +200,5 @@ export function finishItem(
   itemSummary.durationMs = Date.now() - stepStart;
   state.pipelineSummaries.push(itemSummary);
   flushReports(config, state);
-  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false, approvalPending: opts?.approvalPending ?? false };
+  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false, approvalPending: opts?.approvalPending ?? false, triageActivation: opts?.triageActivation };
 }
