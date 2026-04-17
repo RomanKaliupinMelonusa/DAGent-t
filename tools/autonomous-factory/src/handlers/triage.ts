@@ -22,13 +22,14 @@
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
+import type { NodeBudgetPolicy } from "../session/shared.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import type { TriageRecord, TriageResult } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
-import { getWorkflowNode, resolveCircuitBreaker } from "../session/shared.js";
+import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/shared.js";
 import { getStatus } from "../state.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
 import { computeEffectiveDevAttempts } from "../context-injection.js";
@@ -89,6 +90,7 @@ async function buildRerouteCommands(
   triageRecord: TriageRecord,
   triageResult: TriageResult,
   maxReroutes: number,
+  routeToPolicy: NodeBudgetPolicy,
 ): Promise<DagCommand[]> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
@@ -108,8 +110,6 @@ async function buildRerouteCommands(
 
   // 3. Build and inject pendingContext for the target node
   try {
-    const targetNode = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey);
-    const targetCb = resolveCircuitBreaker(targetNode);
     const pipeStateForCtx = await getStatus(slug);
     const targetExecLog = (pipeStateForCtx.executionLog ?? [])
       .filter((r: { nodeKey: string }) => r.nodeKey === routeToKey);
@@ -117,7 +117,7 @@ async function buildRerouteCommands(
       ? Math.max(...targetExecLog.map((r: { attempt: number }) => r.attempt)) + 1
       : 1;
     const targetEffective = await computeEffectiveDevAttempts(
-      routeToKey, targetAttempt, slug, targetCb.allowsRevertBypass,
+      routeToKey, targetAttempt, slug, routeToPolicy.allowsRevertBypass,
     );
     const lastSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === routeToKey);
     const rejectionCtx = await buildTriageRejectionContext(slug);
@@ -128,8 +128,8 @@ async function buildRerouteCommands(
       effectiveAttempts: targetEffective,
       pipelineSummaries: ctx.pipelineSummaries,
       previousAttempt: lastSummary,
-      allowsRevertBypass: targetCb.allowsRevertBypass,
-      revertWarningAt: targetCb.revertWarningAt,
+      allowsRevertBypass: routeToPolicy.allowsRevertBypass,
+      revertWarningAt: routeToPolicy.revertWarningAt,
       ciWorkflowFilePatterns: ctx.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
       ciScopeWarning: ctx.apmContext.config?.ci_scope_warning as string | undefined,
       rejectionContext: rejectionCtx || undefined,
@@ -342,9 +342,13 @@ const triageHandler: NodeHandler = {
     const profileForCap = profileName2
       ? ctx.apmContext.triage_profiles?.[`${ctx.pipelineState.workflowName}.${profileName2}`]
       : undefined;
-    const maxReroutes = profileForCap?.max_reroutes ?? 5;
+    // Budget policy for the route-to (failing) node determines max reroute cycles.
+    // Falls back to the triage profile's max_reroutes, then code default (5).
+    const routeToNode = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey);
+    const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
+    const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes);
+    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy);
 
     return {
       outcome: "completed",

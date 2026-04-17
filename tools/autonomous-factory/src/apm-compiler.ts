@@ -130,9 +130,11 @@ function mergeNodeCatalogIntoWorkflow(
 /**
  * Conservative token estimate for Claude models.
  * Claude tokenizes code-heavy content at roughly chars / 3.5.
+ * The optional `margin` multiplier (e.g. 1.1 = 10%) provides a safety buffer
+ * to account for tokenizer variance across content types.
  */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3.5);
+function estimateTokens(text: string, margin = 1.0): number {
+  return Math.ceil((text.length / 3.5) * margin);
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +411,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     // Assemble rules block
     const assembled = parts.join("\n\n");
     const rulesBlock = `## Coding Rules\n\n${assembled}`;
-    const tokenCount = estimateTokens(rulesBlock);
+    const tokenCount = estimateTokens(rulesBlock, manifest.tokenizerMargin);
 
     // Validate token budget
     if (tokenCount > manifest.tokenBudget) {

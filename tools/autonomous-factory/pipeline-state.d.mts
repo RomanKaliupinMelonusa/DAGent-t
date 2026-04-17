@@ -127,7 +127,7 @@ export function completeItem(slug: string, itemKey: string): PipelineState;
  * The programmatic `failItem()` function (imported by state.ts) accepts any
  * string as the error message.
  */
-export function failItem(slug: string, itemKey: string, message: string): FailResult;
+export function failItem(slug: string, itemKey: string, message: string, maxFailures?: number): FailResult;
 export function resetScripts(slug: string, category: string, maxCycles?: number): ResetResult;
 export function resetNodes(slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult;
 /** @deprecated Use `resetNodes` — backward-compat alias. */

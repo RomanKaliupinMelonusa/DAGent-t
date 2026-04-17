@@ -247,6 +247,10 @@ const circuitBreakerSchema = z.object({
   /** Effective attempt count at which a revert warning is injected into the agent prompt.
    *  Only applies when allows_revert_bypass is true. Default: 3. */
   revert_warning_at: z.number().int().positive().default(3),
+  /** Maximum total failures (errorLog entries) for a single item before the pipeline halts.
+   *  Overrides the global default (10). Set higher for complex dev nodes that may
+   *  undergo multiple triage reroute cycles. */
+  max_item_failures: z.number().int().positive().default(10),
 });
 
 const consumesEntrySchema = z.object({
@@ -737,6 +741,9 @@ export const ApmManifestSchema = z.object({
   version: z.string(),
   description: z.string().optional(),
   tokenBudget: z.number().int().positive(),
+  /** Safety margin multiplier for token estimation (e.g. 1.1 = 10% margin).
+   *  Compensates for model-specific tokenizer differences. Default: 1.1. */
+  tokenizerMargin: z.number().min(1).default(1.1),
   agents: z.record(z.string(), ApmAgentDeclSchema),
   /** Reusable node pool — all node types (agent, script, barrier, triage, approval).
    *  Replaces `_templates` from workflows.yml. Nodes define WHAT to execute;

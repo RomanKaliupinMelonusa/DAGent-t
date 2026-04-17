@@ -41,7 +41,8 @@ export function getHeadSha(repoRoot: string): string | null {
   }
 }
 
-/** Resolved circuit breaker config with defaults based on node type/category. */
+/** Resolved circuit breaker config with defaults based on node type/category.
+ *  @deprecated Use `NodeBudgetPolicy` — this is a subset kept for backward compat. */
 export interface ResolvedCircuitBreaker {
   minAttemptsBeforeSkip: number;
   allowsRevertBypass: boolean;
@@ -51,7 +52,31 @@ export interface ResolvedCircuitBreaker {
 }
 
 /**
+ * Unified budget policy for a single DAG node. Consolidates all retry/cycle
+ * limits that were previously scattered across circuit_breaker, config.cycle_limits,
+ * config.max_same_error_cycles, and the hardcoded failItem() cap.
+ *
+ * Resolved once per node in the dispatch pipeline and threaded through
+ * DispatchContext so every consumer reads from the same source.
+ */
+export interface NodeBudgetPolicy extends ResolvedCircuitBreaker {
+  /** Maximum total failures (errorLog entries) before the pipeline halts this item.
+   *  Replaces the hardcoded `failCount >= 10` in failItem(). Default: 10. */
+  maxItemFailures: number;
+  /** Number of identical error signatures (across all items) before declaring
+   *  a death spiral and triggering graceful degradation. Default: 3. */
+  maxSameError: number;
+  /** Maximum triage reroute cycles (resetNodes calls tagged "reset-nodes").
+   *  Default: 5 (from config.cycle_limits.reroute). */
+  maxRerouteCycles: number;
+  /** Maximum script-only reset cycles per category (resetScripts calls).
+   *  Default: 10 (from config.cycle_limits.scripts). */
+  maxScriptCycles: number;
+}
+
+/**
  * Resolve circuit breaker configuration for a workflow node.
+ * @deprecated Use `resolveNodeBudgetPolicy()` for full budget resolution.
  * All behavior is config-driven — nodes must declare explicit `circuit_breaker`
  * settings in workflows.yml. Only `min_attempts_before_skip` and `revert_warning_at`
  * have universal numeric defaults.
@@ -64,6 +89,41 @@ export function resolveCircuitBreaker(node: ApmWorkflowNode | undefined): Resolv
     allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? false,
     haltOnIdentical: cb?.halt_on_identical ?? false,
     revertWarningAt: cb?.revert_warning_at ?? 3,
+  };
+}
+
+/**
+ * Resolve the full budget policy for a workflow node.
+ *
+ * Resolution order per field:
+ *   1. Per-node `circuit_breaker.*` in workflows.yml
+ *   2. Workflow/config-level defaults (`cycle_limits`, `max_same_error_cycles`)
+ *   3. Code-level fallback constants
+ *
+ * Returns a policy object suitable for threading through DispatchContext.
+ */
+export function resolveNodeBudgetPolicy(
+  node: ApmWorkflowNode | undefined,
+  apmContext: ApmCompiledOutput,
+): NodeBudgetPolicy {
+  const cb = node?.circuit_breaker;
+  const config = apmContext.config;
+
+  return {
+    // Circuit breaker fields (per-node → code defaults)
+    minAttemptsBeforeSkip: cb?.min_attempts_before_skip ?? 3,
+    allowsRevertBypass: cb?.allows_revert_bypass ?? false,
+    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? false,
+    haltOnIdentical: cb?.halt_on_identical ?? false,
+    revertWarningAt: cb?.revert_warning_at ?? 3,
+
+    // Failure cap (per-node → code default 10)
+    maxItemFailures: cb?.max_item_failures ?? 10,
+
+    // Global limits (config → code defaults)
+    maxSameError: config?.max_same_error_cycles ?? 3,
+    maxRerouteCycles: config?.cycle_limits?.reroute ?? 5,
+    maxScriptCycles: config?.cycle_limits?.scripts ?? 10,
   };
 }
 

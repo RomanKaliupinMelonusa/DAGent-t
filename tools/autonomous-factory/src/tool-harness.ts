@@ -348,6 +348,14 @@ export function checkShellCommand(cmd: string): string | null {
  * Build SDK session hooks that enforce shell safety, RBAC sandboxing, and
  * file-read truncation on the built-in tools (`bash`, `write_bash`, `read_file`,
  * `write_file`, `edit_file`).
+ *
+ * **Tool-call counting contract:**
+ * Two mutually exclusive counting paths ensure no double-counting:
+ *   - `onDenial(toolName)` fires for DENIED tool calls (zero-trust gate or RBAC).
+ *     The caller (copilot-agent handler) increments the denied-tool counter.
+ *   - `wireToolLogging`'s `tool.execution_start` fires for ALLOWED tool calls
+ *     after they pass all gates. The caller increments the allowed-tool counter.
+ * A tool call flows through exactly one path — never both.
  */
 export function buildSessionHooks(
   repoRoot: string,

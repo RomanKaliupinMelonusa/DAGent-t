@@ -34,7 +34,7 @@ import {
   getWorkflow,
   getWorkflowNode,
   getHeadSha,
-  resolveCircuitBreaker,
+  resolveNodeBudgetPolicy,
   flushReports,
   finishItem,
   mergeTelemetry,
@@ -137,7 +137,7 @@ export interface TriageActivation {
 
 import type { ApmWorkflowNode } from "./apm-types.js";
 import type { NodeHandler } from "./handlers/index.js";
-import type { ResolvedCircuitBreaker } from "./session/shared.js";
+import type { ResolvedCircuitBreaker, NodeBudgetPolicy } from "./session/shared.js";
 
 /**
  * Mutable context that flows through the dispatch pipeline.
@@ -156,6 +156,8 @@ export interface DispatchContext {
   node: ApmWorkflowNode | undefined;
   /** Resolved circuit breaker config (populated by stepInit) */
   cb: ResolvedCircuitBreaker;
+  /** Unified budget policy for this node — consolidates all retry/cycle limits. */
+  budgetPolicy: NodeBudgetPolicy;
   /** Item telemetry summary (populated by stepInit) */
   itemSummary: ItemSummary;
   /** Step start timestamp in ms (populated by stepInit) */
@@ -315,17 +317,19 @@ async function kernelFail(
   key: string,
   error: string,
   logger: PipelineLogger,
+  maxFailures?: number,
 ): Promise<{ failCount: number; halted: boolean }> {
   const state = await getStatus(slug);
   const item = state.items.find((i) => i.key === key);
   if (item?.status === "failed") {
     // Already failed by agent — derive count from existing error log
     const failCount = state.errorLog.filter((e: { itemKey: string }) => e.itemKey === key).length;
-    const halted = failCount >= 10;
+    const cap = maxFailures ?? 10;
+    const halted = failCount >= cap;
     logger.event("item.end", key, { outcome: "failed", note: "already failed by handler/agent", fail_count: failCount });
     return { failCount, halted };
   }
-  const result = await failItem(slug, key, error);
+  const result = await failItem(slug, key, error, maxFailures);
   return { failCount: result.failCount, halted: result.halted };
 }
 
@@ -593,7 +597,7 @@ const stepPreHook: DispatchStep = async (dc) => {
     logger.event("item.end", next.key, { outcome: "failed", error_preview: preHookResult.errorMessage?.slice(0, 200) });
     dc.itemSummary.outcome = "failed";
     dc.itemSummary.errorMessage = preHookResult.errorMessage;
-    try { await kernelFail(slug, next.key, preHookResult.errorMessage ?? "pre-hook failed", logger); } catch { /* best-effort */ }
+    try { await kernelFail(slug, next.key, preHookResult.errorMessage ?? "pre-hook failed", logger, dc.budgetPolicy.maxItemFailures); } catch { /* best-effort */ }
     return finishItem(dc.itemSummary, "failed", dc.stepStart, config, state, { halt: false });
   }
   return;
@@ -699,19 +703,22 @@ const stepTriageGuard: DispatchStep = async (dc) => {
     });
   }
 
+  // Resolve budget policy for the *failing* node (not the triage node on dc.budgetPolicy).
+  // Hoisted above Guards 3-4 so both use the same resolution.
+  const failingNode = getWorkflowNode(apmContext, config.workflowName, failingKey);
+  const failingPolicy = resolveNodeBudgetPolicy(failingNode, apmContext);
+
   // --- Guard 3: Retry dedup (same error at same HEAD → halt) ---
   try {
     const pipeState = await getStatus(slug);
     const executionLog = pipeState.executionLog ?? [];
-    const failingNode = getWorkflowNode(apmContext, config.workflowName, failingKey);
-    const cbConfig = resolveCircuitBreaker(failingNode);
     const failingRecords = executionLog.filter((r: { nodeKey: string }) => r.nodeKey === failingKey);
     const attemptCount = failingRecords.length > 0
       ? Math.max(...failingRecords.map((r: { attempt: number }) => r.attempt)) + 1
       : 1;
     const dedupResult = checkRetryDedup(
       failingKey, attemptCount, executionLog,
-      repoRoot, cbConfig.allowsRevertBypass,
+      repoRoot, failingPolicy.allowsRevertBypass,
     );
     if (dedupResult?.halt) {
       const record = buildGuardRecord(
@@ -731,7 +738,7 @@ const stepTriageGuard: DispatchStep = async (dc) => {
   } catch { /* continue to next guard */ }
 
   // --- Guard 4: Death spiral (same error ≥N times) ---
-  const deathSpiralThreshold = apmContext.config?.max_same_error_cycles ?? 3;
+  const deathSpiralThreshold = failingPolicy.maxSameError;
   try {
     const pipeState = await getStatus(slug);
     const sameSigCount = pipeState.errorLog.filter((e) => e.errorSignature === errorSig).length;
@@ -803,7 +810,7 @@ const stepExecute: DispatchStep = async (dc) => {
     itemSummary.outcome = result.outcome;
     itemSummary.errorMessage = result.errorMessage;
     try {
-      const failResult = await kernelFail(slug, next.key, result.errorMessage ?? "Unknown failure", logger);
+      const failResult = await kernelFail(slug, next.key, result.errorMessage ?? "Unknown failure", logger, dc.budgetPolicy.maxItemFailures);
       if (failResult.halted) {
         return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
       }
@@ -846,7 +853,7 @@ const stepExecute: DispatchStep = async (dc) => {
     if (!postHookResult.ok) {
       const failMsg = postHookResult.errorMessage ?? "post-hook failed";
       logger.event("state.fail", next.key, { error_signature: null, error_preview: failMsg.slice(0, 200) });
-      try { await kernelFail(slug, next.key, failMsg, logger); } catch { /* best-effort */ }
+      try { await kernelFail(slug, next.key, failMsg, logger, dc.budgetPolicy.maxItemFailures); } catch { /* best-effort */ }
       itemSummary.outcome = "failed";
       itemSummary.errorMessage = failMsg;
       flushReports(config, state);
@@ -938,10 +945,13 @@ export async function runItemSession(
     config,
     state,
     node,
-    cb: resolveCircuitBreaker(node),
+    budgetPolicy: resolveNodeBudgetPolicy(node, config.apmContext),
+    cb: undefined!, // alias into budgetPolicy — set immediately below
     itemSummary: undefined as unknown as ItemSummary, // populated by stepInit
     stepStart: 0,
   };
+  // NodeBudgetPolicy extends ResolvedCircuitBreaker, so one resolution serves both.
+  dc.cb = dc.budgetPolicy;
 
   for (const step of DISPATCH_PIPELINE) {
     const earlyResult = await step(dc);

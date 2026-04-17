@@ -455,7 +455,7 @@ export function completeItem(slug, itemKey) {
  * @returns {{ state: object, failCount: number, halted: boolean }}
  * @throws {Error} if slug/itemKey missing or itemKey unknown
  */
-export function failItem(slug, itemKey, message) {
+export function failItem(slug, itemKey, message, maxFailures = 10) {
   if (!slug || !itemKey) {
     throw new Error("failItem requires slug and itemKey");
   }
@@ -480,7 +480,7 @@ export function failItem(slug, itemKey, message) {
     const failCount = state.errorLog.filter((e) => e.itemKey === itemKey).length;
     writeState(slug, state);
 
-    return { state, failCount, halted: failCount >= 10 };
+    return { state, failCount, halted: failCount >= maxFailures };
   });
 }
 
