@@ -213,7 +213,6 @@ async function main(): Promise<void> {
   const runState: PipelineRunState = {
     pipelineSummaries: [],
     attemptCounts: {},
-    circuitBreakerBypassed: new Set<string>(),
     preStepRefs: {},
     baseTelemetry,
     handlerOutputs: {},

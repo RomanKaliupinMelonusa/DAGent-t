@@ -14,6 +14,9 @@ interface PipelineItem {
    *  Dev agents use this to communicate typed data (testid maps, affected routes,
    *  SSR-safety flags) to SDET and test runner agents. */
   handoffArtifact?: string | null;
+  /** Pre-built prompt context written by the triage handler (or node wrapper)
+   *  for injection into the next attempt of this item. */
+  pendingContext?: string | null;
 }
 
 interface PipelineState {
@@ -46,6 +49,8 @@ interface PipelineState {
   salvageSurvivors: string[];
   /** Last triage record — persisted for downstream context injection. */
   lastTriageRecord?: TriageRecord | null;
+  /** Persisted execution log — one record per handler invocation, survives restarts. */
+  executionLog?: ExecutionRecord[];
 }
 
 /** Full triage record assembled by the triage-dispatcher. */
@@ -67,6 +72,22 @@ interface TriageRecord {
   cascade: string[];
   cycle_count: number;
   domain_retry_count: number;
+}
+
+/** Persisted record of a single handler invocation. */
+interface ExecutionRecord {
+  executionId: string;
+  nodeKey: string;
+  attempt: number;
+  outcome: "completed" | "failed" | "error";
+  errorMessage?: string;
+  errorSignature?: string;
+  headBefore?: string;
+  headAfter?: string;
+  filesChanged: string[];
+  durationMs: number;
+  startedAt: string;
+  finishedAt: string;
 }
 
 interface NextAction {
@@ -120,6 +141,9 @@ export function setDocNote(slug: string, itemKey: string, note: string): Pipelin
 export function setHandoffArtifact(slug: string, itemKey: string, artifactJson: string): PipelineState;
 export function setUrl(slug: string, url: string): PipelineState;
 export function setLastTriageRecord(slug: string, record: TriageRecord): PipelineState;
+export function persistExecutionRecord(slug: string, record: ExecutionRecord): PipelineState;
+export function setPendingContext(slug: string, itemKey: string, context: string | null): PipelineState;
+export function computeErrorSignature(msg: string): string;
 export function readState(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
 export function getUpstream(state: PipelineState, seedKeys: string[]): string[];

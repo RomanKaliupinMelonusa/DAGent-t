@@ -40,6 +40,50 @@ export interface PipelineItem {
    *  Dev agents use this to communicate typed data (testid maps, affected routes,
    *  SSR-safety flags) to SDET and test runner agents. */
   handoffArtifact?: string | null;
+  /** Pre-built prompt context written by the triage handler (or node wrapper)
+   *  for injection into the next attempt of this item. Consumed and cleared
+   *  by the node wrapper before handler execution. */
+  pendingContext?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Execution Log — persisted per-invocation records for cross-attempt analysis
+// ---------------------------------------------------------------------------
+
+/**
+ * Persisted record of a single handler invocation. Written by the kernel after
+ * every handler execution. The triage handler and node wrapper query these
+ * records to make failure-intelligence decisions (dedup, revert bypass, etc.).
+ *
+ * Unlike `errorLog` (which tracks state mutations) and `ItemSummary` (which is
+ * in-memory per-session), the execution log survives orchestrator restarts and
+ * provides full attempt history per node.
+ */
+export interface ExecutionRecord {
+  /** Unique identifier for this execution (UUID v4). */
+  executionId: string;
+  /** DAG node key (e.g. "storefront-dev"). */
+  nodeKey: string;
+  /** 1-based attempt number within this pipeline run. */
+  attempt: number;
+  /** Handler outcome. */
+  outcome: "completed" | "failed" | "error";
+  /** Error message if outcome is not "completed". */
+  errorMessage?: string;
+  /** Stable error fingerprint (SHA-256 prefix of normalized trace). */
+  errorSignature?: string;
+  /** Git HEAD before handler execution. */
+  headBefore?: string;
+  /** Git HEAD after handler execution. */
+  headAfter?: string;
+  /** Files changed during this execution. */
+  filesChanged: string[];
+  /** Execution duration in milliseconds. */
+  durationMs: number;
+  /** ISO timestamp when execution started. */
+  startedAt: string;
+  /** ISO timestamp when execution finished. */
+  finishedAt: string;
 }
 
 export interface PipelineState {
@@ -72,6 +116,8 @@ export interface PipelineState {
   salvageSurvivors: string[];
   /** Last triage record — persisted for downstream context injection. */
   lastTriageRecord?: TriageRecord | null;
+  /** Persisted execution log — one record per handler invocation, survives restarts. */
+  executionLog?: ExecutionRecord[];
 }
 
 export interface NextAction {

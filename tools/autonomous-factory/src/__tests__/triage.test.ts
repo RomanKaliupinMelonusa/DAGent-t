@@ -8,7 +8,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { isUnfixableError, isOrchestratorTimeout } from "../triage.js";
-import { normalizeDiagnosticTrace } from "../session/shared.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,62 +94,6 @@ describe("isUnfixableError", () => {
 
   it("detects 'state blob is already locked' (Terraform)", () => {
     assert.equal(isUnfixableError("Error locking state: state blob is already locked", UNFIXABLE_SIGNALS), "state blob is already locked");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// normalizeDiagnosticTrace — Trace normalization for dedup
-// ---------------------------------------------------------------------------
-
-describe("normalizeDiagnosticTrace", () => {
-  it("strips 7-char git SHAs", () => {
-    const result = normalizeDiagnosticTrace("commit 3b96258 broke deploy");
-    assert.ok(!result.includes("3b96258"), `SHA not stripped: ${result}`);
-    assert.ok(result.includes("<SHA>"));
-  });
-
-  it("strips 40-char full SHAs", () => {
-    const sha = "a".repeat(40);
-    const result = normalizeDiagnosticTrace(`merge ${sha} into main`);
-    assert.ok(!result.includes(sha), "Full SHA not stripped");
-    assert.ok(result.includes("<SHA>"));
-  });
-
-  it("strips ISO timestamps", () => {
-    const result = normalizeDiagnosticTrace("Failed at 2025-01-15T09:30:45Z — retrying");
-    assert.ok(!result.includes("2025-01-15T09:30:45Z"), "Timestamp not stripped");
-    assert.ok(result.includes("<TS>"));
-  });
-
-  it("normalizes HEAD (sha) references", () => {
-    const result = normalizeDiagnosticTrace("HEAD (abc1234) is behind remote");
-    assert.ok(result.includes("HEAD (<SHA>)"), `Expected HEAD (<SHA>): ${result}`);
-  });
-
-  it("normalizes 'run NNN' identifiers", () => {
-    const result = normalizeDiagnosticTrace("GitHub Actions run 12345678 failed");
-    assert.ok(result.includes("run <ID>"), `Expected run <ID>: ${result}`);
-  });
-
-  it("collapses whitespace", () => {
-    const result = normalizeDiagnosticTrace("error   in    file   path");
-    assert.ok(!result.includes("  "), `Whitespace not collapsed: ${result}`);
-  });
-
-  it("makes genuinely different traces compare as different", () => {
-    const a = normalizeDiagnosticTrace("error TS2591 in fn-demo.ts at 2025-01-15T09:30:45Z commit abc1234");
-    const b = normalizeDiagnosticTrace("CORS 403 Forbidden on /api/hello at 2025-01-15T10:00:00Z commit def5678");
-    assert.notEqual(a, b);
-  });
-
-  it("makes same-root-cause traces with different metadata compare as equal", () => {
-    const a = normalizeDiagnosticTrace(
-      "deploy-backend.yml sets type: pkg.type — commit 3b96258 at 2025-01-15T09:30:45Z run 111",
-    );
-    const b = normalizeDiagnosticTrace(
-      "deploy-backend.yml sets type: pkg.type — commit f1a2b3c at 2025-01-15T10:00:00Z run 222",
-    );
-    assert.equal(a, b);
   });
 });
 

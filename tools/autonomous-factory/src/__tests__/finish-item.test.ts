@@ -45,7 +45,6 @@ function makeState(): PipelineRunState {
   return {
     pipelineSummaries: [],
     attemptCounts: {},
-    circuitBreakerBypassed: new Set(),
     preStepRefs: {},
     baseTelemetry: null,
     handlerOutputs: {},

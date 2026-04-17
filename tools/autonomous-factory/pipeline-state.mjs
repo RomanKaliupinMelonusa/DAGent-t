@@ -48,7 +48,7 @@ const VOLATILE_RE = [
   [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
   [/:\d+:\d+/g, ":<L>:<C>"],
 ];
-function computeErrorSignature(msg) {
+export function computeErrorSignature(msg) {
   let n = msg;
   for (const [re, repl] of VOLATILE_RE) n = n.replace(re, repl);
   n = n.replace(/\s+/g, " ").trim();
@@ -954,6 +954,57 @@ export function setLastTriageRecord(slug, record) {
   return withLock(slug, () => {
     const state = readStateOrThrow(slug);
     state.lastTriageRecord = record;
+    writeState(slug, state);
+    return state;
+  });
+}
+
+/**
+ * Append an execution record to the persisted execution log.
+ * Called by the kernel after every handler invocation. Records survive
+ * orchestrator restarts and are used by the triage handler and node wrapper
+ * for cross-attempt failure analysis (dedup, revert bypass, death spiral).
+ *
+ * @param {string} slug - Feature slug
+ * @param {object} record - ExecutionRecord object (see types.ts)
+ * @returns {object} Updated state
+ */
+export function persistExecutionRecord(slug, record) {
+  if (!slug || !record) {
+    throw new Error("persistExecutionRecord requires slug and record");
+  }
+
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    if (!state.executionLog) state.executionLog = [];
+    state.executionLog.push(record);
+    writeState(slug, state);
+    return state;
+  });
+}
+
+/**
+ * Set pre-built prompt context on a pipeline item for injection into its
+ * next execution attempt. Written by the triage handler (or node wrapper)
+ * after failure analysis. Consumed and cleared by the node wrapper.
+ *
+ * @param {string} slug - Feature slug
+ * @param {string} itemKey - Pipeline item key (e.g. "storefront-dev")
+ * @param {string|null} context - Prompt context text (null to clear)
+ * @returns {object} Updated state
+ */
+export function setPendingContext(slug, itemKey, context) {
+  if (!slug || !itemKey) {
+    throw new Error("setPendingContext requires slug and itemKey");
+  }
+
+  return withLock(slug, () => {
+    const state = readStateOrThrow(slug);
+    const item = state.items.find((i) => i.key === itemKey);
+    if (!item) {
+      throw new Error(`Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
+    }
+    item.pendingContext = context;
     writeState(slug, state);
     return state;
   });

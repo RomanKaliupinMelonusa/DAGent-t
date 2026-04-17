@@ -272,7 +272,16 @@ const copilotAgentHandler: NodeHandler = {
     }
 
     // Inject triage-rejection context for redevelopment (manifest-driven)
-    if (node?.injects_triage_rejection || node?.injects_infra_rollback) {
+    // Primary path: pendingContext (set by triage handler via setPendingContext)
+    const pendingItem = ctx.pipelineState.items.find((i) => i.key === itemKey);
+    if (pendingItem?.pendingContext) {
+      taskPrompt += pendingItem.pendingContext;
+      ctx.logger.event("handoff.inject", itemKey, {
+        injection_types: ["pending_context"],
+        context_length: pendingItem.pendingContext.length,
+      });
+    } else if (node?.injects_triage_rejection || node?.injects_infra_rollback) {
+      // Fallback: legacy flag-based injection (for backward compat with older compiled contexts)
       const rejectionCtx = await buildTriageRejectionContext(slug);
       if (rejectionCtx) {
         taskPrompt += rejectionCtx;

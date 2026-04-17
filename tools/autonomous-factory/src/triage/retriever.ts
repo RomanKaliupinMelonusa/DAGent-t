@@ -4,11 +4,11 @@
  * Blazing-fast, zero-dependency retriever that matches error traces against
  * pre-compiled triage signatures. Cost: $0. Latency: <1ms.
  *
- * The incoming trace is normalized via `normalizeDiagnosticTrace()` to strip
- * dynamic entropy (timestamps, SHAs, runner IDs) before substring matching.
+ * The incoming trace is normalized via `normalizeError()` to strip dynamic
+ * entropy (timestamps, SHAs, runner IDs, PIDs, paths) before substring matching.
  */
 
-import { normalizeDiagnosticTrace } from "../session/shared.js";
+import { normalizeError } from "./error-fingerprint.js";
 import type { TriageSignature } from "../apm-types.js";
 
 /**
@@ -23,7 +23,7 @@ export function retrieveTopMatches(
 ): TriageSignature[] {
   if (!trace || kb.length === 0) return [];
 
-  const normalized = normalizeDiagnosticTrace(trace).toLowerCase();
+  const normalized = normalizeError(trace).toLowerCase();
 
   const hits = kb.filter((sig) =>
     normalized.includes(sig.error_snippet.toLowerCase()),

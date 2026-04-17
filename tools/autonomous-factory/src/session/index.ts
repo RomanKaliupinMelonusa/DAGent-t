@@ -7,8 +7,6 @@ export {
   getTimeout,
   findUpstreamKeysByCategory,
   getAgentDirectoryPrefixes,
-  normalizeDiagnosticTrace,
-  shouldSkipRetry,
   flushReports,
   finishItem,
 } from "./shared.js";

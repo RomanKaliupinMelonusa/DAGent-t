@@ -22,12 +22,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { getStatus, failItem, completeItem, salvageForDraft, resetNodes, setLastTriageRecord } from "./state.js";
+import { getStatus, failItem, completeItem, salvageForDraft, persistExecutionRecord } from "./state.js";
 import type { ApmCompiledOutput } from "./apm-types.js";
-import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
-import { RESET_OPS } from "./types.js";
+import type { NextAction, ItemSummary, ExecutionRecord } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
 import {
@@ -40,7 +39,6 @@ import {
   getWorkflowNode,
   getHeadSha,
   resolveCircuitBreaker,
-  shouldSkipRetry,
   flushReports,
   finishItem,
   mergeTelemetry,
@@ -49,8 +47,9 @@ import { pollReadiness } from "./session/readiness-probe.js";
 import { runPreHook, runPostHook, captureHeadSha } from "./session/lifecycle-hooks.js";
 import type { HookContext } from "./session/lifecycle-hooks.js";
 import { resolveHandler, inferHandler, evaluateAutoSkip } from "./handlers/index.js";
-import type { NodeContext, NodeResult, TriageHandlerOutput } from "./handlers/index.js";
+import type { NodeContext, NodeResult } from "./handlers/index.js";
 import { computeErrorSignature } from "./triage/error-fingerprint.js";
+import { createNodeWrapper } from "./node-wrapper.js";
 
 
 // ---------------------------------------------------------------------------
@@ -63,8 +62,6 @@ export interface PipelineRunState {
   pipelineSummaries: ItemSummary[];
   /** Track attempt number per item key across retries */
   attemptCounts: Record<string, number>;
-  /** One-time circuit breaker bypass for DEV items eligible for clean-slate revert */
-  circuitBreakerBypassed: Set<string>;
   /** Track git commit SHA before each dev step for reliable change detection */
   preStepRefs: Record<string, string>;
   /**
@@ -212,7 +209,7 @@ async function dispatchOnFailure(
   state: PipelineRunState,
   client: CopilotClient,
 ): Promise<SessionResult | null> {
-  const { slug, workflowName, appRoot, repoRoot, apmContext, roamAvailable, logger } = config;
+  const { slug, workflowName, appRoot, repoRoot, apmContext, logger } = config;
 
   const triageNodeKey = resolveOnFailureTarget(apmContext, workflowName, failingKey);
   if (!triageNodeKey) return null;
@@ -268,7 +265,7 @@ async function dispatchOnFailure(
     dispatch: true,
   });
 
-  // Execute the triage handler
+  // Execute the triage handler — it now owns all state mutations
   let triageResult: NodeResult;
   try {
     triageResult = await handler.execute(triageCtx);
@@ -278,132 +275,16 @@ async function dispatchOnFailure(
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
-  // Process the triage handler's output — execute DAG mutations
-  return handleTriageResult(triageResult, failingKey, rawError, itemSummary, config, state);
-}
-
-/**
- * Process triage handler output — execute DAG resets and persist records.
- * The kernel owns DAG mutations; the triage handler only classifies and recommends.
- */
-async function handleTriageResult(
-  triageResult: NodeResult,
-  failingKey: string,
-  rawError: string,
-  itemSummary: ItemSummary,
-  config: PipelineRunConfig,
-  state: PipelineRunState,
-): Promise<SessionResult> {
-  const { slug, repoRoot, apmContext, roamAvailable, logger } = config;
-
-  if (triageResult.outcome !== "completed" || !triageResult.handlerOutput) {
+  // The triage handler has already executed DAG mutations (resetNodes,
+  // salvageForDraft, setLastTriageRecord, setPendingContext). The kernel
+  // only needs to read the signal to decide halt vs continue.
+  if (triageResult.outcome !== "completed") {
     logger.event("item.end", failingKey, { outcome: "error", error_preview: triageResult.errorMessage ?? "Triage handler failed" });
     return { summary: itemSummary, halt: true, createPr: false };
   }
 
-  const output = triageResult.handlerOutput as unknown as TriageHandlerOutput;
-  const { routeToKey, triageRecord } = output;
-
-  // --- Graceful degradation: routeToKey is null ---
-  if (routeToKey === null) {
-    return triggerGracefulDegradation(slug, failingKey, rawError, config, itemSummary, triageRecord);
-  }
-
-  // --- Execute DAG reset: target node + all downstream dependents ---
-  // Resolve max_reroutes from the triage node's profile
-  const triageNodeKey = resolveOnFailureTarget(apmContext, config.workflowName, failingKey);
-  const triageNode = triageNodeKey ? getWorkflowNode(apmContext, config.workflowName, triageNodeKey) : undefined;
-  const profileName = triageNode?.triage_profile;
-  const profile = profileName ? apmContext.triage_profiles?.[`${config.workflowName}.${profileName}`] : undefined;
-  const maxReroutes = profile?.max_reroutes ?? 5;
-
-  const taggedReason = `[domain:${output.domain}] [source:${output.source}] ${output.reason}`;
-  try {
-    const result = await resetNodes(slug, routeToKey, taggedReason, maxReroutes, RESET_OPS.RESET_FOR_REROUTE);
-    if (result.halted) {
-      logger.event("item.end", failingKey, { outcome: "failed", halted: true, error_preview: `${result.cycleCount} reroute cycles exhausted` });
-      return { summary: itemSummary, halt: true, createPr: false };
-    }
-
-    // Enrich triage record with cascade info from resetNodes
-    const enrichedRecord: TriageRecord = {
-      ...triageRecord,
-      cascade: result.state.items
-        .filter((it) => it.status === "pending" && it.key !== routeToKey)
-        .map((it) => it.key),
-      cycle_count: result.cycleCount,
-    };
-
-    // Persist the triage record for downstream context injection
-    try { await setLastTriageRecord(slug, enrichedRecord); } catch { /* non-fatal */ }
-
-    // Re-index semantic graph after reroute if target category is in reindex_categories
-    if (roamAvailable) {
-      const targetCat = getWorkflowNode(apmContext, config.workflowName, routeToKey)?.category;
-      const reindexCats = new Set(apmContext.config?.reindex_categories ?? ["dev", "test"]);
-      if (targetCat && reindexCats.has(targetCat)) {
-        logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
-        try {
-          execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
-        } catch { /* non-fatal */ }
-      }
-    }
-  } catch {
-    logger.event("item.end", failingKey, { outcome: "error", halted: true, error_preview: "Could not execute reroute" });
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-
-  return { summary: itemSummary, halt: false, createPr: false };
-}
-
-/**
- * Trigger graceful degradation — salvage partial work to a Draft PR.
- * Unified salvage helper used by:
- * - on_failure dispatch (triage handler returns routeToKey=null)
- * - circuit breaker timeout-salvage
- * - handler "salvage-draft" signal
- *
- * Calls kernelFail (unless failState="skip"), then salvageForDraft, writes
- * the `.blocked-draft` sentinel, and optionally persists a triage record.
- */
-async function kernelSalvage(
-  slug: string,
-  itemKey: string,
-  errorMsg: string,
-  config: PipelineRunConfig,
-  opts?: { skipFail?: boolean; triageRecord?: TriageRecord },
-): Promise<void> {
-  config.logger.event("state.salvage", itemKey, { reason: errorMsg.slice(0, 500) });
-  if (!opts?.skipFail) {
-    await kernelFail(slug, itemKey, `BLOCKED: ${errorMsg}`, config.logger);
-  }
-  await salvageForDraft(slug, itemKey);
-  const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
-  fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
-  if (opts?.triageRecord) {
-    try { await setLastTriageRecord(slug, opts.triageRecord); } catch { /* non-fatal */ }
-  }
-}
-
-/**
- * Trigger graceful degradation from triage — delegates to `kernelSalvage`.
- * Generic kernel capability: any on_failure handler returning routeToKey=null triggers this.
- */
-async function triggerGracefulDegradation(
-  slug: string,
-  itemKey: string,
-  errorMsg: string,
-  config: PipelineRunConfig,
-  itemSummary: ItemSummary,
-  triageRecord?: TriageRecord,
-): Promise<SessionResult> {
-  try {
-    await kernelSalvage(slug, itemKey, errorMsg, config, { triageRecord });
-  } catch (e) {
-    config.logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
-    return { summary: itemSummary, halt: true, createPr: false };
-  }
-  return { summary: itemSummary, halt: false, createPr: false };
+  const halt = triageResult.signals?.halt === true;
+  return { summary: itemSummary, halt, createPr: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -461,71 +342,7 @@ async function kernelFail(
 // ---------------------------------------------------------------------------
 
 /**
- * Step 1: Circuit breaker — skip if identical error + no code changed.
- * Handles revert bypass, timeout salvage, and hard-halt on repeated errors.
- */
-const stepCircuitBreaker: DispatchStep = async (dc) => {
-  const { next, config, state } = dc;
-  const { slug, repoRoot, logger } = config;
-  const { pipelineSummaries, attemptCounts, circuitBreakerBypassed } = state;
-  const { cb } = dc;
-
-  if (attemptCounts[next.key] < cb.minAttemptsBeforeSkip) return;
-  if (!shouldSkipRetry(repoRoot, next.key, pipelineSummaries)) return;
-
-  // Grant one bypass for clean-slate revert
-  if (cb.allowsRevertBypass && !circuitBreakerBypassed.has(next.key)) {
-    logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "deferred — granting clean-slate revert opportunity" });
-    circuitBreakerBypassed.add(next.key);
-    return;
-  }
-
-  logger.event("item.skip", next.key, { skip_type: "circuit_breaker", reason: "identical error with no code changes since last attempt" });
-  const skipSummary: ItemSummary = {
-    key: next.key,
-    label: next.label,
-    agent: next.agent ?? "unknown",
-    attempt: attemptCounts[next.key],
-    startedAt: new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
-    durationMs: 0,
-    outcome: "failed",
-    intents: ["Circuit breaker: identical error, no code changes — skipped"],
-    messages: [],
-    filesRead: [],
-    filesChanged: [],
-    shellCommands: [],
-    toolCounts: {},
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    errorMessage: "Circuit breaker: identical error repeated without code changes",
-  };
-  try { skipSummary.headAfterAttempt = getHeadSha(repoRoot) ?? undefined; } catch { /* non-fatal */ }
-  pipelineSummaries.push(skipSummary);
-  flushReports(config, state);
-
-  // Timeout-salvage path
-  const lastError = pipelineSummaries
-    .filter((s) => s.key === next.key && s.outcome !== "completed")
-    .pop()?.errorMessage ?? "";
-  if (cb.allowsTimeoutSalvage && lastError.toLowerCase().includes("timeout")) {
-    const salvageMsg = `Circuit breaker: ${next.key} timeout loop after ${attemptCounts[next.key]} attempts`;
-    try {
-      await kernelSalvage(slug, next.key, salvageMsg, config);
-    } catch (e) {
-      logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: `Failed to salvage pipeline state: ${e instanceof Error ? e.message : String(e)}` });
-      return { summary: skipSummary, halt: true, createPr: false };
-    }
-    return { summary: skipSummary, halt: false, createPr: false };
-  }
-
-  return { summary: skipSummary, halt: true, createPr: false };
-};
-
-/**
- * Step 2: Init — logging, HEAD snapshot, create ItemSummary.
+ * Step 1: Init — logging, HEAD snapshot, create ItemSummary.
  */
 const stepInit: DispatchStep = async (dc) => {
   const { next, config, state } = dc;
@@ -624,6 +441,15 @@ const stepResolve: DispatchStep = async (dc) => {
   const effectiveAttempts = await computeEffectiveDevAttempts(
     next.key, attemptCounts[next.key], slug, cb.allowsRevertBypass,
   );
+
+  // Wrap the handler with the node wrapper for cross-cutting self-protection
+  dc.handler = createNodeWrapper(dc.handler, {
+    circuitBreaker: cb,
+    attempt: attemptCounts[next.key],
+    effectiveAttempts,
+    slug,
+    repoRoot,
+  });
 
   const previousAttempt = attemptCounts[next.key] > 1
     ? [...pipelineSummaries].reverse().find((s) => s.key === next.key)
@@ -779,36 +605,9 @@ const stepExecute: DispatchStep = async (dc) => {
     throw new Error(`BUG: stepExecute called without handler/context for "${next.key}"`);
   }
 
-  // --- Execute handler ---
-  let result: NodeResult;
-  try {
-    result = await handler.execute(handlerCtx);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.event("item.end", next.key, { outcome: "error", error_preview: message, handler: handler.name });
-    result = { outcome: "error", errorMessage: message, summary: {} };
-  }
+  // --- Execute handler (wrapped — exceptions caught by node wrapper) ---
+  const result = await handler.execute(handlerCtx);
   dc.result = result;
-
-  // --- Non-retryable detection for deterministic handlers ---
-  const previousAttempt = handlerCtx.previousAttempt;
-  if (
-    result.outcome !== "completed" &&
-    cb.haltOnIdentical &&
-    previousAttempt?.errorMessage &&
-    result.errorMessage === previousAttempt.errorMessage
-  ) {
-    const currentHead = getHeadSha(repoRoot);
-    if (currentHead !== null && currentHead === previousAttempt.headAfterAttempt) {
-      logger.event("item.skip", next.key, { skip_type: "non_retryable", reason: `deterministic handler "${handler.name}" produced identical error with no code changes` });
-      itemSummary.outcome = result.outcome;
-      itemSummary.errorMessage = `Non-retryable: identical error on attempt ${attemptCounts[next.key]} with no code changes. ${result.errorMessage}`;
-      try {
-        await kernelFail(slug, next.key, itemSummary.errorMessage, logger);
-      } catch { /* best-effort */ }
-      return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
-    }
-  }
 
   // --- Merge handler telemetry ---
   mergeTelemetry(itemSummary, result.summary);
@@ -827,6 +626,29 @@ const stepExecute: DispatchStep = async (dc) => {
 
   // Record HEAD for circuit breaker
   itemSummary.headAfterAttempt = getHeadSha(repoRoot) ?? undefined;
+
+  // --- Persist execution record (survives orchestrator restarts) ---
+  try {
+    const execRecord: ExecutionRecord = {
+      executionId: randomUUID(),
+      nodeKey: next.key,
+      attempt: attemptCounts[next.key],
+      outcome: result.outcome,
+      errorMessage: result.outcome !== "completed" ? result.errorMessage : undefined,
+      errorSignature: result.outcome !== "completed" && result.errorMessage
+        ? computeErrorSignature(result.errorMessage)
+        : undefined,
+      headBefore: state.preStepRefs[next.key],
+      headAfter: itemSummary.headAfterAttempt,
+      filesChanged: [...itemSummary.filesChanged],
+      durationMs: Date.now() - stepStart,
+      startedAt: itemSummary.startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+    await persistExecutionRecord(slug, execRecord);
+  } catch {
+    logger.event("item.end", next.key, { outcome: result.outcome, note: "failed to persist execution record" });
+  }
 
   // --- State transitions ---
   if (result.signal === "approval-pending") {
@@ -852,15 +674,18 @@ const stepExecute: DispatchStep = async (dc) => {
   }
 
   // --- Signal handling ---
-  if (result.signal === "halt") {
+  if (result.signal === "halt" || result.signals?.halt) {
     return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
   }
   if (result.signal === "create-pr" || (result.outcome === "completed" && node?.signals_create_pr)) {
     return finishItem(itemSummary, "completed", stepStart, config, state, { createPr: true });
   }
-  if (result.signal === "salvage-draft") {
+  if (result.signal === "salvage-draft" || result.signals?.["salvage-draft"]) {
     try {
-      await kernelSalvage(slug, next.key, result.errorMessage ?? "Handler signaled salvage", config, { skipFail: true });
+      logger.event("state.salvage", next.key, { reason: (result.errorMessage ?? "Handler signaled salvage").slice(0, 500) });
+      await salvageForDraft(slug, next.key);
+      const draftFlagPath = path.join(config.appRoot, "in-progress", `${slug}.blocked-draft`);
+      fs.writeFileSync(draftFlagPath, result.errorMessage ?? "Handler signaled salvage", "utf-8");
     } catch {
       logger.event("item.end", next.key, { outcome: "error", halted: true, error_preview: "Failed to salvage pipeline state" });
       return finishItem(itemSummary, result.outcome, stepStart, config, state, { halt: true });
@@ -918,7 +743,6 @@ const stepExecute: DispatchStep = async (dc) => {
  * A step returning a SessionResult short-circuits the pipeline.
  */
 const DISPATCH_PIPELINE: readonly DispatchStep[] = [
-  stepCircuitBreaker,
   stepInit,
   stepAutoSkip,
   stepReadiness,
@@ -936,7 +760,7 @@ const DISPATCH_PIPELINE: readonly DispatchStep[] = [
  * Run a single pipeline item — the core of each DAG step.
  *
  * Executes a linear pipeline of named steps:
- * circuit breaker → init → auto-skip → readiness → resolve → handler-skip → pre-hook → execute
+ * init → auto-skip → readiness → resolve → handler-skip → pre-hook → execute
  */
 export async function runItemSession(
   client: CopilotClient,

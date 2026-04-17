@@ -5,18 +5,22 @@
  * 2-layer triage engine (RAG + LLM). Dispatched by the kernel via `on_failure`
  * edges — never through normal DAG scheduling.
  *
- * The handler CLASSIFIES and RECOMMENDS; the kernel EXECUTES the DAG reset.
- * This separation keeps the handler interface clean (observer, no state mutation).
+ * The handler CLASSIFIES **and** EXECUTES DAG mutations (resetNodes,
+ * salvageForDraft, setLastTriageRecord, setPendingContext). This is the only
+ * handler with state mutation authority — all other handlers are observers.
  *
  * Handler output contract (`handlerOutput`):
- *   - routeToKey: string | null  — DAG node to reset (null = graceful degradation)
+ *   - routeToKey: string | null  — DAG node that was reset (null = graceful degradation)
  *   - domain: string             — classified fault domain
  *   - reason: string             — human-readable reason
  *   - source: "rag" | "llm" | "fallback" — which classification layer matched
- *   - triageRecord: TriageRecord — full record for state persistence
+ *   - triageRecord: TriageRecord — full record (already persisted by handler)
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import type { TriageRecord, TriageResult } from "../types.js";
@@ -24,7 +28,8 @@ import { RESET_OPS } from "../types.js";
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode } from "../session/shared.js";
-import { getStatus } from "../state.js";
+import { getStatus, resetNodes, salvageForDraft, setLastTriageRecord, setPendingContext } from "../state.js";
+import { buildTriageRejectionContext } from "../context-injection.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -152,9 +157,11 @@ const triageHandler: NodeHandler = {
       );
       const evId = logger.event("triage.evaluate", failingNodeKey, { ...record });
       logger.blob(evId, "error_trace", rawError);
+      await executeSalvage(ctx, failingNodeKey, rawError, record, logger);
       return {
         outcome: "completed",
         summary: { intents: [`triage: unfixable signal "${unfixableReason}" → degradation`] },
+        signals: { halt: false },
         handlerOutput: {
           routeToKey: null,
           domain: "blocked",
@@ -179,9 +186,11 @@ const triageHandler: NodeHandler = {
         );
         const evId = logger.event("triage.evaluate", failingNodeKey, { ...record });
         logger.blob(evId, "error_trace", rawError);
+        await executeSalvage(ctx, failingNodeKey, rawError, record, logger);
         return {
           outcome: "completed",
           summary: { intents: [`triage: death spiral (${sameSigCount + 1}× same error) → degradation`] },
+          signals: { halt: false },
           handlerOutput: {
             routeToKey: null,
             domain: "blocked",
@@ -222,7 +231,7 @@ const triageHandler: NodeHandler = {
           source: triageResult.source,
           route_to: null,
         });
-        // No valid route → signal graceful degradation
+        // No valid route → execute graceful degradation
         const record: TriageRecord = {
           failing_item: failingNodeKey,
           error_signature: errorSig,
@@ -241,9 +250,11 @@ const triageHandler: NodeHandler = {
           cycle_count: 0,
           domain_retry_count: 0,
         };
+        await executeSalvage(ctx, failingNodeKey, rawError, record, logger);
         return {
           outcome: "completed",
           summary: { intents: [`triage: ${triageResult.domain} → route_to null → degradation`] },
+          signals: { halt: false },
           handlerOutput: {
             routeToKey: null,
             domain: triageResult.domain,
@@ -292,9 +303,11 @@ const triageHandler: NodeHandler = {
               cycle_count: 0,
               domain_retry_count: domainRetryCount,
             };
+            await executeSalvage(ctx, failingNodeKey, rawError, record, logger);
             return {
               outcome: "completed",
               summary: { intents: [`triage: ${triageResult.domain} retry cap (${consecutiveCount}/${routeEntry.retries}) → degradation`] },
+              signals: { halt: false },
               handlerOutput: {
                 routeToKey: null,
                 domain: triageResult.domain,
@@ -309,7 +322,7 @@ const triageHandler: NodeHandler = {
       }
     }
 
-    // --- Build full triage record for kernel to persist ---
+    // --- Build full triage record ---
     const record: TriageRecord = {
       failing_item: failingNodeKey,
       error_signature: errorSig,
@@ -324,12 +337,23 @@ const triageHandler: NodeHandler = {
       reason: triageResult.reason,
       source: triageResult.source,
       route_to: routeToKey,
-      cascade: [], // kernel fills this after resetNodes()
-      cycle_count: 0, // kernel fills this after resetNodes()
+      cascade: [],
+      cycle_count: 0,
       domain_retry_count: domainRetryCount,
     };
     const evId = logger.event("triage.evaluate", failingNodeKey, { ...record });
     logger.blob(evId, "error_trace", rawError);
+
+    // --- Execute DAG reset: target node + all downstream dependents ---
+    const triageNodeKey = ctx.itemKey;
+    const triageNode = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, triageNodeKey);
+    const profileName2 = triageNode?.triage_profile;
+    const profileForCap = profileName2
+      ? ctx.apmContext.triage_profiles?.[`${ctx.pipelineState.workflowName}.${profileName2}`]
+      : undefined;
+    const maxReroutes = profileForCap?.max_reroutes ?? 5;
+
+    const taggedReason = `[domain:${triageResult.domain}] [source:${triageResult.source}] ${triageResult.reason}`;
 
     logger.event("state.reset", failingNodeKey, {
       route_to: routeToKey,
@@ -337,6 +361,65 @@ const triageHandler: NodeHandler = {
       source: triageResult.source,
       reason: triageResult.reason,
     });
+
+    try {
+      const resetResult = await resetNodes(slug, routeToKey, taggedReason, maxReroutes, RESET_OPS.RESET_FOR_REROUTE);
+      if (resetResult.halted) {
+        logger.event("item.end", failingNodeKey, { outcome: "failed", halted: true, error_preview: `${resetResult.cycleCount} reroute cycles exhausted` });
+        return {
+          outcome: "completed",
+          summary: { intents: [`triage: ${triageResult.domain} (${triageResult.source}) → reroute cap exhausted`] },
+          signals: { halt: true },
+          handlerOutput: {
+            routeToKey,
+            domain: triageResult.domain,
+            reason: triageResult.reason,
+            source: triageResult.source,
+            triageRecord: record,
+            guardResult: "passed",
+          } satisfies TriageHandlerOutput,
+        };
+      }
+
+      // Enrich triage record with cascade info from resetNodes
+      const enrichedRecord: TriageRecord = {
+        ...record,
+        cascade: resetResult.state.items
+          .filter((it: { status: string; key: string }) => it.status === "pending" && it.key !== routeToKey)
+          .map((it: { key: string }) => it.key),
+        cycle_count: resetResult.cycleCount,
+      };
+
+      // Persist the triage record
+      try { await setLastTriageRecord(slug, enrichedRecord); } catch { /* non-fatal */ }
+
+      // Build and persist pendingContext for the target node
+      try {
+        const rejectionCtx = await buildTriageRejectionContext(slug);
+        if (rejectionCtx) {
+          await setPendingContext(slug, routeToKey, rejectionCtx);
+        }
+      } catch { /* non-fatal */ }
+
+      // Re-index semantic graph after reroute if target category needs it
+      const repoRoot = ctx.repoRoot;
+      const targetCat = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey)?.category;
+      const reindexCats = new Set((ctx.apmContext.config?.reindex_categories as string[]) ?? ["dev", "test"]);
+      if (targetCat && reindexCats.has(targetCat)) {
+        logger.event("tool.call", routeToKey, { tool: "roam", category: "index", detail: " → re-indexing after reroute", is_write: false });
+        try {
+          execSync("roam index", { cwd: repoRoot, stdio: "inherit", timeout: 120_000 });
+        } catch { /* non-fatal */ }
+      }
+    } catch {
+      logger.event("item.end", failingNodeKey, { outcome: "error", halted: true, error_preview: "Could not execute reroute" });
+      return {
+        outcome: "error",
+        errorMessage: "Could not execute DAG reset after triage classification",
+        summary: {},
+        signals: { halt: true },
+      };
+    }
 
     return {
       outcome: "completed",
@@ -352,5 +435,34 @@ const triageHandler: NodeHandler = {
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// State mutation helpers (triage handler has exclusive mutation authority)
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute graceful degradation — salvage partial work to a Draft PR.
+ * Called when routeToKey is null (no valid route) or domain retry cap reached.
+ */
+async function executeSalvage(
+  ctx: NodeContext,
+  failingKey: string,
+  errorMsg: string,
+  triageRecord: TriageRecord,
+  logger: NodeContext["logger"],
+): Promise<void> {
+  const { slug, appRoot } = ctx;
+  logger.event("state.salvage", failingKey, { reason: errorMsg.slice(0, 500) });
+  // Note: failItem is NOT called here — the kernel already called kernelFail
+  // before dispatching on_failure. We only do salvageForDraft (skip-to-draft).
+  try {
+    await salvageForDraft(slug, failingKey);
+  } catch { /* best effort */ }
+  const draftFlagPath = path.join(appRoot, "in-progress", `${slug}.blocked-draft`);
+  fs.writeFileSync(draftFlagPath, errorMsg, "utf-8");
+  try {
+    await setLastTriageRecord(slug, triageRecord);
+  } catch { /* non-fatal */ }
+}
 
 export default triageHandler;

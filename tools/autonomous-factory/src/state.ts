@@ -16,6 +16,7 @@ import type {
   ResetResult,
   InitResult,
   TriageRecord,
+  ExecutionRecord,
 } from "./types.js";
 
 // Lazy-loaded module reference (cached after first import)
@@ -40,6 +41,8 @@ interface PipelineStateMod {
   setUrl: (slug: string, url: string) => PipelineState;
   setHandoffArtifact: (slug: string, itemKey: string, artifactJson: string) => PipelineState;
   setLastTriageRecord: (slug: string, record: TriageRecord) => PipelineState;
+  persistExecutionRecord: (slug: string, record: ExecutionRecord) => PipelineState;
+  setPendingContext: (slug: string, itemKey: string, context: string | null) => PipelineState;
   readState: (slug: string) => PipelineState;
   getDownstream: (state: PipelineState, seedKeys: string[]) => string[];
   getUpstream: (state: PipelineState, seedKeys: string[]) => string[];
@@ -91,6 +94,8 @@ export const setDocNote = stateProxy.setDocNote;
 export const setUrl = stateProxy.setUrl;
 export const setHandoffArtifact = stateProxy.setHandoffArtifact;
 export const setLastTriageRecord = stateProxy.setLastTriageRecord;
+export const persistExecutionRecord = stateProxy.persistExecutionRecord;
+export const setPendingContext = stateProxy.setPendingContext;
 export const readState = stateProxy.readState;
 export const getDownstream = stateProxy.getDownstream;
 export const getUpstream = stateProxy.getUpstream;

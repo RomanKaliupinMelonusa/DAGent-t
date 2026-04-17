@@ -119,6 +119,12 @@ export interface NodeResult {
    */
   signal?: "halt" | "create-pr" | "salvage-draft" | "approval-pending";
   /**
+   * Bag-of-signals for richer handler → kernel communication.
+   * Complements the single `signal` field for cases where multiple
+   * independent signals need to be communicated (e.g. halt + salvage-draft).
+   */
+  signals?: Record<string, boolean>;
+  /**
    * Opaque output data for downstream handlers.
    * The kernel stores this in `handlerData` for subsequent handler invocations.
    * Example: `{ lastPushedSha: "abc123" }` auto-captured by kernel for deploy nodes.
@@ -198,9 +204,11 @@ export interface HandlerMetadata {
  * Contract:
  * - `execute()` performs the handler's work and returns a result
  * - `shouldSkip()` optionally checks if the item can be skipped before execution
- * - Handlers are OBSERVERS: they must NOT call completeItem/failItem
+ * - Handlers are OBSERVERS and must NOT call completeItem/failItem, with one
+ *   exception: the triage handler has exclusive state mutation authority
+ *   (resetNodes, salvageForDraft, setLastTriageRecord, setPendingContext)
  * - Handlers may call shell commands, read/write files, and interact with external APIs
- * - The kernel is the sole owner of pipeline state transitions
+ * - The kernel is the sole owner of pipeline state transitions for all other handlers
  */
 export interface NodeHandler {
   /** Unique handler identifier (e.g. "copilot-agent", "local-exec") */
