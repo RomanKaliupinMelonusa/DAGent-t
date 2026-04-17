@@ -27,16 +27,6 @@ storefront:
     - deploy
     - triage
 
-  # Workflow-level failure routing defaults — inherited by nodes with on_failure.
-  # Per-node routes override these. Nodes without on_failure are unaffected.
-  default_on_failure:
-    triage: triage-storefront
-    routes:
-      frontend: storefront-dev
-      test-code: "$SELF"
-      environment: "$SELF"
-      blocked: null
-
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
@@ -46,24 +36,30 @@ storefront:
     storefront-unit-test:
       phase: pre-deploy
       depends_on: [storefront-dev]
-      on_failure: {}
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: storefront-dev
+          environment: "$SELF"
+          blocked: null
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
     e2e-author:
       phase: validation
       depends_on: [storefront-unit-test]
-      on_failure:
-        routes:
-          test-code: e2e-author
-          test-code-from-dev: storefront-dev
 
     e2e-runner:
       phase: validation
       depends_on: [e2e-author]
       on_failure:
+        triage: triage-storefront
         routes:
+          frontend: storefront-dev
           test-code: e2e-author
           test-code-from-dev: storefront-dev
+          environment: "$SELF"
+          blocked: null
 
     create-draft-pr:
       phase: validation
