@@ -29,7 +29,7 @@ import { writeFlightData } from "../reporting.js";
 import {
   buildRetryContext,
   buildDownstreamFailureContext,
-  buildPhaseRejectionContext,
+  buildTriageRejectionContext,
   buildRevertWarning,
   writeChangeManifest,
 } from "../context-injection.js";
@@ -137,7 +137,6 @@ const copilotAgentHandler: NodeHandler = {
       key: itemKey,
       label: itemKey,    // placeholder — kernel's itemSummary has the real label
       agent: itemKey,    // placeholder
-      phase: "",         // placeholder
       attempt,
       outcome: "completed",
       startedAt: new Date().toISOString(),
@@ -272,13 +271,13 @@ const copilotAgentHandler: NodeHandler = {
       });
     }
 
-    // Inject phase-rejection context for redevelopment (manifest-driven)
-    if (node?.injects_phase_rejection || node?.injects_infra_rollback) {
-      const rejectionCtx = await buildPhaseRejectionContext(slug);
+    // Inject triage-rejection context for redevelopment (manifest-driven)
+    if (node?.injects_triage_rejection || node?.injects_infra_rollback) {
+      const rejectionCtx = await buildTriageRejectionContext(slug);
       if (rejectionCtx) {
         taskPrompt += rejectionCtx;
         ctx.logger.event("handoff.inject", itemKey, {
-          injection_types: ["phase_rejection"],
+          injection_types: ["triage_rejection"],
         });
       }
     }

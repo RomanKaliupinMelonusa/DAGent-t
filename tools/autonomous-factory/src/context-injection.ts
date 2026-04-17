@@ -225,27 +225,30 @@ export function buildRevertWarning(
 }
 
 /**
- * Build phase-rejection context when an agent is re-invoked after a
- * downstream phase called `pipeline:reset-phases`.
+ * Build triage-rejection context when an agent is re-invoked after a
+ * triage reroute reset nodes for redevelopment.
  * Returns the rejection reason so the agent knows what to fix.
  *
  * @param slug - Feature slug
  * @param narrative - Domain-specific explanation injected into the prompt.
  *   Default: generic "previous deployment wave failed" message.
  */
-export async function buildPhaseRejectionContext(
+export async function buildTriageRejectionContext(
   slug: string,
   narrative?: string,
 ): Promise<string> {
   try {
     const state = await readState(slug);
-    const phaseEntries = state.errorLog.filter((e) => e.itemKey === RESET_OPS.RESET_PHASES);
-    if (phaseEntries.length === 0) return "";
-    const latest = phaseEntries[phaseEntries.length - 1];
+    // Check both legacy RESET_PHASES entries and new RESET_FOR_REROUTE entries
+    const rejectionEntries = state.errorLog.filter((e) =>
+      e.itemKey === RESET_OPS.RESET_PHASES || e.itemKey === RESET_OPS.RESET_FOR_REROUTE
+    );
+    if (rejectionEntries.length === 0) return "";
+    const latest = rejectionEntries[rejectionEntries.length - 1];
     const header = narrative
-      ?? "The previous deployment wave failed because a dependency was missing or misconfigured:";
+      ?? "A downstream failure triggered redevelopment:";
     return (
-      `\n\n## ⚠️ PHASE REJECTION — REDEVELOPMENT REQUIRED\n`
+      `\n\n## ⚠️ TRIAGE REROUTE — REDEVELOPMENT REQUIRED\n`
       + `${header}\n\n`
       + `> ${latest.message}\n\n`
       + `You MUST address this requirement before completing this task.`
@@ -255,8 +258,11 @@ export async function buildPhaseRejectionContext(
   }
 }
 
-/** @deprecated Use `buildPhaseRejectionContext`. */
-export const buildInfraRollbackContext = (slug: string) => buildPhaseRejectionContext(slug,
+/** @deprecated Use `buildTriageRejectionContext`. */
+export const buildPhaseRejectionContext = buildTriageRejectionContext;
+
+/** @deprecated Use `buildTriageRejectionContext`. */
+export const buildInfraRollbackContext = (slug: string) => buildTriageRejectionContext(slug,
   "The previous application deployment wave failed because the following infrastructure was missing or misconfigured:");
 
 /**

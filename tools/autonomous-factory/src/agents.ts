@@ -309,7 +309,7 @@ export function buildTaskPrompt(
 - If Roam tools are unavailable (MCP connection failed), fall back to standard tools and note this in your completion message.
 ` : "";
 
-  return `Your task: Complete the "${item.label}" phase for feature "${slug}".
+  return `Your task: Complete the "${item.label}" step for feature "${slug}".
 ${roamPreamble}
 1. Read the feature spec: ${appRoot}/in-progress/${slug}_SPEC.md
 2. Execute your assigned workflow as described in your system instructions.

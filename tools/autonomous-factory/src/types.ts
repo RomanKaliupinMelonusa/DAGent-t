@@ -19,7 +19,7 @@ export const RESET_OPS = {
   RESET_FOR_DEV: "reset-for-dev",
   /** resetNodes() for triage reroute */
   RESET_FOR_REROUTE: "reset-for-reroute",
-  /** resetPhases() for full-phase redevelopment */
+  /** Legacy error-log marker — kept for backward compat with old state files. */
   RESET_PHASES: "reset-phases",
 } as const;
 
@@ -33,7 +33,6 @@ export interface PipelineItem {
   key: string;
   label: string;
   agent: string | null;
-  phase: string;
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
   docNote?: string | null;
@@ -61,10 +60,6 @@ export interface PipelineState {
   }>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;
-  /** Explicit ordered phase names — persisted at init from workflows.yml */
-  phases: string[];
-  /** Human-readable labels for phase slugs (from config.phase_labels) */
-  phaseLabels?: Record<string, string> | null;
   /** Node execution types — open set; built-in: agent, script, approval, barrier, triage. */
   nodeTypes: Record<string, string>;
   /** Node semantic categories — open set; built-in: dev, test, deploy, finalize. */
@@ -83,7 +78,6 @@ export interface NextAction {
   key: string | null;
   label: string;
   agent: string | null;
-  phase: string | null;
   status: string;
 }
 
@@ -185,7 +179,6 @@ export interface ItemSummary {
   key: string;
   label: string;
   agent: string;
-  phase: string;
   attempt: number;
   startedAt: string;
   finishedAt: string;

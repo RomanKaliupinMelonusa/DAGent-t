@@ -65,13 +65,6 @@ export function outcomeIcon(outcome: string): string {
   return outcome === "completed" ? "✅" : outcome === "failed" ? "❌" : "💥";
 }
 
-/** Format phase slug to human-readable heading using config-driven labels. */
-function fmtPhase(phase: string, apmCtx?: ApmCompiledOutput): string {
-  const labels = apmCtx?.config?.phase_labels;
-  if (labels && labels[phase]) return labels[phase];
-  return phase.replace(/(^|-)(\w)/g, (_, _sep: string, c: string) => (_sep ? " " : "") + c.toUpperCase());
-}
-
 /** Check if a step was a barrier sync point (zero-execution DAG join) */
 function isBarrierStep(item: ItemSummary): boolean {
   return item.intents.some((i) => i.startsWith("barrier-sync"));
@@ -271,13 +264,7 @@ export function writePipelineSummary(
   // --- Per-step detail ---
   lines.push(`## Steps`, ``);
 
-  let currentPhase = "";
   for (const item of summaries) {
-    // Phase header
-    if (item.phase !== currentPhase) {
-      currentPhase = item.phase;
-      lines.push(`### Phase: ${fmtPhase(currentPhase, apmCtx)}`, ``);
-    }
 
     const icon = stepIcon(item);
     const duration = formatDuration(item.durationMs);
@@ -491,14 +478,7 @@ export function writeTerminalLog(
     ``,
   ];
 
-  let currentPhase = "";
   for (const item of summaries) {
-    // Phase header (matches terminal output format)
-    if (item.phase !== currentPhase) {
-      currentPhase = item.phase;
-      lines.push(`### Phase: ${fmtPhase(currentPhase, apmCtx)}`, ``);
-    }
-
     const icon = stepIcon(item);
     const duration = formatDuration(item.durationMs);
     const attemptTag = item.attempt > 1 ? ` (attempt ${item.attempt})` : "";

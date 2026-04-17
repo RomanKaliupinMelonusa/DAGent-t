@@ -112,7 +112,6 @@ function materializeAllSummaries(events: PipelineEvent[]): ItemSummary[] {
       key: startEvt.item_key!,
       label: (startEvt.data.label as string) ?? startEvt.item_key!,
       agent: (startEvt.data.agent as string) ?? startEvt.item_key!,
-      phase: (startEvt.data.phase as string) ?? "",
       attempt: startEvt.attempt ?? 1,
       startedAt,
       finishedAt,
@@ -170,13 +169,7 @@ function generateSummary(events: PipelineEvent[], slug: string): string {
     ``,
   ];
 
-  let currentPhase = "";
   for (const item of summaries) {
-    if (item.phase !== currentPhase) {
-      currentPhase = item.phase;
-      lines.push(`### Phase: ${currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1)}`, ``);
-    }
-
     const icon = outcomeIcon(item.outcome);
     const attemptTag = item.attempt > 1 ? ` (attempt ${item.attempt})` : "";
     lines.push(`#### ${icon} ${item.label} — \`${item.key}\`${attemptTag}`);
@@ -241,7 +234,7 @@ function generateTerminal(events: PipelineEvent[], slug: string): string {
         lines.push(`${ts} 🔀 Parallel batch: ${(evt.data.items as string[]).join(" ‖ ")}`);
         break;
       case "item.start":
-        lines.push(`${ts} ═══ ${itemTag}${attemptTag} START — agent: ${evt.data.agent}, phase: ${evt.data.phase}`);
+        lines.push(`${ts} ═══ ${itemTag}${attemptTag} START — agent: ${evt.data.agent}`);
         break;
       case "item.end":
         lines.push(`${ts} ${evt.data.outcome === "completed" ? "✅" : "❌"} ${itemTag}${attemptTag} END — ${evt.data.outcome}${evt.data.error_preview ? `: ${evt.data.error_preview}` : ""}`);

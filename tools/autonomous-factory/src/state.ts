@@ -25,8 +25,7 @@ interface PipelineStateMod {
   initState: (slug: string, workflowName: string, contextJsonPath?: string) => InitResult;
   completeItem: (slug: string, itemKey: string) => PipelineState;
   failItem: (slug: string, itemKey: string, message: string) => FailResult;
-  resetScripts: (slug: string, phase: string, maxCycles?: number) => ResetResult;
-  resetPhases: (slug: string, phasesCsv: string, reason: string, maxCycles?: number) => ResetResult;
+  resetScripts: (slug: string, category: string, maxCycles?: number) => ResetResult;
   resetNodes: (slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string) => ResetResult;
   /** @deprecated Use `resetNodes`. */
   resetForReroute: (slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string) => ResetResult;
@@ -44,7 +43,6 @@ interface PipelineStateMod {
   readState: (slug: string) => PipelineState;
   getDownstream: (state: PipelineState, seedKeys: string[]) => string[];
   getUpstream: (state: PipelineState, seedKeys: string[]) => string[];
-  formatPhaseHeading: (phase: string, phaseLabels?: Record<string, string>) => string;
 }
 
 async function getMod(): Promise<PipelineStateMod> {
@@ -79,7 +77,6 @@ export const initState = stateProxy.initState;
 export const completeItem = stateProxy.completeItem;
 export const failItem = stateProxy.failItem;
 export const resetScripts = stateProxy.resetScripts;
-export const resetPhases = stateProxy.resetPhases;
 export const resetNodes = stateProxy.resetNodes;
 /** @deprecated Use `resetNodes`. */
 export const resetForReroute = stateProxy.resetForReroute;
@@ -97,4 +94,3 @@ export const setLastTriageRecord = stateProxy.setLastTriageRecord;
 export const readState = stateProxy.readState;
 export const getDownstream = stateProxy.getDownstream;
 export const getUpstream = stateProxy.getUpstream;
-export const formatPhaseHeading = stateProxy.formatPhaseHeading;

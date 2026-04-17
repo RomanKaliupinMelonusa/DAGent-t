@@ -193,7 +193,7 @@ function renderEventToConsole(evt: PipelineEvent): string | null {
       return null; // Silent
 
     case "item.start":
-      return `\n${"═".repeat(70)}\n  Phase: ${d.phase} | Item: ${evt.item_key} | Agent: ${d.agent}\n${"═".repeat(70)}`;
+      return `\n${"═".repeat(70)}\n  Item: ${evt.item_key} | Agent: ${d.agent}\n${"═".repeat(70)}`;
     case "item.end": {
       const o = d.outcome as string;
       if (o === "completed") {
@@ -456,7 +456,6 @@ export class JsonlPipelineLogger implements PipelineLogger {
       key: itemKey,
       label: (startEvt?.data.label as string) ?? itemKey,
       agent: (startEvt?.data.agent as string) ?? itemKey,
-      phase: (startEvt?.data.phase as string) ?? "",
       attempt: attempt ?? (startEvt?.attempt ?? 1),
       startedAt,
       finishedAt,

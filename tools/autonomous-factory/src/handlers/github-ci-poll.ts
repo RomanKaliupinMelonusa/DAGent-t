@@ -138,7 +138,7 @@ const githubCiPollHandler: NodeHandler = {
     const maxRetries = apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;
     const backoffMs = apmContext.config?.transient_retry?.backoff_ms ?? DEFAULT_TRANSIENT_BACKOFF_MS;
 
-    ctx.logger.event("item.start", ctx.itemKey, { agent: "ci-poll", phase: "poll", node_type: "poll", category: "deploy" });
+    ctx.logger.event("item.start", ctx.itemKey, { agent: "ci-poll", node_type: "poll", category: "deploy" });
     if (lastPushedSha) {
       ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` SHA-pinned to ${lastPushedSha.slice(0, 8)}`, is_write: false });
     }

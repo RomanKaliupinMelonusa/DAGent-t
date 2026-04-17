@@ -7,7 +7,6 @@ interface PipelineItem {
   key: string;
   label: string;
   agent: string | null;
-  phase: string;
   status: "pending" | "done" | "failed" | "na";
   error: string | null;
   docNote?: string | null;
@@ -35,10 +34,6 @@ interface PipelineState {
   }>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;
-  /** Explicit ordered phase names — persisted at init from workflows.yml */
-  phases: string[];
-  /** Human-readable labels for phase slugs (from config.phase_labels) */
-  phaseLabels?: Record<string, string> | null;
   /** Node execution types — persisted at init from workflows.yml */
   nodeTypes: Record<string, "agent" | "script" | "approval" | "barrier">;
   /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
@@ -78,7 +73,6 @@ interface NextAction {
   key: string | null;
   label: string;
   agent: string | null;
-  phase: string | null;
   status: string;
 }
 
@@ -111,8 +105,7 @@ export function completeItem(slug: string, itemKey: string): PipelineState;
  * string as the error message.
  */
 export function failItem(slug: string, itemKey: string, message: string): FailResult;
-export function resetScripts(slug: string, phase: string, maxCycles?: number): ResetResult;
-export function resetPhases(slug: string, phasesCsv: string, reason: string, maxCycles?: number): ResetResult;
+export function resetScripts(slug: string, category: string, maxCycles?: number): ResetResult;
 export function resetNodes(slug: string, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult;
 /** @deprecated Use `resetNodes` — backward-compat alias. */
 export const resetForReroute: typeof resetNodes;
@@ -131,4 +124,3 @@ export function readState(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
 export function getUpstream(state: PipelineState, seedKeys: string[]): string[];
 export function cascadeBarriers(state: PipelineState, keysToReset: Set<string>): Set<string>;
-export function formatPhaseHeading(phase: string, phaseLabels?: Record<string, string>): string;

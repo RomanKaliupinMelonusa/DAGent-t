@@ -98,7 +98,7 @@ export function checkPreflightAuth(repoRoot: string, appRoot: string, apmContext
   } else {
     console.warn(
       "  ⚠ Cloud CLI not authenticated.\n" +
-      "    Integration tests will be skipped or fail at the post-deploy phase.\n" +
+      "    Integration tests will be skipped or fail at the post-deploy step.\n" +
       `    ${result?.stdout ? `Detail: ${result.stdout}\n` : ""}`,
     );
   }

@@ -31,7 +31,6 @@ function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
     key: "backend-dev",
     label: "Backend Development",
     agent: "dev-expert",
-    phase: "pre-deploy",
     attempt: 1,
     startedAt: "2026-03-31T10:00:00.000Z",
     finishedAt: "2026-03-31T10:05:00.000Z",

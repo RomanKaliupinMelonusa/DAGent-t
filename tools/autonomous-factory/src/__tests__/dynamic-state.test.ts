@@ -64,12 +64,6 @@ describe("Dynamic state from context.json", () => {
     assert.ok(typeof state.dependencies === "object");
   });
 
-  it("state has phases array", () => {
-    const state = readState();
-    assert.ok(Array.isArray(state.phases), "State should have a phases array");
-    assert.ok((state.phases as string[]).length > 0, "Phases should not be empty");
-  });
-
   it("state has nodeTypes object", () => {
     const state = readState();
     assert.ok(state.nodeTypes, "State should have a nodeTypes object");

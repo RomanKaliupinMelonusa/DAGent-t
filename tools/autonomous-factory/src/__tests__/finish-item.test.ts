@@ -9,7 +9,6 @@ function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
     key: "dev-backend",
     label: "dev-backend",
     agent: "backend-dev",
-    phase: "dev",
     attempt: 1,
     startedAt: new Date().toISOString(),
     finishedAt: "",

@@ -53,7 +53,6 @@ function makeSummary(overrides: Partial<ItemSummary> = {}): ItemSummary {
     key: "test-step",
     label: "Test Step",
     agent: "test-agent",
-    phase: "dev",
     attempt: 1,
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),

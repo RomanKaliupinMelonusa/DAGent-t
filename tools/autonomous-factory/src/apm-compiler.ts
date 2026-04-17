@@ -34,7 +34,7 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Graph-only fields that NEVER inherit from the node pool/templates. */
-const GRAPH_ONLY_FIELDS = new Set(["phase", "depends_on", "on_failure", "triage", "poll_target", "triage_profile", "post_ci_artifact_to_pr"]);
+const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure", "triage", "poll_target", "triage_profile", "post_ci_artifact_to_pr"]);
 
 /**
  * Merge node catalog (from manifest.nodes) and legacy _templates into workflow

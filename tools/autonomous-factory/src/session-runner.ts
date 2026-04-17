@@ -485,7 +485,6 @@ const stepCircuitBreaker: DispatchStep = async (dc) => {
     key: next.key,
     label: next.label,
     agent: next.agent ?? "unknown",
-    phase: next.phase ?? "unknown",
     attempt: attemptCounts[next.key],
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
@@ -537,7 +536,6 @@ const stepInit: DispatchStep = async (dc) => {
   logger.event("item.start", next.key, {
     label: next.label,
     agent: next.agent,
-    phase: next.phase,
     node_type: dc.node?.type ?? "agent",
     category: dc.node?.category ?? "unknown",
   });
@@ -552,7 +550,6 @@ const stepInit: DispatchStep = async (dc) => {
     key: next.key,
     label: next.label,
     agent: next.agent ?? "unknown",
-    phase: next.phase ?? "unknown",
     attempt: attemptCounts[next.key],
     startedAt: new Date().toISOString(),
     finishedAt: "",

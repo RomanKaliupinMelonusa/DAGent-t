@@ -5,7 +5,7 @@
 #
 # Node definitions live in apm.yml → nodes: (the pool).
 # Compiler merges pool defaults → workflow node (workflow fields win).
-# Graph-only fields (depends_on, on_failure, phase, poll_target, triage_profile)
+# Graph-only fields (depends_on, on_failure, poll_target, triage_profile)
 # are NEVER inherited from the pool.
 #
 # 12-node DAG (11 work nodes + 1 barrier): no infra wave (Managed Runtime is SaaS),
@@ -20,21 +20,13 @@
 # ═══════════════════════════════════════════════════════════════════════
 storefront:
   description: "Storefront pipeline: dev → unit test → E2E → deploy → finalize"
-  phases:
-    - pre-deploy
-    - validation
-    - finalize
-    - deploy
-    - triage
 
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
-      phase: pre-deploy
       depends_on: []
 
     storefront-unit-test:
-      phase: pre-deploy
       depends_on: [storefront-dev]
       on_failure:
         triage: triage-storefront
@@ -46,11 +38,9 @@ storefront:
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
     e2e-author:
-      phase: validation
       depends_on: [storefront-unit-test]
 
     e2e-runner:
-      phase: validation
       depends_on: [e2e-author]
       on_failure:
         triage: triage-storefront
@@ -62,45 +52,36 @@ storefront:
           blocked: null
 
     create-draft-pr:
-      phase: validation
       depends_on: [storefront-unit-test, e2e-author]
 
     # ── Barrier: wait for all validation branches before finalize ──────
     validation-gate:
-      phase: validation
       depends_on: [e2e-runner, create-draft-pr]
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      phase: finalize
       depends_on: [validation-gate]
 
     docs-archived:
-      phase: finalize
       depends_on: [code-cleanup]
 
     doc-architect:
-      phase: finalize
       depends_on: [code-cleanup, docs-archived]
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
     push-app:
-      phase: deploy
       depends_on: [doc-architect]
 
     poll-app-ci:
-      phase: deploy
       depends_on: [push-app]
       poll_target: push-app
 
     publish-pr:
-      phase: deploy
       depends_on: [poll-app-ci]
 
     # ── Triage ─────────────────────────────────────────────────────────
     triage-storefront:
       _node: triage-node
-      phase: triage
       depends_on: []
       triage_profile: storefront
 

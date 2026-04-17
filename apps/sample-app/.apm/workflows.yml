@@ -5,7 +5,7 @@
 #
 # Node definitions live in apm.yml → nodes: (the pool).
 # Compiler merges pool defaults → workflow node (workflow fields win).
-# Graph-only fields (depends_on, on_failure, phase, poll_target, triage_profile)
+# Graph-only fields (depends_on, on_failure, poll_target, triage_profile)
 # are NEVER inherited from the pool.
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -13,14 +13,6 @@
 # ═══════════════════════════════════════════════════════════════════════
 full-stack:
   description: "Full-stack pipeline: infra → backend + frontend → test → deploy → finalize"
-  phases:
-    - infra
-    - approval
-    - pre-deploy
-    - deploy
-    - post-deploy
-    - finalize
-    - triage
 
   # Workflow-level failure routing defaults — inherited by nodes with on_failure.
   # Per-node routes override these. Nodes without on_failure are unaffected.
@@ -37,25 +29,20 @@ full-stack:
   nodes:
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
     schema-dev:
-      phase: infra
       depends_on: []
 
     infra-architect:
-      phase: infra
       depends_on: [schema-dev]
 
     push-infra:
       _node: push-code
-      phase: infra
       depends_on: [infra-architect]
 
     create-draft-pr:
-      phase: infra
       depends_on: [push-infra]
 
     poll-infra-plan:
       _node: poll-ci
-      phase: infra
       depends_on: [create-draft-pr]
       post_ci_artifact_to_pr: "plan-output"
       poll_target: push-infra
@@ -64,46 +51,37 @@ full-stack:
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
       _node: await-approval
-      phase: approval
       depends_on: [poll-infra-plan]
 
     infra-handoff:
-      phase: approval
       depends_on: [await-infra-approval]
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
-      phase: pre-deploy
       depends_on: [schema-dev, infra-handoff]
 
     frontend-dev:
-      phase: pre-deploy
       depends_on: [schema-dev, infra-handoff]
 
     backend-unit-test:
-      phase: pre-deploy
       depends_on: [backend-dev]
       on_failure:
         routes: { backend: backend-dev }
 
     frontend-unit-test:
-      phase: pre-deploy
       depends_on: [frontend-dev]
       on_failure:
         routes: { frontend: frontend-dev }
 
     push-app:
-      phase: deploy
       depends_on: [backend-unit-test, frontend-unit-test]
 
     poll-app-ci:
-      phase: deploy
       depends_on: [push-app]
       poll_target: push-app
 
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
-      phase: post-deploy
       depends_on: [poll-app-ci]
       on_failure:
         routes:
@@ -113,7 +91,6 @@ full-stack:
           infra: infra-architect
 
     live-ui:
-      phase: post-deploy
       depends_on: [poll-app-ci, integration-test]
       on_failure:
         routes:
@@ -124,25 +101,20 @@ full-stack:
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      phase: finalize
       depends_on: [integration-test, live-ui]
 
     docs-archived:
-      phase: finalize
       depends_on: [code-cleanup]
 
     doc-architect:
-      phase: finalize
       depends_on: [code-cleanup, docs-archived]
 
     publish-pr:
-      phase: finalize
       depends_on: [doc-architect]
 
     # ── Triage ─────────────────────────────────────────────────────────
     triage-full-stack:
       _node: triage-node
-      phase: triage
       depends_on: []
       triage_profile: full-stack
 
@@ -197,14 +169,6 @@ full-stack:
 # ═══════════════════════════════════════════════════════════════════════
 backend:
   description: "Backend-only pipeline: schema → backend → test → deploy → finalize"
-  phases:
-    - infra
-    - approval
-    - pre-deploy
-    - deploy
-    - post-deploy
-    - finalize
-    - triage
 
   # Workflow-level failure routing defaults
   default_on_failure:
@@ -219,25 +183,20 @@ backend:
 
   nodes:
     schema-dev:
-      phase: infra
       depends_on: []
 
     infra-architect:
-      phase: infra
       depends_on: [schema-dev]
 
     push-infra:
       _node: push-code
-      phase: infra
       depends_on: [infra-architect]
 
     create-draft-pr:
-      phase: infra
       depends_on: [push-infra]
 
     poll-infra-plan:
       _node: poll-ci
-      phase: infra
       depends_on: [create-draft-pr]
       post_ci_artifact_to_pr: "plan-output"
       poll_target: push-infra
@@ -245,34 +204,27 @@ backend:
 
     await-infra-approval:
       _node: await-approval
-      phase: approval
       depends_on: [poll-infra-plan]
 
     infra-handoff:
-      phase: approval
       depends_on: [await-infra-approval]
 
     backend-dev:
-      phase: pre-deploy
       depends_on: [schema-dev, infra-handoff]
 
     backend-unit-test:
-      phase: pre-deploy
       depends_on: [backend-dev]
       on_failure:
         routes: { backend: backend-dev, infra: infra-architect }
 
     push-app:
-      phase: deploy
       depends_on: [backend-unit-test]
 
     poll-app-ci:
-      phase: deploy
       depends_on: [push-app]
       poll_target: push-app
 
     integration-test:
-      phase: post-deploy
       depends_on: [poll-app-ci]
       on_failure:
         routes:
@@ -281,24 +233,19 @@ backend:
           infra: infra-architect
 
     code-cleanup:
-      phase: finalize
       depends_on: [integration-test]
 
     docs-archived:
-      phase: finalize
       depends_on: [code-cleanup]
 
     doc-architect:
-      phase: finalize
       depends_on: [code-cleanup, docs-archived]
 
     publish-pr:
-      phase: finalize
       depends_on: [doc-architect]
 
     triage-backend:
       _node: triage-node
-      phase: triage
       depends_on: []
       triage_profile: backend
 

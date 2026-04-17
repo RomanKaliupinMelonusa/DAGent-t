@@ -13,8 +13,7 @@
  *   init              <slug> <type>               — Create state + TRANS for a new feature
  *   complete          <slug> <item-key>           — Mark an item as done
  *   fail              <slug> <item-key> <message> — Record a failure
- *   reset-scripts     <slug> <phase>              — Reset script-type nodes in the given phase for re-push
- *   reset-phases      <slug> <phases-csv> <reason> — Reset all nodes in the given phases for redevelopment
+ *   reset-scripts     <slug> <category>            — Reset script-type nodes in the given category for re-push
  *   resume            <slug>                      — Resume pipeline after elevated apply
  *   recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply
  *   status            <slug>                      — Print current state JSON to stdout
@@ -67,21 +66,6 @@ const APP_ROOT = process.env.APP_ROOT
   ? (process.env.APP_ROOT.startsWith("/") ? process.env.APP_ROOT : join(REPO_ROOT, process.env.APP_ROOT))
   : REPO_ROOT;
 const IN_PROGRESS = join(APP_ROOT, "in-progress");
-
-// ─── Phase Heading Formatting ───────────────────────────────────────────────
-
-/**
- * Format a phase slug into a human-readable heading.
- * Checks config-driven `phaseLabels` first, then falls back to title-casing the slug.
- * @param {string} phase - Phase slug (e.g. "pre-deploy", "infra")
- * @param {Record<string, string>} [phaseLabels] - Optional config-driven label map
- * @returns {string} Human-readable heading (e.g. "Pre-Deploy", "Infrastructure (Wave 1)")
- */
-export function formatPhaseHeading(phase, phaseLabels) {
-  if (phaseLabels && phaseLabels[phase]) return phaseLabels[phase];
-  // Title-case: "pre-deploy" → "Pre Deploy", "infra" → "Infra"
-  return phase.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
-}
 
 // ─── Graph Utilities ────────────────────────────────────────────────────────
 
@@ -218,20 +202,13 @@ function renderTrans(slug, state) {
   lines.push("");
   lines.push("## Checklist");
 
-  // Group items by phase (use state.phases if available, else derive from items)
-  const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
-  const phaseLabels = state.phaseLabels || undefined;
-  for (const phase of phases) {
-    const heading = formatPhaseHeading(phase, phaseLabels);
-    lines.push(`### ${heading}`);
-    for (const item of state.items.filter((i) => i.phase === phase)) {
-      const box =
-        item.status === "done"   ? "[x]" :
-        item.status === "na"     ? "[x] [N/A]" :
-        item.status === "failed" ? "[ ] ⚠️" :
-        "[ ]";
-      lines.push(`- ${box} ${item.label} (${item.agent})`);
-    }
+  for (const item of state.items) {
+    const box =
+      item.status === "done"   ? "[x]" :
+      item.status === "na"     ? "[x] [N/A]" :
+      item.status === "failed" ? "[ ] ⚠️" :
+      "[ ]";
+    lines.push(`- ${box} ${item.label} (${item.agent})`);
   }
 
   // Error log
@@ -372,20 +349,24 @@ export function initState(slug, workflowName, contextJsonPath) {
     );
   }
 
-  const { phases, nodes } = workflow;
-  if (!phases || !Array.isArray(phases) || phases.length === 0) {
-    throw new Error(`Workflow "${workflowName}" has no phases array in ${contextJsonPath}.`);
-  }
+  const { nodes } = workflow;
 
-  // Build items array from workflow nodes (order: by phase, then alphabetical within phase)
-  const phaseOrder = new Map(phases.map((p, i) => [p, i]));
-  const nodeEntries = Object.entries(nodes);
-  nodeEntries.sort(([aKey, aNode], [bKey, bNode]) => {
-    const pa = phaseOrder.get(aNode.phase) ?? 999;
-    const pb = phaseOrder.get(bNode.phase) ?? 999;
-    if (pa !== pb) return pa - pb;
-    return aKey.localeCompare(bKey);
-  });
+  // Topological sort — items ordered by DAG dependency (execution order)
+  const visited = new Set();
+  const stack = new Set();
+  const topoOrder = [];
+  function visit(key) {
+    if (stack.has(key)) throw new Error(`Cycle detected in DAG involving node "${key}"`);
+    if (visited.has(key)) return;
+    stack.add(key);
+    for (const dep of nodes[key]?.depends_on ?? []) visit(dep);
+    stack.delete(key);
+    visited.add(key);
+    topoOrder.push(key);
+  }
+  for (const key of Object.keys(nodes)) visit(key);
+
+  const nodeEntries = topoOrder.map((key) => [key, nodes[key]]);
 
   // Build dependencies, nodeTypes, nodeCategories from workflow
   const dependencies = {};
@@ -406,7 +387,6 @@ export function initState(slug, workflowName, contextJsonPath) {
     key,
     label: key,
     agent: node.agent ?? null,
-    phase: node.phase,
     status: "pending",
     error: null,
   }));
@@ -421,8 +401,6 @@ export function initState(slug, workflowName, contextJsonPath) {
     errorLog: [],
     // ── Dynamic graph (persisted in _STATE.json) ──────────────────────
     dependencies,
-    phases,
-    phaseLabels: context.config?.phase_labels || null,
     nodeTypes,
     nodeCategories,
     naByType,
@@ -436,7 +414,7 @@ export function initState(slug, workflowName, contextJsonPath) {
 /**
  * Mark a pipeline item as completed.
  * @returns {object} Updated state
- * @throws {Error} if itemKey unknown or phase-gate violation
+ * @throws {Error} if itemKey unknown
  */
 export function completeItem(slug, itemKey) {
   if (!slug || !itemKey) {
@@ -452,19 +430,6 @@ export function completeItem(slug, itemKey) {
 
     if (item.status === "na") {
       return state; // N/A items are silently skipped
-    }
-
-    // Phase-gating check: ensure all prior phases are complete
-    const itemPhases = state.phases || [...new Set(state.items.map((i) => i.phase))];
-    const itemPhaseIndex = itemPhases.indexOf(item.phase);
-    for (let pi = 0; pi < itemPhaseIndex; pi++) {
-      const phase = itemPhases[pi];
-      const incomplete = state.items.filter(
-        (i) => i.phase === phase && i.status !== "done" && i.status !== "na"
-      );
-      if (incomplete.length > 0) {
-        throw new Error(`Cannot complete "${itemKey}" — prior phase "${phase}" has incomplete items: ${incomplete.map((i) => i.key).join(", ")}`);
-      }
     }
 
     item.status = "done";
@@ -535,11 +500,12 @@ export function salvageForDraft(slug, failedItemKey) {
   const skipKeys = new Set(getDownstream(state, [failedItemKey]));
   // Force salvage survivor nodes to pending for draft PR creation.
   // These are the minimum path for degraded mode.
-  // If salvageSurvivors is not persisted (legacy state), fall back to finalize-phase nodes.
+  // If salvageSurvivors is not persisted (legacy state), fall back to finalize-category nodes.
+  const nodeCategories = state.nodeCategories || {};
   const forcePendingKeys = new Set(
     (state.salvageSurvivors && state.salvageSurvivors.length > 0)
       ? state.salvageSurvivors
-      : state.items.filter(i => i.phase === "finalize").map(i => i.key)
+      : state.items.filter(i => nodeCategories[i.key] === "finalize").map(i => i.key)
   );
   const skippedKeys = [];
   for (const item of state.items) {
@@ -596,7 +562,7 @@ export function resumeAfterElevated(slug, maxCycles = 5) {
   // plus deploy items that need a fresh push + poll cycle
   const forceResetKeys = new Set(
     state.items
-      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === "deploy")
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && (state.nodeCategories || {})[i.key] === "deploy")
       .map((i) => i.key),
   );
   let resetCount = 0;
@@ -636,7 +602,7 @@ export function resumeAfterElevated(slug, maxCycles = 5) {
  * Records the failure on the infra CI observer, then delegates to resetNodes()
  * to cascade-reset from the infra dev entry point.
  *
- * CLI convenience — derives infra phase keys from the DAG instead of requiring
+ * CLI convenience — derives infra node keys from the DAG instead of requiring
  * the caller to know specific node keys.
  *
  * @param {string} slug - Feature slug
@@ -653,8 +619,9 @@ export function recoverElevated(slug, errorMessage, maxFailCount = 10, maxDevCyc
 
   // Step 1: Record the failure on the infra CI observer via failItem
   const state = readStateOrThrow(slug);
+  const cats = state.nodeCategories || {};
   const infraPollKey = state.items
-    .filter((i) => i.phase === "infra" && (state.nodeTypes || {})[i.key] === "script")
+    .filter((i) => cats[i.key] === "deploy" && (state.nodeTypes || {})[i.key] === "script" && i.key.includes("infra"))
     .at(-1)?.key;
   if (infraPollKey) {
     const failResult = failItem(slug, infraPollKey, `Elevated apply failed: ${errorMessage}`);
@@ -669,7 +636,8 @@ export function recoverElevated(slug, errorMessage, maxFailCount = 10, maxDevCyc
   // Re-read state after failItem to avoid stale reference across lock boundaries
   const freshState = infraPollKey ? readStateOrThrow(slug) : state;
   const infraDevKey = freshState.items
-    .find((i) => i.phase === "infra" && (freshState.nodeCategories || {})[i.key] === "dev")?.key;
+    .find((i) => (freshState.nodeCategories || {})[i.key] === "dev"
+      && (freshState.dependencies || {})[i.key]?.length === 0)?.key;
   if (!infraDevKey) {
     throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
   }
@@ -680,27 +648,29 @@ export function recoverElevated(slug, errorMessage, maxFailCount = 10, maxDevCyc
 
 /**
  * Reset push-app + poll-app-ci for a re-push cycle (application wave).
+ * @param {string} slug - Feature slug
+ * @param {string} category - Node category to filter by (e.g. "deploy")
  * @returns {{ state: object, cycleCount: number, halted: boolean }}
  * @throws {Error} if slug missing or state file not found
  */
-export function resetScripts(slug, phase, maxCycles = 10) {
-  if (!slug || !phase) {
-    throw new Error("resetScripts requires slug and phase");
+export function resetScripts(slug, category, maxCycles = 10) {
+  if (!slug || !category) {
+    throw new Error("resetScripts requires slug and category");
   }
 
   return withLock(slug, () => {
   const state = readStateOrThrow(slug);
 
-  const logKey = `reset-scripts:${phase}`;
+  const logKey = `reset-scripts:${category}`;
   const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
   if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true };
   }
 
-  // Derive script nodes in the specified phase from the persisted graph
+  // Derive script nodes in the specified category from the persisted graph
   const resetKeys = new Set(
     state.items
-      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && i.phase === phase)
+      .filter((i) => (state.nodeTypes || {})[i.key] === "script" && (state.nodeCategories || {})[i.key] === category)
       .map((i) => i.key)
   );
 
@@ -719,7 +689,7 @@ export function resetScripts(slug, phase, maxCycles = 10) {
   state.errorLog.push({
     timestamp: new Date().toISOString(),
     itemKey: logKey,
-    message: `Script re-push cycle for phase "${phase}" (cycle ${cycleCount + 1}/${maxCycles}). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
+    message: `Script re-push cycle for category "${category}" (cycle ${cycleCount + 1}/${maxCycles}). Reset ${resetCount} items: ${[...resetKeys].join(", ")}`,
   });
 
   writeState(slug, state);
@@ -785,60 +755,6 @@ export function resetNodes(slug, seedKey, reason, maxCycles = 5, logKey = "reset
 export const resetForReroute = resetNodes;
 
 /**
- * Reset all nodes in the specified phases back to pending.
- * Generalized replacement for the former `redevelopInfra` which was hardcoded
- * to reset ["infra", "approval"] phases. Now accepts any comma-separated
- * phase list.
- *
- * @param {string} slug - Feature slug
- * @param {string} phasesCsv - Comma-separated phase names (e.g. "infra,approval")
- * @param {string} reason - Human-readable reason for the rollback
- * @returns {{ state: object, cycleCount: number, halted: boolean }}
- * @throws {Error} if slug, phases, or reason missing, or state file not found
- */
-export function resetPhases(slug, phasesCsv, reason, maxCycles = 5) {
-  if (!slug || !phasesCsv || !reason) {
-    throw new Error("resetPhases requires slug, phasesCsv, and reason");
-  }
-
-  return withLock(slug, () => {
-  const state = readStateOrThrow(slug);
-
-  const cycleCount = state.errorLog.filter((e) => e.itemKey === "reset-phases").length;
-  if (cycleCount >= maxCycles) {
-    return { state, cycleCount, halted: true };
-  }
-
-  // Parse phase list from CSV
-  const targetPhases = new Set(phasesCsv.split(",").map((p) => p.trim()).filter(Boolean));
-  const resetItemKeys = new Set(
-    state.items.filter((i) => targetPhases.has(i.phase)).map((i) => i.key),
-  );
-
-  // Cascade barrier nodes: if any barrier's dependency is being reset, reset the barrier too.
-  cascadeBarriers(state, resetItemKeys);
-
-  let resetCount = 0;
-  for (const item of state.items) {
-    if (resetItemKeys.has(item.key) && item.status !== "na") {
-      item.status = "pending";
-      item.error = null;
-      resetCount++;
-    }
-  }
-
-  state.errorLog.push({
-    timestamp: new Date().toISOString(),
-    itemKey: "reset-phases",
-    message: `Phase reset cycle ${cycleCount + 1}/${maxCycles} for [${phasesCsv}]: ${reason}. Reset ${resetCount} items: ${[...resetItemKeys].join(", ")}`,
-  });
-
-  writeState(slug, state);
-  return { state, cycleCount: cycleCount + 1, halted: false };
-  }); // end withLock
-}
-
-/**
  * @returns {object} The state object
  * @throws {Error} if slug missing or state file not found
  */
@@ -851,7 +767,7 @@ export function getStatus(slug) {
 
 /**
  * Get the next actionable item.
- * @returns {{ key: string|null, label: string, agent: string|null, phase: string|null, status: string }}
+ * @returns {{ key: string|null, label: string, agent: string|null, status: string }}
  * @throws {Error} if slug missing or state file not found
  */
 export function getNext(slug) {
@@ -861,24 +777,20 @@ export function getNext(slug) {
 
   const state = readStateOrThrow(slug);
 
-  const phases = state.phases || [...new Set(state.items.map((i) => i.phase))];
-  for (const phase of phases) {
-    const phaseItems = state.items.filter((i) => i.phase === phase);
-    const incomplete = phaseItems.filter((i) => i.status !== "done" && i.status !== "na");
-
-    if (incomplete.length > 0) {
-      const next = incomplete[0];
-      return { key: next.key, label: next.label, agent: next.agent, phase: next.phase, status: next.status };
+  // Find the first incomplete item in topological order (items are stored in topo order)
+  for (const item of state.items) {
+    if (item.status !== "done" && item.status !== "na") {
+      return { key: item.key, label: item.label, agent: item.agent, status: item.status };
     }
   }
 
-  return { key: null, label: "Pipeline complete", agent: null, phase: null, status: "complete" };
+  return { key: null, label: "Pipeline complete", agent: null, status: "complete" };
 }
 
 /**
  * Get ALL currently runnable items (items whose DAG dependencies are all done/na).
  * Returns an array of items that can execute in parallel.
- * @returns {Array<{key: string|null, label: string, agent: string|null, phase: string|null, status: string}>}
+ * @returns {Array<{key: string|null, label: string, agent: string|null, status: string}>}
  * @throws {Error} if slug missing or state file not found
  */
 export function getNextAvailable(slug) {
@@ -905,7 +817,6 @@ export function getNextAvailable(slug) {
         key: item.key,
         label: item.label,
         agent: item.agent,
-        phase: item.phase,
         status: item.status,
       });
     }
@@ -914,10 +825,10 @@ export function getNextAvailable(slug) {
   if (available.length === 0) {
     const allDone = state.items.every((i) => i.status === "done" || i.status === "na");
     if (allDone) {
-      return [{ key: null, label: "Pipeline complete", agent: null, phase: null, status: "complete" }];
+      return [{ key: null, label: "Pipeline complete", agent: null, status: "complete" }];
     }
     // Pending items exist but none are runnable — blocked by unresolved failures
-    return [{ key: null, label: "Pipeline blocked", agent: null, phase: null, status: "blocked" }];
+    return [{ key: null, label: "Pipeline blocked", agent: null, status: "blocked" }];
   }
 
   return available;
@@ -1117,39 +1028,19 @@ function cmdFail(slug, itemKey, message) {
   }
 }
 
-function cmdResetScripts(slug, phase) {
-  if (!slug || !phase) {
-    console.error("Usage: pipeline-state.mjs reset-scripts <slug> <phase>");
+function cmdResetScripts(slug, category) {
+  if (!slug || !category) {
+    console.error("Usage: pipeline-state.mjs reset-scripts <slug> <category>");
     process.exit(1);
   }
 
   try {
-    const { cycleCount, halted } = resetScripts(slug, phase);
+    const { cycleCount, halted } = resetScripts(slug, category);
     if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles for phase "${phase}". Requires human intervention.`);
+      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles for category "${category}". Requires human intervention.`);
       process.exit(2);  // Exit code 2 = halted
     } else {
-      console.log(`🔄 Reset script items in phase "${phase}" for re-push cycle (${cycleCount}/10).`);
-    }
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdResetPhases(slug, phasesCsv, reason) {
-  if (!slug || !phasesCsv || !reason) {
-    console.error("Usage: pipeline-state.mjs reset-phases <slug> <phases-csv> <reason>");
-    process.exit(1);
-  }
-
-  try {
-    const { cycleCount, halted } = resetPhases(slug, phasesCsv, reason);
-    if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} phase reset cycles. Requires human intervention.`);
-      process.exit(2);
-    } else {
-      console.log(`🔄 Phase reset triggered for [${phasesCsv}] (cycle ${cycleCount}/5). Items reset to pending.`);
+      console.log(`🔄 Reset script items in category "${category}" for re-push cycle (${cycleCount}/10).`);
     }
   } catch (err) {
     console.error(`ERROR: ${err.message}`);
@@ -1308,9 +1199,6 @@ switch (command) {
   case "reset-scripts":
     cmdResetScripts(args[0], args[1]);
     break;
-  case "reset-phases":
-    cmdResetPhases(args[0], args[1], args.slice(2).join(" "));
-    break;
   case "resume":
     cmdResume(args[0]);
     break;
@@ -1344,8 +1232,7 @@ switch (command) {
     console.error("  init         <slug> <type>               — Initialize pipeline state");
     console.error("  complete     <slug> <item-key>           — Mark item as done");
     console.error("  fail         <slug> <item-key> <message> — Record a failure");
-    console.error("  reset-scripts    <slug> <phase>                — Reset script-type nodes in the given phase for re-push");
-    console.error("  reset-phases     <slug> <phases-csv> <reason>  — Reset all nodes in the given phases for redevelopment");
+    console.error("  reset-scripts    <slug> <category>              — Reset script-type nodes in the given category for re-push");
     console.error("  resume            <slug>                      — Resume pipeline after elevated apply");
     console.error("  recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply");
     console.error("  status            <slug>                      — Print state JSON");

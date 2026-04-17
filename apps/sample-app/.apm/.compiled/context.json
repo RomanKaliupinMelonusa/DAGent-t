@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-16T21:59:40.942Z",
+  "compiledAt": "2026-04-17T03:13:21.471Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -730,15 +730,6 @@
   "workflows": {
     "full-stack": {
       "description": "Full-stack pipeline: infra → backend + frontend → test → deploy → finalize",
-      "phases": [
-        "infra",
-        "approval",
-        "pre-deploy",
-        "deploy",
-        "post-deploy",
-        "finalize",
-        "triage"
-      ],
       "nodes": {
         "schema-dev": {
           "type": "agent",
@@ -767,7 +758,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": []
         },
         "infra-architect": {
@@ -797,7 +787,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "schema-dev"
           ]
@@ -827,7 +816,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "infra-architect"
           ]
@@ -851,7 +839,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "infra",
           "depends_on": [
             "push-infra"
           ]
@@ -881,7 +868,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "create-draft-pr"
           ],
@@ -906,7 +892,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "approval",
           "depends_on": [
             "poll-infra-plan"
           ]
@@ -937,7 +922,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "approval",
           "depends_on": [
             "await-infra-approval"
           ]
@@ -972,7 +956,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "pre-deploy",
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1008,7 +991,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "pre-deploy",
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1043,7 +1025,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "pre-deploy",
           "depends_on": [
             "backend-dev"
           ],
@@ -1087,7 +1068,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "pre-deploy",
           "depends_on": [
             "frontend-dev"
           ],
@@ -1130,7 +1110,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "deploy",
           "depends_on": [
             "backend-unit-test",
             "frontend-unit-test"
@@ -1162,7 +1141,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "deploy",
           "depends_on": [
             "push-app"
           ],
@@ -1200,7 +1178,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "post-deploy",
           "depends_on": [
             "poll-app-ci"
           ],
@@ -1253,7 +1230,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "post-deploy",
           "depends_on": [
             "poll-app-ci",
             "integration-test"
@@ -1293,7 +1269,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "finalize",
           "depends_on": [
             "integration-test",
             "live-ui"
@@ -1319,7 +1294,6 @@
           "produces": [],
           "consumes": [],
           "salvage_survivor": true,
-          "phase": "finalize",
           "depends_on": [
             "code-cleanup"
           ]
@@ -1343,7 +1317,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "finalize",
           "depends_on": [
             "code-cleanup",
             "docs-archived"
@@ -1375,7 +1348,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "finalize",
           "depends_on": [
             "doc-architect"
           ]
@@ -1398,7 +1370,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "triage",
           "depends_on": [],
           "triage_profile": "full-stack"
         }
@@ -1481,15 +1452,6 @@
     },
     "backend": {
       "description": "Backend-only pipeline: schema → backend → test → deploy → finalize",
-      "phases": [
-        "infra",
-        "approval",
-        "pre-deploy",
-        "deploy",
-        "post-deploy",
-        "finalize",
-        "triage"
-      ],
       "nodes": {
         "schema-dev": {
           "type": "agent",
@@ -1518,7 +1480,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": []
         },
         "infra-architect": {
@@ -1548,7 +1509,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "schema-dev"
           ]
@@ -1578,7 +1538,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "infra-architect"
           ]
@@ -1602,7 +1561,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "infra",
           "depends_on": [
             "push-infra"
           ]
@@ -1632,7 +1590,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "infra",
           "depends_on": [
             "create-draft-pr"
           ],
@@ -1657,7 +1614,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "approval",
           "depends_on": [
             "poll-infra-plan"
           ]
@@ -1688,7 +1644,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "approval",
           "depends_on": [
             "await-infra-approval"
           ]
@@ -1723,7 +1678,6 @@
             "allows_timeout_salvage": true,
             "revert_warning_at": 3
           },
-          "phase": "pre-deploy",
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1758,7 +1712,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "pre-deploy",
           "depends_on": [
             "backend-dev"
           ],
@@ -1802,7 +1755,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "deploy",
           "depends_on": [
             "backend-unit-test"
           ]
@@ -1833,7 +1785,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "deploy",
           "depends_on": [
             "push-app"
           ],
@@ -1871,7 +1822,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "post-deploy",
           "depends_on": [
             "poll-app-ci"
           ],
@@ -1909,7 +1859,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "finalize",
           "depends_on": [
             "integration-test"
           ]
@@ -1934,7 +1883,6 @@
           "produces": [],
           "consumes": [],
           "salvage_survivor": true,
-          "phase": "finalize",
           "depends_on": [
             "code-cleanup"
           ]
@@ -1958,7 +1906,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "finalize",
           "depends_on": [
             "code-cleanup",
             "docs-archived"
@@ -1990,7 +1937,6 @@
             "halt_on_identical": true,
             "revert_warning_at": 3
           },
-          "phase": "finalize",
           "depends_on": [
             "doc-architect"
           ]
@@ -2013,7 +1959,6 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
-          "phase": "triage",
           "depends_on": [],
           "triage_profile": "backend"
         }

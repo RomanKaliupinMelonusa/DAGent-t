@@ -147,9 +147,7 @@ export const ApmConfigSchema = z.object({
   cycle_limits: z.object({
     /** Max reroute cycles via triage profiles (resetNodes). */
     reroute: z.number().int().positive().default(5),
-    /** Max phase-level reset cycles (resetPhases, resumeAfterElevated). */
-    phases: z.number().int().positive().default(5),
-    /** Max script-only reset cycles per phase (resetScripts). */
+    /** Max script-only reset cycles per category (resetScripts). */
     scripts: z.number().int().positive().default(10),
   }).optional(),
 
@@ -183,9 +181,7 @@ export const ApmConfigSchema = z.object({
    *  into upstream dev agents. Default: ["test"]. */
   redevelopment_categories: z.array(z.string()).default(["test"]),
 
-  /** Human-readable labels for phase slugs, used in TRANS.md and reports.
-   *  Falls back to title-casing the slug. E.g. { "pre-deploy": "Pre-Deploy", "infra": "Infrastructure (Wave 1)" }. */
-  phase_labels: z.record(z.string(), z.string()).optional(),
+
 
   /** Handler inference map: node type (or "type:script_type") → handler key.
    *  Used by the kernel when a node does not declare an explicit `handler` field.
@@ -271,7 +267,7 @@ export const OnFailureSchema = z.object({
  * Node body fields — the execution shape of a node.
  * Shared between the node catalog (ApmNodeCatalogEntrySchema) and
  * the full merged workflow node (ApmWorkflowNodeSchemaBase).
- * Graph-only fields (phase, depends_on, on_failure, poll_target, triage_profile,
+ * Graph-only fields (depends_on, on_failure, poll_target, triage_profile,
  * post_ci_artifact_to_pr) are NOT included here.
  */
 const nodeBodyFields = {
@@ -314,12 +310,12 @@ const nodeBodyFields = {
   writes_deploy_sentinel: z.boolean().default(false),
   /** When true, writeChangeManifest() is called before the agent session starts. */
   generates_change_manifest: z.boolean().default(false),
-  /** When true, buildPhaseRejectionContext() is injected into the agent prompt
-   *  during redevelopment cycles triggered by `pipeline:reset-phases`.
-   *  @deprecated field name — use `injects_phase_rejection` in new workflows. */
+  /** When true, buildTriageRejectionContext() is injected into the agent prompt
+   *  during redevelopment cycles triggered by triage rerouting.
+   *  @deprecated field name — use `injects_triage_rejection` in new workflows. */
   injects_infra_rollback: z.boolean().default(false),
   /** Alias for `injects_infra_rollback` — preferred name for new workflows. */
-  injects_phase_rejection: z.boolean().optional(),
+  injects_triage_rejection: z.boolean().optional(),
   /** Deterministic handler type for script nodes: built-in values are "poll" and "local-exec".
    *  Custom script_type values are allowed — declare a matching handler in config.handler_defaults.
    *  Push and publish are now expressed as local-exec with pre/command/post hooks. */
@@ -365,7 +361,7 @@ const nodeBodyFields = {
 
 // ---------------------------------------------------------------------------
 // Node Catalog Entry — the "pool" definition of a reusable node (apm.yml → nodes:)
-// No graph-only fields (phase, depends_on, on_failure, poll_target, triage_profile, post_ci_artifact_to_pr).
+// No graph-only fields (depends_on, on_failure, poll_target, triage_profile, post_ci_artifact_to_pr).
 // ---------------------------------------------------------------------------
 
 export const ApmNodeCatalogEntrySchema = z.object(nodeBodyFields);
@@ -386,8 +382,6 @@ export const ApmWorkflowNodeRefSchema = z.object({
   /** Explicit reference to a node catalog entry by key. If omitted, the compiler
    *  matches by workflow node key against the catalog. Replaces `_template`. */
   _node: z.string().optional(),
-  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
-  phase: z.string(),
   /** DAG edges — keys of nodes that must complete before this one can run. */
   depends_on: z.array(z.string()).default([]),
   /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). */
@@ -413,8 +407,6 @@ export const ApmWorkflowNodeRefSchema = z.object({
 
 const ApmWorkflowNodeSchemaBase = z.object({
   ...nodeBodyFields,
-  /** Pipeline phase this node belongs to (must appear in the workflow's phases array). */
-  phase: z.string(),
   /** DAG edges — keys of nodes that must complete before this one can run. */
   depends_on: z.array(z.string()).default([]),
   /** @deprecated Use `on_failure` instead. Triage profile name (from the workflow's `triage` section). When set, failures trigger triage evaluation. */
@@ -574,8 +566,6 @@ export const TriageProfileSchema = z.object({
 export const ApmWorkflowSchema = z.object({
   /** Human-readable description for UI display. */
   description: z.string().optional(),
-  /** Explicit ordered phase names (human-authored). */
-  phases: z.array(z.string()),
   /** Pipeline nodes keyed by item key. */
   nodes: z.record(z.string(), ApmWorkflowNodeSchema),
   /** Workflow-level default failure routing — inherited by nodes that declare on_failure.
@@ -600,16 +590,6 @@ export const ApmWorkflowSchema = z.object({
     return true;
   },
   { message: "Workflow node depends_on references an undefined node key." },
-).refine(
-  (wf) => {
-    // Validate: every node's phase appears in the phases array
-    const phases = new Set(wf.phases);
-    for (const node of Object.values(wf.nodes)) {
-      if (!phases.has(node.phase)) return false;
-    }
-    return true;
-  },
-  { message: "Workflow node references a phase not listed in the workflow's phases array." },
 ).refine(
   (wf) => {
     // Validate: DAG is acyclic
@@ -749,7 +729,7 @@ export const ApmManifestSchema = z.object({
   agents: z.record(z.string(), ApmAgentDeclSchema),
   /** Reusable node pool — all node types (agent, script, barrier, triage, approval).
    *  Replaces `_templates` from workflows.yml. Nodes define WHAT to execute;
-   *  workflows define HOW to connect them (phase, edges, failure routing). */
+   *  workflows define HOW to connect them (edges, failure routing). */
   nodes: z.record(z.string(), ApmNodeCatalogEntrySchema).default({}),
   generatedInstructions: z
     .record(z.string(), ApmGeneratedInstructionSchema)
