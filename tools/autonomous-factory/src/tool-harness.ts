@@ -56,17 +56,43 @@ interface SessionHooks {
 // Constants — exported for testing
 // ---------------------------------------------------------------------------
 
-/** Max lines returned by file_read (and post-hook truncation) when no line range is specified. */
-export const FILE_READ_LINE_LIMIT = 500;
+// --- Harness defaults (global fallbacks when no per-agent override) ---
 
-/** Max file size (bytes) that file_read will load into memory. Prevents OOM on huge logs/dumps. */
-export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+/** Default max lines returned by file_read per call. */
+export const DEFAULT_FILE_READ_LINE_LIMIT = 500;
+/** Default max file size (bytes) for file_read. */
+export const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+/** Default max bytes returned from shell stdout. */
+export const DEFAULT_SHELL_OUTPUT_LIMIT = 64_000;
+/** Default timeout for shell executions (ms). */
+export const DEFAULT_SHELL_TIMEOUT_MS = 600_000;
 
-/** Max bytes returned from shell stdout to prevent context bloat. */
-const SHELL_OUTPUT_LIMIT = 64_000;
+/** @deprecated Use DEFAULT_FILE_READ_LINE_LIMIT instead. Kept for backward compatibility with tests. */
+export const FILE_READ_LINE_LIMIT = DEFAULT_FILE_READ_LINE_LIMIT;
+/** @deprecated Use DEFAULT_MAX_FILE_SIZE instead. */
+export const MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE;
 
-/** Timeout for shell executions (ms). */
-const SHELL_TIMEOUT_MS = 600_000;
+/**
+ * Per-agent resolved harness limits.
+ * Built by the copilot-agent handler via resolution cascade:
+ *   per-agent toolLimits → config.defaultToolLimits → DEFAULT_* constants.
+ */
+export interface ResolvedHarnessLimits {
+  fileReadLineLimit: number;
+  maxFileSize: number;
+  shellOutputLimit: number;
+  shellTimeoutMs: number;
+}
+
+/** Construct ResolvedHarnessLimits from all defaults (used when no per-agent config). */
+export function defaultHarnessLimits(): ResolvedHarnessLimits {
+  return {
+    fileReadLineLimit: DEFAULT_FILE_READ_LINE_LIMIT,
+    maxFileSize: DEFAULT_MAX_FILE_SIZE,
+    shellOutputLimit: DEFAULT_SHELL_OUTPUT_LIMIT,
+    shellTimeoutMs: DEFAULT_SHELL_TIMEOUT_MS,
+  };
+}
 
 // --- Bouncer regexes ---
 
@@ -111,6 +137,14 @@ export const ERR_CODE_READ =
 export const FILE_TRUNCATION_WARNING =
   "\n\n[SYSTEM WARNING: File truncated at 500 lines to prevent token overflow. " +
   "Use start_line/end_line parameters to paginate, or use roam-code tools for structural AST querying.]";
+
+/** Build a truncation warning with the actual per-agent line limit. */
+export function fileTruncationWarning(limit: number): string {
+  return (
+    `\n\n[SYSTEM WARNING: File truncated at ${limit} lines to prevent token overflow. ` +
+    "Use start_line/end_line parameters to paginate, or use roam-code tools for structural AST querying.]"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Zero-Trust: Safe read-only tools (fail-closed write classification)
@@ -362,8 +396,10 @@ export function buildSessionHooks(
   sandbox: AgentSandbox,
   appRoot: string,
   onDenial?: (toolName: string) => void,
+  limits: ResolvedHarnessLimits = defaultHarnessLimits(),
 ): SessionHooks {
   const { allowedCoreTools, allowedMcpTools, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
+  const lineLimit = limits.fileReadLineLimit;
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
   ): PreToolUseHookOutput | void => {
@@ -426,18 +462,18 @@ export function buildSessionHooks(
 
     // If the agent provided line boundaries, enforce the absolute cap on slice size.
     if (args?.startLine != null || args?.endLine != null) {
-      if (lines.length <= FILE_READ_LINE_LIMIT) return;
-      const truncated = lines.slice(0, FILE_READ_LINE_LIMIT).join("\n") +
-        `\n\n[SYSTEM WARNING: Output capped at ${FILE_READ_LINE_LIMIT} lines to prevent token overflow.]`;
+      if (lines.length <= lineLimit) return;
+      const truncated = lines.slice(0, lineLimit).join("\n") +
+        `\n\n[SYSTEM WARNING: Output capped at ${lineLimit} lines to prevent token overflow.]`;
       return {
         modifiedResult: { ...input.toolResult, textResultForLlm: truncated } as any,
       };
     }
 
     // No line boundaries — truncate if over the limit.
-    if (lines.length <= FILE_READ_LINE_LIMIT) return;
+    if (lines.length <= lineLimit) return;
 
-    const truncated = lines.slice(0, FILE_READ_LINE_LIMIT).join("\n") + FILE_TRUNCATION_WARNING;
+    const truncated = lines.slice(0, lineLimit).join("\n") + fileTruncationWarning(lineLimit);
     return {
       modifiedResult: {
         ...input.toolResult,
@@ -461,8 +497,10 @@ export function buildCustomTools(
   repoRoot: string,
   sandbox: AgentSandbox,
   appRoot: string,
+  limits: ResolvedHarnessLimits = defaultHarnessLimits(),
 ): Tool<any>[] {
   const { allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
+  const { fileReadLineLimit, maxFileSize, shellOutputLimit, shellTimeoutMs } = limits;
   // -- file_read tool --
   const fileReadTool = defineTool("file_read", {
     description: "Read the contents of a file safely. Use this instead of 'cat'.",
@@ -497,10 +535,10 @@ export function buildCustomTools(
         const msg = err instanceof Error ? err.message : String(err);
         return `ERROR: Could not stat file: ${msg}`;
       }
-      if (stats.size > MAX_FILE_SIZE) {
+      if (stats.size > maxFileSize) {
         return (
           `ERROR: File is too large (${(stats.size / 1024 / 1024).toFixed(2)} MB). ` +
-          `Maximum allowed size for file_read is ${MAX_FILE_SIZE / 1024 / 1024} MB. ` +
+          `Maximum allowed size for file_read is ${maxFileSize / 1024 / 1024} MB. ` +
           "Use shell tools like 'head', 'tail', or 'grep' to extract specific information from large files."
         );
       }
@@ -520,18 +558,18 @@ export function buildCustomTools(
         // 1-indexed → 0-indexed slicing
         const start = Math.max(0, (args.start_line ?? 1) - 1);
         const requestedEnd = args.end_line != null ? args.end_line : allLines.length;
-        // Enforce absolute cap: never return more than FILE_READ_LINE_LIMIT lines
-        const end = Math.min(requestedEnd, start + FILE_READ_LINE_LIMIT);
+        // Enforce absolute cap: never return more than fileReadLineLimit lines
+        const end = Math.min(requestedEnd, start + fileReadLineLimit);
         let result = allLines.slice(start, end).join("\n");
-        if (requestedEnd > start + FILE_READ_LINE_LIMIT) {
-          result += `\n\n[SYSTEM WARNING: Requested line range exceeded limit. Output capped at ${FILE_READ_LINE_LIMIT} lines.]`;
+        if (requestedEnd > start + fileReadLineLimit) {
+          result += `\n\n[SYSTEM WARNING: Requested line range exceeded limit. Output capped at ${fileReadLineLimit} lines.]`;
         }
         return result;
       }
 
       // No line range — enforce truncation limit
-      if (allLines.length > FILE_READ_LINE_LIMIT) {
-        return allLines.slice(0, FILE_READ_LINE_LIMIT).join("\n") + FILE_TRUNCATION_WARNING;
+      if (allLines.length > fileReadLineLimit) {
+        return allLines.slice(0, fileReadLineLimit).join("\n") + fileTruncationWarning(fileReadLineLimit);
       }
 
       return content;
@@ -587,15 +625,15 @@ export function buildCustomTools(
           cwd,
           env,
           encoding: "utf-8",
-          timeout: SHELL_TIMEOUT_MS,
+          timeout: shellTimeoutMs,
           maxBuffer: 10 * 1024 * 1024, // 10 MB
         });
 
         // Cap output to prevent token bloat
-        if (stdout.length > SHELL_OUTPUT_LIMIT) {
+        if (stdout.length > shellOutputLimit) {
           return (
-            stdout.slice(0, SHELL_OUTPUT_LIMIT) +
-            `\n\n[SYSTEM WARNING: Output truncated at ${SHELL_OUTPUT_LIMIT} characters. ` +
+            stdout.slice(0, shellOutputLimit) +
+            `\n\n[SYSTEM WARNING: Output truncated at ${shellOutputLimit} characters. ` +
             "Pipe through head/tail/grep to narrow results.]"
           );
         }
@@ -609,7 +647,7 @@ export function buildCustomTools(
           const partialStderr = String(e.stderr ?? "").slice(0, 4000);
           return (
             `${partialStdout}\n${partialStderr}\n\n` +
-            `[SYSTEM ENFORCED: Command forcefully terminated after ${SHELL_TIMEOUT_MS / 1000}s ` +
+            `[SYSTEM ENFORCED: Command forcefully terminated after ${shellTimeoutMs / 1000}s ` +
             `to prevent hanging. Assess the partial output above. ` +
             `DO NOT retry this exact command. Call pipeline:fail or pipeline:complete.]`
           );

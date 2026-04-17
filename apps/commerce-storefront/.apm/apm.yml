@@ -263,7 +263,7 @@ nodes:
       allows_timeout_salvage: true
 
 config:
-  defaultToolLimits: { soft: 60, hard: 80 }
+  defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
   hooks:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"

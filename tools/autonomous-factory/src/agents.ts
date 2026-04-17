@@ -274,6 +274,8 @@ export function getAgentConfig(
 
 You have a **hard limit of ${hard} tool calls** for this session. A warning will fire at ${soft} calls.
 Plan your work to finish — including commit and pipeline:complete — within this budget.
+- File reads are capped at **${agentLimits?.fileReadLineLimit ?? manifestDefaults?.fileReadLineLimit ?? 500} lines** per call. Use start_line/end_line to paginate larger files.
+- Shell output is capped at **${agentLimits?.shellOutputLimit ?? manifestDefaults?.shellOutputLimit ?? 64_000} characters**. Pipe through head/tail/grep to narrow results.
 - Batch file reads where possible (read large ranges, not many small reads).
 - Avoid exploratory grepping — use targeted reads and roam tools.
 - Reserve at least **3 tool calls** at the end for: commit, pipeline:complete, and a safety margin.

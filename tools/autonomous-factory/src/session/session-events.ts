@@ -404,7 +404,19 @@ export function wireMessageCapture(session: any, itemSummary: ItemSummary, logge
   });
 }
 
-export function wireUsageTracking(session: any, itemSummary: ItemSummary, logger: PipelineLogger, triggerHeartbeat?: () => void): void {
+export function wireUsageTracking(
+  session: any,
+  itemSummary: ItemSummary,
+  logger: PipelineLogger,
+  triggerHeartbeat?: () => void,
+  /** Optional runtime token budget. Disabled (undefined) by default. */
+  runtimeTokenBudget?: number,
+  /** Callback fired when runtimeTokenBudget is exceeded (100%). Caller should disconnect. */
+  onTokenBudgetExceeded?: (consumed: number, budget: number) => void,
+): void {
+  let tokenBudgetWarnFired = false;
+  let tokenBudgetHardFired = false;
+
   session.on("assistant.usage", (event: any) => {
     const d = event.data;
     const inp = d.inputTokens ?? 0;
@@ -423,7 +435,47 @@ export function wireUsageTracking(session: any, itemSummary: ItemSummary, logger
       cache_write_tokens: cacheC,
     });
     triggerHeartbeat?.();
+
+    // --- Runtime token budget enforcement ---
+    if (runtimeTokenBudget != null && runtimeTokenBudget > 0) {
+      const consumed = itemSummary.inputTokens + itemSummary.outputTokens;
+      // Hard limit: 100% — fire callback for disconnect
+      if (!tokenBudgetHardFired && consumed >= runtimeTokenBudget) {
+        tokenBudgetHardFired = true;
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "token_budget_hard",
+          consumed,
+          budget: runtimeTokenBudget,
+        });
+        onTokenBudgetExceeded?.(consumed, runtimeTokenBudget);
+      }
+      // Soft limit: 80% — inject warning via next tool result
+      if (!tokenBudgetWarnFired && consumed >= runtimeTokenBudget * 0.8) {
+        tokenBudgetWarnFired = true;
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "token_budget_soft",
+          consumed,
+          budget: runtimeTokenBudget,
+          threshold_pct: 0.8,
+        });
+      }
+    }
   });
+
+  // Inject token budget warning into tool results (soft limit at 80%)
+  if (runtimeTokenBudget != null && runtimeTokenBudget > 0) {
+    session.on("tool.execution_complete", (event: any) => {
+      if (!tokenBudgetWarnFired || tokenBudgetHardFired) return;
+      const consumed = itemSummary.inputTokens + itemSummary.outputTokens;
+      const pct = Math.round((consumed / runtimeTokenBudget) * 100);
+      const warning =
+        `\n\n⚠️ SYSTEM NOTICE: Token budget alert — you have consumed ${consumed.toLocaleString()} of ` +
+        `${runtimeTokenBudget.toLocaleString()} tokens (${pct}%). ` +
+        `Wrap up your current task, commit your work, and call pipeline:complete. ` +
+        `The session will be force-disconnected at 100%.`;
+      appendToToolResult(event.data, warning);
+    });
+  }
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

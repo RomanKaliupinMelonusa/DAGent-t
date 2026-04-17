@@ -127,18 +127,21 @@ export function buildCostAnalysisLines(
 
   // --- Per-step breakdown ---
   lines.push(`### Per-Step Breakdown`, ``);
-  lines.push(`| Step | Attempt | Agent | Input | Output | Cache Read | Cache Write | Step Cost | APM Instruction Budget |`);
-  lines.push(`|---|---:|---|---:|---:|---:|---:|---:|---:|`);
+  lines.push(`| Step | Attempt | Agent | Input | Output | Cache Read | Cache Write | Step Cost | APM Instruction Budget | Tool Calls |`);
+  lines.push(`|---|---:|---|---:|---:|---:|---:|---:|---:|---:|`);
   for (const s of summaries) {
     const stepCost = computeStepCost(s);
     const apmBudget = apmCtx?.agents?.[s.key]?.tokenCount;
     const budgetStr = apmBudget != null ? apmBudget.toLocaleString() : "—";
+    const toolStr = s.budgetUtilization
+      ? `${s.budgetUtilization.toolCallsUsed}/${s.budgetUtilization.toolCallLimit}`
+      : "—";
     lines.push(
-      `| ${s.key} | ${s.attempt} | ${s.agent} | ${s.inputTokens.toLocaleString()} | ${s.outputTokens.toLocaleString()} | ${s.cacheReadTokens.toLocaleString()} | ${s.cacheWriteTokens.toLocaleString()} | ${formatUsd(stepCost)} | ${budgetStr} |`,
+      `| ${s.key} | ${s.attempt} | ${s.agent} | ${s.inputTokens.toLocaleString()} | ${s.outputTokens.toLocaleString()} | ${s.cacheReadTokens.toLocaleString()} | ${s.cacheWriteTokens.toLocaleString()} | ${formatUsd(stepCost)} | ${budgetStr} | ${toolStr} |`,
     );
   }
   lines.push(
-    `| **Total** | | | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | **${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${formatUsd(totals.cost)}** | |`,
+    `| **Total** | | | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | **${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${formatUsd(totals.cost)}** | | |`,
   );
   lines.push(``);
   lines.push(`> **APM Instruction Budget** is the estimated token count of the compiled instruction payload only — actual usage includes the full multi-turn conversation context.`);

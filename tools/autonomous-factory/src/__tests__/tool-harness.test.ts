@@ -17,6 +17,12 @@ import {
   buildCustomTools,
   FILE_READ_LINE_LIMIT,
   MAX_FILE_SIZE,
+  DEFAULT_FILE_READ_LINE_LIMIT,
+  DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_SHELL_OUTPUT_LIMIT,
+  DEFAULT_SHELL_TIMEOUT_MS,
+  defaultHarnessLimits,
+  fileTruncationWarning,
   STATELESS_CMD_RE,
   RECURSIVE_SEARCH_RE,
   SHELL_CHAIN_RE,
@@ -1239,5 +1245,53 @@ describe("Fail-closed checkRbac with SAFE_READ_TOOLS", () => {
       REPO_ROOT, BACKEND_PATHS, CLOUD_CLI_BLOCK, NO_MCP_PREFIXES, APP_ROOT,
     );
     assert.equal(denial, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unified budget system — defaults and overrides
+// ---------------------------------------------------------------------------
+describe("ResolvedHarnessLimits", () => {
+  it("defaultHarnessLimits returns expected defaults", () => {
+    const limits = defaultHarnessLimits();
+    assert.equal(limits.fileReadLineLimit, DEFAULT_FILE_READ_LINE_LIMIT);
+    assert.equal(limits.maxFileSize, DEFAULT_MAX_FILE_SIZE);
+    assert.equal(limits.shellOutputLimit, DEFAULT_SHELL_OUTPUT_LIMIT);
+    assert.equal(limits.shellTimeoutMs, DEFAULT_SHELL_TIMEOUT_MS);
+  });
+
+  it("deprecated aliases match new defaults", () => {
+    assert.equal(FILE_READ_LINE_LIMIT, DEFAULT_FILE_READ_LINE_LIMIT);
+    assert.equal(MAX_FILE_SIZE, DEFAULT_MAX_FILE_SIZE);
+  });
+
+  it("fileTruncationWarning includes the provided limit", () => {
+    const msg = fileTruncationWarning(300);
+    assert.ok(msg.includes("300"));
+  });
+
+  it("buildCustomTools accepts custom limits", () => {
+    const custom = {
+      fileReadLineLimit: 200,
+      maxFileSize: 1024,
+      shellOutputLimit: 8000,
+      shellTimeoutMs: 30_000,
+    };
+    // Should not throw — custom limits are valid
+    const tools = buildCustomTools(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT, custom);
+    assert.ok(Array.isArray(tools));
+    assert.ok(tools.length > 0);
+  });
+
+  it("buildSessionHooks accepts custom limits", () => {
+    const custom = {
+      fileReadLineLimit: 200,
+      maxFileSize: 1024,
+      shellOutputLimit: 8000,
+      shellTimeoutMs: 30_000,
+    };
+    // Should not throw — custom limits are valid
+    const hooks = buildSessionHooks(REPO_ROOT, GLOBAL_SANDBOX, APP_ROOT, undefined, custom);
+    assert.ok(hooks != null);
   });
 });

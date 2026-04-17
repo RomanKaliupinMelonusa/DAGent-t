@@ -29,7 +29,15 @@ import { writeFlightData } from "../reporting.js";
 import {
   writeChangeManifest,
 } from "../context-injection.js";
-import { buildSessionHooks, buildCustomTools } from "../tool-harness.js";
+import {
+  buildSessionHooks,
+  buildCustomTools,
+  DEFAULT_FILE_READ_LINE_LIMIT,
+  DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_SHELL_OUTPUT_LIMIT,
+  DEFAULT_SHELL_TIMEOUT_MS,
+} from "../tool-harness.js";
+import type { ResolvedHarnessLimits } from "../tool-harness.js";
 import { resolveAgentSandbox } from "../agent-sandbox.js";
 import {
   TOOL_LIMIT_FALLBACK_SOFT,
@@ -126,6 +134,14 @@ const copilotAgentHandler: NodeHandler = {
       hard: agentToolLimits?.hard ?? manifestDefaults?.hard ?? TOOL_LIMIT_FALLBACK_HARD,
     };
 
+    // Resolve per-agent harness limits (file read, shell output, etc.)
+    const resolvedHarnessLimits: ResolvedHarnessLimits = {
+      fileReadLineLimit: agentToolLimits?.fileReadLineLimit ?? manifestDefaults?.fileReadLineLimit ?? DEFAULT_FILE_READ_LINE_LIMIT,
+      maxFileSize: agentToolLimits?.maxFileSize ?? manifestDefaults?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE,
+      shellOutputLimit: agentToolLimits?.shellOutputLimit ?? manifestDefaults?.shellOutputLimit ?? DEFAULT_SHELL_OUTPUT_LIMIT,
+      shellTimeoutMs: agentToolLimits?.shellTimeoutMs ?? manifestDefaults?.shellTimeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS,
+    };
+
     // Telemetry collector — we build a local ItemSummary for the SDK event
     // wiring functions (they require a full ItemSummary reference), then
     // return it as NodeResult.summary for the kernel to merge.
@@ -173,7 +189,7 @@ const copilotAgentHandler: NodeHandler = {
     const sandbox = resolveAgentSandbox(itemKey, apmContext, appRoot);
 
     // Filter custom tools to the agent's allow-list
-    const allCustomTools = buildCustomTools(repoRoot, sandbox, appRoot);
+    const allCustomTools = buildCustomTools(repoRoot, sandbox, appRoot, resolvedHarnessLimits);
     const agentHasToolConfig = sandbox.allowedCoreTools.size > 0 || sandbox.allowedMcpTools.size > 0;
     const filteredTools = agentHasToolConfig
       ? allCustomTools.filter((t) => sandbox.allowedCoreTools.has(t.name))
@@ -189,7 +205,7 @@ const copilotAgentHandler: NodeHandler = {
       hooks: buildSessionHooks(repoRoot, sandbox, appRoot, (toolName) => {
         const category = TOOL_CATEGORIES[toolName] ?? toolName;
         breaker.recordCall(category, telemetry.toolCounts);
-      }),
+      }, resolvedHarnessLimits),
       ...(agentConfig.mcpServers
         ? { mcpServers: agentConfig.mcpServers as Record<string, MCPServerConfig> }
         : {}),
@@ -208,13 +224,18 @@ const copilotAgentHandler: NodeHandler = {
     // Resolve per-agent tool limits with config-driven overrides
     const resolvedWriteThreshold = agentToolLimits?.writeThreshold ?? manifestDefaults?.writeThreshold;
     const resolvedPreTimeoutPercent = agentToolLimits?.preTimeoutPercent ?? manifestDefaults?.preTimeoutPercent;
+    const resolvedRuntimeTokenBudget = agentToolLimits?.runtimeTokenBudget ?? manifestDefaults?.runtimeTokenBudget;
 
     wireToolLogging(session, telemetry, repoRoot, breaker, timeout, ctx.logger, triggerHeartbeat, resolvedWriteThreshold, resolvedPreTimeoutPercent);
     const mcpServers = (agentConfig.mcpServers as Record<string, unknown>) ?? {};
     const mcpTelemetryLog = wireMcpTelemetry(session, mcpServers, itemKey, ctx.logger, triggerHeartbeat);
     wireIntentLogging(session, telemetry, ctx.logger);
     wireMessageCapture(session, telemetry, ctx.logger);
-    wireUsageTracking(session, telemetry, ctx.logger, triggerHeartbeat);
+    wireUsageTracking(session, telemetry, ctx.logger, triggerHeartbeat, resolvedRuntimeTokenBudget, (consumed, budget) => {
+      telemetry.errorMessage = `Runtime token budget exceeded: ${consumed.toLocaleString()} / ${budget.toLocaleString()} tokens`;
+      telemetry.outcome = "error";
+      session.disconnect().catch(() => { /* best-effort */ });
+    });
 
     // Build task prompt with context injection
     const node = getWorkflowNode(ctx);
@@ -314,6 +335,15 @@ const copilotAgentHandler: NodeHandler = {
         }
       } catch { /* non-fatal — SDK tracking is the primary source */ }
     }
+
+    // --- Populate budget utilization for reporting ---
+    const totalToolCalls = Object.values(telemetry.toolCounts).reduce((a, b) => a + b, 0);
+    telemetry.budgetUtilization = {
+      toolCallsUsed: totalToolCalls,
+      toolCallLimit: resolvedToolLimits.hard,
+      tokensConsumed: telemetry.inputTokens + telemetry.outputTokens,
+      ...(resolvedRuntimeTokenBudget != null ? { tokenBudget: resolvedRuntimeTokenBudget } : {}),
+    };
 
     // --- Handle fatal errors (session catch block set fatalError) ---
     if (fatalError) {

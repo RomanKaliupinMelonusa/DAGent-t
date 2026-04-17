@@ -256,6 +256,13 @@ export interface ItemSummary {
   cacheReadTokens: number;
   /** Accumulated cache-creation tokens */
   cacheWriteTokens: number;
+  /** Budget utilization snapshot — populated at session end by the copilot-agent handler. */
+  budgetUtilization?: {
+    toolCallsUsed: number;
+    toolCallLimit: number;
+    tokensConsumed: number;
+    tokenBudget?: number;
+  };
 }
 
 export interface ShellEntry {

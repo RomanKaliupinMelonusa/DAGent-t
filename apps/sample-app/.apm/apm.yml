@@ -56,7 +56,7 @@ agents:
     promptFile: backend-dev.agent.md
     mcp: [roam-code]
     skills: [test-backend-unit]
-    toolLimits: { soft: 80, hard: 110 }
+    toolLimits: { soft: 80, hard: 110, fileReadLineLimit: 750, shellOutputLimit: 128000 }
     security:
       allowedWritePaths: ["^backend/", "^packages/schemas/"]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
@@ -69,7 +69,7 @@ agents:
     promptFile: frontend-dev.agent.md
     mcp: [roam-code]
     skills: [test-frontend-unit, build-frontend]
-    toolLimits: { soft: 80, hard: 110 }
+    toolLimits: { soft: 80, hard: 110, fileReadLineLimit: 750, shellOutputLimit: 128000 }
     security:
       allowedWritePaths: ["^frontend/", "^packages/schemas/"]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
@@ -108,7 +108,7 @@ agents:
     promptFile: backend-unit-test.agent.md
     mcp: []
     skills: [test-integration]
-    toolLimits: { soft: 70, hard: 120 }
+    toolLimits: { soft: 70, hard: 120, shellTimeoutMs: 900000, shellOutputLimit: 128000 }
     security:
       allowedWritePaths: ["(^|/)e2e/", "(^|/)__tests__/", "\\.test\\."]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
@@ -119,7 +119,7 @@ agents:
     promptFile: frontend-unit-test.agent.md
     mcp: [roam-code, playwright]
     skills: []
-    toolLimits: { soft: 100, hard: 130 }
+    toolLimits: { soft: 100, hard: 130, fileReadLineLimit: 750, shellTimeoutMs: 900000, shellOutputLimit: 128000 }
     security:
       allowedWritePaths: ["(^|/)e2e/", "\\.spec\\."]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
@@ -145,7 +145,7 @@ agents:
     promptFile: doc-architect.agent.md
     mcp: [roam-code, mermaid]
     skills: []
-    toolLimits: { soft: 40, hard: 55 }
+    toolLimits: { soft: 40, hard: 55, fileReadLineLimit: 300 }
     security:
       allowedWritePaths: ["^.*"]
     tools:
@@ -363,7 +363,7 @@ nodes:
     timeout_minutes: 5
 
 config:
-  defaultToolLimits: { soft: 60, hard: 80 }
+  defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
   hooks:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateInfra: "bash .apm/hooks/validate-infra.sh"

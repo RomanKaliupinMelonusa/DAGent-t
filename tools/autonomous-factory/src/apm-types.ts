@@ -36,9 +36,11 @@ export const ApmMcpConfigSchema = z.discriminatedUnion("type", [
 ]);
 
 /**
- * Per-agent cognitive circuit breaker limits.
+ * Per-agent cognitive circuit breaker limits and harness tuning.
  * `soft` triggers a structured warning; `hard` force-disconnects the session.
- * Omit to use orchestrator defaults (soft=30, hard=40).
+ * Harness limits (`fileReadLineLimit`, `shellOutputLimit`, etc.) override the
+ * global defaults in tool-harness.ts on a per-agent basis.
+ * Omit to use orchestrator defaults (soft=30, hard=40, harness=global).
  */
 export const ApmToolLimitsSchema = z.object({
   soft: z.number().int().positive().optional(),
@@ -47,6 +49,22 @@ export const ApmToolLimitsSchema = z.object({
   writeThreshold: z.number().int().positive().optional(),
   /** Fraction of session timeout at which to inject a wrap-up directive (0–1). */
   preTimeoutPercent: z.number().min(0).max(1).optional(),
+
+  // --- Per-agent harness limit overrides (Phase 1: holistic budget) ---
+
+  /** Max lines returned by file_read per call. Min 50. Default: 500. */
+  fileReadLineLimit: z.number().int().min(50).optional(),
+  /** Max file size (bytes) that file_read will load. Default: 5 MB. */
+  maxFileSize: z.number().int().positive().optional(),
+  /** Max bytes returned from shell stdout. Default: 64,000. */
+  shellOutputLimit: z.number().int().positive().optional(),
+  /** Timeout for shell executions (ms). Default: 600,000. */
+  shellTimeoutMs: z.number().int().positive().optional(),
+
+  /** Optional ceiling on cumulative input+output tokens consumed during the session.
+   *  At 80%: wrap-up warning injected. At 100%: session disconnects.
+   *  Disabled by default (omit or set to undefined). */
+  runtimeTokenBudget: z.number().int().positive().optional(),
 }).optional();
 
 /**

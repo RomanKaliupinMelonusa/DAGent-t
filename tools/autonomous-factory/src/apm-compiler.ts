@@ -7,7 +7,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import yaml from "js-yaml";
+
+const require = createRequire(import.meta.url);
 
 import {
   ApmManifestSchema,
@@ -128,12 +131,29 @@ function mergeNodeCatalogIntoWorkflow(
 // ---------------------------------------------------------------------------
 
 /**
- * Conservative token estimate for Claude models.
- * Claude tokenizes code-heavy content at roughly chars / 3.5.
- * The optional `margin` multiplier (e.g. 1.1 = 10%) provides a safety buffer
- * to account for tokenizer variance across content types.
+ * Token estimation with tiktoken (cl100k_base) for Claude models.
+ * Falls back to the chars/3.5 heuristic if tiktoken is unavailable.
+ * The optional `margin` multiplier (e.g. 1.1 = 10%) provides a safety buffer.
  */
+let _tiktokenEncoder: { encode: (text: string) => number[] } | null | undefined;
+
+function getTiktokenEncoder(): typeof _tiktokenEncoder {
+  if (_tiktokenEncoder !== undefined) return _tiktokenEncoder;
+  try {
+    const { encodingForModel } = require("js-tiktoken") as typeof import("js-tiktoken");
+    _tiktokenEncoder = encodingForModel("gpt-4o");
+  } catch {
+    _tiktokenEncoder = null; // Not available — use heuristic
+  }
+  return _tiktokenEncoder;
+}
+
 function estimateTokens(text: string, margin = 1.0): number {
+  const encoder = getTiktokenEncoder();
+  if (encoder) {
+    return Math.ceil(encoder.encode(text).length * margin);
+  }
+  // Heuristic fallback: chars / 3.5
   return Math.ceil((text.length / 3.5) * margin);
 }
 
@@ -417,6 +437,10 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     if (tokenCount > manifest.tokenBudget) {
       throw new ApmBudgetExceededError(agentKey, tokenCount, manifest.tokenBudget);
     }
+
+    const pct = Math.round((tokenCount / manifest.tokenBudget) * 100);
+    const engine = getTiktokenEncoder() ? "tiktoken" : "heuristic";
+    console.log(`[APM] agent "${agentKey}": ${tokenCount}/${manifest.tokenBudget} tokens (${pct}%) [${engine}]`);
 
     // --- Load agent prompt template from .apm/agents/<promptFile> ---
     const templatePath = path.join(agentsDir, agentDecl.promptFile);
