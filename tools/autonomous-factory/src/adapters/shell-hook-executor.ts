@@ -5,7 +5,7 @@
  */
 
 import type { HookExecutor, HookResult } from "../ports/hook-executor.js";
-import { executeHook } from "../hooks.js";
+import { executeHook } from "../lifecycle/hooks.js";
 
 export class ShellHookExecutor implements HookExecutor {
   private readonly cwd: string;

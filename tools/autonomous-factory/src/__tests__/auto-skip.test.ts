@@ -16,7 +16,7 @@ import {
   getGitChangedFiles,
   getMergeBase,
   getDirectoryPrefixes,
-} from "../auto-skip.js";
+} from "../lifecycle/auto-skip.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 

@@ -14,7 +14,7 @@ import { ApmCompileError, ApmBudgetExceededError } from "./apm/types.js";
 import { BootstrapError } from "./errors.js";
 import { createFeatureBranch } from "./git-ops.js";
 import { loadApmContext } from "./apm/context-loader.js";
-import { runResolveEnvironment } from "./hooks.js";
+import { runResolveEnvironment } from "./lifecycle/hooks.js";
 // Bootstrap runs at the composition root level — it legitimately owns the
 // entry-time read of persisted state. Importing the CLI module directly
 // avoids a thin facade (previously `./state.js`) and keeps the dependency
@@ -31,7 +31,7 @@ import {
   checkGitHubLogin,
   checkStateContextDrift,
   buildRoamIndex,
-} from "./preflight.js";
+} from "./lifecycle/preflight.js";
 import { loadPreviousSummary, setModelPricing } from "./reporting.js";
 import type { PreviousSummaryTotals } from "./reporting.js";
 import { createPipelineLogger } from "./logger.js";

@@ -11,7 +11,7 @@ import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import {
   archiveFeatureFiles,
   commitAndPushState,
-} from "../archive.js";
+} from "../lifecycle/archive.js";
 
 export class LocalFilesystem implements FeatureFilesystem {
   async exists(filePath: string): Promise<boolean> {
