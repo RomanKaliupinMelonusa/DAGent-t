@@ -95,98 +95,127 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph ENTRY["Entry Point"]
-        W["watchdog.ts\n(~575 lines)"]
+    subgraph ENTRY["Entry"]
+        W["watchdog.ts\n(thin entry)"]
+        M["main.ts\n(composition root)"]
+        BS["bootstrap.ts\n(preflight + APM)"]
     end
 
-    subgraph CORE["Core Modules"]
-        SR["session-runner.ts\n(~550 lines)\nDispatch Kernel"]
-        A["agents.ts\n(~320 lines)\nPrompt Factory"]
-        PA["apm-compiler.ts\n(~370 lines)\nRule Engine"]
-        S["state.ts\n(~90 lines)\nTyped Wrapper"]
-        T["types.ts\n(~170 lines)\nShared Types + Constants"]
+    subgraph KERNEL["Pipeline Kernel (kernel/)"]
+        K["pipeline-kernel.ts\nCommand → Effect"]
+        CMD["commands.ts · rules.ts"]
+        EFF["effects.ts\neffect-executor.ts"]
     end
 
-    subgraph HANDLERS["Handler Plugin System (handlers/)"]
-        H_CA["copilot-agent.ts\nLLM Agent Sessions"]
-        H_GP["git-push.ts\nDeterministic Push"]
-        H_CP["github-ci-poll.ts\nCI Polling"]
-        H_PR["github-pr-publish.ts\nPR Publish"]
-        H_LE["local-exec.ts\nLocal Script Exec"]
-        H_RP["result-processor-*.ts\nError Condensing"]
+    subgraph DOMAIN["Pure Domain (domain/)"]
+        DG["dag-graph.ts"]
+        SCH["scheduling.ts"]
+        TR_D["transitions.ts"]
+        ERR["error-signature.ts"]
+        FR["failure-routing.ts"]
     end
 
-    subgraph SESSION["Session Submodules (session/)"]
-        SS["shared.ts\nWorkflow Node Helpers"]
-        SE["session-events.ts\nTool Result Injection"]
-        RP_PROBE["readiness-probe.ts\nData-Plane Readiness"]
-        TD["triage-dispatcher.ts\nFailure Rerouting"]
-        SCR["script-executor.ts\nScript Execution"]
+    subgraph PORTS["Ports (ports/)"]
+        P_SS["StateStore"]
+        P_VC["VersionControl"]
+        P_CI["CiGateway"]
+        P_FS["FeatureFilesystem"]
+        P_HK["HookExecutor"]
+        P_CC["ContextCompiler"]
+        P_TEL["Telemetry"]
     end
 
-    subgraph SUPPORT["Supporting Modules"]
-        PF["preflight.ts\nPre-flight Checks"]
-        RP["reporting.ts\nSummary + Logs"]
-        AS["auto-skip.ts\nGit Change Detection"]
-        CI["context-injection.ts\nRetry/Revert Prompts"]
-        TR["triage.ts + triage/\nFailure Classification"]
-        TH["tool-harness.ts\nTool Call Harness"]
-        AR["archive.ts\nFeature Archiving"]
+    subgraph ADAPTERS["Adapters (adapters/)"]
+        A_SS["json-file-state-store.ts"]
+        A_VC["git-shell-adapter.ts"]
+        A_SDK["copilot-session-runner.ts"]
+        A_CI["github-ci-adapter.ts"]
+        A_FS["feature-fs-adapter.ts"]
+    end
+
+    subgraph LOOP_DISP["Loop & Dispatch"]
+        L["loop/pipeline-loop.ts\nreactive DAG driver"]
+        BD["dispatch/batch-dispatcher.ts"]
+        CB["dispatch/context-builder.ts"]
+        ID["dispatch/item-dispatch.ts"]
+    end
+
+    subgraph HANDLERS["Handler Plugins (handlers/)"]
+        H_CA["copilot-agent.ts\nLLM agent sessions"]
+        H_LE["local-exec.ts\nscript execution"]
+        H_CP["github-ci-poll.ts"]
+        H_AP["approval.ts · barrier.ts"]
+        H_TR["triage-handler.ts\nfailure routing"]
+        H_SUP["support/\nagent-context · agent-limits · agent-post-session"]
+    end
+
+    subgraph HARNESS["Harness & Agents"]
+        HN["harness/\nRBAC, limits, tools"]
+        AG["agents.ts\nprompt factory"]
+        AC_MOD["apm-compiler.ts\napm-context-loader.ts"]
+    end
+
+    subgraph SUPPORT["Support"]
+        PF["preflight.ts"]
+        RP["reporting/index.ts"]
+        AS["auto-skip.ts"]
+        AR["archive.ts"]
+        HKS["hooks.ts"]
+        TRG["triage/\nretriever · llm-router · fingerprint"]
     end
 
     subgraph INFRA["Infrastructure"]
-        PS["pipeline-state.mjs\n(~1405 lines)\nDAG State Machine"]
-        AC["agent-commit.sh\nGit Wrapper"]
-        AB["agent-branch.sh\nBranch Manager"]
-        PC["poll-ci.sh\nCI Poller"]
-        SROAM["setup-roam.sh\nRoam Installer"]
-        BI["apm compile\n.instructions.md Generator"]
+        PS["src/cli/pipeline-state.ts\nadmin CLI (runAdminCommand)"]
+        AC_SH["agent-commit.sh · agent-branch.sh · poll-ci.sh"]
     end
 
-    subgraph RULES["Rule Fragments"]
-        MF["apm.yml"]
-        RF["17 .md files\n5 categories"]
-    end
-
-    subgraph EXT["External Dependencies"]
+    subgraph EXT["External"]
         SDK["@github/copilot-sdk"]
-        ROAM["roam-code v11.2\n(Python, MCP)"]
+        ROAM["roam-code v11.2"]
         PW["@playwright/mcp"]
     end
 
-    W -->|"runItemSession()"| SR
-    W -->|"getNextAvailable()"| S
-    W -->|"agent-commit.sh"| AC
-    W -->|"agent-branch.sh"| AB
-    W -->|"roam index"| ROAM
-    SR -->|"resolveHandler()"| HANDLERS
-    SR -->|"triageFailure()"| TD
-    SR -->|"evaluateAutoSkip()"| AS
-    SR -->|"flushReports()"| RP
-    SR -->|"context injection"| CI
-    H_CA -->|"getAgentConfig()"| A
-    H_CA -->|"wireToolLogging()"| TH
-    H_CA -->|"session events"| SE
-    A -->|"getRulesForAgent()"| PA
-    A -->|"roamMcpConfig()"| ROAM
-    A -->|"playwright config"| PW
-    W -->|"preflight"| PF
-    S -->|"lazy import()"| PS
-    PA -->|"load at init"| MF
-    PA -->|"read & cache"| RF
-    BI -->|"same config"| MF
-    BI -->|"same rules"| RF
-    W -->|"CopilotClient"| SDK
-    T -.->|"types"| W
-    T -.->|"types"| S
+    W --> M
+    M --> BS
+    M --> K
+    M --> L
+    M --> ADAPTERS
+    K --> CMD --> EFF
+    K --> DOMAIN
+    K --> PORTS
+    ADAPTERS -.implements.-> PORTS
+    L --> BD --> ID --> HANDLERS
+    BD --> CB
+    CB --> PORTS
+    H_CA --> H_SUP
+    H_CA --> AG
+    H_CA --> HN
+    H_CA --> A_SDK
+    H_LE --> HKS
+    H_TR --> TRG
+    AG --> AC_MOD
+    A_SS -.persists via.-> ADAPTERS
+    PS -.admin verbs.-> K
+    BS --> PF
+    L --> RP
+    L --> AS
+    L --> AR
+    A_VC --> AC_SH
+    HN --> SDK
+    AC_MOD --> ROAM
+    H_CA --> PW
 
     style ENTRY fill:#e3f2fd,stroke:#1565c0
-    style CORE fill:#fff3e0,stroke:#e65100
-    style HANDLERS fill:#e8f5e9,stroke:#2e7d32
-    style SESSION fill:#fff9c4,stroke:#f9a825
-    style INFRA fill:#e8f5e9,stroke:#2e7d32
-    style EXT fill:#f3e5f5,stroke:#7b1fa2
+    style KERNEL fill:#fff3e0,stroke:#e65100
+    style DOMAIN fill:#e8f5e9,stroke:#2e7d32
+    style PORTS fill:#fce4ec,stroke:#c62828
+    style ADAPTERS fill:#f3e5f5,stroke:#7b1fa2
+    style LOOP_DISP fill:#fff9c4,stroke:#f9a825
+    style HANDLERS fill:#e0f7fa,stroke:#00695c
+    style INFRA fill:#ffebee,stroke:#b71c1c
 ```
+
+> **Layering:** arrows point in the allowed direction. `domain/` and `ports/` never import downward (enforced by `npm run arch:check`). `kernel/` emits Effects that adapters fulfill. Handlers consume a `NodeContext` that carries port references (`vcs`, `stateReader`, etc.) — no direct I/O.
 
 ---
 
@@ -214,7 +243,8 @@ mindmap
       Vision capabilities
       Screenshot output
     State Management
-      pipeline-state.mjs (JavaScript)
+      PipelineKernel (Command/Effect)
+      JsonFileStateStore (POSIX lock)
       _STATE.json (machine-readable)
       _TRANS.md (human-readable)
       DAG dependency solver

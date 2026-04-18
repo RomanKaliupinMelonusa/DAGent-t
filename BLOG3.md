@@ -54,7 +54,7 @@ graph TD
         A4["Token Budgets"]
     end
 
-    subgraph DAG["DAG State Machine (pipeline-state.mjs)"]
+    subgraph DAG["DAG State Machine (PipelineKernel + JsonFileStateStore)"]
         direction LR
         D1["Items[] + Deps{}"] --> D2["getNextAvail\n(topo-sort)"] --> D3["Batch dispatcher\n(‖ when possible)"]
     end
@@ -500,7 +500,7 @@ Archon is a **workflow engine**. DAGent is an **SDLC factory**.
 
 | Capability | Archon | DAGent | Gap |
 |---|---|---|---|
-| **DAG scheduling** | YAML `nodes:` with `depends_on` | `pipeline-state.mjs` with POSIX locks | Parity |
+| **DAG scheduling** | YAML `nodes:` with `depends_on` | `.apm/workflows.yml` + `PipelineKernel` with POSIX locks | Parity |
 | **Tool filtering** | `allowed_tools` / `denied_tools` per node | RBAC regex on file paths + shell bouncers per agent | DAGent inspects arguments, not just tool names |
 | **Failure recovery** | Per-node hooks (static YAML) | 5-tier triage → compound fault domain → targeted reroute | DAGent routes to responsible agent, not just "retry" |
 | **Git safety** | Worktree isolation (one branch per run) | Pre-commit hook + scoped commit wrapper + state exclusion | Different isolation models, both valid |

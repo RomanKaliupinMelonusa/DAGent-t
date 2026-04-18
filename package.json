@@ -10,22 +10,22 @@
     "tools/*"
   ],
   "scripts": {
-    "pipeline:init": "node tools/autonomous-factory/pipeline-state.mjs init",
-    "pipeline:complete": "node tools/autonomous-factory/pipeline-state.mjs complete",
-    "pipeline:fail": "node tools/autonomous-factory/pipeline-state.mjs fail",
-    "pipeline:reset-scripts": "node tools/autonomous-factory/pipeline-state.mjs reset-scripts",
-    "pipeline:reset-phases": "node tools/autonomous-factory/pipeline-state.mjs reset-phases",
-    "pipeline:status": "node tools/autonomous-factory/pipeline-state.mjs status",
-    "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
-    "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",
-    "pipeline:doc-note": "node tools/autonomous-factory/pipeline-state.mjs doc-note",
-    "pipeline:resume": "node tools/autonomous-factory/pipeline-state.mjs resume",
-    "pipeline:recover-elevated": "node tools/autonomous-factory/pipeline-state.mjs recover-elevated",
-    "pipeline:set-url": "node tools/autonomous-factory/pipeline-state.mjs set-url",
+    "pipeline:init": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts init",
+    "pipeline:reset-scripts": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts reset-scripts",
+    "pipeline:status": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts status",
+    "pipeline:next": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts next",
+    "pipeline:resume": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts resume",
+    "pipeline:recover-elevated": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts recover-elevated",
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
-    "agent:run": "cd tools/autonomous-factory && npx tsx src/watchdog.ts",
-    "build:instructions": "node tools/autonomous-factory/build-instructions.mjs"
+    "agent:run": "cd tools/autonomous-factory && npx tsx src/entry/watchdog.ts",
+    "agent:supervise": "cd tools/autonomous-factory && npx tsx src/entry/supervise.ts",
+    "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
+    "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",
+    "pipeline:viz": "npx tsx tools/autonomous-factory/scripts/viz-pipeline.ts",
+    "apm:canvas": "npx tsx tools/autonomous-factory/scripts/export-canvas.ts",
+    "build:instructions": "node tools/autonomous-factory/build-instructions.mjs",
+    "retro": "cd tools/autonomous-factory && npx tsx src/reporting/retrospective.ts"
   },
   "engines": {
     "node": ">=22.0.0"

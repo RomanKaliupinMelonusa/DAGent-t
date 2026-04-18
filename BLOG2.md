@@ -118,31 +118,48 @@ flowchart LR
 
 The key dependency edges — and this is worth staring at — are:
 
-```javascript
-// pipeline-state.mjs — the actual dependency map
-export const ITEM_DEPENDENCIES = {
-  // Wave 1
-  "schema-dev":           [],
-  "infra-architect":      ["schema-dev"],
-  "push-infra":           ["infra-architect"],
-  "create-draft-pr":      ["push-infra"],
-  "poll-infra-plan":      ["create-draft-pr"],
-  "await-infra-approval": ["poll-infra-plan"],
-  "infra-handoff":        ["await-infra-approval"],
+```yaml
+# .apm/workflows.yml — the actual dependency map (excerpt)
+nodes:
+  # Wave 1
+  - key: schema-dev
+    depends_on: []
+  - key: infra-architect
+    depends_on: [schema-dev]
+  - key: push-infra
+    depends_on: [infra-architect]
+  - key: create-draft-pr
+    depends_on: [push-infra]
+  - key: poll-infra-plan
+    depends_on: [create-draft-pr]
+  - key: await-infra-approval
+    depends_on: [poll-infra-plan]
+  - key: infra-handoff
+    depends_on: [await-infra-approval]
 
-  // Wave 2 — gated behind infra-handoff
-  "backend-dev":          ["schema-dev", "infra-handoff"],  // ← the gate
-  "frontend-dev":         ["schema-dev", "infra-handoff"],  // ← the gate
-  "backend-unit-test":    ["backend-dev"],
-  "frontend-unit-test":   ["frontend-dev"],
-  "push-app":             ["backend-unit-test", "frontend-unit-test"],
-  "poll-app-ci":          ["push-app"],
-  "integration-test":     ["poll-app-ci"],
-  "live-ui":              ["poll-app-ci", "integration-test"],
-  "code-cleanup":         ["integration-test", "live-ui"],
-  "docs-archived":        ["code-cleanup"],
-  "publish-pr":           ["docs-archived"],
-};
+  # Wave 2 — gated behind infra-handoff
+  - key: backend-dev
+    depends_on: [schema-dev, infra-handoff]   # ← the gate
+  - key: frontend-dev
+    depends_on: [schema-dev, infra-handoff]   # ← the gate
+  - key: backend-unit-test
+    depends_on: [backend-dev]
+  - key: frontend-unit-test
+    depends_on: [frontend-dev]
+  - key: push-app
+    depends_on: [backend-unit-test, frontend-unit-test]
+  - key: poll-app-ci
+    depends_on: [push-app]
+  - key: integration-test
+    depends_on: [poll-app-ci]
+  - key: live-ui
+    depends_on: [poll-app-ci, integration-test]
+  - key: code-cleanup
+    depends_on: [integration-test, live-ui]
+  - key: docs-archived
+    depends_on: [code-cleanup]
+  - key: publish-pr
+    depends_on: [docs-archived]
 ```
 
 `backend-dev` and `frontend-dev` both depend on `infra-handoff`. That's the structural guarantee. No amount of prompt engineering or triage logic can bypass it — the DAG scheduler won't make the item available until `infra-handoff` is `done`.
@@ -165,9 +182,11 @@ The agent never runs `terraform apply`. Apply is irreversible and environment-sc
 
 This is the simplest and most important piece of code in the pipeline:
 
-```javascript
-// pipeline-state.mjs
-{ key: "await-infra-approval", agent: null, phase: "approval" }
+```yaml
+# .apm/workflows.yml
+- key: await-infra-approval
+  agent: null
+  phase: approval
 ```
 
 ```typescript
@@ -325,7 +344,7 @@ This applies beyond AI pipelines. Any system where autonomous agents interact wi
 
 ## What's Next
 
-The [full pipeline is open source](https://github.com/RomanKaliupinMelonusa/DAGent-t) — orchestrator, APM compiler, triage engine, ChatOps workflows, and the two-wave DAG. If you're adapting this to your own stack, the files to start with are `.apm/instructions/` (your project's rules) and the workflow type configs in `pipeline-state.mjs`.
+The [full pipeline is open source](https://github.com/RomanKaliupinMelonusa/DAGent-t) — orchestrator, APM compiler, triage engine, ChatOps workflows, and the two-wave DAG. If you're adapting this to your own stack, the files to start with are `.apm/instructions/` (your project's rules) and each app's `.apm/workflows.yml` (DAG + workflow type definitions).
 
 I'm most interested in feedback on:
 - **The approval gate pattern** — is `/dagent approve-infra` via ChatOps the right UX, or should this be a GitHub Environment protection rule?

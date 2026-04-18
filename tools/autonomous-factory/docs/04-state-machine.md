@@ -1,7 +1,7 @@
 # Pipeline State Machine — DAG & Lifecycle
 
 > 19 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
-> Source: `tools/autonomous-factory/pipeline-state.mjs` · `tools/autonomous-factory/src/state.ts`
+> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI)
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
@@ -229,10 +229,10 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    participant W as watchdog.ts /\nsession-runner.ts
+    participant W as watchdog.ts /\nloop/pipeline-loop.ts
     participant TF as triageFailure()
     participant S as state.ts
-    participant PS as pipeline-state.mjs
+    participant PS as PipelineKernel +\nJsonFileStateStore
     participant R as roam index
 
     Note over W: Post-deploy or test item<br/>(poll-app-ci, poll-infra-plan,<br/>integration-test, live-ui,<br/>backend-unit-test, frontend-unit-test) fails
@@ -382,7 +382,7 @@ classDiagram
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
-> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — `pipeline-state.mjs` contains no hardcoded item lists or dependency mappings.
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
 
 ---
 
@@ -432,93 +432,73 @@ flowchart TD
 
 ---
 
-## state.ts — Typed Wrapper
+## State Architecture — Kernel + Adapter
 
 ```mermaid
 flowchart LR
-    subgraph TS["state.ts (TypeScript)"]
+    subgraph KERNEL["src/kernel/pipeline-kernel.ts (Command/Effect)"]
         direction TB
-        LAZY["Lazy module cache\nlet _mod = null"]
-        LOAD["First call:\nimport('pipeline-state.mjs')"]
-        CACHE["Cache module ref\n_mod = imported module"]
-        FN["Typed async functions:\ninitState(), completeItem(),\nfailItem(), resetCi(),\nresetInfraPlan(), resetForDev(),\nredevelopInfra(), resume(),\nrecoverElevated(), getStatus(),\ngetNext(), getNextAvailable(),\nsetNote(), setDocNote(),\nsetUrl(), readState(),\ngetAllItems(), getPhases(),\ngetNaItemsByType(),\ngetItemDependencies()"]
+        CMD["Commands in\n(complete/fail/reset/\ninit/salvage/\nadmin verbs)"]
+        RED["Pure reducer\n(domain/transitions.ts)"]
+        EFF["Effects out\n(persistence, telemetry)"]
     end
 
-    subgraph JS["pipeline-state.mjs (JavaScript)"]
-        DAG2["DAG definitions"]
-        STATE2["State mutation functions"]
-        FILE2["File I/O (_STATE.json, _TRANS.md)"]
+    subgraph ADAPTER["src/adapters/json-file-state-store.ts"]
+        LOCK["POSIX lock\n(file-state/lock.ts)"]
+        IO["Atomic read/write\n(file-state/io.ts)"]
+        INIT["initState\n(file-state/init.ts)"]
     end
 
-    LAZY --> LOAD --> CACHE --> FN
-    FN -->|"dynamic import()"| JS
+    subgraph CLI["src/cli/pipeline-state.ts (admin)"]
+        VERBS["init / reset-scripts /\nresume / recover-elevated /\nstatus / next"]
+    end
 
-    style TS fill:#e3f2fd
-    style JS fill:#e8f5e9
+    CMD --> RED --> EFF
+    EFF -->|"persist"| ADAPTER
+    CLI -->|"runAdminCommand(\nadminHost, slug, cmd)"| KERNEL
+    LOOP["src/loop/pipeline-loop.ts"] -->|"issue Command"| KERNEL
+
+    style KERNEL fill:#e8f5e9
+    style ADAPTER fill:#fff3e0
+    style CLI fill:#e3f2fd
 ```
 
-> `state.ts` exists because the pipeline state machine is written in JavaScript (`.mjs`) for CLI use, but the orchestrator needs TypeScript types. The lazy-loaded dynamic import bridges the gap with zero re-imports after first call.
+> The kernel is the sole state writer. Every mutation flows through `runCommand(cmd) → Effects[]`. The `JsonFileStateStore` adapter consumes persistence effects under a POSIX `mkdir` lock. Handlers and admin CLI never write state directly.
 
 ---
 
-## Result Processor Pipeline
+## Output Sanitization
 
-When a `local-exec` script node (e.g., `e2e-runner`) fails, the kernel runs its error output through a **result processor pipeline** before triage. This happens in `session-runner.ts` after `handler.execute()` returns a failed `NodeResult`.
+When a script node fails, the kernel sanitizes the raw output before passing it to the triage system. This is zero-config — no per-node or per-app configuration required.
 
-```mermaid
-flowchart LR
-    RAW["Raw script\noutput"] --> NOISE["Strip noise\n(noise_patterns)"]
-    NOISE --> DEDUP_T["Dedup test failures\n(failure_block_separator)"]
-    DEDUP_T --> DEDUP_B["Dedup diagnostic\nblocks (separator-based)"]
-    DEDUP_B --> STATS["Extract test stats\n(passed/failed/total)"]
-    STATS --> CAP["Cap output\n(priority_patterns → head/tail)"]
-    CAP --> COG{"Cognitive\npass?"}
-    COG -->|"type: cognitive"| LLM["LLM diagnosis\n(fault_domain, root_cause,\nerror_type, evidence)"]
-    COG -->|"type: regex"| DONE["ProcessedResult"]
-    LLM --> DONE
+1. **Extract test stats** — recognizes common runner output (Playwright, Jest, Vitest) for `passed/failed/total` summary
+2. **Truncate** — caps output to 8192 chars using 60/40 head/tail split
 
-    style RAW fill:#ffcdd2
-    style DONE fill:#c8e6c9
-    style LLM fill:#e3f2fd
+Fault classification is handled by the triage system's 4-tier cascade (unfixable signals → structured JSON → domain header → RAG retriever → LLM router). Domain-specific error patterns live in triage packs (`.apm/triage-packs/*.json`), not in script node config.
+
+### Script Node Pre/Post Hooks
+
+All script-type nodes support `pre` and `post` hooks — shell commands that run before and after the handler body.
+
+- **`pre`** — Runs before the main command on every attempt (idempotent). Fatal on failure (node aborts). Timeout: 2 minutes for local-exec.
+- **`post`** — Runs after successful handler completion. Use for: cleanup, validation hooks.
+
+```yaml
+e2e-runner:
+  type: script
+  script_type: local-exec
+  command: "npx playwright test e2e/${featureSlug}.spec.ts"
+  pre: |
+    pkill -f 'node.*ssr' 2>/dev/null || true
+    npm start &
+    # poll dev server, exit 0 if healthy, exit 1 if broken
+  post: |
+    pkill -f 'node.*ssr' 2>/dev/null || true
 ```
 
-### Configuration (`workflows.yml` → `result_processor`)
+### Context Injection (Failure → Redevelopment)
 
-| Field | Type | Purpose |
-|-------|------|----------|
-| `type` | `"regex"` \| `"cognitive"` \| `"none"` | Processor pipeline to run |
-| `max_chars` | number | Budget for condensed output (default: 8192) |
-| `model` | `"fast"` \| `"default"` | LLM tier for cognitive pass |
-| `prompt` | string | Path to `.md` system prompt for LLM (relative to `.apm/`) |
-| `noise_patterns` | string[] | Regex patterns matching noise lines to strip before truncation |
-| `priority_patterns` | string[] | Regex patterns matching high-signal lines to extract first |
-| `failure_block_separator` | string | Regex matching test failure block headers (enables per-test dedup) |
-
-> **Zero hardcoded knowledge:** All `noise_patterns`, `priority_patterns`, and `failure_block_separator` values are declared per-project in `workflows.yml`. The kernel applies them generically — it contains no framework-specific patterns.
->
-> **Additive defaults:** `result_processor_defaults` at the workflow level provides shared noise/priority patterns. Node-level patterns are merged additively.
-
-### Context Injection (Diagnosis → Redevelopment)
-
-When a cognitive result processor produces structured diagnosis headers (`FAULT_DOMAIN_HINT`, `ROOT_CAUSE`, `ERROR_TYPE`, `EVIDENCE`), these are **extracted by `context-injection.ts`** and surfaced prominently in the redevelopment agent's system prompt. This prevents the agent from re-investigating the same failure from scratch.
-
-```mermaid
-sequenceDiagram
-    participant ER as e2e-runner
-    participant RP as Result Processor
-    participant TR as Triage Router
-    participant CI as context-injection.ts
-    participant DEV as storefront-dev (retry)
-
-    ER->>RP: Raw Playwright output
-    RP->>RP: Regex pass (dedup + cap)
-    RP->>RP: Cognitive pass (LLM diagnosis)
-    RP-->>TR: ProcessedResult {condensed, diagnosis}
-    TR->>TR: Route to fault domain → reset dev items
-    Note over CI: On retry, kernel calls\nbuildDownstreamFailureContext()
-    CI->>CI: extractDiagnosisFromFailures()
-    CI-->>DEV: Prompt: "## Automated Diagnosis\n**Root Cause:** ...\n**Use this as your starting point.**"
-```
+When a test node fails, the error output and triage classification are **injected into the redevelopment agent's prompt by `dispatch/context-builder.ts` via the `NodeContext` downstream-failure field** (previously handled by a dedicated `context-injection.ts`, which was dissolved into the dispatch layer). This prevents the agent from re-investigating the same failure from scratch.
 
 ---
 

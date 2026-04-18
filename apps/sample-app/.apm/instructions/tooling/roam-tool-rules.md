@@ -79,7 +79,7 @@ Just made changes, need to verify?
 
 ### PRE-COMPLETION GATE (MANDATORY)
 
-Before calling `pipeline:complete`, you MUST run `roam_check_rules` on all files you modified
+Before calling `report_outcome` (status: "completed"), you MUST run `roam_check_rules` on all files you modified
 in this session. This performs a deterministic security, performance, and correctness audit.
 
 - **SEC** (security), **PERF** (performance), **COR** (correctness) violations are **BLOCKING** — you must fix them before proceeding.

@@ -1,0 +1,205 @@
+/**
+ * main.ts — Composition root for the Command-Sourced Pipeline Kernel.
+ *
+ * Wires together:
+ *   - bootstrap.ts (preflight, config assembly) — unchanged
+ *   - PipelineKernel (sole state owner)
+ *   - DefaultKernelRules (delegates to domain/)
+ *   - Adapters (wrap existing I/O modules)
+ *   - HandlerResolver (wraps handlers/registry.ts)
+ *   - LoopLifecycle (wraps git-ops, archive, state commit)
+ *   - runPipelineLoop (reactive DAG loop)
+ *
+ * This module is the entry point. watchdog.ts delegates to
+ * `runWithKernel()` for pipeline execution.
+ */
+
+import { CopilotClient } from "@github/copilot-sdk";
+import type { PipelineRunConfig } from "../app-types.js";
+import type { ApmWorkflowNode } from "../apm/types.js";
+import type { AvailableItem } from "../app-types.js";
+import type { NodeHandler } from "../handlers/types.js";
+import type { PipelineState } from "../types.js";
+import { PipelineKernel } from "../kernel/pipeline-kernel.js";
+import { DefaultKernelRules } from "../kernel/rules.js";
+import { createRunState } from "../kernel/types.js";
+import { compileVolatilePatterns, type VolatilePattern } from "../domain/index.js";
+import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
+import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
+import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
+import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
+import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
+import { CopilotTriageLlm } from "../adapters/copilot-triage-llm.js";
+import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
+import { resolveHandler, inferHandler } from "../handlers/registry.js";
+import { getWorkflowNode } from "../session/dag-utils.js";
+
+// ---------------------------------------------------------------------------
+// HandlerResolver adapter — wraps the existing handler registry
+// ---------------------------------------------------------------------------
+
+class RegistryHandlerResolver implements HandlerResolver {
+  private readonly appRoot: string;
+  private readonly repoRoot: string;
+  private readonly apmContext: PipelineRunConfig["apmContext"];
+  private readonly workflowName: string;
+
+  constructor(config: PipelineRunConfig) {
+    this.appRoot = config.appRoot;
+    this.repoRoot = config.repoRoot;
+    this.apmContext = config.apmContext;
+    this.workflowName = config.workflowName;
+  }
+
+  resolve(item: AvailableItem, node: ApmWorkflowNode | undefined): NodeHandler {
+    // Handler resolution is async but the interface expects sync.
+    // We return a lazy proxy that resolves on first execute() call.
+    const self = this;
+    let resolved: NodeHandler | null = null;
+    let resolvePromise: Promise<NodeHandler> | null = null;
+
+    const getHandler = async (): Promise<NodeHandler> => {
+      if (resolved) return resolved;
+      if (!resolvePromise) {
+        resolvePromise = self.doResolve(item, node);
+      }
+      resolved = await resolvePromise;
+      return resolved;
+    };
+
+    return {
+      name: node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type) ?? "copilot-agent",
+      async execute(ctx) {
+        const handler = await getHandler();
+        return handler.execute(ctx);
+      },
+    };
+  }
+
+  private async doResolve(item: AvailableItem, node: ApmWorkflowNode | undefined): Promise<NodeHandler> {
+    const handlerRef = node?.handler
+      ?? inferHandler(
+        node?.type ?? "agent",
+        node?.script_type,
+        this.apmContext.config?.handler_defaults,
+      )
+      ?? "copilot-agent";
+
+    return resolveHandler(
+      handlerRef,
+      this.appRoot,
+      this.repoRoot,
+      this.apmContext.config?.handlers,
+      this.apmContext.config?.handler_packages,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API — kernel-mode pipeline execution
+// ---------------------------------------------------------------------------
+
+export interface KernelRunResult {
+  /** How the pipeline terminated. */
+  loopResult: LoopResult;
+}
+
+/**
+ * Run the pipeline using the Command-Sourced Kernel architecture.
+ *
+ * Called by watchdog.ts when kernel mode is enabled.
+ * Reuses the existing bootstrap result (config, client, telemetry).
+ *
+ * @param client - Started CopilotClient instance
+ * @param config - Immutable pipeline config from bootstrap()
+ * @returns How the pipeline terminated
+ */
+export async function runWithKernel(
+  client: CopilotClient,
+  config: PipelineRunConfig,
+): Promise<KernelRunResult> {
+  const { slug, appRoot, repoRoot, baseBranch, logger } = config;
+
+  // Instantiate adapters
+  const stateStore = new JsonFileStateStore();
+  const vcs = new GitShellAdapter(repoRoot, logger);
+  const filesystem = new LocalFilesystem();
+  const shell = new NodeShellAdapter();
+  const copilotSessionRunner = new NodeCopilotSessionRunner();
+  const telemetry = new JsonlTelemetry(logger);
+  const triageLlm = new CopilotTriageLlm(client);
+  const effectPorts = { stateStore, telemetry };
+
+  // Load initial DAG state from the persisted _STATE.json
+  const initialDagState = await stateStore.getStatus(slug) as PipelineState;
+
+  // Load prior session telemetry for monotonic accumulation
+  const baseTelemetry = telemetry.loadPreviousSummary(appRoot, slug);
+  const initialRunState = createRunState(baseTelemetry);
+
+  // Instantiate kernel
+  // Compile volatile-token patterns from APM config (workflow + per-node)
+  // and inject into the rules so fail/reset compute stable signatures that
+  // normalize framework-specific tokens (SFCC session IDs, test UUIDs, etc).
+  const workflowPatterns = compileVolatilePatterns(
+    config.apmContext.config?.error_signature?.volatile_patterns,
+  );
+  const perNodePatterns = new Map<string, ReadonlyArray<VolatilePattern>>();
+  const workflowNodes =
+    config.apmContext.workflows?.[config.workflowName]?.nodes ?? {};
+  for (const [nodeKey, node] of Object.entries(workflowNodes)) {
+    const extras = compileVolatilePatterns(
+      node?.error_signature?.volatile_patterns,
+    );
+    if (extras.length > 0) perNodePatterns.set(nodeKey, extras);
+  }
+  const rules = new DefaultKernelRules({ workflowPatterns, perNodePatterns });
+  const kernel = new PipelineKernel(slug, initialDagState, initialRunState, rules);
+
+  // Handler resolution
+  const handlerResolver = new RegistryHandlerResolver(config);
+
+  // Lifecycle hooks — concrete I/O wired here, injected into the loop
+  const lifecycle: LoopLifecycle = {
+    syncBranch() {
+      vcs.syncBranch(baseBranch);
+    },
+    async commitState(batchNumber: number) {
+      const currentBranch = await vcs.getCurrentBranch();
+      filesystem.commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
+    },
+    async archiveAndPush(slug: string) {
+      filesystem.archiveFeature(slug, appRoot, repoRoot);
+      try {
+        await vcs.pushWithRetry(baseBranch);
+      } catch (err) {
+        console.error(`  ✖ ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    getWorkflowNode(itemKey: string) {
+      return getWorkflowNode(config.apmContext, config.workflowName, itemKey);
+    },
+  };
+
+  // Run the DAG loop
+  const loopResult = await runPipelineLoop(kernel, handlerResolver, effectPorts, {
+    slug,
+    workflowName: config.workflowName,
+    appRoot,
+    repoRoot,
+    baseBranch,
+    apmContext: config.apmContext,
+    logger,
+    client,
+    triageLlm,
+    lifecycle,
+    vcs,
+    stateReader: stateStore,
+    shell,
+    filesystem,
+    copilotSessionRunner,
+  });
+
+  return { loopResult };
+}

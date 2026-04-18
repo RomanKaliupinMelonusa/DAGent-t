@@ -13,7 +13,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 |---|---|
 | Monorepo | npm workspaces · `apps/sample-app/` (skeleton) · `apps/commerce-storefront/` (PWA Kit) · `tools/autonomous-factory/` (engine) |
 | Orchestrator | TypeScript · `@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod v4 · Node 22 |
-| State Machine | DAG scheduler · `pipeline-state.mjs` · JSON state files |
+| State Machine | DAG scheduler · `PipelineKernel` (sole writer) · `JsonFileStateStore` adapter · JSON state files |
 | APM Compiler | `apm-compiler.ts` · per-agent token budgets · modular `.md` instruction fragments |
 | Structural Intelligence | roam-code v11.2 · Python 3.11 · AST semantic graph · MCP server |
 | CI/CD | GitHub Actions · OIDC federated credentials · 10 workflows |
@@ -22,7 +22,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 
 ## Hard Rules
 
-1. **Pipeline state is managed by `tools/autonomous-factory/pipeline-state.mjs`.** Agents never edit `_TRANS.md` or `_STATE.json` by hand — use `npm run pipeline:complete/fail/reset-ci/doc-note`.
+1. **Pipeline state is owned by the `PipelineKernel`** (`tools/autonomous-factory/src/kernel/pipeline-kernel.ts`) and persisted by `JsonFileStateStore`. Agents never edit `_TRANS.md` or `_STATE.json` by hand — they call the `report_outcome` SDK tool, which produces kernel commands. Admin/CLI entry is `tools/autonomous-factory/src/cli/pipeline-state.ts` (invoked via `npm run pipeline:*`).
 2. **Git operations use wrapper scripts.** `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push` in agent prompts.
 3. **Devcontainer provides Node 22 and Python 3.11.** No NVM commands needed. `.nvmrc` at repo root is used by CI workflows (`node-version-file: '.nvmrc'`). Python is used only by the roam-code orchestrator toolchain.
 4. **All Azure data-plane auth uses `DefaultAzureCredential`.** Zero API keys in code.
@@ -41,18 +41,25 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
-| SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
-| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
-| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
-| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
+| SDK orchestrator entry point | `tools/autonomous-factory/src/entry/watchdog.ts` |
+| Composition root (kernel + adapters + loop) | `tools/autonomous-factory/src/entry/main.ts` |
+| Bootstrap (preflight + APM compile + config) | `tools/autonomous-factory/src/entry/bootstrap.ts` |
+| Command-Sourced Pipeline Kernel | `tools/autonomous-factory/src/kernel/` |
+| Pure domain (DAG math, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
+| Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
+| Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
+| Reactive DAG loop | `tools/autonomous-factory/src/loop/` |
+| Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/dispatch/` |
+| Handler plugins (agent, poll, local-exec, triage, approval, barrier) | `tools/autonomous-factory/src/handlers/` |
+| Copilot-agent support helpers (context, limits, post-session) | `tools/autonomous-factory/src/handlers/support/` |
+| Workflow node helpers (shared, dag-utils) | `tools/autonomous-factory/src/session/` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
-| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
-| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
@@ -80,7 +87,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | CI/CD: Storefront deploy (Managed Runtime) | `.github/workflows/deploy-storefront.yml` |
 | ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
 | ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
-| Pipeline state script | `tools/autonomous-factory/pipeline-state.mjs` |
+| Pipeline state CLI | `tools/autonomous-factory/src/cli/pipeline-state.ts` |
 | Agent commit wrapper | `tools/autonomous-factory/agent-commit.sh` |
 | Agent branch wrapper | `tools/autonomous-factory/agent-branch.sh` |
 | CI polling script | `tools/autonomous-factory/poll-ci.sh` |
@@ -92,19 +99,24 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 
 | What | Where |
 |---|---|
-| Orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
-| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
-| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
-| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
+| Orchestrator entry point | `tools/autonomous-factory/src/entry/watchdog.ts` |
+| Composition root | `tools/autonomous-factory/src/entry/main.ts` |
+| Pipeline Kernel (sole state owner, Command/Effect) | `tools/autonomous-factory/src/kernel/` |
+| Pure domain functions (DAG, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
+| Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
+| Adapters (state store, git, CI, FS, SDK runner, telemetry) | `tools/autonomous-factory/src/adapters/` |
+| Reactive DAG loop | `tools/autonomous-factory/src/loop/pipeline-loop.ts` |
+| Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/dispatch/` |
+| Handler plugins (agent, push, poll, PR, local-exec, triage) | `tools/autonomous-factory/src/handlers/` |
+| Copilot agent support helpers | `tools/autonomous-factory/src/handlers/support/` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
-| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
-| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | State machine API binding | `tools/autonomous-factory/src/state.ts` |
 | GitHub Actions workflow | `.github/workflows/agentic-feature.yml` |
@@ -129,18 +141,18 @@ The orchestrator is a deterministic `while` loop that:
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
 3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
-5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `git-push` (deterministic push), `github-ci-poll` (CI polling), `github-pr-publish` (PR promotion), `local-exec` (script execution)
+5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `github-ci-poll` (CI polling), `local-exec` (script execution — push, publish, tests, builds)
 6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
 7. Writes a `_CHANGES.json` change manifest (with per-step doc-notes and handoff artifacts) before the `docs-archived` session
-8. For `local-exec` script nodes: runs optional `smoke_command` pre-flight check before the main command, then processes failed output through the result processor pipeline (noise stripping → test failure dedup → diagnostic block dedup → priority extraction → optional LLM diagnosis)
+8. For script nodes: runs optional `pre` hook before the handler body (e.g. environment health check), then runs the handler, then runs optional `post` hook (e.g. cleanup/validation). Failed output flows to the triage system for fault classification.
 9. Waits for handlers to complete or fail
 10. Advances to the next batch of ready items
 11. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
-12. Injects downstream failure context (including structured diagnosis from result processors) into dev agents during redevelopment cycles
+12. Injects downstream failure context into dev agents during redevelopment cycles
 
 ### Hard Rules
 
-- **State management:** Pipeline state is managed by `tools/autonomous-factory/pipeline-state.mjs`. Use `npm run pipeline:complete/fail/reset-ci`. Never edit `_TRANS.md` or `_STATE.json` directly.
+- **State management:** Pipeline state is owned by `PipelineKernel` and persisted via `JsonFileStateStore`. Admin operations go through `tools/autonomous-factory/src/cli/pipeline-state.ts` (use `npm run pipeline:init/status/next/resume/reset-scripts/recover-elevated`). Never edit `_TRANS.md` or `_STATE.json` directly.
 - **Git operations:** Use `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push`.
 - **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `BASE_BRANCH` env var) is the final administrative step.
 - **Prompt rules:** Coding rules live in `apps/<your-app>/.apm/instructions/` (single source of truth), declared in `.apm/apm.yml`. The APM compiler resolves per-agent instruction sets and validates token budgets.

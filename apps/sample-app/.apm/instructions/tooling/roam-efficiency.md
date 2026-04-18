@@ -31,5 +31,5 @@ If yes — stop reading, start editing.
 
 1. Run **one** `roam_batch_search` to consolidate unknowns.
 2. Still unclear -> write a `// TODO:` comment and move to the next sub-task.
-3. Hit the limit twice consecutively -> `pipeline:doc-note` the blocker,
+3. Hit the limit twice consecutively -> `report_outcome` (with docNote) the blocker,
    proceed with best-effort implementation.

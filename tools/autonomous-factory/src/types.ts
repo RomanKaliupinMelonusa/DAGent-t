@@ -1,28 +1,95 @@
 /**
  * types.ts — Shared TypeScript interfaces for the orchestrator.
  *
- * These types mirror the runtime shapes produced by pipeline-state.mjs
- * and are used by state.ts, agents.ts, and watchdog.ts.
+ * These types mirror the runtime shapes produced by the JsonFileStateStore
+ * adapter (src/adapters/json-file-state-store.ts) and consumed by the
+ * kernel, loop, and handlers.
  */
 
-import { z } from "zod";
-import { TriageDiagnosticSchema } from "../triage-schema.mjs";
+// ---------------------------------------------------------------------------
+// Reset operation keys — shared protocol between the state adapter and kernel
+// ---------------------------------------------------------------------------
 
-export { TriageDiagnosticSchema };
+/**
+ * Synthetic `itemKey` values written to `errorLog` by the state machine's
+ * reset functions. These are NOT real DAG node keys — they're operation
+ * markers used for cycle counting and context injection.
+ */
+export const RESET_OPS = {
+  /** resetNodes() for upstream dev redevelopment */
+  RESET_FOR_DEV: "reset-for-dev",
+  /** resetNodes() for triage reroute */
+  RESET_FOR_REROUTE: "reset-for-reroute",
+  /** Legacy error-log marker — kept for backward compat with old state files. */
+  RESET_PHASES: "reset-phases",
+} as const;
+
+/** All reset-operation keys that indicate a redevelopment cycle */
+export const REDEVELOPMENT_RESET_OPS = [
+  RESET_OPS.RESET_FOR_DEV,
+  RESET_OPS.RESET_FOR_REROUTE,
+] as const;
 
 export interface PipelineItem {
   key: string;
   label: string;
   agent: string | null;
-  phase: string;
-  status: "pending" | "done" | "failed" | "na";
+  status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
+  /** Structured handoff artifact (JSON string) for downstream agent contracts.
+   *  Dev agents use this to communicate typed data (testid maps, affected routes,
+   *  SSR-safety flags) to SDET and test runner agents. */
+  handoffArtifact?: string | null;
+  /** Pre-built prompt context written by the triage handler (or node wrapper)
+   *  for injection into the next attempt of this item. Consumed and cleared
+   *  by the node wrapper before handler execution. */
+  pendingContext?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Execution Log — persisted per-invocation records for cross-attempt analysis
+// ---------------------------------------------------------------------------
+
+/**
+ * Persisted record of a single handler invocation. Written by the kernel after
+ * every handler execution. The triage handler and node wrapper query these
+ * records to make failure-intelligence decisions (dedup, revert bypass, etc.).
+ *
+ * Unlike `errorLog` (which tracks state mutations) and `ItemSummary` (which is
+ * in-memory per-session), the execution log survives orchestrator restarts and
+ * provides full attempt history per node.
+ */
+export interface ExecutionRecord {
+  /** Unique identifier for this execution (UUID v4). */
+  executionId: string;
+  /** DAG node key (e.g. "storefront-dev"). */
+  nodeKey: string;
+  /** 1-based attempt number within this pipeline run. */
+  attempt: number;
+  /** Handler outcome. */
+  outcome: "completed" | "failed" | "error";
+  /** Error message if outcome is not "completed". */
+  errorMessage?: string;
+  /** Stable error fingerprint (SHA-256 prefix of normalized trace). */
+  errorSignature?: string;
+  /** Git HEAD before handler execution. */
+  headBefore?: string;
+  /** Git HEAD after handler execution. */
+  headAfter?: string;
+  /** Files changed during this execution. */
+  filesChanged: string[];
+  /** Execution duration in milliseconds. */
+  durationMs: number;
+  /** ISO timestamp when execution started. */
+  startedAt: string;
+  /** ISO timestamp when execution finished. */
+  finishedAt: string;
 }
 
 export interface PipelineState {
   feature: string;
-  workflowType: string;
+  workflowName: string;
   started: string;
   deployedUrl: string | null;
   implementationNotes: string | null;
@@ -38,22 +105,35 @@ export interface PipelineState {
   }>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;
-  /** Explicit ordered phase names — persisted at init from workflows.yml */
-  phases: string[];
-  /** Node execution types — persisted at init from workflows.yml */
-  nodeTypes: Record<string, "agent" | "script" | "approval">;
-  /** Node semantic categories — replaces DEV_ITEMS/TEST_ITEMS/POST_DEPLOY_ITEMS sets */
-  nodeCategories: Record<string, "dev" | "test" | "deploy" | "finalize">;
+  /** Node execution types — open set; built-in: agent, script, approval, triage. */
+  nodeTypes: Record<string, string>;
+  /** Node semantic categories — open set; built-in: dev, test, deploy, finalize. */
+  nodeCategories: Record<string, string>;
+  /** Whether pipeline:fail messages must be valid TriageDiagnostic JSON — persisted at init from workflows.yml */
+  jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
+  /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
+  salvageSurvivors: string[];
+  /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
+  dormantByActivation?: string[];
+  /** Last triage record — persisted for downstream context injection. */
+  lastTriageRecord?: TriageRecord | null;
+  /** Persisted execution log — one record per handler invocation, survives restarts. */
+  executionLog?: ExecutionRecord[];
 }
+
+/** Status values for pipeline items in the DAG scheduler. */
+export type PipelineItemStatus = "pending" | "done" | "failed" | "na" | "dormant";
+
+/** Scheduler-level status (superset: includes terminal sentinel values). */
+export type SchedulerStatus = PipelineItemStatus | "complete" | "blocked";
 
 export interface NextAction {
   key: string | null;
   label: string;
   agent: string | null;
-  phase: string | null;
-  status: string;
+  status: SchedulerStatus;
 }
 
 export interface FailResult {
@@ -75,36 +155,73 @@ export interface InitResult {
 }
 
 // ---------------------------------------------------------------------------
-// Structured error triage — JSON contract between post-deploy agents and the
-// watchdog's deterministic rerouting logic. The LLM classifies; the DAG routes.
-//
-// TriageDiagnosticSchema is the single source of truth (triage-schema.mjs).
-// FaultDomain and TriageDiagnostic are derived from it via z.infer.
+// Triage v2 — 2-layer profile-based system (RAG → LLM).
 // ---------------------------------------------------------------------------
 
-/** Fault domain that determines which dev items get reset on post-deploy failure. */
-export type FaultDomain = TriageDiagnostic["fault_domain"];
-
-/** Structured triage diagnostic — inferred from the Zod schema. */
-export type TriageDiagnostic = z.infer<typeof TriageDiagnosticSchema>;
+/** Result of the 2-layer triage evaluation. */
+export interface TriageResult {
+  /** Routing domain (key from the triage profile's routing section). */
+  domain: string;
+  /** Human-readable explanation of the classification. */
+  reason: string;
+  /** Which layer produced the classification. */
+  source: "rag" | "llm" | "fallback";
+  /** Top RAG matches (up to 3), regardless of which layer won. */
+  rag_matches?: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
+  /** LLM response latency in ms (only set when LLM layer was invoked). */
+  llm_response_ms?: number;
+}
 
 /**
- * Attempt to parse a `TriageDiagnostic` from the raw error message.
- * Returns `null` if the message is not valid JSON or fails Zod validation.
- *
- * Defined here (not in triage.ts) to break the circular dependency:
- * triage.ts → triage/retriever.ts → session/shared.ts → triage.ts
+ * Full triage record assembled by the triage handler (handlers/triage.ts).
+ * Captures everything about a failure classification for retrospective analysis.
+ * Persisted to `_STATE.json.lastTriageRecord` and emitted as a `triage.evaluate` event.
  */
-export function parseTriageDiagnostic(message: string): TriageDiagnostic | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(message);
-  } catch {
-    return null;
-  }
+export interface TriageRecord {
+  /** The DAG node that failed. */
+  failing_item: string;
+  /** Stable error fingerprint (SHA-256 prefix of normalized trace). */
+  error_signature: string;
 
-  const result = TriageDiagnosticSchema.safeParse(parsed);
-  return result.success ? result.data : null;
+  /** Pre-guard result (set by triage handler, not evaluateTriage). */
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup";
+  guard_detail?: string;
+
+  /** RAG layer matches (up to 3, ranked by specificity). */
+  rag_matches: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
+  /** The RAG snippet selected for routing (null if LLM or fallback won). */
+  rag_selected: string | null;
+
+  /** Whether the LLM layer was invoked. */
+  llm_invoked: boolean;
+  llm_domain?: string;
+  llm_reason?: string;
+  llm_response_ms?: number;
+
+  /** Final classification. */
+  domain: string;
+  reason: string;
+  source: "rag" | "llm" | "fallback";
+
+  /** Routing decision (set by triage handler after evaluateTriage). */
+  route_to: string;
+  cascade: string[];
+  cycle_count: number;
+  domain_retry_count: number;
+}
+
+/**
+ * Extract `diagnostic_trace` from a JSON error message, if present.
+ * Used by the circuit breaker to normalize error comparisons.
+ */
+export function extractDiagnosticTrace(message: string): string | null {
+  try {
+    const parsed = JSON.parse(message);
+    if (parsed && typeof parsed === "object" && typeof parsed.diagnostic_trace === "string") {
+      return parsed.diagnostic_trace;
+    }
+  } catch { /* not JSON */ }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +234,6 @@ export interface ItemSummary {
   key: string;
   label: string;
   agent: string;
-  phase: string;
   attempt: number;
   startedAt: string;
   finishedAt: string;
@@ -147,6 +263,20 @@ export interface ItemSummary {
   cacheReadTokens: number;
   /** Accumulated cache-creation tokens */
   cacheWriteTokens: number;
+  /** Budget utilization snapshot — populated at session end by the copilot-agent handler. */
+  budgetUtilization?: {
+    toolCallsUsed: number;
+    toolCallLimit: number;
+    tokensConsumed: number;
+    tokenBudget?: number;
+  };
+  /**
+   * Outcome reported by the agent via the `report_outcome` SDK tool.
+   * Last call wins. Read by `handlers/copilot-agent.ts` to translate
+   * into a kernel Command (Phase A — kernel-sole-writer).
+   * Undefined when the agent never called the tool.
+   */
+  reportedOutcome?: import("./harness/outcome-tool.js").ReportedOutcome;
 }
 
 export interface ShellEntry {
@@ -166,6 +296,3 @@ export interface McpToolLogEntry {
   success?: boolean;
   result?: string;
 }
-
-/** @deprecated Use McpToolLogEntry instead */
-export type PlaywrightLogEntry = McpToolLogEntry;

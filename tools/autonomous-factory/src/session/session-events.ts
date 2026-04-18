@@ -9,57 +9,26 @@
 
 import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
-import { extractShellWrittenFiles } from "../tool-harness.js";
+import type { PipelineLogger } from "../telemetry/index.js";
+import { extractShellWrittenFiles } from "../harness/index.js";
+import {
+  SessionCircuitBreaker,
+  TOOL_LIMIT_FALLBACK_SOFT,
+  TOOL_LIMIT_FALLBACK_HARD,
+} from "../adapters/session-circuit-breaker.js";
+import type { CognitiveBreaker } from "../ports/cognitive-breaker.js";
+
+// Re-export for backward compatibility. New code should import from
+// adapters/session-circuit-breaker.js or ports/cognitive-breaker.js.
+export {
+  SessionCircuitBreaker,
+  TOOL_LIMIT_FALLBACK_SOFT,
+  TOOL_LIMIT_FALLBACK_HARD,
+};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/**
- * Cognitive Circuit Breaker — absolute last-resort fallback.
- * Only used if apm.yml has neither per-agent toolLimits nor config.defaultToolLimits.
- * All real configuration should be in apm.yml.
- */
-export const TOOL_LIMIT_FALLBACK_SOFT = 30;
-export const TOOL_LIMIT_FALLBACK_HARD = 40;
-
-// ---------------------------------------------------------------------------
-// Circuit breaker object
-// ---------------------------------------------------------------------------
-
-/**
- * Encapsulates the cognitive circuit breaker state — soft warning
- * and hard kill thresholds — in a single object that is shared between
- * wireToolLogging, the onDenial callback, and any future trigger points.
- */
-export class SessionCircuitBreaker {
-  private _tripped = false;
-  private _totalCalls = 0;
-  private _softFired = false;
-
-  constructor(
-    readonly soft: number,
-    readonly hard: number,
-    private onTrip: (total: number) => void,
-  ) {}
-
-  get tripped(): boolean { return this._tripped; }
-
-  recordCall(category: string, toolCounts: Record<string, number>): void {
-    toolCounts[category] = (toolCounts[category] ?? 0) + 1;
-    this._totalCalls = Object.values(toolCounts).reduce((a, b) => a + b, 0);
-    if (this._totalCalls >= this.hard && !this._tripped) {
-      this._tripped = true;
-      this.onTrip(this._totalCalls);
-    }
-  }
-
-  get shouldWarnSoft(): boolean {
-    if (this._softFired || this._totalCalls < this.soft) return false;
-    this._softFired = true;
-    return true;
-  }
-}
 
 /** Friendly labels for built-in SDK tools */
 export const TOOL_LABELS: Record<string, string> = {
@@ -74,6 +43,7 @@ export const TOOL_LABELS: Record<string, string> = {
   grep_search:  "🔍 Search",
   list_dir:     "📂 List",
   report_intent:"💭 Intent",
+  report_outcome:"🏁 Outcome",
 };
 
 /** Group tool names into summary categories */
@@ -89,6 +59,7 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   grep_search: "search",
   list_dir: "search",
   report_intent: "intent",
+  report_outcome: "outcome",
 };
 
 /** Extract a short description from tool arguments */
@@ -120,6 +91,8 @@ export function toolSummary(
       return args.path ? ` → ${path.relative(repoRoot, String(args.path))}` : "";
     case "report_intent":
       return args.intent ? ` → ${args.intent}` : "";
+    case "report_outcome":
+      return args.status ? ` → ${args.status}` : "";
     default:
       return "";
   }
@@ -158,32 +131,44 @@ export function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
   repoRoot: string,
-  breaker: SessionCircuitBreaker,
+  breaker: CognitiveBreaker,
   sessionTimeout: number,
+  logger: PipelineLogger,
   triggerHeartbeat?: () => void,
+  /** Override write-density threshold (default 3). From config.defaultToolLimits.writeThreshold or per-agent toolLimits.writeThreshold. */
+  writeThreshold?: number,
+  /** Override pre-timeout wrap-up percentage (default 0.8). From config.defaultToolLimits.preTimeoutPercent or per-agent toolLimits.preTimeoutPercent. */
+  preTimeoutPercent?: number,
 ): void {
-  /** Pre-timeout wrap-up signal — fires at 80% of session timeout */
+  /** Pre-timeout wrap-up signal — fires at configured percentage of session timeout */
   let preTimeoutFired = false;
   const sessionStartMs = Date.now();
-  const preTimeoutThresholdMs = sessionTimeout * 0.8;
+  const preTimeoutThresholdMs = sessionTimeout * (preTimeoutPercent ?? 0.8);
 
   /** Write-density circuit breaker — detects file thrashing */
   const fileWriteCounts = new Map<string, number>();
   const writeDensityWarned = new Set<string>();
   /** Threshold: inject warning after this many writes to the same file */
-  const WRITE_DENSITY_THRESHOLD = 3;
+  const WRITE_DENSITY_THRESHOLD = writeThreshold ?? 3;
 
   session.on("tool.execution_start", (event: any) => {
     // After hard limit, ignore all further tool events
     if (breaker.tripped) return;
 
     const name = event.data.toolName;
-    const label = TOOL_LABELS[name] ?? `🔧 ${name}`;
     const args = event.data.arguments as Record<string, unknown> | undefined;
     const detail = toolSummary(repoRoot, name, args);
-    console.log(`  ${label}${detail}`);
-
     const category = TOOL_CATEGORIES[name] ?? name;
+    const isWrite = name === "write_file" || name === "edit_file" || name === "create_file" || name === "create" || name === "write_bash";
+
+    logger.event("tool.call", itemSummary.key, {
+      tool: name,
+      category,
+      detail,
+      is_write: isWrite,
+      file: args?.filePath ? path.relative(repoRoot, String(args.filePath)) : undefined,
+    });
+
     breaker.recordCall(category, itemSummary.toolCounts);
 
     const filePath = args?.filePath ? path.relative(repoRoot, String(args.filePath)) : null;
@@ -239,18 +224,18 @@ export function wireToolLogging(
         `\n\n⚠️ SYSTEM NOTICE: You have executed ${totalCalls} tool calls in this session ` +
         `(soft limit: ${breaker.soft}). You appear to be stuck in a debugging loop. ` +
         `If you are fighting a persistent testing framework limitation, document it ` +
-        `with pipeline:doc-note and test.skip() the test. If this is a real ` +
-        `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
-        `cycle. DO NOT continue debugging — decide now.`;
+        `via report_outcome (status: "completed", docNote: "...") and test.skip() ` +
+        `the test. If this is a real implementation bug, call report_outcome with ` +
+        `status: "failed" to trigger a redevelopment cycle. ` +
+        `DO NOT continue debugging — decide now.`;
 
-      // Safely append to the result content — never destroy existing data.
-      // SDK tool results may have string content, array-of-blocks content,
-      // or no content at all.
       appendToToolResult(event.data, frustrationPrompt);
 
-      console.warn(
-        `\n  ⚠️  COGNITIVE CIRCUIT BREAKER INJECTED: Agent passed soft limit of ${breaker.soft} calls.\n`,
-      );
+      logger.event("breaker.fire", itemSummary.key, {
+        type: "soft",
+        tool_count: totalCalls,
+        threshold: breaker.soft,
+      });
     }
 
     // Write-density circuit breaker — detect file thrashing.
@@ -262,11 +247,16 @@ export function wireToolLogging(
         const writeDensityPrompt =
           `\n\n⚠️ SYSTEM NOTICE: You have edited "${file}" ${count} times. You are thrashing. ` +
           `If failures persist due to upstream component issues, STOP editing and escalate ` +
-          `immediately via pipeline:fail with a TriageDiagnostic JSON ` +
+          `immediately by calling report_outcome with status: "failed" and a TriageDiagnostic JSON ` +
           `(e.g. {"fault_domain":"frontend","diagnostic_trace":"<test output>"}).`;
 
         appendToToolResult(event.data, writeDensityPrompt);
-        console.warn(`\n  ⚠️  WRITE-DENSITY BREAKER: "${file}" written ${count} times.\n`);
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "density",
+          file,
+          write_count: count,
+          threshold: WRITE_DENSITY_THRESHOLD,
+        });
       }
     }
 
@@ -279,15 +269,16 @@ export function wireToolLogging(
       const wrapUpPrompt =
         `\n\n⏰ SYSTEM NOTICE: Session timeout approaching — ~${remainingSec}s remaining. ` +
         `You MUST wrap up NOW. Commit whatever work you have completed so far via ` +
-        `agent-commit.sh, then call pipeline:complete if the feature is functional, ` +
-        `or pipeline:fail with a diagnostic if it is not. ` +
-        `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
+        `agent-commit.sh, then call report_outcome with status: "completed" if the feature ` +
+        `is functional, or status: "failed" with a diagnostic if it is not. ` +
+        `Do NOT start new exploratory work. Prioritize: commit → test → report_outcome.`;
 
       appendToToolResult(event.data, wrapUpPrompt);
 
-      console.warn(
-        `\n  ⏰ PRE-TIMEOUT WARNING INJECTED: ~${remainingSec}s remaining before session timeout.\n`,
-      );
+      logger.event("breaker.fire", itemSummary.key, {
+        type: "timeout",
+        remaining_sec: remainingSec,
+      });
     }
 
     triggerHeartbeat?.();
@@ -299,7 +290,7 @@ const MCP_SERVER_LABELS: Record<string, string> = {
   playwright: "🎭",
 };
 
-export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknown>, triggerHeartbeat?: () => void): McpToolLogEntry[] {
+export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknown>, itemKey: string, logger: PipelineLogger, triggerHeartbeat?: () => void): McpToolLogEntry[] {
   const mcpLog: McpToolLogEntry[] = [];
   const serverNames = Object.keys(mcpServers);
   if (serverNames.length === 0) return mcpLog;
@@ -325,7 +316,13 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
     if (args?.url) detail = ` → ${args.url}`;
     else if (args?.selector) detail = ` → ${args.selector}`;
     else if (args?.code) detail = ` → ${String(args.code).split("\n")[0].slice(0, 80)}`;
-    console.log(`  ${emoji} ${shortName}${detail}`);
+    logger.event("tool.call", itemKey, {
+      tool: name,
+      category: "mcp",
+      mcp_server: server,
+      detail: ` → ${shortName}${detail}`,
+      is_write: false,
+    });
   });
 
   session.on("tool.execution_complete", (event: any) => {
@@ -345,6 +342,11 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
       const server = last.server ?? "mcp";
       const emoji = MCP_SERVER_LABELS[server] ?? "🔌";
       const status = event.data.success ? "✅" : "❌";
+      logger.event("tool.result", itemKey, {
+        tool: last.tool,
+        mcp_server: server,
+        success: event.data.success,
+      });
       console.log(`  ${emoji} ${status} ${last.tool.replace(`${server}-`, "")} completed`);
     }
 
@@ -354,23 +356,40 @@ export function wireMcpTelemetry(session: any, mcpServers: Record<string, unknow
   return mcpLog;
 }
 
-export function wireIntentLogging(session: any, itemSummary: ItemSummary): void {
+export function wireIntentLogging(session: any, itemSummary: ItemSummary, logger: PipelineLogger): void {
   session.on("assistant.intent", (event: any) => {
-    console.log(`\n  💡 ${event.data.intent}\n`);
+    logger.event("agent.intent", itemSummary.key, { text: event.data.intent });
     itemSummary.intents.push(event.data.intent);
   });
 }
 
-export function wireMessageCapture(session: any, itemSummary: ItemSummary): void {
+export function wireMessageCapture(session: any, itemSummary: ItemSummary, logger: PipelineLogger): void {
   session.on("assistant.message", (event: any) => {
     const content = event.data.content.replace(/\n/g, " ").trim();
     if (content) {
       itemSummary.messages.push(content);
+      logger.event("agent.message", itemSummary.key, {
+        role: "assistant",
+        preview: content.slice(0, 200),
+        token_count: content.length,
+      });
     }
   });
 }
 
-export function wireUsageTracking(session: any, itemSummary: ItemSummary, triggerHeartbeat?: () => void): void {
+export function wireUsageTracking(
+  session: any,
+  itemSummary: ItemSummary,
+  logger: PipelineLogger,
+  triggerHeartbeat?: () => void,
+  /** Optional runtime token budget. Disabled (undefined) by default. */
+  runtimeTokenBudget?: number,
+  /** Callback fired when runtimeTokenBudget is exceeded (100%). Caller should disconnect. */
+  onTokenBudgetExceeded?: (consumed: number, budget: number) => void,
+): void {
+  let tokenBudgetWarnFired = false;
+  let tokenBudgetHardFired = false;
+
   session.on("assistant.usage", (event: any) => {
     const d = event.data;
     const inp = d.inputTokens ?? 0;
@@ -382,9 +401,105 @@ export function wireUsageTracking(session: any, itemSummary: ItemSummary, trigge
     itemSummary.outputTokens += out;
     itemSummary.cacheReadTokens += cacheR;
     itemSummary.cacheWriteTokens += cacheC;
-    console.log(`  📊 Tokens: +${inp}in / +${out}out / +${cacheR}cache-read / +${cacheC}cache-write`);
+    logger.event("agent.usage", itemSummary.key, {
+      input_tokens: inp,
+      output_tokens: out,
+      cache_read_tokens: cacheR,
+      cache_write_tokens: cacheC,
+    });
     triggerHeartbeat?.();
+
+    // --- Runtime token budget enforcement ---
+    if (runtimeTokenBudget != null && runtimeTokenBudget > 0) {
+      const consumed = itemSummary.inputTokens + itemSummary.outputTokens;
+      // Hard limit: 100% — fire callback for disconnect
+      if (!tokenBudgetHardFired && consumed >= runtimeTokenBudget) {
+        tokenBudgetHardFired = true;
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "token_budget_hard",
+          consumed,
+          budget: runtimeTokenBudget,
+        });
+        onTokenBudgetExceeded?.(consumed, runtimeTokenBudget);
+      }
+      // Soft limit: 80% — inject warning via next tool result
+      if (!tokenBudgetWarnFired && consumed >= runtimeTokenBudget * 0.8) {
+        tokenBudgetWarnFired = true;
+        logger.event("breaker.fire", itemSummary.key, {
+          type: "token_budget_soft",
+          consumed,
+          budget: runtimeTokenBudget,
+          threshold_pct: 0.8,
+        });
+      }
+    }
   });
+
+  // Inject token budget warning into tool results (soft limit at 80%)
+  if (runtimeTokenBudget != null && runtimeTokenBudget > 0) {
+    session.on("tool.execution_complete", (event: any) => {
+      if (!tokenBudgetWarnFired || tokenBudgetHardFired) return;
+      const consumed = itemSummary.inputTokens + itemSummary.outputTokens;
+      const pct = Math.round((consumed / runtimeTokenBudget) * 100);
+      const warning =
+        `\n\n⚠️ SYSTEM NOTICE: Token budget alert — you have consumed ${consumed.toLocaleString()} of ` +
+        `${runtimeTokenBudget.toLocaleString()} tokens (${pct}%). ` +
+        `Wrap up your current task, commit your work, and call report_outcome ` +
+        `(status: "completed" or "failed"). ` +
+        `The session will be force-disconnected at 100%.`;
+      appendToToolResult(event.data, warning);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session telemetry facade
+// ---------------------------------------------------------------------------
+
+export interface WireSessionTelemetryParams {
+  itemSummary: ItemSummary;
+  itemKey: string;
+  repoRoot: string;
+  breaker: CognitiveBreaker;
+  sessionTimeout: number;
+  logger: PipelineLogger;
+  mcpServers?: Record<string, unknown>;
+  triggerHeartbeat?: () => void;
+  writeThreshold?: number;
+  preTimeoutPercent?: number;
+  runtimeTokenBudget?: number;
+  onTokenBudgetExceeded?: (consumed: number, budget: number) => void;
+}
+
+/**
+ * Wire every telemetry concern onto the given SDK session in one call.
+ * The copilot-session-runner adapter used to invoke five `wire*` helpers
+ * in sequence; this facade hides that layout so the runner stays small.
+ */
+export function wireSessionTelemetry(session: any, p: WireSessionTelemetryParams): void {
+  wireToolLogging(
+    session,
+    p.itemSummary,
+    p.repoRoot,
+    p.breaker,
+    p.sessionTimeout,
+    p.logger,
+    p.triggerHeartbeat,
+    p.writeThreshold,
+    p.preTimeoutPercent,
+  );
+  wireMcpTelemetry(session, p.mcpServers ?? {}, p.itemKey, p.logger, p.triggerHeartbeat);
+  wireIntentLogging(session, p.itemSummary, p.logger);
+  wireMessageCapture(session, p.itemSummary, p.logger);
+  wireUsageTracking(
+    session,
+    p.itemSummary,
+    p.logger,
+    p.triggerHeartbeat,
+    p.runtimeTokenBudget,
+    p.onTokenBudgetExceeded,
+  );
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
+

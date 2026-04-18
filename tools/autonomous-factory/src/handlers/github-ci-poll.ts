@@ -7,123 +7,28 @@
  *
  * This handler is an OBSERVER — it never calls completeItem/failItem.
  * The kernel manages state transitions based on the returned NodeResult.
+ *
+ * All I/O flows through ctx ports (shell, filesystem). Direct
+ * `node:fs` / `node:child_process` imports are forbidden here —
+ * shared helpers live in `session/`.
  */
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { execSync } from "node:child_process";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Max retries for transient network errors (exit code 2) before giving up */
-const MAX_TRANSIENT_RETRIES = 5;
-/** Backoff between transient retries (ms) */
-const TRANSIENT_BACKOFF_MS = 30_000;
+import {
+  DEFAULT_TRANSIENT_RETRIES,
+  DEFAULT_TRANSIENT_BACKOFF_MS,
+  buildPollCmd,
+  buildPollEnv,
+  runPollWithRetries,
+} from "../session/transient-poll.js";
+import { postCiArtifactToPr } from "../session/ci-artifact-poster.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helper
 // ---------------------------------------------------------------------------
 
 function getWorkflowNode(ctx: NodeContext) {
-  return ctx.apmContext.workflows?.default?.nodes?.[ctx.itemKey];
-}
-
-// ---------------------------------------------------------------------------
-// CI artifact → PR comment (self-contained to avoid circular deps)
-// ---------------------------------------------------------------------------
-
-async function postCiArtifactToPr(ctx: NodeContext): Promise<void> {
-  const { repoRoot, apmContext, slug } = ctx;
-  const branch = `feature/${slug}`;
-  const infraPlanFile = (apmContext.config?.ciWorkflows as Record<string, string> | undefined)?.infraPlanFile ?? "deploy-infra.yml";
-
-  const runIdOutput = execSync(
-    `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
-    { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-  ).toString().trim();
-
-  if (!runIdOutput) return;
-
-  // Dedup: skip if we already posted a plan comment for this CI run
-  const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
-  let alreadyPosted = false;
-  try {
-    const existingComments = execSync(
-      `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
-      { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-    ).toString();
-    alreadyPosted = existingComments.includes(marker);
-  } catch { /* ignore — proceed to post */ }
-
-  if (alreadyPosted) {
-    console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
-    return;
-  }
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
-  try {
-    execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
-      cwd: repoRoot, stdio: "pipe", timeout: 60_000,
-    });
-    const planFile = path.join(tmpDir, "plan-output.txt");
-    if (fs.existsSync(planFile)) {
-      const planText = fs.readFileSync(planFile, "utf-8").trim();
-      const prCommentTemplate = (apmContext.config?.ciWorkflows as Record<string, unknown> | undefined)?.pr_comment_template as string | undefined
-        ?? "> Comment `/dagent approve-infra` to apply this plan.";
-      const commentBody = [
-        marker,
-        "### Terraform Plan — `success`",
-        "",
-        "<details><summary>Click to expand plan output</summary>",
-        "",
-        "```",
-        planText,
-        "```",
-        "",
-        "</details>",
-        "",
-        prCommentTemplate,
-      ].join("\n");
-      const commentFile = path.join(tmpDir, "plan-comment.md");
-      fs.writeFileSync(commentFile, commentBody, "utf-8");
-      execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
-        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
-      });
-      console.log(`  📋 Posted Terraform plan to Draft PR`);
-    }
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// validateApp hook (inline — mirrors readiness-probe.ts logic)
-// ---------------------------------------------------------------------------
-
-function runValidateApp(ctx: NodeContext): string | null {
-  const hookScript = path.join(ctx.appRoot, ".apm", "hooks", "validate-app.sh");
-  if (!fs.existsSync(hookScript)) return null;
-  try {
-    execSync(`bash "${hookScript}"`, {
-      cwd: ctx.appRoot,
-      stdio: "pipe",
-      timeout: 120_000,
-      env: {
-        ...process.env,
-        SLUG: ctx.slug,
-        APP_ROOT: ctx.appRoot,
-        REPO_ROOT: ctx.repoRoot,
-      },
-    });
-    return null;
-  } catch (err: unknown) {
-    const execErr = err as { stderr?: Buffer; message?: string };
-    return execErr.stderr?.toString().trim() || execErr.message || "validateApp hook failed";
-  }
+  return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];
 }
 
 // ---------------------------------------------------------------------------
@@ -133,13 +38,20 @@ function runValidateApp(ctx: NodeContext): string | null {
 const githubCiPollHandler: NodeHandler = {
   name: "github-ci-poll",
 
+  metadata: {
+    description: "Polls GitHub Actions CI workflows for completion, handles transient retries, and downloads artifacts.",
+    inputs: {
+      "lastPushedSha": "optional",  // SHA-pinned polling; gracefully degrades to HEAD-based
+    },
+    outputs: [],
+  },
+
   async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { slug, repoRoot, appRoot, apmContext } = ctx;
+    const { slug, repoRoot, appRoot, apmContext, filesystem } = ctx;
     const node = getWorkflowNode(ctx);
 
     const pollTarget = node?.poll_target;
     const ciWorkflowKey = node?.ci_workflow_key ?? "app";
-    const postRunHook = node?.post_run_hook;
 
     if (!pollTarget) {
       return {
@@ -149,141 +61,94 @@ const githubCiPollHandler: NodeHandler = {
       };
     }
 
-    const inProgressDir = path.join(appRoot, "in-progress");
-    const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
+    const inProgressDir = filesystem.joinPath(appRoot, "in-progress");
+    const diagFile = filesystem.joinPath(inProgressDir, `${slug}_CI-FAILURE.log`);
 
-    // Resolve the pushed SHA from the corresponding push item
-    const lastPushedSha = (ctx.handlerData[`lastPushedSha:${pollTarget}`] as string) ?? null;
+    // Resolve the pushed SHA from the corresponding push item's handler output
+    const lastPushedSha = (ctx.handlerData[`${pollTarget}:lastPushedSha`] as string) ?? null;
 
-    // Build poll command args — pass commit SHA if available for pinned filtering
-    const pollScript = path.join(repoRoot, "tools", "autonomous-factory", "poll-ci.sh");
-    const pollCmd = lastPushedSha
-      ? `bash "${pollScript}" --commit "${lastPushedSha}"`
-      : `bash "${pollScript}"`;
+    const pollCmd = buildPollCmd(repoRoot, lastPushedSha);
+    const maxRetries = apmContext.config?.transient_retry?.max ?? DEFAULT_TRANSIENT_RETRIES;
+    const backoffMs = apmContext.config?.transient_retry?.backoff_ms ?? DEFAULT_TRANSIENT_BACKOFF_MS;
 
-    console.log(`  ⏳ ${ctx.itemKey}: Running deterministic CI poll (no agent session)`);
+    ctx.logger.event("item.start", ctx.itemKey, { agent: "ci-poll", node_type: "poll", category: "deploy" });
     if (lastPushedSha) {
-      console.log(`     SHA-pinned to ${lastPushedSha.slice(0, 8)}`);
+      ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` SHA-pinned to ${lastPushedSha.slice(0, 8)}`, is_write: false });
     }
 
-    // Transient retry loop — exit code 2 from poll-ci.sh means network error.
-    // Sleep and retry WITHOUT touching DAG state.
-    const CI_LOG_CHAR_LIMIT = 15_000;
-    for (let transientAttempt = 0; transientAttempt <= MAX_TRANSIENT_RETRIES; transientAttempt++) {
-      try {
-        const pollOutput = execSync(pollCmd, {
-          cwd: repoRoot,
-          stdio: "pipe",
-          maxBuffer: 5 * 1024 * 1024,
-          timeout: 1_200_000,
-          env: {
-            ...process.env,
-            POLL_MAX_RETRIES: "60",
-            IN_PROGRESS_DIR: inProgressDir,
-            SLUG: slug,
-            ...(apmContext.config?.ciWorkflows
-              ? {
-                  CI_WORKFLOW_FILTER: (apmContext.config.ciWorkflows as Record<string, string>)[
-                    ciWorkflowKey
-                  ] ?? "",
-                }
-              : {}),
-            ...(apmContext.config?.ciJobs
-              ? Object.fromEntries(
-                  Object.entries(apmContext.config.ciJobs as Record<string, string>)
-                    .map(([key, value]) => [`CI_JOB_MATCH_${key.toUpperCase()}`, value]),
-                )
-              : {}),
-          },
-        });
+    const pollResult = await runPollWithRetries({
+      pollCmd,
+      cwd: repoRoot,
+      env: buildPollEnv(inProgressDir, slug, apmContext.config, ciWorkflowKey),
+      maxRetries,
+      backoffMs,
+      onTransientRetry: (attempt, max) => {
+        ctx.logger.event("tool.call", ctx.itemKey, { tool: "poll-ci", category: "poll", detail: ` transient error (attempt ${attempt}/${max})`, is_write: false });
+      },
+    });
 
-        const successLog = pollOutput.toString();
-        if (successLog) console.log(successLog);
-
+    switch (pollResult.type) {
+      case "success": {
         // ── Download CI artifact and post to Draft PR (if node declares it) ──
         if (node?.post_ci_artifact_to_pr) {
           try {
-            await postCiArtifactToPr(ctx);
+            await postCiArtifactToPr({
+              repoRoot,
+              slug,
+              apmConfig: apmContext.config as Record<string, unknown> | undefined,
+              shell: ctx.shell,
+              filesystem: ctx.filesystem,
+            });
           } catch (planErr) {
-            console.warn(`  ⚠ Could not post plan to PR: ${planErr instanceof Error ? planErr.message : String(planErr)}`);
+            ctx.logger.event("tool.call", ctx.itemKey, { tool: "post-ci-artifact", category: "ci", detail: ` failed: ${planErr instanceof Error ? planErr.message : String(planErr)}`, is_write: false });
           }
         }
-
-        // ── Declarative post-run validation hook ─────────────────────────
-        if (postRunHook === "validateApp") {
-          const appFailure = runValidateApp(ctx);
-          if (appFailure) {
-            console.error(`  🚫 App validation failed after CI: ${appFailure}`);
-            const failMsg = JSON.stringify({ fault_domain: "deployment-stale", diagnostic_trace: `validateApp hook: ${appFailure}` });
-            return {
-              outcome: "failed",
-              errorMessage: failMsg,
-              summary: { intents: ["App validation failed — blocking before post-deploy agents"] },
-            };
-          }
-        }
-
-        console.log(`  ✅ ${ctx.itemKey} complete (all workflows passed)`);
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "completed", note: "all workflows passed" });
         return {
           outcome: "completed",
           summary: { intents: ["Deterministic CI poll — all workflows passed"] },
         };
+      }
 
-      } catch (err: unknown) {
-        const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
-        const ciLogs = execErr.stdout?.toString() ?? "";
-        const ciStderr = execErr.stderr?.toString() ?? "";
+      case "transient_exhausted": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `Exhausted ${maxRetries} transient retries` });
+        return {
+          outcome: "failed",
+          errorMessage: `CI polling hit ${maxRetries} transient network errors — will retry`,
+          summary: {},
+        };
+      }
 
-        let capturedOutput = [ciLogs, ciStderr].filter(Boolean).join("\n");
-        if (capturedOutput.length > CI_LOG_CHAR_LIMIT) {
-          capturedOutput = "[...TRUNCATED CI LOGS...]\n" + capturedOutput.slice(-CI_LOG_CHAR_LIMIT);
-        }
-        const message = execErr.message ?? String(err);
+      case "cancelled": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: "CI polling manually cancelled" });
+        return {
+          outcome: "failed",
+          errorMessage: "CI polling was manually cancelled — will retry",
+          summary: {},
+        };
+      }
 
-        // ── Exit code 2: Transient network error — sleep and retry ────
-        if (execErr.status === 2) {
-          if (transientAttempt < MAX_TRANSIENT_RETRIES) {
-            console.warn(`  ⚠ Transient CI poll error (attempt ${transientAttempt + 1}/${MAX_TRANSIENT_RETRIES}), retrying in ${TRANSIENT_BACKOFF_MS / 1000}s...`);
-            await new Promise((resolve) => setTimeout(resolve, TRANSIENT_BACKOFF_MS));
-            continue; // Retry — no state mutation
-          }
-          // Exhausted transient retries — treat as timeout
-          console.warn(`  ⏳ Exhausted ${MAX_TRANSIENT_RETRIES} transient retries. Treating as timeout.`);
-          return {
-            outcome: "failed",
-            errorMessage: `CI polling hit ${MAX_TRANSIENT_RETRIES} transient network errors — will retry`,
-            summary: {},
-          };
-        }
-
-        // Re-echo for terminal visibility
-        if (ciLogs) console.log(ciLogs);
-        if (ciStderr) console.error(ciStderr);
-
-        // ── Exit code 3 (cancellation) — NOT a code bug ────────────────
-        if (execErr.status === 3) {
-          console.warn(`  ⏳ CI polling was manually cancelled. Will retry on next loop.`);
-          return {
-            outcome: "failed",
-            errorMessage: "CI polling was manually cancelled — will retry",
-            summary: {},
-          };
-        }
-
-        console.error(`  ✖ CI poll failed or had failures: ${message}`);
+      case "failed": {
+        ctx.logger.event("item.end", ctx.itemKey, { outcome: "failed", error_preview: `CI poll failed: ${pollResult.message.slice(0, 200)}` });
 
         // ── File-based diagnostic handoff ──────────────────────────────
         let failureContext: string;
-        try {
-          const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
-          failureContext = diagContent || capturedOutput || message;
-          if (diagContent) {
-            console.log(`  📄 Read CI diagnostics from ${path.relative(repoRoot, diagFile)}`);
+        if (filesystem.existsSync(diagFile)) {
+          try {
+            const diagContent = filesystem.readFileSync(diagFile).trim();
+            failureContext = diagContent || pollResult.capturedOutput || pollResult.message;
+            if (diagContent) {
+              const relDiag = diagFile.startsWith(repoRoot + "/")
+                ? diagFile.slice(repoRoot.length + 1)
+                : diagFile;
+              ctx.logger.event("tool.call", ctx.itemKey, { tool: "read-ci-diag", category: "diagnostic", detail: ` → ${relDiag}`, is_write: false });
+            }
+          } catch {
+            failureContext = pollResult.capturedOutput || pollResult.message;
           }
-        } catch {
-          failureContext = capturedOutput || message;
+        } else {
+          failureContext = pollResult.capturedOutput || pollResult.message;
         }
-
         return {
           outcome: "failed",
           errorMessage: failureContext,
@@ -291,13 +156,6 @@ const githubCiPollHandler: NodeHandler = {
         };
       }
     }
-
-    // Should not reach here, but safety net
-    return {
-      outcome: "error",
-      errorMessage: "CI poll loop exited unexpectedly",
-      summary: {},
-    };
   },
 };
 

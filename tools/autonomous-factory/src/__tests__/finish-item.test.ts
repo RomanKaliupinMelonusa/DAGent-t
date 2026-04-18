@@ -1,15 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { finishItem } from "../session/shared.js";
+import { finishItem } from "../session/telemetry.js";
 import type { ItemSummary } from "../types.js";
-import type { PipelineRunConfig, PipelineRunState } from "../session-runner.js";
+import type { PipelineRunConfig, PipelineRunState } from "../app-types.js";
 
 function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
   return {
     key: "dev-backend",
     label: "dev-backend",
     agent: "backend-dev",
-    phase: "dev",
     attempt: 1,
     startedAt: new Date().toISOString(),
     finishedAt: "",
@@ -32,11 +31,13 @@ function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
 function makeConfig(): PipelineRunConfig {
   return {
     slug: "test-feature",
+    workflowName: "full-stack",
     appRoot: "/tmp/app",
     repoRoot: "/tmp/repo",
     baseBranch: "main",
     apmContext: { agents: {}, config: {} } as any,
     roamAvailable: false,
+    logger: { event: () => "noop", blob: () => {}, query: () => [], setAttempt: () => {}, materializeItemSummary: () => null, runId: "test" } as any,
   };
 }
 
@@ -44,10 +45,8 @@ function makeState(): PipelineRunState {
   return {
     pipelineSummaries: [],
     attemptCounts: {},
-    circuitBreakerBypassed: new Set(),
     preStepRefs: {},
     baseTelemetry: null,
-    lastPushedShas: {},
     handlerOutputs: {},
     forceRunChangesDetected: {},
   };
@@ -65,8 +64,7 @@ describe("finishItem", () => {
     assert.equal(result.summary.outcome, "completed");
     assert.ok(result.summary.finishedAt);
     assert.ok(result.summary.durationMs >= 4000);
-    assert.equal(result.halt, false);
-    assert.equal(result.createPr, false);
+    assert.equal(result.kind, "continue");
     assert.equal(state.pipelineSummaries.length, 1);
     assert.equal(state.pipelineSummaries[0], summary);
   });
@@ -106,18 +104,17 @@ describe("finishItem", () => {
       createPr: true,
     });
 
-    assert.equal(result.halt, true);
-    assert.equal(result.createPr, true);
+    // halt takes priority over createPr in the discriminated union
+    assert.equal(result.kind, "halt");
   });
 
-  it("defaults halt and createPr to false", () => {
+  it("defaults to continue when no flags set", () => {
     const summary = makeItemSummary();
     const config = makeConfig();
     const state = makeState();
 
     const result = finishItem(summary, "completed", Date.now(), config, state);
 
-    assert.equal(result.halt, false);
-    assert.equal(result.createPr, false);
+    assert.equal(result.kind, "continue");
   });
 });

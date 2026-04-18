@@ -1,261 +1,134 @@
 # workflows.yml — Declarative DAG for the agentic pipeline.
 #
-# This file replaces the hardcoded ALL_ITEMS, ITEM_DEPENDENCIES, and
-# NA_ITEMS_BY_TYPE arrays in pipeline-state.mjs. The orchestrator reads
-# this via the APM compiler (context.json) and bootstraps the state machine
-# dynamically at pipeline init time.
+# Structure:
+#   <workflow-name>: Named workflow DAGs. Each is self-contained.
 #
-# Workflow types: Backend, Frontend, Full-Stack, Infra, App-Only, Backend-Only
+# Node definitions live in apm.yml → nodes: (the pool).
+# Compiler merges pool defaults → workflow node (workflow fields win).
+# Graph-only fields (depends_on, on_failure, poll_target, triage_profile)
+# are NEVER inherited from the pool.
 
-default:
-  phases:
-    - infra
-    - approval
-    - pre-deploy
-    - deploy
-    - post-deploy
-    - finalize
+# ═══════════════════════════════════════════════════════════════════════
+# Workflow: full-stack
+# ═══════════════════════════════════════════════════════════════════════
+full-stack:
+  description: "Full-stack pipeline: infra → backend + frontend → test → deploy → finalize"
+
+  # Default triage node — used when a failing node has no explicit on_failure.triage.
+  default_triage: triage-full-stack
+
+  # Workflow-level failure routing defaults — inherited by nodes with on_failure.
+  # Per-node routes override these. Nodes without on_failure are unaffected.
+  default_on_failure:
+    triage: triage-full-stack
+    routes:
+      schemas: schema-dev
+      cicd: push-app
+      deployment-stale: push-app
+      test-code: "$SELF"
+      environment: "$SELF"
+      blocked: null
 
   nodes:
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
     schema-dev:
-      type: agent
-      category: dev
-      agent: "@schema-dev"
-      phase: infra
-      timeout_minutes: 20
       depends_on: []
-      run_if: [Backend, Full-Stack, Infra, App-Only, Backend-Only]
-      commit_scope: backend
-      diff_attribution_dirs: [packages]
 
     infra-architect:
-      type: agent
-      category: dev
-      agent: "@infra-architect"
-      phase: infra
-      timeout_minutes: 20
       depends_on: [schema-dev]
-      run_if: [Backend, Frontend, Full-Stack, Infra]
-      commit_scope: infra
-      diff_attribution_dirs: [infra]
-      injects_infra_rollback: true
 
     push-infra:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: infra
-      timeout_minutes: 15
+      _node: push-code
       depends_on: [infra-architect]
-      run_if: [Backend, Frontend, Full-Stack, Infra]
-      commit_scope: pipeline
-      script_type: push
 
     create-draft-pr:
-      type: agent
-      category: deploy
-      agent: "@pr-creator"
-      phase: infra
-      timeout_minutes: 15
       depends_on: [push-infra]
-      commit_scope: pipeline
 
     poll-infra-plan:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: infra
-      timeout_minutes: 15
+      _node: poll-ci
       depends_on: [create-draft-pr]
-      run_if: [Backend, Frontend, Full-Stack, Infra]
-      triage_json_gated: true
-      commit_scope: pipeline
       post_ci_artifact_to_pr: "plan-output"
-      script_type: poll
       poll_target: push-infra
       ci_workflow_key: infra
 
     # ── Approval Gate ──────────────────────────────────────────────────
     await-infra-approval:
-      type: approval
-      category: deploy
-      phase: approval
-      timeout_minutes: 15
+      _node: await-approval
       depends_on: [poll-infra-plan]
-      run_if: [Backend, Frontend, Full-Stack, Infra]
-      commit_scope: pipeline
 
     infra-handoff:
-      type: agent
-      category: dev
-      agent: "@infra-handoff"
-      phase: approval
-      timeout_minutes: 20
       depends_on: [await-infra-approval]
-      run_if: [Backend, Frontend, Full-Stack, Infra]
-      commit_scope: pipeline
-      post_run_hook: validateInfra
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
-      type: agent
-      category: dev
-      agent: "@backend-dev"
-      phase: pre-deploy
-      timeout_minutes: 20
       depends_on: [schema-dev, infra-handoff]
-      run_if: [Backend, Full-Stack, App-Only, Backend-Only]
-      commit_scope: backend
-      diff_attribution_dirs: [backend, packages, infra, .github/]
 
     frontend-dev:
-      type: agent
-      category: dev
-      agent: "@frontend-dev"
-      phase: pre-deploy
-      timeout_minutes: 20
       depends_on: [schema-dev, infra-handoff]
-      run_if: [Frontend, Full-Stack, App-Only]
-      commit_scope: frontend
-      diff_attribution_dirs: [frontend, packages, e2e, .github/]
 
     backend-unit-test:
-      type: agent
-      category: test
-      agent: "@backend-test"
-      phase: pre-deploy
-      timeout_minutes: 10
       depends_on: [backend-dev]
-      run_if: [Backend, Full-Stack, App-Only, Backend-Only]
-      auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage_json_gated: true
-      commit_scope: backend
-      diff_attribution_dirs: [backend, packages, infra, .github/]
+      on_failure:
+        routes: { backend: backend-dev }
 
     frontend-unit-test:
-      type: agent
-      category: test
-      agent: "@frontend-ui-test"
-      phase: pre-deploy
-      timeout_minutes: 10
       depends_on: [frontend-dev]
-      run_if: [Frontend, Full-Stack, App-Only]
-      auto_skip_if_no_changes_in: [frontend, e2e]
-      triage_json_gated: true
-      commit_scope: frontend
-      diff_attribution_dirs: [frontend, packages, e2e, .github/]
+      on_failure:
+        routes: { frontend: frontend-dev }
 
     push-app:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: deploy
-      timeout_minutes: 15
       depends_on: [backend-unit-test, frontend-unit-test]
-      run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      commit_scope: pipeline
-      writes_deploy_sentinel: true
-      script_type: push
 
     poll-app-ci:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: deploy
-      timeout_minutes: 15
       depends_on: [push-app]
-      run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      triage_json_gated: true
-      commit_scope: pipeline
-      script_type: poll
       poll_target: push-app
-      ci_workflow_key: app
-      post_run_hook: validateApp
 
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
-      type: agent
-      category: test
-      agent: "@backend-test"
-      phase: post-deploy
-      timeout_minutes: 20
       depends_on: [poll-app-ci]
-      requires_data_plane_ready: true
-      run_if: [Backend, Full-Stack, App-Only, Backend-Only]
-      auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
-      triage_json_gated: true
-      template_flags: ["isPostDeploy", "isIntegrationTest"]
-      commit_scope: pipeline
-      diff_attribution_dirs: [backend, packages, infra, .github/]
+      on_failure:
+        routes:
+          backend: backend-dev
+          both: schema-dev
+          "backend+infra": infra-architect
+          infra: infra-architect
 
     live-ui:
-      type: agent
-      category: test
-      agent: "@frontend-ui-test"
-      phase: post-deploy
-      timeout_minutes: 20
       depends_on: [poll-app-ci, integration-test]
-      requires_data_plane_ready: true
-      run_if: [Frontend, Full-Stack, App-Only]
-      auto_skip_if_no_changes_in: [frontend, infra, e2e]
-      triage_json_gated: true
-      template_flags: ["isPostDeploy", "isLiveUi"]
-      force_run_if_changed: ["infra"]
-      commit_scope: pipeline
-      diff_attribution_dirs: [frontend, packages, e2e, .github/]
+      on_failure:
+        routes:
+          frontend: frontend-dev
+          both: schema-dev
+          "frontend+infra": infra-architect
+          infra: infra-architect
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      type: agent
-      category: finalize
-      agent: "@code-cleanup"
-      phase: finalize
-      timeout_minutes: 20
       depends_on: [integration-test, live-ui]
-      run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      auto_skip_if_no_deletions: true
-      commit_scope: pipeline
 
     docs-archived:
-      type: agent
-      category: finalize
-      agent: "@docs-expert"
-      phase: finalize
-      timeout_minutes: 20
       depends_on: [code-cleanup]
-      commit_scope: docs
-      generates_change_manifest: true
-      salvage_survivor: true
 
     doc-architect:
-      type: agent
-      category: finalize
-      agent: "@doc-architect"
-      phase: finalize
-      timeout_minutes: 20
       depends_on: [code-cleanup, docs-archived]
-      run_if: [Backend, Frontend, Full-Stack, App-Only, Backend-Only]
-      commit_scope: pipeline
 
     publish-pr:
-      type: script
-      category: finalize
-      agent: "@pr-creator"
-      phase: finalize
-      timeout_minutes: 15
       depends_on: [doc-architect]
-      commit_scope: pipeline
-      script_type: publish
-      salvage_survivor: true
 
-  # ── Cycle Budgets ──────────────────────────────────────────────────
-  max_redevelopment_cycles: 5
-  max_redeploy_cycles: 3
+    # ── Triage ─────────────────────────────────────────────────────────
+    triage-full-stack:
+      _node: triage-node
+      depends_on: []
+      triage_profile: full-stack
 
-  # ── Unfixable Signals ──────────────────────────────────────────────
-  # Error substrings that signal conditions no agent can fix.
-  # When any signal matches, the pipeline halts for human intervention.
+    # ── Hidden diagnostic node (Phase 3 `triggers: [route]` example) ──
+    # Invisible to the scheduler — nothing depends on it and it has no
+    # scheduling trigger. Only runs if a custom triage profile routes
+    # a fault domain to `deep-debug` via `on_failure.routes`.
+    deep-debug:
+      depends_on: []
+      triggers: [route]
+
   unfixable_signals:
     - "authorization_requestdenied"
     - "aadsts700016"
@@ -270,44 +143,159 @@ default:
     - "resource already exists"
     - "state blob is already locked"
 
-  # ── Fault Routing (Triage-as-Code) ────────────────────────────────
-  # Maps fault domains to the exact set of nodes to reset.
-  # WYSIWYG: the kernel returns exactly what is declared. No hidden appending.
-  # Use "$SELF" to include the calling item (e.g. live-ui, integration-test).
-  fault_routing:
+  triage:
+    full-stack:
+      packs: [azure-functions-common, deployment-lifecycle, cicd-root-cause]
+      llm_fallback: true
+      max_reroutes: 5
+      routing:
+        backend:
+          description: "Application logic errors, 500s, import failures, API bugs"
+        frontend:
+          description: "UI rendering, selectors, Playwright failures, CSS/HTML issues"
+        both:
+          description: "Error clearly spans backend and frontend"
+        schemas:
+          description: "Schema/contract issues"
+        "frontend+infra":
+          description: "Frontend issue requiring infra fix"
+        "backend+infra":
+          description: "Backend issue requiring infra fix"
+        cicd:
+          description: "GitHub Actions workflow file errors, deploy pipeline config"
+        deployment-stale:
+          description: "Stale deployment requiring re-push"
+        infra:
+          description: "Missing cloud resources, CORS, auth config, Terraform errors, env vars"
+        test-code:
+          description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
+        environment:
+          description: "Transient auth/credential glitch, not a code bug"
+          retries: 2
+        blocked:
+          description: "Unfixable without human intervention (permissions, subscriptions)"
+
+# ═══════════════════════════════════════════════════════════════════════
+# Workflow: backend
+# ═══════════════════════════════════════════════════════════════════════
+backend:
+  description: "Backend-only pipeline: schema → backend → test → deploy → finalize"
+
+  default_triage: triage-backend
+
+  # Workflow-level failure routing defaults
+  default_on_failure:
+    triage: triage-backend
+    routes:
+      schemas: schema-dev
+      cicd: push-app
+      deployment-stale: push-app
+      test-code: "$SELF"
+      environment: "$SELF"
+      blocked: null
+
+  nodes:
+    schema-dev:
+      depends_on: []
+
+    infra-architect:
+      depends_on: [schema-dev]
+
+    push-infra:
+      _node: push-code
+      depends_on: [infra-architect]
+
+    create-draft-pr:
+      depends_on: [push-infra]
+
+    poll-infra-plan:
+      _node: poll-ci
+      depends_on: [create-draft-pr]
+      post_ci_artifact_to_pr: "plan-output"
+      poll_target: push-infra
+      ci_workflow_key: infra
+
+    await-infra-approval:
+      _node: await-approval
+      depends_on: [poll-infra-plan]
+
+    infra-handoff:
+      depends_on: [await-infra-approval]
+
+    backend-dev:
+      depends_on: [schema-dev, infra-handoff]
+
+    backend-unit-test:
+      depends_on: [backend-dev]
+      on_failure:
+        routes: { backend: backend-dev, infra: infra-architect }
+
+    push-app:
+      depends_on: [backend-unit-test]
+
+    poll-app-ci:
+      depends_on: [push-app]
+      poll_target: push-app
+
+    integration-test:
+      depends_on: [poll-app-ci]
+      on_failure:
+        routes:
+          backend: backend-dev
+          "backend+infra": infra-architect
+          infra: infra-architect
+
+    code-cleanup:
+      depends_on: [integration-test]
+
+    docs-archived:
+      depends_on: [code-cleanup]
+
+    doc-architect:
+      depends_on: [code-cleanup, docs-archived]
+
+    publish-pr:
+      depends_on: [doc-architect]
+
+    triage-backend:
+      _node: triage-node
+      depends_on: []
+      triage_profile: backend
+
+  unfixable_signals:
+    - "authorization_requestdenied"
+    - "aadsts700016"
+    - "aadsts7000215"
+    - "insufficient privileges"
+    - "does not have authorization"
+    - "subscription not found"
+    - "resource group not found"
+    - "error acquiring the state lock"
+    - "resource already exists"
+    - "state blob is already locked"
+
+  triage:
     backend:
-      description: "application logic errors, 500s, import failures, API bugs"
-      reset_nodes: [backend-dev, backend-unit-test, "$SELF"]
-    frontend:
-      description: "UI rendering, selectors, Playwright failures, CSS/HTML issues"
-      reset_nodes: [frontend-dev, frontend-unit-test, "$SELF"]
-    both:
-      description: "error clearly spans backend and frontend"
-      reset_nodes: [backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
-    schemas:
-      reset_nodes: [schema-dev, infra-architect, backend-dev, backend-unit-test, frontend-dev, frontend-unit-test, "$SELF"]
-    "frontend+infra":
-      reset_nodes: [infra-architect, frontend-dev, frontend-unit-test, "$SELF"]
-    "backend+infra":
-      reset_nodes: [infra-architect, backend-dev, backend-unit-test, "$SELF"]
-    cicd:
-      description: "GitHub Actions workflow file errors, deploy pipeline config"
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale:
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale-backend:
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale-frontend:
-      reset_nodes: [push-app, poll-app-ci]
-    infra:
-      description: "missing cloud resources, CORS, auth config, Terraform errors, env vars"
-      reset_nodes: [infra-architect, push-infra, poll-infra-plan, create-draft-pr, await-infra-approval, infra-handoff, "$SELF"]
-    test-code:
-      description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
-      reset_nodes: ["$SELF"]
-    environment:
-      description: "transient auth/credential glitch, not a code bug"
-      reset_nodes: ["$SELF"]
-    blocked:
-      description: "unfixable without human intervention (permissions, subscriptions)"
-      reset_nodes: []
+      packs: [azure-functions-common, deployment-lifecycle, cicd-root-cause]
+      llm_fallback: true
+      max_reroutes: 5
+      routing:
+        backend:
+          description: "Application logic errors, 500s, import failures, API bugs"
+        schemas:
+          description: "Schema/contract issues"
+        "backend+infra":
+          description: "Backend issue requiring infra fix"
+        cicd:
+          description: "GitHub Actions workflow file errors, deploy pipeline config"
+        deployment-stale:
+          description: "Stale deployment requiring re-push"
+        infra:
+          description: "Missing cloud resources, CORS, auth config, Terraform errors"
+        test-code:
+          description: "The test itself is wrong"
+        environment:
+          description: "Transient auth/credential glitch"
+          retries: 2
+        blocked:
+          description: "Unfixable without human intervention"

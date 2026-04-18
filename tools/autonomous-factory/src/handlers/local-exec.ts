@@ -2,7 +2,7 @@
  * handlers/local-exec.ts — Generic local script execution handler.
  *
  * Executes a shell command defined in the workflow node's `command` field
- * natively via child_process.exec. Zero token cost — no LLM session.
+ * through the Shell port. Zero token cost — no LLM session.
  *
  * Use case: running Playwright test suites, linters, build scripts, or any
  * shell command where the orchestrator needs the output for triage routing.
@@ -11,24 +11,28 @@
  * The kernel manages state transitions based on the returned NodeResult.
  */
 
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
-import { getWorkflowNode } from "../session/shared.js";
-
-const execAsync = promisify(exec);
+import type { ShellExecError } from "../ports/shell.js";
+import { getWorkflowNode } from "../session/dag-utils.js";
+// Script output condensation lives in the `result-processor` middleware —
+// handlers return raw output and the middleware chain sanitizes on failure.
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
 const DEFAULT_TIMEOUT_MINUTES = 15;
-const SMOKE_TIMEOUT_MS = 120_000; // 2 min — smoke checks should be fast
 
 const localExecHandler: NodeHandler = {
   name: "local-exec",
 
-  async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug } = ctx;
+  metadata: {
+    description: "Executes a shell command from the workflow node's `command` field with environment variable interpolation.",
+    inputs: {},
+    outputs: [],
+  },
 
-    const node = getWorkflowNode(apmContext, itemKey);
+  async execute(ctx: NodeContext): Promise<NodeResult> {
+    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch } = ctx;
+
+    const node = getWorkflowNode(apmContext, ctx.pipelineState.workflowName, itemKey);
     let command = node?.command;
     if (!command) {
       return {
@@ -45,52 +49,35 @@ const localExecHandler: NodeHandler = {
     const timeoutMinutes = node?.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
-    // --- K4: Pre-run smoke check (optional) ---
-    // If the workflow node declares a smoke_command, run it before the main command.
-    // Catches catastrophic environment issues (SSR crash, server not starting) without
-    // the cost of running the full test suite. Framework knowledge lives in the command.
-    const smokeCommand = node?.smoke_command?.replace(/\$\{featureSlug\}/g, slug);
-    if (smokeCommand) {
-      console.log(`  🔍 local-exec: Running smoke check before main command...`);
-      try {
-        await execAsync(smokeCommand, {
-          cwd: appRoot,
-          maxBuffer: MAX_BUFFER,
-          timeout: SMOKE_TIMEOUT_MS,
-          env: { ...process.env, ...environment },
-        });
-        console.log(`  ✅ local-exec: Smoke check passed`);
-      } catch (smokeErr: unknown) {
-        onHeartbeat();
-        const e = smokeErr as { stdout?: string; stderr?: string; message?: string };
-        const smokeOut = ((e.stdout ?? "") + (e.stderr ?? "")).trim() || e.message || "smoke check failed";
-        const msg = `Smoke check failed — aborting "${command}" without running it.\n` +
-          `Smoke command: ${smokeCommand}\n` +
-          `Output:\n${smokeOut.slice(-2048)}`;
-        console.error(`  ✖ local-exec: ${msg}`);
-        return {
-          outcome: "failed",
-          errorMessage: msg,
-          summary: { intents: ["Native script execution — smoke check failed"] },
-          handlerOutput: { scriptOutput: smokeOut, exitCode: 1, smokeCheckFailed: true },
-        };
-      }
-    }
+    // Build env with kernel-provided context variables for hook scripts
+    const execEnv = {
+      ...process.env,
+      ...environment,
+      SLUG: slug,
+      APP_ROOT: appRoot,
+      REPO_ROOT: repoRoot,
+      BASE_BRANCH: baseBranch,
+    };
 
-    console.log(`  🖥  local-exec: Running "${command}" in ${appRoot} (timeout: ${timeoutMinutes}m)`);
+    // --- Pre-hook / Post-hook ---
+    // node.pre and node.post are executed by the `lifecycle-hooks` middleware
+    // that wraps every handler. This handler only runs the main `command`.
+
+    ctx.logger.event("tool.call", itemKey, { tool: "local-exec", category: "shell", detail: ` → ${command}`, is_write: false });
 
     try {
-      const { stdout, stderr } = await execAsync(command, {
+      const { stdout, stderr } = await ctx.shell.exec(command, {
         cwd: appRoot,
         maxBuffer: MAX_BUFFER,
-        timeout: timeoutMs,
-        env: { ...process.env, ...environment },
+        timeoutMs,
+        env: execEnv,
       });
 
       onHeartbeat();
 
       const output = (stdout + stderr).trim();
-      console.log(`  ✅ local-exec: Command completed successfully`);
+
+      ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "local-exec" });
 
       return {
         outcome: "completed",
@@ -100,18 +87,18 @@ const localExecHandler: NodeHandler = {
     } catch (err: unknown) {
       onHeartbeat();
 
-      // child_process.exec rejects with an ExecException on non-zero exit or timeout
-      const execErr = err as { stdout?: string; stderr?: string; code?: number; killed?: boolean; signal?: string; message?: string };
+      // Shell port rejects with a ShellExecError on non-zero exit / timeout
+      const execErr = err as ShellExecError & { message?: string };
 
-      const stdout = typeof execErr.stdout === "string" ? execErr.stdout : "";
-      const stderr = typeof execErr.stderr === "string" ? execErr.stderr : "";
+      const stdout = execErr.stdout ?? "";
+      const stderr = execErr.stderr ?? "";
       const combinedOutput = (stdout + stderr).trim();
 
-      // Timeout kill — child_process sends SIGTERM when timeout expires
-      if (execErr.killed && execErr.signal === "SIGTERM") {
+      // Timeout kill — shell port normalizes SIGTERM timeouts to timedOut=true
+      if (execErr.timedOut) {
         const timeoutMsg = `local-exec: Process killed after ${timeoutMinutes}m timeout (SIGTERM). ` +
           `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
-        console.error(`  ✖ ${timeoutMsg}`);
+      ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `Process killed after ${timeoutMinutes}m timeout` });
         return {
           outcome: "failed",
           errorMessage: timeoutMsg,
@@ -121,13 +108,14 @@ const localExecHandler: NodeHandler = {
       }
 
       const output = combinedOutput || execErr.message || "Unknown execution error";
-      const exitCode = typeof execErr.code === "number" ? execErr.code : 1;
+      const exitCode = typeof execErr.exitCode === "number" ? execErr.exitCode : 1;
 
-      console.error(`  ✖ local-exec: Command failed (exit code ${exitCode})`);
+      ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `exit code ${exitCode}` });
 
+      // errorMessage is left unset — the `result-processor` middleware
+      // sanitizes scriptOutput into a bounded triage message.
       return {
         outcome: "failed",
-        errorMessage: output,
         summary: { intents: ["Native script execution — failed"] },
         handlerOutput: { scriptOutput: output, exitCode },
       };

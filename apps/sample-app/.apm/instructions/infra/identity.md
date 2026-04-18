@@ -17,7 +17,7 @@ cd <app-root>/infra
 az account show > /dev/null 2>&1
 if [ $? -ne 0 ]; then
   echo "❌ Not authenticated to Azure."
-  npm run pipeline:fail <slug> <item-key> '{"fault_domain":"environment","diagnostic_trace":"Azure CLI not authenticated — cannot run terraform validate. Run az login first."}'
+  report_outcome({ status: "failed", message: '{"fault_domain":"environment","diagnostic_trace":"Azure CLI not authenticated — cannot run terraform validate. Run az login first."}' })
   exit 0
 fi
 

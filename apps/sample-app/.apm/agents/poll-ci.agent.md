@@ -29,23 +29,22 @@ bash tools/autonomous-factory/poll-ci.sh
 
 - **Exit 0 (Success):** All CI workflows passed.
   ```bash
-  npm run pipeline:complete {{featureSlug}} {{itemKey}}
-  ```
+  report_outcome({ status: "completed" })  ```
 
 - **Exit 1 (Failure):** One or more CI workflows failed.
   1. Read the CI failure log written by the orchestrator: `cat {{appRoot}}/in-progress/{{featureSlug}}_CI-FAILURE.log`
   2. The log contains a `DOMAIN:` header and truncated failure output per workflow.
   3. Record failure:
      ```bash
-     npm run pipeline:fail {{featureSlug}} {{itemKey}} "<failure summary from CI log>"
+     report_outcome({ status: "failed", message: "<failure summary from CI log>" })
      ```
 
 - **Exit 2 (Timeout):** CI is still running after the polling window.
-  1. Report timeout via: `npm run pipeline:fail {{featureSlug}} {{itemKey}} "CI timeout — deployments still running"`
+  1. Report timeout via: `report_outcome({ status: "failed", message: "CI timeout — deployments still running" })`
 
 ## Safety
 
 - Never force-push to `{{baseBranch}}`.
-- Never edit `_TRANS.md` or `_STATE.json` manually — use `pipeline:complete` / `pipeline:fail`.
+- Never edit `_TRANS.md` or `_STATE.json` manually — use `report_outcome`.
 
 {{> completion}}

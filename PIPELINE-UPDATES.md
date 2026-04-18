@@ -94,7 +94,7 @@ Re-deploy without re-running dev agents → save $96
 | `deployment-stale` fault domain | `triage-schema.mjs`, `triage.ts`, `types.ts` | New fault domain that routes to `push-app + poll-app-ci` only — no dev item resets. Saves $96 per stale-deployment incident |
 | Tier 3 keyword detection | `triage.ts` | "deployment stale", "NOT in deployed build", "never re-triggered" → auto-classified as `deployment-stale` |
 | Agent diagnostic guidance | `agents.ts` | Post-deploy agents taught to emit `deployment-stale` instead of `frontend+infra` when they detect outdated artifacts |
-| Cascading post-deploy resets | `pipeline-state.mjs` | `resetForDev()` now cascades to "done" post-deploy items when deploy items are reset — prevents stale `integration-test: done` after re-deploy |
+| Cascading post-deploy resets | `src/domain/transitions.ts` | `resetNodes()` now cascades to "done" post-deploy items when deploy items are reset — prevents stale `integration-test: done` after re-deploy |
 
 ### 3. Session Timeout Resilience
 

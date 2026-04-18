@@ -69,13 +69,12 @@ npm install --ignore-scripts && bash tools/autonomous-factory/agent-commit.sh pi
 bash tools/autonomous-factory/agent-branch.sh push
 ```
 
-If there are no commits ahead of {{baseBranch}}, **stop and report** via `npm run pipeline:fail`.
+If there are no commits ahead of {{baseBranch}}, **stop and report** via the `report_outcome` tool with `status: "failed"`.
 
 ### Step 4. Mark Push Complete
 
 ```bash
-npm run pipeline:complete {{featureSlug}} {{itemKey}}
-```
+report_outcome({ status: "completed" })```
 
 ### Re-Invocation (After Dev Fix)
 
@@ -88,6 +87,6 @@ If re-invoked after a dev agent fixed code:
 
 - Never force-push to `{{baseBranch}}`.
 - Never push to `{{baseBranch}}` directly — always use a feature branch.
-- Never edit `_TRANS.md` or `_STATE.json` manually — use `pipeline:complete` / `pipeline:fail`.
+- Never edit `_TRANS.md` or `_STATE.json` manually — use `report_outcome`.
 
 {{> completion}}

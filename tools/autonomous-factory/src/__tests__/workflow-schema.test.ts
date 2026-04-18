@@ -10,22 +10,66 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { ApmWorkflowSchema, topoSort } from "../apm-types.js";
+import { ApmWorkflowSchema, topoSort } from "../apm/types.js";
+
+/** Graph-only fields that are never inherited from the node pool. */
+const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);
 
 const APP_ROOT = path.resolve(import.meta.dirname, "../../../../apps/sample-app");
 const WF_PATH = path.join(APP_ROOT, ".apm", "workflows.yml");
+const APM_PATH = path.join(APP_ROOT, ".apm", "apm.yml");
+
+/**
+ * Merge node pool defaults (from apm.yml) into workflow nodes,
+ * then merge default_on_failure into per-node on_failure.
+ * Mirrors apm-compiler.ts mergeWorkflowNodes() logic.
+ */
+function mergeNodePool(
+  wfRaw: Record<string, unknown>,
+  nodePool: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const nodes = (wfRaw.nodes ?? {}) as Record<string, Record<string, unknown>>;
+  const defaultOnFailure = wfRaw.default_on_failure as Record<string, unknown> | undefined;
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const [key, nodeRaw] of Object.entries(nodes)) {
+    const poolKey = typeof nodeRaw._node === "string" ? nodeRaw._node : key;
+    const pool = nodePool[poolKey] ?? {};
+    const { _node, ...nodeFields } = nodeRaw;
+    const base: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(pool)) {
+      if (!GRAPH_ONLY_FIELDS.has(k)) base[k] = v;
+    }
+    const node: Record<string, unknown> = { ...base, ...nodeFields };
+
+    // Merge default_on_failure into per-node on_failure
+    if (defaultOnFailure && node.on_failure) {
+      const nodeOnFailure = node.on_failure as Record<string, unknown>;
+      const defaultRoutes = (defaultOnFailure.routes ?? {}) as Record<string, unknown>;
+      const nodeRoutes = (nodeOnFailure.routes ?? {}) as Record<string, unknown>;
+      node.on_failure = {
+        triage: nodeOnFailure.triage ?? defaultOnFailure.triage,
+        routes: { ...defaultRoutes, ...nodeRoutes },
+      };
+    }
+
+    merged[key] = node;
+  }
+  return { ...wfRaw, nodes: merged };
+}
 
 describe("Workflow Schema", () => {
-  const exists = fs.existsSync(WF_PATH);
+  const exists = fs.existsSync(WF_PATH) && fs.existsSync(APM_PATH);
   if (!exists) {
-    it("skips — workflows.yml not found", () => assert.ok(true));
+    it("skips — workflows.yml or apm.yml not found", () => assert.ok(true));
     return;
   }
 
   const raw = yaml.load(fs.readFileSync(WF_PATH, "utf-8")) as Record<string, unknown>;
-// workflows.yml wraps in a workflow name key (e.g. "default")
-const firstKey = Object.keys(raw)[0];
-const wfRaw = firstKey ? raw[firstKey] as Record<string, unknown> : raw;
+  const apmRaw = yaml.load(fs.readFileSync(APM_PATH, "utf-8")) as Record<string, unknown>;
+  const nodePool = (apmRaw.nodes ?? {}) as Record<string, Record<string, unknown>>;
+  // Find the first non-underscore key as the test target workflow.
+  const firstWorkflowKey = Object.keys(raw).find((k) => !k.startsWith("_"));
+  const wfRaw = firstWorkflowKey ? mergeNodePool(raw[firstWorkflowKey] as Record<string, unknown>, nodePool) : raw;
 
   it("parses and validates against ApmWorkflowSchema", () => {
     const result = ApmWorkflowSchema.safeParse(wfRaw);
@@ -49,22 +93,6 @@ const wfRaw = firstKey ? raw[firstKey] as Record<string, unknown> : raw;
     }
   });
 
-  it("all nodes have a phase that appears in the phases array", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    const phases = new Set(parsed.phases);
-    for (const [k, n] of Object.entries(parsed.nodes)) {
-      assert.ok(phases.has(n.phase), `Node "${k}" has phase "${n.phase}" not in phases array`);
-    }
-  });
-
-  it("every phase has at least one node", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    const phasesUsed = new Set(Object.values(parsed.nodes).map((n) => n.phase));
-    for (const p of parsed.phases) {
-      assert.ok(phasesUsed.has(p), `Phase "${p}" has no nodes`);
-    }
-  });
-
   it("introduces a cycle → schema refine rejects", () => {
     const clone = JSON.parse(JSON.stringify(wfRaw)) as Record<string, unknown>;
     const nodes = (clone as { nodes: Record<string, { depends_on?: string[] }> }).nodes;
@@ -79,81 +107,11 @@ const wfRaw = firstKey ? raw[firstKey] as Record<string, unknown> : raw;
     assert.ok(!result.success, "Cyclic graph should be rejected by schema refine");
   });
 
-  // --- Phase 3: Triage-as-Code fields ---
+  // --- Triage profiles ---
 
-  it("has max_redevelopment_cycles and max_redeploy_cycles", () => {
+  it("has triage profiles section", () => {
     const parsed = ApmWorkflowSchema.parse(wfRaw);
-    assert.equal(typeof parsed.max_redevelopment_cycles, "number");
-    assert.equal(typeof parsed.max_redeploy_cycles, "number");
-    assert.ok(parsed.max_redevelopment_cycles > 0);
-    assert.ok(parsed.max_redeploy_cycles > 0);
-  });
-
-  it("has fault_routing with all expected domains", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    const routing = parsed.fault_routing;
-    assert.ok(routing, "fault_routing should be defined");
-    // Verify the 13 core domains are present
-    const expectedDomains = [
-      "backend", "frontend", "both", "frontend+infra", "backend+infra",
-      "cicd", "deployment-stale", "deployment-stale-backend", "deployment-stale-frontend",
-      "infra", "test-code", "environment", "blocked",
-    ];
-    for (const d of expectedDomains) {
-      assert.ok(d in routing, `Missing fault_routing domain: "${d}"`);
-      assert.ok(Array.isArray(routing[d].reset_nodes), `${d}.reset_nodes should be an array`);
-    }
-  });
-
-  it("fault_routing reset_nodes reference valid node keys or $SELF", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    const nodeKeys = new Set(Object.keys(parsed.nodes));
-    for (const [domain, route] of Object.entries(parsed.fault_routing)) {
-      for (const node of route.reset_nodes) {
-        assert.ok(
-          node === "$SELF" || nodeKeys.has(node),
-          `fault_routing["${domain}"] references unknown node "${node}"`,
-        );
-      }
-    }
-  });
-
-  it("fault_routing rejects invalid node references at schema level", () => {
-    const clone = JSON.parse(JSON.stringify(wfRaw)) as Record<string, unknown>;
-    const wf = clone as { fault_routing?: Record<string, { reset_nodes: string[] }> };
-    wf.fault_routing = { "test-domain": { reset_nodes: ["nonexistent-node"] } };
-    const result = ApmWorkflowSchema.safeParse(clone);
-    assert.ok(!result.success, "Invalid node reference in fault_routing should be rejected");
-  });
-
-  it("fault_routing allows $SELF sentinel", () => {
-    const clone = JSON.parse(JSON.stringify(wfRaw)) as Record<string, unknown>;
-    const wf = clone as { fault_routing?: Record<string, { reset_nodes: string[] }> };
-    wf.fault_routing = { "custom-domain": { reset_nodes: ["$SELF"] } };
-    const result = ApmWorkflowSchema.safeParse(clone);
-    assert.ok(result.success, "$SELF sentinel should be accepted in fault_routing");
-  });
-
-  it("max_redevelopment_cycles / max_redeploy_cycles defaults applied when omitted", () => {
-    const clone = JSON.parse(JSON.stringify(wfRaw)) as Record<string, unknown>;
-    delete (clone as Record<string, unknown>).max_redevelopment_cycles;
-    delete (clone as Record<string, unknown>).max_redeploy_cycles;
-    const result = ApmWorkflowSchema.safeParse(clone);
-    assert.ok(result.success, "Should succeed with defaults");
-    assert.equal(result.data!.max_redevelopment_cycles, 5);
-    assert.equal(result.data!.max_redeploy_cycles, 3);
-  });
-
-  it("blocked domain has empty reset_nodes", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    assert.deepStrictEqual(parsed.fault_routing.blocked?.reset_nodes, []);
-  });
-
-  it("deployment-stale domains do NOT include $SELF (WYSIWYG)", () => {
-    const parsed = ApmWorkflowSchema.parse(wfRaw);
-    for (const d of ["deployment-stale", "deployment-stale-backend", "deployment-stale-frontend"]) {
-      const nodes = parsed.fault_routing[d]?.reset_nodes ?? [];
-      assert.ok(!nodes.includes("$SELF"), `${d} should NOT include $SELF — deploy-only route`);
-    }
+    assert.ok(parsed.triage, "triage section should be defined");
+    assert.ok(Object.keys(parsed.triage).length > 0, "triage should have at least one profile");
   });
 });

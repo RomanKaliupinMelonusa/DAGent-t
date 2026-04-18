@@ -10,8 +10,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { ApmManifestSchema, ApmConfigSchema } from "../apm-types.js";
-import { compileApm } from "../apm-compiler.js";
+import { ApmManifestSchema, ApmConfigSchema } from "../apm/types.js";
+import { compileApm } from "../apm/compiler.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

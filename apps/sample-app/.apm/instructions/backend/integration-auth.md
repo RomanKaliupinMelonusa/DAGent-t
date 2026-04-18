@@ -13,7 +13,7 @@ if [ -z "$FUNC_KEY" ]; then
   FUNC_KEY=$(az functionapp keys list --name $FUNC_APP_NAME --resource-group $RESOURCE_GROUP --query 'masterKey' -o tsv 2>/dev/null)
 fi
 if [ -z "$FUNC_KEY" ]; then
-  npm run pipeline:fail <slug> <item-key> '{"fault_domain":"environment","diagnostic_trace":"Azure auth failed — cannot retrieve function key. az functionapp keys list returned empty for both functionKeys.default and masterKey."}'
+  report_outcome({ status: "failed", message: '{"fault_domain":"environment","diagnostic_trace":"Azure auth failed — cannot retrieve function key. az functionapp keys list returned empty for both functionKeys.default and masterKey."}' })
   exit 0
 fi
 export INTEGRATION_FUNCTION_KEY="$FUNC_KEY"

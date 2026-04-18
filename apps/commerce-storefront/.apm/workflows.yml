@@ -1,207 +1,92 @@
 # workflows.yml — Declarative DAG for the commerce-storefront pipeline.
 #
-# 11-node DAG: no infra wave (Managed Runtime is SaaS),
+# Structure:
+#   <workflow-name>: Named workflow DAGs. Each is self-contained.
+#
+# Node definitions live in apm.yml → nodes: (the pool).
+# Compiler merges pool defaults → workflow node (workflow fields win).
+# Graph-only fields (depends_on, on_failure, poll_target, triage_profile)
+# are NEVER inherited from the pool.
+#
+# 11-node DAG (no infra wave — Managed Runtime is SaaS, no barrier — depends_on handles fan-in),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
 # PWA Kit runs locally via `npm start`, so Playwright E2E tests
 # execute BEFORE code push — the deploy phase is the final step.
-#
-# Workflow types: Storefront, Full-Stack (future: with backend extensions)
 
-default:
-  phases:
-    - pre-deploy
-    - validation
-    - finalize
-    - deploy
+# ═══════════════════════════════════════════════════════════════════════
+# Workflow: storefront
+# ═══════════════════════════════════════════════════════════════════════
+storefront:
+  description: "Storefront pipeline: dev → unit test → E2E → deploy → finalize"
 
-  # Shared result processor patterns inherited by all script-type nodes.
-  # Node-level noise_patterns / priority_patterns are ADDITIVE — they extend
-  # these defaults. Framework-specific knowledge lives HERE, not in kernel code.
-  result_processor_defaults:
-    # ── Noise: verbose framework lines stripped before truncation ──────────
-    noise_patterns:
-      # PWA Kit React warnings — verbose, no diagnostic value
-      - "Warning: The result of getServerSnapshot"
-      - "Warning: %s: Support for defaultProps"
-      # SFCC proxy logs — network noise from Commerce API
-      - "\\[WebServer\\].*pwa-kit-runtime\\.httprequest"
-      - "retail-react-app\\.use-datacloud\\._handleApiError"
-    # ── Priority: high-signal blocks extracted before truncation ───────────
-    # Ensures triage LLM always sees critical evidence regardless of output volume.
-    priority_patterns:
-      # Playwright assertion failures (expect().toBeVisible, etc.)
-      - "^\\s*Error:.*?expect\\(.*?\\).*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
-      # Timeout errors
-      - "^\\s*Error:.*?[Tt]imed?\\s*out.*(?:\\n(?!\\n\\n|\\[\\d+/\\d+\\]).*)*"
-      # React ErrorBoundary crash evidence
-      - "The above error occurred in the <\\w[\\w.]*> component:.*?(?=\\n\\n|\\n\\[|$)"
-      # React component tree recreation messages
-      - "React will try to recreate this component tree.*?(?=\\n\\n|\\n\\[|$)"
-      # Failed network requests summary
-      - "Failed requests:\\s*\\[.*?\\]"
-      # Playwright test failure headers: "N) [browser] › file › test"
-      - "^\\s*\\d+\\)\\s*\\[(?:chromium|firefox|webkit)\\]\\s*›.*(?:\\n(?!\\n\\n|\\d+\\)\\s*\\[).*)*"
+  default_triage: triage-storefront
 
   nodes:
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
-      type: agent
-      category: dev
-      agent: "@storefront-dev"
-      phase: pre-deploy
-      timeout_minutes: 25
       depends_on: []
-      run_if: [Storefront, Full-Stack]
-      commit_scope: all
-      diff_attribution_dirs: [storefront]
 
     storefront-unit-test:
-      type: agent
-      category: test
-      agent: "@storefront-test"
-      phase: pre-deploy
-      timeout_minutes: 15
       depends_on: [storefront-dev]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront]
-      triage_json_gated: true
-      commit_scope: all
-      diff_attribution_dirs: [storefront]
-
-    create-draft-pr:
-      type: agent
-      category: deploy
-      agent: "@pr-creator"
-      phase: validation
-      timeout_minutes: 15
-      depends_on: [storefront-unit-test, e2e-author]
-      commit_scope: pipeline
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: storefront-dev
+          environment: "$SELF"
+          blocked: null
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
     e2e-author:
-      type: agent
-      category: test
-      agent: "@sdet-expert"
-      phase: validation
-      timeout_minutes: 10
       depends_on: [storefront-unit-test]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront, e2e]
-      commit_scope: all
-      diff_attribution_dirs: [e2e]
 
     e2e-runner:
-      type: script
-      category: test
-      script_type: local-exec
-      command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
-      phase: validation
       depends_on: [e2e-author]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_changes_in: [storefront, e2e]
-      triage_json_gated: false
-      smoke_command: |
-        set -m
-        npm start > /tmp/smoke-server.log 2>&1 &
-        SERVER_PID=$!
-        trap "kill -- -$SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null" EXIT
-        echo "Smoke: waiting for dev server (PID $SERVER_PID)..."
-        for i in $(seq 1 24); do
-          sleep 5
-          if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
-            echo "Smoke: PLP returned HTTP 200 — SSR is healthy"
-            exit 0
-          fi
-        done
-        echo "Smoke: PLP failed to return HTTP 200 after 120s — SSR is broken"
-        echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
-        exit 1
-      cleanup_command: "pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null; pkill -f 'chromium|chrome' 2>/dev/null; sleep 2; exit 0"
-      result_processor:
-        type: cognitive
-        max_chars: 12288
-        model: fast
-        prompt: instructions/triage/e2e-diagnosis.md
-        # Playwright failure block header: "  1) [chromium] › file:line › suite › test"
-        failure_block_separator: "\\s*\\d+\\)\\s+\\[\\w+\\]\\s+›"
+      on_failure:
+        triage: triage-storefront
+        routes:
+          frontend: storefront-dev
+          test-code: e2e-author
+          test-code-from-dev: storefront-dev
+          ssr-hydration: storefront-debugger
+          environment: "$SELF"
+          blocked: null
+
+    create-draft-pr:
+      depends_on: [storefront-unit-test, e2e-author]
+
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      type: agent
-      category: finalize
-      agent: "@code-cleanup"
-      phase: finalize
-      timeout_minutes: 15
-      depends_on: [e2e-runner]
-      run_if: [Storefront, Full-Stack]
-      auto_skip_if_no_deletions: true
-      commit_scope: pipeline
-      salvage_survivor: true
+      depends_on: [e2e-runner, create-draft-pr]
 
     docs-archived:
-      type: agent
-      category: finalize
-      agent: "@docs-expert"
-      phase: finalize
-      timeout_minutes: 15
       depends_on: [code-cleanup]
-      commit_scope: docs
-      generates_change_manifest: true
-      salvage_survivor: true
 
     doc-architect:
-      type: agent
-      category: finalize
-      agent: "@doc-architect"
-      phase: finalize
-      timeout_minutes: 15
       depends_on: [code-cleanup, docs-archived]
-      run_if: [Storefront, Full-Stack]
-      commit_scope: pipeline
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
     push-app:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: deploy
-      timeout_minutes: 15
       depends_on: [doc-architect]
-      run_if: [Storefront, Full-Stack]
-      commit_scope: pipeline
-      writes_deploy_sentinel: true
-      script_type: push
 
     poll-app-ci:
-      type: script
-      category: deploy
-      agent: "@deploy-manager"
-      phase: deploy
-      timeout_minutes: 15
       depends_on: [push-app]
-      run_if: [Storefront, Full-Stack]
-      triage_json_gated: true
-      commit_scope: pipeline
-      script_type: poll
       poll_target: push-app
-      ci_workflow_key: app
-      post_run_hook: validateApp
 
     publish-pr:
-      type: script
-      category: deploy
-      agent: "@pr-creator"
-      phase: deploy
-      timeout_minutes: 15
       depends_on: [poll-app-ci]
-      commit_scope: pipeline
-      script_type: publish
-      salvage_survivor: true
 
-  # ── Cycle Budgets ──────────────────────────────────────────────────
-  max_redevelopment_cycles: 5
-  max_redeploy_cycles: 3
+    # ── Triage ─────────────────────────────────────────────────────────
+    triage-storefront:
+      _node: triage-node
+      depends_on: []
+      triage_profile: storefront
+
+    # ── Dormant Debug Agent (activated by triage only via Phase 3 triggers: [route]) ──
+    storefront-debugger:
+      depends_on: []
 
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:
@@ -211,31 +96,28 @@ default:
     - "organization not found"
     - "slas client not found"
 
-  # ── Fault Routing (Triage-as-Code) ────────────────────────────────
-  # Simplified: no backend/infra domains. Storefront is the primary domain.
-  fault_routing:
-    frontend:
-      description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
-      reset_nodes: [storefront-dev, storefront-unit-test, "$SELF"]
-    cicd:
-      description: "GitHub Actions workflow file errors, deploy pipeline config"
-      reset_nodes: [push-app, poll-app-ci]
-    deployment-stale:
-      reset_nodes: [push-app, poll-app-ci]
-    test-code:
-      description: "the test itself is wrong (bad locator, race condition, contradicts spec)"
-      reset_nodes: [e2e-author]
-    test-code-from-dev:
-      description: "Test code is broken, but it was written by the upstream developer agent, not the current QA agent."
-      reset_nodes:
-        - storefront-dev
-        - storefront-unit-test
-        - "$SELF"
-    environment:
-      description: "transient auth/credential glitch, SLAS token failure, not a code bug"
-      reset_nodes: ["$SELF"]
-      max_retries: 2
-      escalate_to: blocked
-    blocked:
-      description: "unfixable without human intervention (permissions, SFCC access)"
-      reset_nodes: []
+  # ── Triage Profiles ─────────────────────────────────────────────────
+  triage:
+    storefront:
+      packs: [pwa-kit-storefront]
+      llm_fallback: true
+      max_reroutes: 5
+      routing:
+        frontend:
+          description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
+        cicd:
+          description: "GitHub Actions workflow file errors, deploy pipeline config"
+        deployment-stale:
+          description: "Stale deployment requiring re-push"
+        test-code:
+          description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
+        test-code-from-dev:
+          description: "Test code is broken, but written by the upstream dev agent, not QA"
+        environment:
+          description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
+          retries: 2
+        ssr-hydration:
+          description: "SSR hydration mismatch, server-render crash, React hydration errors"
+          route_to: storefront-debugger
+        blocked:
+          description: "Unfixable without human intervention (permissions, SFCC access)"

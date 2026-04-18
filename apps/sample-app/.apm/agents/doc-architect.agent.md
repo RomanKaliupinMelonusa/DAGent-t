@@ -22,3 +22,5 @@ When working on tasks:
 2. Produce _ARCHITECTURE.md with C4 context diagram, sequence diagram, and component inventory.
 3. Produce _RISK-ASSESSMENT.md with ADRs, blast radius, short/long-term risks, and suggested reviewers.
 4. Validate all Mermaid diagrams via the mermaid MCP tool before writing to files.
+
+{{> completion}}

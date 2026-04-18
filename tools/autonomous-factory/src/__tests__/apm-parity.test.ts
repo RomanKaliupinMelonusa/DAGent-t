@@ -12,9 +12,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { compileApm } from "../apm-compiler.js";
-import { loadApmContext } from "../apm-context-loader.js";
-import { ApmCompiledOutputSchema, ApmWorkflowSchema, type ApmCompiledOutput } from "../apm-types.js";
+import { compileApm } from "../apm/compiler.js";
+import { loadApmContext } from "../apm/context-loader.js";
+import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm/types.js";
 import Handlebars from "handlebars";
 import yaml from "js-yaml";
 
@@ -26,17 +26,15 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const APP_ROOT = path.join(REPO_ROOT, "apps/sample-app");
 const APM_DIR = path.join(APP_ROOT, ".apm");
 
-// Derive agent keys from the workflow manifest (single source of truth).
+// Derive agent keys from the apm.yml manifest (single source of truth for compiled agents).
+
 function loadAgentKeys(): string[] {
-  const wfPath = path.join(APM_DIR, "workflows.yml");
-  if (!fs.existsSync(wfPath)) return [];
-  const raw = yaml.load(fs.readFileSync(wfPath, "utf-8")) as Record<string, unknown>;
-  // workflows.yml wraps in a workflow name key (e.g. "default")
-  const firstKey = Object.keys(raw)[0];
-  if (!firstKey) return [];
-  const parsed = ApmWorkflowSchema.safeParse(raw[firstKey]);
-  if (!parsed.success) return [];
-  return Object.keys(parsed.data.nodes);
+  const manifestPath = path.join(APM_DIR, "apm.yml");
+  if (!fs.existsSync(manifestPath)) return [];
+  const raw = yaml.load(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+  const agents = raw?.agents;
+  if (!agents || typeof agents !== "object") return [];
+  return Object.keys(agents as Record<string, unknown>);
 }
 
 const ALL_AGENT_KEYS = loadAgentKeys();
@@ -71,7 +69,7 @@ describe("APM Compiler Output", () => {
     assert.ok(result.success, `Schema validation failed: ${JSON.stringify(result.error?.issues)}`);
   });
 
-  it("compiled output has all 19 agent keys", () => {
+  it(`compiled output has all ${ALL_AGENT_KEYS.length} agent keys`, () => {
     for (const key of ALL_AGENT_KEYS) {
       assert.ok(
         compiled.agents[key],
@@ -209,11 +207,10 @@ describe("APM Compiler", () => {
 
   it("agents without MCP have empty mcp record", () => {
     const output = compileApm(APP_ROOT);
-    assert.deepEqual(output.agents["push-app"].mcp, {});
-    assert.deepEqual(output.agents["poll-app-ci"].mcp, {});
-    assert.deepEqual(output.agents["push-infra"].mcp, {});
-    assert.deepEqual(output.agents["poll-infra-plan"].mcp, {});
+    // Script/poll/approval nodes no longer have agent declarations (moved to nodes: pool).
+    // Test LLM agents that genuinely have no MCP servers.
     assert.deepEqual(output.agents["integration-test"].mcp, {});
+    assert.deepEqual(output.agents["create-draft-pr"].mcp, {});
   });
 
   it("loads skill descriptions", () => {
@@ -249,20 +246,20 @@ describe("Handlebars Template Compilation", () => {
 
   // Register partials and helpers that agents.ts normally registers at import time.
   // The test uses its own Handlebars instance, so we must register them here.
+  // NOTE: Keep this body in sync with the production `completion` partial in
+  // `src/apm/agents.ts` so this test fails when the production directive drifts.
   Handlebars.registerPartial('completion', `
 ### Completion
 When you have finished your task and verified it works:
-1. You MUST execute all \`agent-*.sh\` and \`npm run pipeline:*\` scripts from the **repository root**, not the app directory.
-2. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\`
-3. Run \`npm run pipeline:complete {{featureSlug}} {{itemKey}}\`
+1. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\` from the **repository root** to commit your changes.
+2. Call the \`report_outcome\` tool exactly ONCE as your LAST action:
+   \`\`\`
+   report_outcome({ status: "completed" })
+   \`\`\`
 
 If you cannot complete the task:
-\`\`\`bash
-{{#if jsonGated}}
-npm run pipeline:fail {{featureSlug}} {{itemKey}} '{"fault_domain":"environment","diagnostic_trace":"<detailed reason>"}'
-{{else}}
-npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
-{{/if}}
+\`\`\`
+report_outcome({ status: "failed", message: "<detailed reason>" })
 \`\`\`
 `);
   Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
@@ -285,7 +282,7 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
       const mockData = {
         featureSlug: "test-feature",
         specPath: "apps/sample-app/in-progress/test-feature_SPEC.md",
-        workflowType: "Full-Stack",
+        workflowName: "full-stack",
         repoRoot: "/workspaces/test",
         appRoot: "/workspaces/test/apps/sample-app",
         itemKey: agentKey,
@@ -296,10 +293,9 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
         frontendUrl: "https://frontend.example.com",
         backendUrl: "https://backend.example.com",
         // Dynamic template_flags — mirrors buildTemplateData() in agents.ts
-        ...((compiled.workflows?.default?.nodes?.[agentKey]?.template_flags ?? []) as string[]).reduce(
+        ...((compiled.workflows?.["full-stack"]?.nodes?.[agentKey]?.template_flags ?? []) as string[]).reduce(
           (acc: Record<string, boolean>, flag: string) => ({ ...acc, [flag]: true }), {} as Record<string, boolean>,
         ),
-        jsonGated: false,
         rules: agent.rules,
         environmentContext: "",
         resolvedBackendUnit: "cd apps/sample-app/backend && npx jest --verbose",
@@ -314,6 +310,15 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
       assert.ok(
         output.trim().length > 0,
         `Template output should be non-empty for "${agentKey}"`,
+      );
+      // Phase A regression guard: every LLM agent prompt MUST end with the
+      // `report_outcome` directive (delivered via the {{> completion}} partial).
+      // Without this, the agent will hard-fail at session end under the
+      // missing-outcome contract in handlers/copilot-agent.ts.
+      assert.ok(
+        output.includes('report_outcome({ status: "completed" })'),
+        `Rendered prompt for "${agentKey}" is missing the report_outcome directive — ` +
+        `the {{> completion}} Handlebars partial is probably not included in the agent template.`,
       );
     });
   }

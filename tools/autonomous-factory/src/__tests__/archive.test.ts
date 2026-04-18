@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { findSpecFile } from "../archive.js";
+import { findSpecFile } from "../lifecycle/archive.js";
 
 describe("findSpecFile", () => {
   it("matches exact slug prefix (case-insensitive)", () => {

@@ -31,7 +31,7 @@
 
 ## Diagnostics
 
-9. **Capture browser console errors and failed network requests** in `test.afterEach` or in the test body on failure. This evidence is critical for triage when reporting via `pipeline:fail`.
+9. **Capture browser console errors and failed network requests** in `test.afterEach` or in the test body on failure. This evidence is critical for triage when reporting via `report_outcome` (status: "failed").
 
 ## Self-Review Gate (MANDATORY before commit)
 

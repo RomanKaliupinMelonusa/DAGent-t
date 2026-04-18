@@ -10,7 +10,7 @@ You run ONLY after all tests pass — your changes must not break anything.
 # Context
 
 - Feature: {{featureSlug}}
-- Workflow type: {{workflowType}}
+- Workflow name: {{workflowName}}
 - Spec: `{{specPath}}`
 - Repo root: `{{repoRoot}}`
 - App root: `{{appRoot}}`

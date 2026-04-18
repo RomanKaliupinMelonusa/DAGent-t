@@ -1,12 +1,20 @@
-# Orchestrator — watchdog.ts & Session Modules
+# Orchestrator — watchdog.ts & Pipeline Layers
 
 > The deterministic headless loop that drives the entire pipeline.
-> Entry point: `tools/autonomous-factory/src/watchdog.ts` (~575 lines)
-> Dispatch kernel: `tools/autonomous-factory/src/session-runner.ts` (~550 lines)
-> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, git-push, github-ci-poll, github-pr-publish, local-exec)
-> Session submodules: `tools/autonomous-factory/src/session/` (shared, readiness-probe, triage-dispatcher, session-events, script-executor)
-> Supporting modules: `preflight.ts`, `reporting.ts`, `auto-skip.ts`, `context-injection.ts`
+> Thin entry: `tools/autonomous-factory/src/entry/watchdog.ts`
+> Composition root: `tools/autonomous-factory/src/entry/main.ts`
+> Bootstrap (preflight + APM compile + config): `tools/autonomous-factory/src/entry/bootstrap.ts`
+> Pipeline Kernel (Command/Effect, sole state owner): `tools/autonomous-factory/src/kernel/`
+> Pure domain (DAG math, transitions, scheduling): `tools/autonomous-factory/src/domain/`
+> Ports / adapters: `tools/autonomous-factory/src/ports/` · `tools/autonomous-factory/src/adapters/`
+> Reactive DAG loop + dispatch: `tools/autonomous-factory/src/loop/` · `tools/autonomous-factory/src/dispatch/`
+> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, barrier, triage-handler)
+> Handler support helpers: `tools/autonomous-factory/src/handlers/support/` (agent-context, agent-limits, agent-post-session)
+> Harness: `tools/autonomous-factory/src/harness/` (RBAC, circuit breaker, tool wiring)
+> Supporting modules: `preflight.ts`, `reporting/index.ts`, `auto-skip.ts`, `hooks.ts`, `archive.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
+
+> **Note (2026-04):** The orchestrator has been refactored into a hexagonal / Command-Sourced Kernel architecture. `watchdog.ts` is now a thin entry that delegates to `main.ts` (composition root), which wires ports/adapters, the kernel, and the reactive loop. The legacy `session-runner.ts` monolith has been replaced by `loop/pipeline-loop.ts` + `dispatch/` + `handlers/`. Layering is enforced by `npm run arch:check`.
 
 ---
 
@@ -71,20 +79,24 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant W as watchdog.ts
-    participant SR as session-runner.ts
+    participant L as loop/pipeline-loop.ts
+    participant D as dispatch/item-dispatch.ts
+    participant H as handlers/copilot-agent.ts
     participant A as agents.ts
     participant PA as APM Compiled Context
     participant SDK as CopilotClient
     participant MCP as MCP Servers
     participant S as state.ts
 
-    W->>SR: runItemSession(client, item, config, state)
-    SR->>A: getAgentConfig(itemKey, context, compiled)
+    W->>L: runPipelineLoop()
+    L->>D: dispatchItem(ctx)
+    D->>H: handler.execute(ctx)
+    H->>A: getAgentConfig(itemKey, context, compiled)
     A->>PA: compiled.agents[agentKey]
     PA-->>A: { rules, mcp, skills }
     A-->>W: { systemMessage, model, mcpServers }
 
-    SR->>SDK: createSession(systemMessage, mcpServers)
+    H->>SDK: createSession(systemMessage, mcpServers)
     activate SDK
 
     Note over SDK: Event Listeners Active
@@ -99,15 +111,18 @@ sequenceDiagram
     end
 
     alt Session Completes
-        SDK-->>SR: session.complete
-        SR->>S: completeItem(slug, key)
+        SDK-->>H: session.complete
+        H->>S: ctx.stateReader.getStatus(slug)
+        H-->>D: NodeResult{ ok: true }
+        D->>S: kernel Effect → completeItem(slug, key)
     else Session Fails
-        SDK-->>SR: session.error / timeout
-        SR->>S: failItem(slug, key, message)
+        SDK-->>H: session.error / timeout
+        H-->>D: NodeResult{ ok: false, error }
+        D->>S: kernel Effect → failItem(slug, key, message)
     end
     deactivate SDK
 
-    SR->>SR: Record ItemSummary<br/>(intents, files, tools, duration)
+    D->>D: Record ItemSummary<br/>(intents, files, tools, duration)
 ```
 
 ---
@@ -116,7 +131,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Running: runItemSession()\nin session-runner.ts
+    [*] --> Running: dispatched by\nloop/pipeline-loop.ts
 
     Running --> Completed: session completes
     Running --> Failed: session error/timeout
@@ -278,43 +293,37 @@ classDiagram
 
 | Function | Module | Purpose | Called By |
 |----------|--------|---------|----------|
-| `main()` | watchdog.ts | Entry point — init, pre-flight, Phase 0, main loop | CLI |
-| `archiveFeatureFiles()` | watchdog.ts | Move `in-progress/` → `archive/features/slug/` | After publish-pr |
-| `commitAndPushState()` | watchdog.ts | Commit state files + conditional push (push guard: skips push if unpushed code files exist outside `in-progress/` or `archive/`) | Main loop |
-| `runItemSession()` | session-runner.ts | Execute one pipeline item — dispatch kernel: circuit breaker → auto-skip → readiness probe → resolve handler → execute → state transitions. Routes to handler plugins in `handlers/` | Main loop |
-| `shouldSkipRetry()` | session/shared.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` before comparing. Strips git SHAs, timestamps, run IDs, and line numbers to detect semantically identical errors across retries | `runItemSession()` |
-| `normalizeDiagnosticTrace()` | session/shared.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces for semantic circuit breaker comparison | `shouldSkipRetry()` |
-| `getAgentDirectoryPrefixes()` | session/shared.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution (prevents cross-agent pollution in parallel runs) | Post-session `filesChanged` fallback |
-| `handleFailureReroute()` | session/triage-dispatcher.ts | Unified post-deploy failure triage and redevelopment reroute | `runItemSession()` |
-| `runValidateApp()` | session/readiness-probe.ts | Post-poll-app-ci self-mutating validation — delegates to `hooks.validateApp` command; exit 1 → `deployment-stale` reroute | `runPollCi()` |
-| `runValidateInfra()` | session/readiness-probe.ts | Post-infra-handoff self-mutating validation — delegates to `hooks.validateInfra` command; exit 1 → `infra` fault domain reroute | `runAgentSession()` |
-| `getTimeout()` | session/shared.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in workflows.yml) | Copilot agent handler |
-| `checkJunkFiles()` | preflight.ts | Detect leftover temp files in working tree | `main()` |
-| `checkApimRoutes()` | preflight.ts | Verify fn-* functions have matching APIM operations | `main()` |
-| `checkInProgressArtifacts()` | preflight.ts | Check for stale artifacts from previous runs | `main()` |
-| `checkPreflightAuth()` | preflight.ts | Run configured `hooks.preflightAuth` command before pipeline start | `main()` |
-| `buildRoamIndex()` | preflight.ts | Phase 0 semantic graph build | `main()` |
-| `getAutoSkipBaseRef()` | auto-skip.ts | Git ref for change detection (auto-skip optimization) | `tryAutoSkip()` |
-| `getGitChangedFiles()` | auto-skip.ts | Files changed since a git ref via `git diff --name-only` | Auto-skip |
-| `buildRetryContext()` | context-injection.ts | Prompt augmentation for retry attempts | Copilot agent handler |
-| `buildDownstreamFailureContext()` | context-injection.ts | Inject post-deploy errors into dev agent prompts | Copilot agent handler |
-| `buildRevertWarning()` | context-injection.ts | Clean-slate revert warning for stuck dev agents | Copilot agent handler |
-| `computeEffectiveDevAttempts()` | context-injection.ts | Unified attempt counter resilient to restarts | `runItemSession()` |
-| `writeChangeManifest()` | context-injection.ts | Write `_CHANGES.json` for docs-archived | Copilot agent handler |
-| `writePipelineSummary()` | reporting.ts | Generate `_SUMMARY.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
-| `writeTerminalLog()` | reporting.ts | Generate `_TERMINAL-LOG.md` (merges `baseTelemetry` from prior sessions) | `flushReports()` |
-| `writePlaywrightLog()` | reporting.ts | Generate `_PLAYWRIGHT-LOG.md` | Copilot agent handler |
-| `parsePreviousSummary()` | reporting.ts | Parse existing `_SUMMARY.md` into `PreviousSummaryTotals` (boot-time only) | `main()` in watchdog.ts |
-| `wireToolLogging()` | tool-harness.ts | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | Copilot agent handler |
-| `triageFailure()` | triage.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router). Tier 1 runs `validateFaultDomain()` to detect CI/CD root causes and augment reset keys with deploy items | `handleFailureReroute()` |
-| `validateFaultDomain()` | triage.ts | Defense-in-Depth: detect CI/CD root-cause indicators in agent-classified errors and augment reset list with deploy items (keeps original domain so dev agent can fix `.github/` files). Uses `retrieveTopMatches()` for cicd KB matching + hardcoded `CICD_ROOT_CAUSE_INDICATORS` | `triageFailure()` Tier 1 |
-| `retrieveTopMatches()` | triage/retriever.ts | Local substring matcher against pre-compiled triage pack signatures. Normalizes trace via `normalizeDiagnosticTrace()`, returns top 3 hits ranked by snippet length (Tier 4) | `triageFailure()`, `validateFaultDomain()` |
-| `askLlmRouter()` | triage/llm-router.ts | LLM-based fault domain classification fallback for novel errors. Persists novel classifications to `_NOVEL_TRIAGE.jsonl` (Data Flywheel) (Tier 5) | `triageFailure()` |
-| `resolveHandler()` | handlers/registry.ts | Look up a handler by name from the built-in registry or dynamic import from `.apm/handlers/` | `runItemSession()` |
-| `inferHandler()` | handlers/registry.ts | Infer handler from node `type` + `script_type` when no explicit `handler` declared | `runItemSession()` |
-| `evaluateAutoSkip()` | handlers/auto-skip-evaluator.ts | Evaluate `auto_skip_if_no_changes_in` + `force_run_if_changed` from workflows.yml | `runItemSession()` |
-| `computeErrorFingerprint()` | triage/error-fingerprint.ts | Compute stable SHA-256 fingerprint for error dedup across cycles | `failItem()` |
-| `pollReadiness()` | session/readiness-probe.ts | Data-plane readiness polling before post-deploy test items | `runItemSession()` |
+| `main()` | watchdog.ts | Thin entry — parse args, delegate to `runWithKernel()` in `main.ts` | CLI |
+| `runWithKernel()` | main.ts | Composition root — wire ports/adapters, kernel, and reactive loop; run the pipeline | `watchdog.ts` |
+| `bootstrap()` | bootstrap.ts | Preflight checks, Phase 0 roam index, APM compile, config freeze | `runWithKernel()` |
+| `runPipelineLoop()` | loop/pipeline-loop.ts | Reactive DAG driver — drains ready items, dispatches in parallel, advances on completion/fail | `runWithKernel()` |
+| `dispatchBatch()` | dispatch/batch-dispatcher.ts | Build `NodeContext` for each ready item and run the chosen handler concurrently | `runPipelineLoop()` |
+| `buildNodeContext()` | dispatch/context-builder.ts | Assemble per-item context: config, compiled APM, upstream artifacts, `vcs`, `stateReader` port references | `dispatchBatch()` |
+| `dispatchItem()` | dispatch/item-dispatch.ts | Per-item lifecycle — circuit breaker → auto-skip → resolve handler → execute → translate result into kernel Commands | `dispatchBatch()` |
+| `translateResult()` | dispatch/result-translator.ts | Map `NodeResult` into kernel Commands (`CompleteItem`, `FailItem`, `ResetForDev`, etc.) | `dispatchItem()` |
+| `archiveFeatureFiles()` | archive.ts | Move `in-progress/` → `archive/features/slug/` after publish-pr | `runPipelineLoop()` |
+| `handleAgent()` | handlers/copilot-agent.ts | Copilot SDK session execution. No direct I/O — uses `ctx.vcs` + `ctx.stateReader`. Delegates context build / limits / post-session enrichment to `handlers/support/` | Handler registry |
+| `buildAgentContext()` | handlers/support/agent-context.ts | Collect upstream artifacts and shape the agent prompt context from `NodeContext` | `handleAgent()` |
+| `resolveAgentLimits()` | handlers/support/agent-limits.ts | APM cascade → tool limits, harness limits, sandbox config, filtered tool list | `handleAgent()` |
+| `enrichPostSessionTelemetry()` | handlers/support/agent-post-session.ts | Post-session git diff + HEAD via `ctx.vcs` for `filesChanged` attribution | `handleAgent()` |
+| `handleLocalExec()` | handlers/local-exec.ts | Shell out to local scripts (push, publish, tests, builds). Returns structured `NodeResult` | Handler registry |
+| `handleCiPoll()` | handlers/github-ci-poll.ts | Poll GitHub CI status via `poll-ci.sh` | Handler registry |
+| `handleTriage()` | handlers/triage-handler.ts | Multi-tier fault classification and redevelopment reroute (renamed from `handlers/triage.ts` on 2026-04-18) | `runPipelineLoop()` |
+| `resolveHandler()` / `inferHandler()` | handlers/registry.ts | Look up / infer a handler by name or by node `type` + `script_type` | `dispatchItem()` |
+| `shouldSkipRetry()` | session/dag-utils.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` to detect semantically identical errors across retries | `dispatchItem()` |
+| `normalizeDiagnosticTrace()` | session/dag-utils.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces | `shouldSkipRetry()` |
+| `getAgentDirectoryPrefixes()` | session/dag-utils.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution | Post-session `filesChanged` fallback |
+| `getTimeout()` | session/dag-utils.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in `workflows.yml`) | Copilot agent handler |
+| `wireToolLogging()` | harness/ | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | Copilot agent handler |
+| `checkJunkFiles()` / `checkApimRoutes()` / `checkInProgressArtifacts()` / `checkPreflightAuth()` / `buildRoamIndex()` | preflight.ts | Pre-flight guards and Phase 0 semantic graph build | `bootstrap()` |
+| `getAutoSkipBaseRef()` / `getGitChangedFiles()` | auto-skip.ts | Git-diff change detection for the auto-skip optimization | `dispatchItem()` |
+| `writePipelineSummary()` / `writeTerminalLog()` / `writePlaywrightLog()` / `parsePreviousSummary()` | reporting/index.ts | Generate/merge `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` | `runPipelineLoop()` / Copilot agent handler |
+| `triageFailure()` | handlers/triage-handler.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router) | `runPipelineLoop()` on downstream failure |
+| `validateFaultDomain()` | handlers/triage-handler.ts | Defense-in-Depth: detect CI/CD root-cause indicators and augment reset list with deploy items | `triageFailure()` Tier 1 |
+| `retrieveTopMatches()` | triage/retriever.ts | Local substring matcher against pre-compiled triage pack signatures (Tier 4) | `triageFailure()`, `validateFaultDomain()` |
+| `askLlmRouter()` | triage/llm-router.ts | LLM-based fault domain classification fallback for novel errors; persists to `_NOVEL_TRIAGE.jsonl` (Tier 5) | `triageFailure()` |
+| `computeErrorFingerprint()` | triage/error-fingerprint.ts | Stable SHA-256 fingerprint for error dedup across cycles | kernel failure handling |
+| `evaluateAutoSkip()` | handlers/support/auto-skip-evaluator.ts | Evaluate `auto_skip_if_no_changes_in` + `force_run_if_changed` from `workflows.yml` | `dispatchItem()` |
 
 ---
 

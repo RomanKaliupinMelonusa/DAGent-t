@@ -1,7 +1,7 @@
 name: commerce-storefront
 version: 1.0.0
 description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless React + SCAPI"
-tokenBudget: 8000
+tokenBudget: 10000
 
 agents:
   storefront-dev:
@@ -89,21 +89,187 @@ agents:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
-  publish-pr:
-    instructions: [always]
-    promptFile: publish-pr.agent.md
+  storefront-debugger:
+    instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: storefront-debugger.agent.md
     mcp: [roam-code]
-    skills: []
-    toolLimits: { soft: 60, hard: 80 }
+    skills: [test-storefront-unit, dev-local]
+    toolLimits: { soft: 50, hard: 70 }
     security:
-      allowedWritePaths: ["^.*"]
+      allowedWritePaths: ["^app/", "^config/", "^worker/", "^e2e/"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
     tools:
-      core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
 
+# ═══════════════════════════════════════════════════════════════════════
+# Node Pool — Reusable work units (agent, script, triage)
+# Nodes define WHAT to execute; workflows define HOW to connect them.
+# ═══════════════════════════════════════════════════════════════════════
+nodes:
+  storefront-dev:
+    type: agent
+    category: dev
+    agent: "@storefront-dev"
+    timeout_minutes: 25
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+    circuit_breaker:
+      allows_revert_bypass: true
+      allows_timeout_salvage: true
+
+  storefront-unit-test:
+    type: agent
+    category: test
+    agent: "@storefront-test"
+    timeout_minutes: 15
+    auto_skip_if_no_changes_in: [storefront]
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+
+  create-draft-pr:
+    type: agent
+    category: deploy
+    agent: "@pr-creator"
+    timeout_minutes: 15
+    commit_scope: pipeline
+
+  e2e-author:
+    type: agent
+    category: test
+    agent: "@sdet-expert"
+    timeout_minutes: 10
+    auto_skip_if_no_changes_in: [storefront, e2e]
+    commit_scope: all
+    diff_attribution_dirs: [e2e]
+
+  e2e-runner:
+    type: script
+    category: test
+    script_type: local-exec
+    command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
+    auto_skip_if_no_changes_in: [storefront, e2e]
+    pre: |
+      # Kill stale processes from previous runs (idempotent)
+      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
+      pkill -f 'chromium|chrome' 2>/dev/null || true
+      sleep 2
+      # Start dev server (nohup keeps it alive after this shell exits)
+      nohup npm start > /tmp/smoke-server.log 2>&1 &
+      echo $! > /tmp/smoke-server.pid
+      disown
+      echo "Pre: waiting for dev server (PID $(cat /tmp/smoke-server.pid))..."
+      for i in $(seq 1 24); do
+        sleep 5
+        if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
+          echo "Pre: PLP returned HTTP 200 — SSR is healthy"
+          exit 0
+        fi
+      done
+      echo "Pre: PLP failed to return HTTP 200 after 120s — SSR is broken"
+      echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
+      # Clean up the server we started (only on failure)
+      kill "$(cat /tmp/smoke-server.pid)" 2>/dev/null || true
+      exit 1
+    post: |
+      # Kill the dev server started by pre-hook (PID file + pattern match)
+      kill "$(cat /tmp/smoke-server.pid 2>/dev/null)" 2>/dev/null || true
+      rm -f /tmp/smoke-server.pid
+      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
+      pkill -f 'chromium|chrome' 2>/dev/null || true
+      sleep 2
+    circuit_breaker:
+      halt_on_identical: true
+
+  code-cleanup:
+    type: agent
+    category: finalize
+    agent: "@code-cleanup"
+    timeout_minutes: 15
+    auto_skip_if_no_deletions: true
+    commit_scope: pipeline
+    salvage_survivor: true
+
+  docs-archived:
+    type: agent
+    category: finalize
+    agent: "@docs-expert"
+    timeout_minutes: 15
+    commit_scope: docs
+    generates_change_manifest: true
+    salvage_survivor: true
+
+  doc-architect:
+    type: agent
+    category: finalize
+    agent: "@doc-architect"
+    timeout_minutes: 15
+    commit_scope: pipeline
+
+  push-app:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
+    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  poll-app-ci:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: poll
+    ci_workflow_key: app
+    post: "bash .apm/hooks/validate-app.sh"
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  publish-pr:
+    type: script
+    category: deploy
+    timeout_minutes: 15
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
+    signals_create_pr: true
+    salvage_survivor: true
+    captures_head_sha: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  triage-node:
+    type: triage
+    category: finalize
+    timeout_minutes: 5
+    node_kind: control-flow
+
+  storefront-debugger:
+    type: agent
+    category: dev
+    agent: "@storefront-debugger"
+    timeout_minutes: 20
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+    # Phase 3 — declarative hidden-node trigger (preferred over legacy `activation`).
+    triggers: [route]
+    node_kind: diagnostic
+    circuit_breaker:
+      allows_revert_bypass: true
+      allows_timeout_salvage: true
+
 config:
-  defaultToolLimits: { soft: 60, hard: 80 }
+  defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
+  # Phase 4 operational hardening.
+  policy:
+    max_iterations: 500
+    max_idle_minutes: 45
+    max_total_failures: 15
+    approval_default_timeout_hours: 24
+    approval_default_on_timeout: halt
   hooks:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"

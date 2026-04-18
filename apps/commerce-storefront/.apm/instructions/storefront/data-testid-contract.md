@@ -52,4 +52,4 @@ For example, the PLP page passes `data-testid={`sf-product-tile-${product.id}`}`
 
 3. **If the base component already has a `data-testid`**, verify whether parent pages overwrite it via prop spread. If they do, your override MUST add a stable testid on a wrapper.
 
-4. **Document your testid contract** in a `pipeline:doc-note` so the SDET agent knows exactly which testids to target.
+4. **Document your testid contract** in a `report_outcome` (with docNote) so the SDET agent knows exactly which testids to target.

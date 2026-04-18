@@ -138,19 +138,19 @@ jobs:
         with:
           ref: ${{ steps.pr-meta.outputs.branch }}
 
-      - name: Read workflow type from state
+      - name: Read workflow name from state
         id: state-meta
         env:
           APP_PATH: apps/sample-app
         run: |
           STATE_FILE="${APP_PATH}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json"
           if [ -f "$STATE_FILE" ]; then
-            WF_TYPE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$STATE_FILE','utf-8')).workflowType)")
-            echo "workflow_type=$WF_TYPE" >> "$GITHUB_OUTPUT"
-            echo "Detected workflow type from state: $WF_TYPE"
+            WF_NAME=$(node -e "const s=JSON.parse(require('fs').readFileSync('$STATE_FILE','utf-8'));console.log(s.workflowName||s.workflowType||'full-stack')")
+            echo "workflow_name=$WF_NAME" >> "$GITHUB_OUTPUT"
+            echo "Detected workflow name from state: $WF_NAME"
           else
-            echo "workflow_type=Full-Stack" >> "$GITHUB_OUTPUT"
-            echo "No state file found — defaulting to Full-Stack"
+            echo "workflow_name=full-stack" >> "$GITHUB_OUTPUT"
+            echo "No state file found — defaulting to full-stack"
           fi
 
       - name: Trigger agentic pipeline
@@ -160,7 +160,7 @@ jobs:
           gh workflow run agentic-feature.yml \
             --repo ${{ github.repository }} \
             -f feature-slug=${{ steps.pr-meta.outputs.slug }} \
-            -f workflow-type=${{ steps.state-meta.outputs.workflow_type }} \
+            -f workflow-name=${{ steps.state-meta.outputs.workflow_name }} \
             -f app-path=apps/sample-app \
           || { echo "❌ Failed to trigger — is COPILOT_PAT set?"; exit 1; }
 

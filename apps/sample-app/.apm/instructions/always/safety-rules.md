@@ -28,14 +28,17 @@ Each check must:
 2. Echo a diagnostic message to stdout if the check fails
 3. `exit 1` on first failure
 
-## Structured Failure Contract
+## Failure Reporting
 
-If you cannot complete a task due to a bug, you **MUST** fail by calling your shell tool with:
+If you cannot complete a task due to a bug, you **MUST** signal failure by calling the `report_outcome` tool:
 
-```bash
-npm run pipeline:fail <item-key> '{"fault_domain": "...", "diagnostic_trace": "..."}'
+```
+report_outcome({
+  status: "failed",
+  message: "<detailed reason — stack trace, error message, URL, or status code>"
+})
 ```
 
-- `fault_domain` must be one of the valid domains declared in `workflows.yml` `fault_routing` (e.g., `backend`, `frontend`, `infra`, `both`, `cicd`, `environment`, `blocked`, `test-code`).
-- `diagnostic_trace` must contain the relevant stack trace, error message, URL, or status code that explains the failure.
-- **Do not** output raw markdown errors or unstructured failure messages. The orchestrator uses structured JSON to route failures deterministically.
+- The `message` should ideally be a TriageDiagnostic JSON object describing root cause, blame, and suggested next agent.
+- The orchestrator automatically classifies failures and routes them to the appropriate node for remediation.
+- **Do NOT** call `npm run pipeline:fail` from bash. The `report_outcome` tool is the only supported failure-signaling channel.

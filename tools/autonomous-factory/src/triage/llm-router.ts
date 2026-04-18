@@ -1,24 +1,22 @@
 /**
  * triage/llm-router.ts — LLM-based fallback router for novel error classification.
  *
- * When the local retriever yields no matches, this module uses the Copilot SDK
- * to classify the error into a fault domain. The LLM is constrained to output
- * only valid fault domains declared in workflows.yml.
+ * When the local retriever yields no matches, this module uses an injected
+ * TriageLlm port to classify the error into a fault domain. The LLM is
+ * constrained to output only valid fault domains declared in workflows.yml.
  *
  * Implements the Data Flywheel: novel LLM classifications are persisted to
  * `in-progress/<slug>_NOVEL_TRIAGE.jsonl` so humans can generalize them into
  * triage pack signatures.
+ *
+ * Vendor SDKs are NOT imported here — all LLM I/O flows through the
+ * `TriageLlm` port (see `ports/triage-llm.ts`).
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CopilotClient } from "@github/copilot-sdk";
-import { approveAll } from "@github/copilot-sdk";
-import type { ApmFaultRoute, TriageSignature } from "../apm-types.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import type { TriageLlm } from "../ports/triage-llm.js";
+import type { TriageSignature } from "../apm/types.js";
 
 export interface LlmTriageResult {
   fault_domain: string;
@@ -32,15 +30,11 @@ interface NovelTriageEntry {
   trace_excerpt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt construction
-// ---------------------------------------------------------------------------
-
 function buildTriagePrompt(
   trace: string,
   domains: string[],
   topMatches: TriageSignature[],
-  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
+  faultRouting: Record<string, { description?: string }>,
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
@@ -72,10 +66,6 @@ Error trace:
 ${trace.slice(0, 4000)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Novel triage log (Data Flywheel)
-// ---------------------------------------------------------------------------
-
 function appendNovelTriageLog(
   slug: string,
   appRoot: string,
@@ -86,30 +76,17 @@ function appendNovelTriageLog(
   fs.appendFileSync(logPath, line, "utf-8");
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /**
  * Ask the LLM to classify a novel error trace into a fault domain.
- *
- * @param client   - Copilot SDK client instance
- * @param trace    - Raw error trace / diagnostic message
- * @param domains  - Valid fault domain strings from workflows.yml fault_routing
- * @param topMatches - Partial matches from the local retriever (injected as context)
- * @param slug     - Feature slug (for novel triage log)
- * @param appRoot  - App root path (for novel triage log)
- * @param faultRouting - Fault routing config with optional descriptions for LLM prompt
- * @returns The classified fault domain and reason
  */
 export async function askLlmRouter(
-  client: CopilotClient,
+  llm: TriageLlm,
   trace: string,
   domains: string[],
   topMatches: TriageSignature[],
   slug: string,
   appRoot: string,
-  faultRouting: Record<string, Pick<ApmFaultRoute, "description">>,
+  faultRouting: Record<string, { description?: string }>,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
@@ -118,28 +95,12 @@ export async function askLlmRouter(
 
   try {
     const prompt = buildTriagePrompt(trace, domains, topMatches, faultRouting);
-    const session = await client.createSession({
-      model: "claude-opus-4.6",
-      onPermissionRequest: approveAll,
-      systemMessage: {
-        mode: "replace",
-        content: "You are a JSON-only fault-domain classifier. Output exactly one JSON object, no markdown.",
-      },
+    const text = await llm.classify({
+      systemMessage: "You are a JSON-only fault-domain classifier. Output exactly one JSON object, no markdown.",
+      prompt,
+      timeoutMs: 60_000,
     });
 
-    const response = await session.sendAndWait(
-      { prompt },
-      60_000, // 60s timeout — triage should be fast
-    );
-    await session.disconnect();
-
-    // Extract the last assistant message text
-    // SDK returns AssistantMessageEvent: { type: "assistant.message", data: { content: string } }
-    const text = typeof response === "string"
-      ? response
-      : (response as { data?: { content?: string } })?.data?.content ?? "";
-
-    // Parse JSON from the response (handle markdown code fences)
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) {
       console.warn("  ⚠ LLM triage router: no JSON found in response");
@@ -150,7 +111,6 @@ export async function askLlmRouter(
     const faultDomain = String(parsed.fault_domain ?? "");
     const reason = String(parsed.reason ?? "");
 
-    // Strict enum validation — reject hallucinated domains
     if (!domains.includes(faultDomain)) {
       console.warn(`  ⚠ LLM triage router: hallucinated domain "${faultDomain}" — not in allowed list`);
       return FALLBACK;
@@ -158,7 +118,6 @@ export async function askLlmRouter(
 
     const result: LlmTriageResult = { fault_domain: faultDomain, reason };
 
-    // Data Flywheel: persist novel classification
     appendNovelTriageLog(slug, appRoot, {
       timestamp: new Date().toISOString(),
       fault_domain: faultDomain,

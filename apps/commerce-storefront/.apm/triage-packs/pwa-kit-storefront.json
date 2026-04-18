@@ -13,6 +13,11 @@
       "reason": "React ErrorBoundary caught a component crash — upstream dev code threw during render."
     },
     {
+      "error_snippet": "React will try to recreate this component tree",
+      "fault_domain": "test-code-from-dev",
+      "reason": "React component tree crashed and is being recreated — upstream dev code threw during render."
+    },
+    {
       "error_snippet": "strict mode violation",
       "fault_domain": "test-code",
       "reason": "Playwright strict mode: locator matched multiple DOM elements. Test selector is too broad — use a more specific locator."
@@ -21,6 +26,11 @@
       "error_snippet": "locator resolved to",
       "fault_domain": "test-code",
       "reason": "Playwright locator matched multiple elements (strict mode violation). Narrow the selector to match exactly one element."
+    },
+    {
+      "error_snippet": "Timed out",
+      "fault_domain": "test-code",
+      "reason": "Playwright timeout waiting for element. Likely a bad locator, race condition, or incorrect test assertion — not an app crash."
     },
     {
       "error_snippet": "TypeError: undefined is not an object",
@@ -41,6 +51,11 @@
       "error_snippet": "ECONNREFUSED",
       "fault_domain": "environment",
       "reason": "Connection refused — dev server or external service not reachable. Transient infrastructure issue."
+    },
+    {
+      "error_snippet": "ETIMEDOUT",
+      "fault_domain": "environment",
+      "reason": "Network connection timed out — transient infrastructure issue, not a code bug."
     }
   ]
 }

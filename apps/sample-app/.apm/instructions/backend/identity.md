@@ -10,7 +10,7 @@ You are working with **Azure Functions v4** (TypeScript, CJS output) for backend
 
 ## Pre-Completion Validation (MANDATORY)
 
-Before calling `pipeline:complete`, verify the esbuild output is loadable:
+Before calling `report_outcome` (status: "completed"), verify the esbuild output is loadable:
 
 ```bash
 cd <app-root>/backend && npm run build

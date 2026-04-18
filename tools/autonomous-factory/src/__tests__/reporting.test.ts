@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { writePipelineSummary } from "../reporting.js";
+import { writePipelineSummary } from "../reporting/index.js";
 import type { ItemSummary } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,6 @@ function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
     key: "backend-dev",
     label: "Backend Development",
     agent: "dev-expert",
-    phase: "pre-deploy",
     attempt: 1,
     startedAt: "2026-03-31T10:00:00.000Z",
     finishedAt: "2026-03-31T10:05:00.000Z",
@@ -116,7 +115,7 @@ describe("writePipelineSummary — _FLIGHT_DATA.json export", () => {
     const item = envelope.items[0];
 
     const requiredKeys = [
-      "key", "label", "agent", "phase", "attempt",
+      "key", "label", "agent", "attempt",
       "startedAt", "finishedAt", "durationMs", "outcome",
       "intents", "messages", "filesRead", "filesChanged",
       "shellCommands", "toolCounts",

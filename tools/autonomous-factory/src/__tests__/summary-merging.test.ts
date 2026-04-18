@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { writePipelineSummary, loadPreviousSummary, formatDuration, formatUsd, type PreviousSummaryTotals } from "../reporting.js";
+import { writePipelineSummary, loadPreviousSummary, formatDuration, formatUsd, type PreviousSummaryTotals } from "../reporting/index.js";
 import type { ItemSummary } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -53,7 +53,6 @@ function makeSummary(overrides: Partial<ItemSummary> = {}): ItemSummary {
     key: "test-step",
     label: "Test Step",
     agent: "test-agent",
-    phase: "dev",
     attempt: 1,
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
