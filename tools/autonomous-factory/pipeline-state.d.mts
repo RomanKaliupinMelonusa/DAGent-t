@@ -35,6 +35,10 @@ interface PipelineState {
      *  Enables cross-cycle identity tracking for death-spiral prevention. */
     errorSignature?: string | null;
   }>;
+  /** Typed cycle counters for reset/resume operations. Keys are stable log keys
+   *  like `"reset-for-dev"`, `"resume-elevated"`, `"reset-scripts:<category>"`.
+   *  Populated by reset mutations; back-filled from errorLog on legacy state. */
+  cycleCounters: Record<string, number>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;
   /** Node execution types — persisted at init from workflows.yml */

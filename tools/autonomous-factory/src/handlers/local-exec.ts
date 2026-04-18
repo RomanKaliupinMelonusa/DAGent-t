@@ -15,7 +15,7 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import { getWorkflowNode } from "../session/shared.js";
-import { sanitizeOutput } from "./result-processor-regex.js";
+import { sanitizeOutput } from "./support/result-processor-regex.js";
 
 const execAsync = promisify(exec);
 

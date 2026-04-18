@@ -7,7 +7,6 @@
 export type { StateStore } from "./state-store.js";
 export type { VersionControl } from "./version-control.js";
 export type { Telemetry, EventContext } from "./telemetry.js";
-export type { AgentRuntime, AgentSessionResult } from "./agent-runtime.js";
 export type { HookExecutor, HookResult } from "./hook-executor.js";
 export type { CiGateway, CiRunStatus } from "./ci-gateway.js";
 export type { ContextCompiler } from "./context-compiler.js";

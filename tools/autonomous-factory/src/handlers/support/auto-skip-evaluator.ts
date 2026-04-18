@@ -11,10 +11,10 @@
  */
 
 import path from "node:path";
-import type { ApmCompiledOutput } from "../apm-types.js";
-import type { SkipResult } from "./types.js";
-import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../auto-skip.js";
-import { findUpstreamKeysByCategory } from "../session/shared.js";
+import type { ApmCompiledOutput } from "../../apm-types.js";
+import type { SkipResult } from "../types.js";
+import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../../auto-skip.js";
+import { findUpstreamKeysByCategory } from "../../session/shared.js";
 
 // ---------------------------------------------------------------------------
 // Return type
