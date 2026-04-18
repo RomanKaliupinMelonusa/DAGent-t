@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+/**
+ * Architectural guardrail for the orchestrator.
+ *
+ * Enforces hexagonal layering by statically scanning TypeScript imports.
+ * Fails with a non-zero exit code if any rule is violated.
+ *
+ * Run: node scripts/arch-check.mjs
+ *      npm run arch:check
+ */
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
+const SRC = join(ROOT, "src");
+
+/**
+ * Known-debt allowlist. Each entry is a `${layer}::${relativeFilePath}::${specifier}`
+ * triple. Pre-existing violations are documented here with an ADR-style note
+ * pointing at the phase that will remove the debt. Any NEW violation outside
+ * this set fails the check immediately.
+ *
+ * RULE: never add to this list without filing a cleanup ticket.
+ */
+const KNOWN_DEBT = new Set([
+  // Phase 2 (covers the next three): local-exec + github-ci-poll shell out
+  // directly. A shared ShellPort / CiGateway impl will swallow these.
+  "handlers::src/handlers/local-exec.ts::node:child_process",
+  "handlers::src/handlers/github-ci-poll.ts::node:child_process",
+  "handlers::src/handlers/github-ci-poll.ts::node:fs",
+  // Phase 6 (future): invert copilot-session-runner behind a
+  // CopilotSessionRunner port so copilot-agent depends on the port,
+  // not the adapter directly.
+  "handlers::src/handlers/copilot-agent.ts::../adapters/copilot-session-runner.js",
+  // Phase 2: kernel/commands.ts pulls a handler type to describe the
+  // agent-session effect payload. Once NodeContext lives in a shared
+  // types module, this inversion disappears.
+  "kernel::src/kernel/commands.ts::../handlers/types.js",
+]);
+
+/**
+ * Each rule has:
+ *   - layer: glob-like path prefix under src/
+ *   - forbidden: regex array of import specifiers that must not appear
+ *   - reason: one-line explanation printed on violation
+ */
+const RULES = [
+  {
+    layer: "handlers",
+    forbidden: [
+      { re: /^node:child_process$/, why: "handlers must delegate shell ops to a port (VersionControl / HookExecutor)" },
+      { re: /^node:fs(\/.*)?$/, why: "handlers must delegate filesystem ops to a port (FeatureFilesystem)" },
+      { re: /^\.{1,2}\/state\.js$/, why: "handlers must read state via ctx.stateReader, not the state facade" },
+      { re: /\/pipeline-state\.mjs$/, why: "handlers must not talk to pipeline-state CLI directly" },
+      { re: /^\.{1,2}\/(adapters|loop|dispatch|main|watchdog|bootstrap)\//, why: "handlers cannot reach up into composition / entry layers" },
+    ],
+  },
+  {
+    layer: "domain",
+    forbidden: [
+      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch|ports|kernel)\//, why: "domain must remain pure — no I/O, no runtime wiring" },
+      { re: /^node:(fs|child_process|http|https|os|net|process)$/, why: "domain is pure — only deterministic node: primitives (crypto, util) are allowed" },
+      { re: /\/pipeline-state\.mjs$/, why: "domain cannot call the state CLI" },
+      { re: /^\.{1,2}\/state\.js$/, why: "domain cannot call the state facade" },
+    ],
+  },
+  {
+    layer: "ports",
+    forbidden: [
+      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch|kernel)\//, why: "ports are interface declarations — they must not reference implementations" },
+      { re: /^node:(fs|child_process|http|https|net)$/, why: "ports describe contracts — no direct I/O imports" },
+    ],
+  },
+  {
+    layer: "kernel",
+    forbidden: [
+      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch)\//, why: "kernel emits Effects; it must not know about adapters or handlers" },
+      { re: /^node:(fs|child_process|http|https|net)$/, why: "kernel is pure Command/Effect — no direct I/O" },
+      { re: /\/pipeline-state\.mjs$/, why: "kernel is the state owner — it must not call the legacy CLI" },
+    ],
+  },
+];
+
+/** Recursively collect .ts files under a directory, excluding __tests__ and .d.ts. */
+function collectTsFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      if (entry === "__tests__" || entry === "node_modules") continue;
+      out.push(...collectTsFiles(full));
+    } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+const IMPORT_RE = /(?:^|\n)\s*(?:import\s+(?:type\s+)?(?:[^'"\n]+?\s+from\s+)?|export\s+(?:type\s+)?\*?\s*(?:\{[^}]*\}\s*)?from\s+)["']([^"']+)["']/g;
+
+/** Extract all import specifiers from a TypeScript file. */
+function extractImports(source) {
+  const specs = [];
+  let m;
+  IMPORT_RE.lastIndex = 0;
+  while ((m = IMPORT_RE.exec(source)) !== null) {
+    specs.push(m[1]);
+  }
+  return specs;
+}
+
+let violations = 0;
+let allowedHits = 0;
+const unusedAllowlistEntries = new Set(KNOWN_DEBT);
+
+for (const rule of RULES) {
+  const layerDir = join(SRC, rule.layer);
+  let files;
+  try {
+    files = collectTsFiles(layerDir);
+  } catch {
+    console.warn(`arch-check: skipping missing layer '${rule.layer}'`);
+    continue;
+  }
+  for (const file of files) {
+    const source = readFileSync(file, "utf-8");
+    const specs = extractImports(source);
+    const rel = relative(ROOT, file);
+    for (const spec of specs) {
+      for (const { re, why } of rule.forbidden) {
+        if (!re.test(spec)) continue;
+        const key = `${rule.layer}::${rel}::${spec}`;
+        if (KNOWN_DEBT.has(key)) {
+          allowedHits++;
+          unusedAllowlistEntries.delete(key);
+          continue;
+        }
+        console.error(`✗ [${rule.layer}] ${rel}`);
+        console.error(`    imports: ${spec}`);
+        console.error(`    reason:  ${why}`);
+        violations++;
+      }
+    }
+  }
+}
+
+if (unusedAllowlistEntries.size > 0) {
+  console.error(`\narch-check: ${unusedAllowlistEntries.size} allowlist entr(ies) no longer match any source — please remove:`);
+  for (const entry of unusedAllowlistEntries) {
+    console.error(`    ${entry}`);
+  }
+  process.exit(1);
+}
+
+if (violations > 0) {
+  console.error(`\narch-check: ${violations} new violation(s) found.`);
+  if (allowedHits > 0) {
+    console.error(`           ${allowedHits} pre-existing debt entr(ies) silently allowed.`);
+  }
+  process.exit(1);
+}
+
+console.log(`arch-check: clean (${allowedHits} known-debt entr(ies) still active).`);
+

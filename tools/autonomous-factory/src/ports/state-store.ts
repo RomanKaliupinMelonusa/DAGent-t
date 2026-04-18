@@ -1,8 +1,9 @@
 /**
  * ports/state-store.ts — Port interface for pipeline state persistence.
  *
- * Abstracts the file-based pipeline-state.mjs behind an async interface.
- * The production adapter delegates to state.ts; tests use an in-memory stub.
+ * Abstracts the file-based `pipeline-state.mjs` CLI behind an async interface.
+ * The production adapter (`JsonFileStateStore`) imports the CLI module
+ * directly; tests use an in-memory stub.
  */
 
 import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord } from "../types.js";
@@ -12,8 +13,11 @@ import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord }
  * Every method is async to accommodate both file I/O and in-memory stubs.
  */
 export interface StateStore {
-  /** Read the full pipeline state. */
+  /** Read the full pipeline state. Throws if state file does not exist. */
   getStatus(slug: string): Promise<PipelineState>;
+
+  /** Read the full pipeline state, returning `null` if no state file exists. */
+  readState(slug: string): Promise<PipelineState | null>;
 
   /** Get all items whose DAG dependencies are satisfied. */
   getNextAvailable(slug: string): Promise<Array<{

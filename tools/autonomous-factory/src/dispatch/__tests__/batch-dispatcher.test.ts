@@ -23,6 +23,8 @@ function makeCtx(key: string): NodeContext {
     handlerData: {},
     onHeartbeat: () => {},
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
+    vcs: {} as NodeContext["vcs"],
+    stateReader: {} as NodeContext["stateReader"],
   };
 }
 

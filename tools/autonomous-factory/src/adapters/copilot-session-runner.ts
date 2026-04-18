@@ -23,7 +23,7 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 import {
   buildSessionHooks,
   type ResolvedHarnessLimits,
-} from "../tool-harness.js";
+} from "../harness/index.js";
 import type { AgentSandbox } from "../agent-sandbox.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../logger.js";

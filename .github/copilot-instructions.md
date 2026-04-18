@@ -42,17 +42,24 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
-| Handler plugins (agent, poll, local-exec) | `tools/autonomous-factory/src/handlers/` |
-| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
-| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
+| Composition root (kernel + adapters + loop) | `tools/autonomous-factory/src/main.ts` |
+| Bootstrap (preflight + APM compile + config) | `tools/autonomous-factory/src/bootstrap.ts` |
+| Command-Sourced Pipeline Kernel | `tools/autonomous-factory/src/kernel/` |
+| Pure domain (DAG math, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
+| Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
+| Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
+| Reactive DAG loop | `tools/autonomous-factory/src/loop/` |
+| Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/dispatch/` |
+| Handler plugins (agent, poll, local-exec, triage, approval, barrier) | `tools/autonomous-factory/src/handlers/` |
+| Copilot-agent support helpers (context, limits, post-session) | `tools/autonomous-factory/src/handlers/support/` |
+| Workflow node helpers (shared, dag-utils) | `tools/autonomous-factory/src/session/` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
-| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
@@ -93,18 +100,23 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | What | Where |
 |---|---|
 | Orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Dispatch kernel (per-item lifecycle) | `tools/autonomous-factory/src/session-runner.ts` |
-| Handler plugins (agent, push, poll, PR, local-exec) | `tools/autonomous-factory/src/handlers/` |
-| Session submodules (shared, readiness, triage, events) | `tools/autonomous-factory/src/session/` |
-| Failure triage & routing | `tools/autonomous-factory/src/triage.ts` · `src/triage/` |
+| Composition root | `tools/autonomous-factory/src/main.ts` |
+| Pipeline Kernel (sole state owner, Command/Effect) | `tools/autonomous-factory/src/kernel/` |
+| Pure domain functions (DAG, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
+| Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
+| Adapters (state store, git, CI, FS, SDK runner, telemetry) | `tools/autonomous-factory/src/adapters/` |
+| Reactive DAG loop | `tools/autonomous-factory/src/loop/pipeline-loop.ts` |
+| Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/dispatch/` |
+| Handler plugins (agent, push, poll, PR, local-exec, triage) | `tools/autonomous-factory/src/handlers/` |
+| Copilot agent support helpers | `tools/autonomous-factory/src/handlers/support/` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
-| Tool call harness & circuit breaker | `tools/autonomous-factory/src/tool-harness.ts` |
+| Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Retry/revert prompt injection | `tools/autonomous-factory/src/context-injection.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | State machine API binding | `tools/autonomous-factory/src/state.ts` |
 | GitHub Actions workflow | `.github/workflows/agentic-feature.yml` |

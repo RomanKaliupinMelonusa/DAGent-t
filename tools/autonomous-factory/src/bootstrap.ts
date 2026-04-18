@@ -15,7 +15,15 @@ import { BootstrapError } from "./errors.js";
 import { createFeatureBranch } from "./git-ops.js";
 import { loadApmContext } from "./apm-context-loader.js";
 import { runResolveEnvironment } from "./hooks.js";
-import { readState } from "./state.js";
+// Bootstrap runs at the composition root level — it legitimately owns the
+// entry-time read of persisted state. Importing the CLI module directly
+// avoids a thin facade (previously `./state.js`) and keeps the dependency
+// explicit.
+import type { PipelineState } from "./types.js";
+import * as pipelineState from "../pipeline-state.mjs";
+// `readStateOrThrow` throws on missing file (catch-able); `readState`
+// calls process.exit, which we don't want at the composition root.
+const readStateOrThrow = pipelineState.readStateOrThrow as (slug: string) => PipelineState;
 import {
   checkJunkFiles,
   checkInProgressArtifacts,
@@ -110,7 +118,7 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   checkInProgressArtifacts(repoRoot, appRoot);
 
   // --- 6. State-context drift (throws StateError on mismatch) ---
-  await checkStateContextDrift(slug, apmContext, readState);
+  await checkStateContextDrift(slug, apmContext, async (s) => readStateOrThrow(s));
 
   // --- 7. Cloud CLI auth ---
   checkPreflightAuth(repoRoot, appRoot, apmContext);
@@ -122,7 +130,14 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   const logger = createPipelineLogger(appRoot, slug);
 
   // --- 10. Read workflow name from persisted state ---
-  const initialState = await readState(slug);
+  let initialState: PipelineState;
+  try {
+    initialState = readStateOrThrow(slug);
+  } catch {
+    throw new BootstrapError(
+      `Pipeline state not found for slug "${slug}". Run \`npm run pipeline:init ${slug} <workflow>\` first.`,
+    );
+  }
   const workflowName = initialState.workflowName;
 
   // --- Boot-time telemetry ---

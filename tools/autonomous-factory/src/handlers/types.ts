@@ -20,6 +20,8 @@ import type { ApmCompiledOutput } from "../apm-types.js";
 import type { PipelineState, ItemSummary, TriageRecord } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
+import type { VersionControl } from "../ports/version-control.js";
+import type { StateStore } from "../ports/state-store.js";
 
 // ---------------------------------------------------------------------------
 // NodeContext — input to every handler
@@ -82,6 +84,17 @@ export interface NodeContext {
   readonly client?: CopilotClient;
   /** Pipeline event logger — single entry point for all telemetry. */
   readonly logger: PipelineLogger;
+  /**
+   * Version control port — handlers must use this instead of spawning git
+   * directly. Provides HEAD SHA, changed-file diffs, and branch operations.
+   */
+  readonly vcs: VersionControl;
+  /**
+   * Read-only view of the pipeline state store. Handlers must observe
+   * authoritative state through this port rather than importing state
+   * modules directly. Full read methods exposed; handlers MUST NOT mutate.
+   */
+  readonly stateReader: Pick<StateStore, "getStatus">;
 
   // ── Failure context (populated when dispatched via on_failure edge) ──
 

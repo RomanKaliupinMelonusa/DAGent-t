@@ -36,7 +36,7 @@
 // ─── Re-exports (public API) ────────────────────────────────────────────────
 export { computeErrorSignature } from "./pipeline-state/error-signature.mjs";
 export { getDownstream, getUpstream, cascadeBarriers } from "./pipeline-state/graph.mjs";
-export { readState } from "./pipeline-state/io.mjs";
+export { readState, readStateOrThrow } from "./pipeline-state/io.mjs";
 export {
   initState,
   completeItem,

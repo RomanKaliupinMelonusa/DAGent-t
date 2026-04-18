@@ -12,7 +12,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "../tool-harness.js";
+import { SHELL_WRITE_PATTERNS, extractShellWrittenFiles } from "../harness/index.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 

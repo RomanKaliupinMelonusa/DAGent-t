@@ -92,7 +92,7 @@ flowchart TB
 >
 > **Scripts:** `push-infra`, `poll-infra-plan`, `push-app`, `poll-app-ci`, `publish-pr`
 >
-> **Handler Plugin System:** Each item type is dispatched to a registered handler in `handlers/`: `copilot-agent.ts` (LLM sessions), `git-push.ts` (deterministic push), `github-ci-poll.ts` (CI polling), `github-pr-publish.ts` (PR promotion), `local-exec.ts` (local script execution). Handlers implement the `NodeHandler` interface and return structured `NodeResult` objects — the dispatch kernel (`session-runner.ts`) manages all state transitions.
+> **Handler Plugin System:** Each item type is dispatched to a registered handler in `handlers/`: `copilot-agent.ts` (LLM sessions), `local-exec.ts` (script execution — push, publish, tests, builds), `github-ci-poll.ts` (CI polling), `approval.ts` / `barrier.ts` (gates), `triage-handler.ts` (failure routing). Handlers implement the `NodeHandler` interface and return structured `NodeResult` objects — the reactive loop (`loop/pipeline-loop.ts`) + dispatch layer (`dispatch/`) manage all state transitions via the Pipeline Kernel.
 
 ---
 
@@ -360,7 +360,7 @@ flowchart LR
 
 ## Failure Classification & Triage Routing
 
-When post-deploy or test items fail, `triageFailure()` in `triage.ts` (called from `session-runner.ts`) routes the fix to the responsible dev agent. Triage is **4-tiered** — evaluated in order:
+When post-deploy or test items fail, `triageFailure()` in `handlers/triage-handler.ts` (invoked from `loop/pipeline-loop.ts`) routes the fix to the responsible dev agent. Triage is **4-tiered** — evaluated in order:
 
 | Tier | Source | Example | Routing |
 |:---:|---|---|---|

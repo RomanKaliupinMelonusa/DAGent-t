@@ -30,7 +30,6 @@ import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/shared.js";
-import { getStatus } from "../state.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
 import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
 
@@ -110,7 +109,7 @@ async function buildRerouteCommands(
 
   // 3. Build and inject pendingContext for the target node
   try {
-    const pipeStateForCtx = await getStatus(slug);
+    const pipeStateForCtx = await ctx.stateReader.getStatus(slug);
     const targetExecLog = (pipeStateForCtx.executionLog ?? [])
       .filter((r: { nodeKey: string }) => r.nodeKey === routeToKey);
     const targetAttempt = targetExecLog.length > 0
@@ -252,7 +251,7 @@ const triageHandler: NodeHandler = {
       // Per-domain retry cap (from profile routing table)
       if (routeEntry?.retries) {
         try {
-          const pipeState = await getStatus(slug);
+          const pipeState = await ctx.stateReader.getStatus(slug);
           const domainTag = `[domain:${triageResult.domain}]`;
           let consecutiveCount = 0;
           for (let i = (pipeState.errorLog ?? []).length - 1; i >= 0; i--) {
@@ -308,7 +307,7 @@ const triageHandler: NodeHandler = {
     // Pre-compute cycle_count from errorLog (handler is read-only, executor is generic)
     let estimatedCycleCount = 0;
     try {
-      const pipeState = await getStatus(slug);
+      const pipeState = await ctx.stateReader.getStatus(slug);
       estimatedCycleCount = pipeState.errorLog.filter(
         (e) => e.itemKey === RESET_OPS.RESET_FOR_REROUTE,
       ).length;

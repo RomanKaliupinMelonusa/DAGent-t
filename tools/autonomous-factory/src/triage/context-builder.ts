@@ -18,7 +18,16 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary, TriageRecord, ExecutionRecord } from "../types.js";
 import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
-import { readState } from "../state.js";
+import type { PipelineState } from "../types.js";
+// Direct import of the state CLI module. `context-builder` is part of the
+// triage subsystem and is allowed to read state synchronously; wrapping it
+// behind the StateStore port would force every caller to thread the port
+// through — we favor the simpler direct dependency here.
+import * as pipelineState from "../../pipeline-state.mjs";
+// Use readStateOrThrow — the readState export calls process.exit on missing
+// files, which would tear down the orchestrator mid-session. Try/catch blocks
+// below treat any read failure as "no context to build".
+const readStateOrThrow = pipelineState.readStateOrThrow as (slug: string) => PipelineState;
 import { computeErrorSignature } from "./error-fingerprint.js";
 import { getHeadSha } from "../session/shared.js";
 
@@ -260,7 +269,7 @@ export async function buildTriageRejectionContext(
   narrative?: string,
 ): Promise<string> {
   try {
-    const state = await readState(slug);
+    const state = readStateOrThrow(slug);
     // Check both legacy RESET_PHASES entries and new RESET_FOR_REROUTE entries
     const rejectionEntries = state.errorLog.filter((e) =>
       e.itemKey === RESET_OPS.RESET_PHASES || e.itemKey === RESET_OPS.RESET_FOR_REROUTE
@@ -426,7 +435,7 @@ export async function computeEffectiveDevAttempts(
 ): Promise<number> {
   if (!allowsRevertBypass) return inMemoryAttempts;
   try {
-    const pipeState = await readState(slug);
+    const pipeState = readStateOrThrow(slug);
     const persistedCycles = pipeState.errorLog.filter(
       (e) => (REDEVELOPMENT_RESET_OPS as readonly string[]).includes(e.itemKey),
     ).length;

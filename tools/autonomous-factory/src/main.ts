@@ -174,6 +174,8 @@ export async function runWithKernel(
     logger,
     client,
     lifecycle,
+    vcs,
+    stateReader: stateStore,
   });
 
   return { loopResult };

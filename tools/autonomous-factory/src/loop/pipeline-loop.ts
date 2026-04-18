@@ -29,6 +29,8 @@ import type { AvailableItem } from "../kernel-types.js";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm-types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
+import type { VersionControl } from "../ports/version-control.js";
+import type { StateStore } from "../ports/state-store.js";
 import { buildNodeContext, type ContextBuilderConfig } from "../dispatch/context-builder.js";
 import { dispatchBatch } from "../dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
@@ -63,6 +65,8 @@ export interface PipelineLoopConfig {
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
   readonly lifecycle: LoopLifecycle;
+  readonly vcs: VersionControl;
+  readonly stateReader: Pick<StateStore, "getStatus">;
 }
 
 export interface HandlerResolver {
@@ -105,6 +109,8 @@ export async function runPipelineLoop(
     apmContext: config.apmContext,
     logger: config.logger,
     client: config.client,
+    vcs: config.vcs,
+    stateReader: config.stateReader,
   };
 
   const maxIterations = 500; // Safety valve

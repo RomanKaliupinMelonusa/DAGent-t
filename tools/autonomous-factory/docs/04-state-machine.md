@@ -229,7 +229,7 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    participant W as watchdog.ts /\nsession-runner.ts
+    participant W as watchdog.ts /\nloop/pipeline-loop.ts
     participant TF as triageFailure()
     participant S as state.ts
     participant PS as pipeline-state.mjs
@@ -492,7 +492,7 @@ e2e-runner:
 
 ### Context Injection (Failure → Redevelopment)
 
-When a test node fails, the error output and triage classification are **extracted by `context-injection.ts`** and surfaced prominently in the redevelopment agent's system prompt. This prevents the agent from re-investigating the same failure from scratch.
+When a test node fails, the error output and triage classification are **injected into the redevelopment agent's prompt by `dispatch/context-builder.ts` via the `NodeContext` downstream-failure field** (previously handled by a dedicated `context-injection.ts`, which was dissolved into the dispatch layer). This prevents the agent from re-investigating the same failure from scratch.
 
 ---
 

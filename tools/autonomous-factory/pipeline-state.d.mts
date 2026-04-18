@@ -151,6 +151,7 @@ export function persistExecutionRecord(slug: string, record: ExecutionRecord): P
 export function setPendingContext(slug: string, itemKey: string, context: string | null): PipelineState;
 export function computeErrorSignature(msg: string): string;
 export function readState(slug: string): PipelineState;
+export function readStateOrThrow(slug: string): PipelineState;
 export function getDownstream(state: PipelineState, seedKeys: string[]): string[];
 export function getUpstream(state: PipelineState, seedKeys: string[]): string[];
 export function cascadeBarriers(state: PipelineState, keysToReset: Set<string>): Set<string>;

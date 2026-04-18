@@ -13,6 +13,8 @@ import type { RunState } from "../kernel/types.js";
 import type { AvailableItem } from "../kernel-types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
+import type { VersionControl } from "../ports/version-control.js";
+import type { StateStore } from "../ports/state-store.js";
 
 export interface ContextBuilderConfig {
   readonly slug: string;
@@ -22,6 +24,8 @@ export interface ContextBuilderConfig {
   readonly apmContext: ApmCompiledOutput;
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
+  readonly vcs: VersionControl;
+  readonly stateReader: Pick<StateStore, "getStatus">;
 }
 
 /**
@@ -77,5 +81,7 @@ export function buildNodeContext(
     onHeartbeat: () => {}, // Placeholder — wired by the loop layer
     client: config.client,
     logger: config.logger,
+    vcs: config.vcs,
+    stateReader: config.stateReader,
   };
 }

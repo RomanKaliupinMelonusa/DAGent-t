@@ -37,7 +37,7 @@ import {
   CD_CMD_RE,
   ERR_CD_CMD,
   SAFE_READ_TOOLS,
-} from "../tool-harness.js";
+} from "../harness/index.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 const APP_ROOT = "/workspaces/DAGent-t/apps/sample-app";
