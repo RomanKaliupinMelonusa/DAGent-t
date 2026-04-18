@@ -8,9 +8,10 @@
  * State ownership model:
  * - Handlers are OBSERVERS — they must NOT call completeItem/failItem.
  *   The kernel is the sole state mutator.
- * - For copilot-agent sessions where the SDK agent calls pipeline:complete/fail
- *   during the session, the kernel's idempotent state transitions handle this
- *   gracefully (no double writes).
+ * - For copilot-agent sessions, agents signal their final outcome via the
+ *   `report_outcome` SDK tool (see harness/outcome-tool.ts). The kernel
+ *   translates the reported outcome into a Command. Sessions that end
+ *   without calling `report_outcome` are treated as a hard failure.
  *
  * Built-in handlers: copilot-agent, github-ci-poll, local-exec, triage
  * Custom handlers: local .ts files resolved via dynamic import (sandboxed to repo)

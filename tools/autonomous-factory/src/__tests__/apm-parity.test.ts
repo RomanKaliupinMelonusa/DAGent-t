@@ -246,16 +246,20 @@ describe("Handlebars Template Compilation", () => {
 
   // Register partials and helpers that agents.ts normally registers at import time.
   // The test uses its own Handlebars instance, so we must register them here.
+  // NOTE: Keep this body in sync with the production `completion` partial in
+  // `src/apm/agents.ts` so this test fails when the production directive drifts.
   Handlebars.registerPartial('completion', `
 ### Completion
 When you have finished your task and verified it works:
-1. You MUST execute all \`agent-*.sh\` and \`npm run pipeline:*\` scripts from the **repository root**, not the app directory.
-2. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\`
-3. Run \`npm run pipeline:complete {{featureSlug}} {{itemKey}}\`
+1. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\` from the **repository root** to commit your changes.
+2. Call the \`report_outcome\` tool exactly ONCE as your LAST action:
+   \`\`\`
+   report_outcome({ status: "completed" })
+   \`\`\`
 
 If you cannot complete the task:
-\`\`\`bash
-npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
+\`\`\`
+report_outcome({ status: "failed", message: "<detailed reason>" })
 \`\`\`
 `);
   Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
@@ -306,6 +310,15 @@ npm run pipeline:fail {{featureSlug}} {{itemKey}} "<detailed reason>"
       assert.ok(
         output.trim().length > 0,
         `Template output should be non-empty for "${agentKey}"`,
+      );
+      // Phase A regression guard: every LLM agent prompt MUST end with the
+      // `report_outcome` directive (delivered via the {{> completion}} partial).
+      // Without this, the agent will hard-fail at session end under the
+      // missing-outcome contract in handlers/copilot-agent.ts.
+      assert.ok(
+        output.includes('report_outcome({ status: "completed" })'),
+        `Rendered prompt for "${agentKey}" is missing the report_outcome directive — ` +
+        `the {{> completion}} Handlebars partial is probably not included in the agent template.`,
       );
     });
   }

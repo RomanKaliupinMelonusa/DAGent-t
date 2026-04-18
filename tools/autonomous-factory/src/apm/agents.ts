@@ -281,12 +281,12 @@ export function getAgentConfig(
 ## Tool Call Budget
 
 You have a **hard limit of ${hard} tool calls** for this session. A warning will fire at ${soft} calls.
-Plan your work to finish — including commit and pipeline:complete — within this budget.
+Plan your work to finish — including the final commit and the \`report_outcome\` call — within this budget.
 - File reads are capped at **${agentLimits?.fileReadLineLimit ?? manifestDefaults?.fileReadLineLimit ?? 500} lines** per call. Use start_line/end_line to paginate larger files.
 - Shell output is capped at **${agentLimits?.shellOutputLimit ?? manifestDefaults?.shellOutputLimit ?? 64_000} characters**. Pipe through head/tail/grep to narrow results.
 - Batch file reads where possible (read large ranges, not many small reads).
 - Avoid exploratory grepping — use targeted reads and roam tools.
-- Reserve at least **3 tool calls** at the end for: commit, pipeline:complete, and a safety margin.
+- Reserve at least **3 tool calls** at the end for: commit, \`report_outcome\`, and a safety margin.
 - If you are approaching the limit, **prioritize committing your work** over further exploration.`;
 
   systemMessage += budgetSection;
@@ -323,7 +323,7 @@ export function buildTaskPrompt(
 ${roamPreamble}
 1. Read the feature spec: ${appRoot}/in-progress/${slug}_SPEC.md
 2. Execute your assigned workflow as described in your system instructions.
-3. When finished successfully, run: npm run pipeline:complete ${slug} ${item.key}
-4. Then commit state: bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): mark ${item.label}"
-5. If you cannot complete the task, run: npm run pipeline:fail ${slug} ${item.key} "<detailed reason>"`;
+3. Commit your changes via \`bash tools/autonomous-factory/agent-commit.sh <scope> "<message>"\`.
+4. As your LAST action, call the \`report_outcome\` tool exactly once: \`report_outcome({ status: "completed" })\` on success, or \`report_outcome({ status: "failed", message: "<detailed reason>" })\` if you cannot complete the task.
+   Do NOT run \`npm run pipeline:complete\` or \`npm run pipeline:fail\` from bash — the kernel is the sole writer of pipeline state.`;
 }
