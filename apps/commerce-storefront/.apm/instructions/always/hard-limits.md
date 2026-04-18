@@ -1,6 +1,6 @@
 ## Hard Limits
 
-- **10 retry attempts** per failing command. After 10 failures, record via `pipeline:fail` and stop.
+- **10 retry attempts** per failing command. After 10 failures, signal failure via the `report_outcome` tool (`status: "failed"`) and stop.
 - **10 test suite invocations** max per session. If tests fail 10 times, halt.
 - **20 total exploratory commands** max per session (`read_file`, `view`, `roam_explore`,
   `roam_context`, read-only `bash`, `grep`). If you exceed 20 reads without completing

@@ -64,7 +64,7 @@ az monitor app-insights query \
 
 1. Observe a 5xx or API-related test failure -> wait 30s -> run **exceptions** query.
 2. If empty, try **failed requests**, then **error traces**. Max 2 retries total.
-3. **Append** the top result(s) to your `pipeline:fail` message.
-   Example: `npm run pipeline:fail "<slug>" "<item>" "500 on POST /api/endpoint — AppInsights: NullReferenceError in service.ts:42 ..."`.
+3. **Append** the top result(s) to your `report_outcome` (status: "failed") message.
+   Example: `report_outcome({ status: "failed", message: "500 on POST /api/endpoint — AppInsights: NullReferenceError in service.ts:42 ..." })`.
 4. This telemetry flows automatically to redevelopment agents via the orchestrator's
    downstream failure context injection — giving the dev agent the actual cloud stack trace.

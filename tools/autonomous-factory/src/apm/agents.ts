@@ -73,19 +73,27 @@ import Handlebars from "handlebars";
 
 /**
  * Completion partial — injected into every agent prompt via {{> completion}}.
- * Provides the standard completion/failure instructions with pipeline commands.
+ *
+ * Phase A: agents signal their final outcome to the orchestrator via the
+ * `report_outcome` SDK tool, NOT via bash CLI calls. The orchestrator's
+ * kernel is the sole writer of pipeline state.
  */
 Handlebars.registerPartial('completion', `
 ### Completion
 When you have finished your task and verified it works:
-1. You MUST execute all \`agent-*.sh\` and \`npm run pipeline:*\` scripts from the **repository root**, not the app directory.
-2. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\`
-3. Run \`npm run pipeline:complete {{featureSlug}} {{itemKey}}\`
+1. Run \`bash tools/autonomous-factory/agent-commit.sh {{scope}} "<message>"\` from the **repository root** to commit your changes.
+2. Call the \`report_outcome\` tool exactly ONCE as your LAST action:
+   \`\`\`
+   report_outcome({ status: "completed" })
+   \`\`\`
+   Optional fields: \`docNote\` (1-2 sentence architectural summary), \`handoffArtifact\` (JSON for downstream items), \`deployedUrl\` (deploy nodes only).
 
 If you cannot complete the task:
-\`\`\`bash
-npm run pipeline:fail {{featureSlug}} {{itemKey}} \"<detailed reason>\"
 \`\`\`
+report_outcome({ status: "failed", message: "<detailed reason — ideally a TriageDiagnostic JSON with stack trace, error message, URL, or status code>" })
+\`\`\`
+
+**DO NOT** call \`npm run pipeline:complete\`, \`npm run pipeline:fail\`, \`npm run pipeline:doc-note\`, \`npm run pipeline:set-url\`, \`npm run pipeline:set-note\`, or \`npm run pipeline:handoff-artifact\` from bash. Use \`report_outcome\` instead. The kernel is the sole writer of pipeline state.
 `);
 
 /**

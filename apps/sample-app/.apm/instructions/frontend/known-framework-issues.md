@@ -4,7 +4,7 @@ This is a registry of confirmed framework-level bugs and incompatibilities. Thes
 
 **CRITICAL RULE:** If you encounter a framework limitation listed here, you MUST:
 1. Add `test.skip()` to the affected test with the reason from this registry.
-2. Record the skip in your `pipeline:doc-note`.
+2. Record the skip in your `report_outcome` (with docNote).
 3. Move on immediately. Do NOT spend more than 3 shell commands attempting to work around a known framework bug.
 
 ---

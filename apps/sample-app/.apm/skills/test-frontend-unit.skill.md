@@ -25,5 +25,5 @@ Run unit tests for the frontend application.
 
 Before debugging test failures, check `instructions/frontend/known-framework-issues.md` for known framework-level bugs. If a failure matches a listed issue:
 1. Apply `test.skip('KFI-NNN: <reason>')` to the affected test.
-2. Record the skip in your `pipeline:doc-note`.
+2. Record the skip in your `report_outcome` (with docNote).
 3. Do NOT spend more than 3 shell commands attempting to fix a known framework bug.

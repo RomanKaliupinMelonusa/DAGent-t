@@ -30,11 +30,15 @@ Each check must:
 
 ## Failure Reporting
 
-If you cannot complete a task due to a bug, you **MUST** fail by calling your shell tool with:
+If you cannot complete a task due to a bug, you **MUST** signal failure by calling the `report_outcome` tool:
 
-```bash
-npm run pipeline:fail <slug> <item-key> "<detailed reason>"
+```
+report_outcome({
+  status: "failed",
+  message: "<detailed reason — stack trace, error message, URL, or status code>"
+})
 ```
 
-- The reason must contain the relevant stack trace, error message, URL, or status code that explains the failure.
+- The `message` should ideally be a TriageDiagnostic JSON object describing root cause, blame, and suggested next agent.
 - The orchestrator automatically classifies failures and routes them to the appropriate node for remediation.
+- **Do NOT** call `npm run pipeline:fail` from bash. The `report_outcome` tool is the only supported failure-signaling channel.

@@ -76,7 +76,6 @@ You MUST use the MCP tools exclusively. **Do NOT run `roam` via shell.**
 
 Before marking your work complete, leave a doc-note listing what was removed:
 ```bash
-npm run pipeline:doc-note {{featureSlug}} {{itemKey}} "<list of removed files/symbols, or 'No dead code found'>"
-```
+report_outcome({ status: "completed", docNote: "<list of removed files/symbols, or 'No dead code found'>" })```
 
 {{> completion}}

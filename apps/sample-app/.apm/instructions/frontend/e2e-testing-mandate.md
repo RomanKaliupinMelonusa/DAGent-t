@@ -6,7 +6,7 @@
 
 ## Deep Diagnostic Interception (Mandatory)
 
-Every Playwright test the agent generates MUST include browser-level diagnostic capture. Silent browser failures (console errors, failed network requests) are invisible to standard assertions but critical for the self-healing triage loop. Without this instrumentation, the `pipeline:fail` diagnostic trace will lack the context needed to route fixes to the correct dev agent.
+Every Playwright test the agent generates MUST include browser-level diagnostic capture. Silent browser failures (console errors, failed network requests) are invisible to standard assertions but critical for the self-healing triage loop. Without this instrumentation, the `report_outcome` (status: "failed") diagnostic trace will lack the context needed to route fixes to the correct dev agent.
 
 ### Required Setup — Inject Into Every Test
 
