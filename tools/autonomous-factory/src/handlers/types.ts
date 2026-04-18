@@ -26,6 +26,7 @@ import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type { TriageLlm } from "../ports/triage-llm.js";
 import type { DagCommand } from "../dag-commands.js";
 
 // Re-export for backwards compatibility — the authoritative types live in
@@ -105,6 +106,11 @@ export interface NodeContext {
    * Agent handlers use this to create sessions and run LLM interactions.
    */
   readonly client?: CopilotClient;
+  /**
+   * Vendor-agnostic triage LLM port. Used by the triage handler for the
+   * RAG→LLM fallback layer. Undefined when LLM fallback is disabled.
+   */
+  readonly triageLlm?: TriageLlm;
   /** Pipeline event logger — single entry point for all telemetry. */
   readonly logger: PipelineLogger;
   /**

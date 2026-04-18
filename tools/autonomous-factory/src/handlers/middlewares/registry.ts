@@ -37,6 +37,23 @@ export function registerMiddleware(mw: NodeMiddleware): void {
   USER_MIDDLEWARES[mw.name] = mw;
 }
 
+/**
+ * Batch-register custom middlewares. Preferred entry point for plugin auto-discovery
+ * (see `apm/plugin-loader.ts`) — replaces repeated imperative `registerMiddleware`
+ * calls with a single declarative sink. Throws on name collisions with built-ins
+ * OR with any previously-registered custom middleware in the same batch.
+ */
+export function registerMiddlewares(middlewares: Iterable<NodeMiddleware>): void {
+  const seen = new Set<string>();
+  for (const mw of middlewares) {
+    if (seen.has(mw.name)) {
+      throw new Error(`Middleware name "${mw.name}" appears multiple times in the registration batch.`);
+    }
+    seen.add(mw.name);
+    registerMiddleware(mw);
+  }
+}
+
 function getMiddleware(name: string): NodeMiddleware {
   const mw = BUILT_IN_MIDDLEWARES[name] ?? USER_MIDDLEWARES[name];
   if (!mw) {

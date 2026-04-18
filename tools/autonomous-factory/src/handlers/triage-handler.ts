@@ -185,9 +185,9 @@ const triageHandler: NodeHandler = {
     // here, all guards have already passed.
 
     // --- 2-layer triage classification (RAG → LLM → fallback) ---
-    const client = ctx.client;
+    const triageLlm = ctx.triageLlm;
     const triageResult: TriageResult = await evaluateTriage(
-      rawError, profile, client, slug, ctx.appRoot, logger,
+      rawError, profile, triageLlm, slug, ctx.appRoot, logger,
     );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---

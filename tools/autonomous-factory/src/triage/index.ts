@@ -11,7 +11,7 @@
  * The triage engine classifies; the DAG state machine routes via route_to.
  */
 
-import type { CopilotClient } from "@github/copilot-sdk";
+import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageResult } from "../types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
@@ -35,7 +35,7 @@ export { computeErrorSignature, normalizeError } from "./error-fingerprint.js";
 export async function evaluateTriage(
   errorTrace: string,
   profile: CompiledTriageProfile,
-  client?: CopilotClient,
+  triageLlm?: TriageLlm,
   slug?: string,
   appRoot?: string,
   logger?: PipelineLogger,
@@ -60,7 +60,7 @@ export async function evaluateTriage(
       throw new Error(`Custom classifier "${raw}" requires an appRoot for path resolution.`);
     }
     const classify = await loadCustomClassifier(raw, appRoot, repoRoot ?? appRoot);
-    const result = await classify(errorTrace, profile, { client, slug, logger });
+    const result = await classify(errorTrace, profile, { triageLlm, slug, logger });
     // Validate that the returned domain exists in the routing table (or is $SELF).
     if (result.domain !== "$SELF" && !(result.domain in profile.routing)) {
       throw new Error(
@@ -111,14 +111,14 @@ export async function evaluateTriage(
   }
 
   // --- Layer 2: LLM — cognitive classification ---
-  if (useLlm && client && slug && appRoot) {
+  if (useLlm && triageLlm && slug && appRoot) {
     const domains = Object.keys(profile.routing);
     const routingDescriptions: Record<string, { description?: string }> = {};
     for (const [d, entry] of Object.entries(profile.routing)) {
       if (entry.description) routingDescriptions[d] = { description: entry.description };
     }
     const t0 = Date.now();
-    const result = await askLlmRouter(client, errorTrace, domains, topMatches, slug, appRoot, routingDescriptions);
+    const result = await askLlmRouter(triageLlm, errorTrace, domains, topMatches, slug, appRoot, routingDescriptions);
     const llmResponseMs = Date.now() - t0;
     return {
       domain: result.fault_domain,

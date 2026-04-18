@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-18T19:43:26.043Z",
+  "compiledAt": "2026-04-18T20:49:49.222Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -79,5 +79,8 @@
     ]
   },
   "workflows": {},
-  "triage_profiles": {}
+  "triage_profiles": {},
+  "plugins": {
+    "middlewares": []
+  }
 }

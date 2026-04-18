@@ -19,8 +19,18 @@
  */
 
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
+import { runAdminCommand, type AdminHost } from "../kernel/admin.js";
 
 const store = new JsonFileStateStore();
+
+/**
+ * Bridge `JsonFileStateStore` to the `AdminHost` contract expected by
+ * `runAdminCommand`. Keeps admin verbs lock-atomic while letting them
+ * share the single pure reducer defined in `kernel/admin.ts`.
+ */
+const adminHost: AdminHost = {
+  withLockedWrite: (slug, fn) => store.withLockedWrite(slug, fn),
+};
 
 // ─── Command handlers ───────────────────────────────────────────────────────
 
@@ -41,14 +51,14 @@ async function cmdResetScripts(slug: string, category: string): Promise<void> {
     console.error("Usage: pipeline-state reset-scripts <slug> <category>");
     process.exit(1);
   }
-  const { cycleCount, halted } = await store.resetScripts(slug, category);
-  if (halted) {
+  const result = await runAdminCommand(adminHost, slug, { type: "reset-scripts", category });
+  if (result.halted) {
     console.error(
-      `⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} re-push cycles for category "${category}". Requires human intervention.`,
+      `⛔ PIPELINE HALTED — "${slug}" has used ${result.cycleCount} re-push cycles for category "${category}". Requires human intervention.`,
     );
     process.exit(2);
   }
-  console.log(`🔄 Reset script items in category "${category}" for re-push cycle (${cycleCount}/10).`);
+  console.log(`🔄 Reset script items in category "${category}" for re-push cycle (${result.cycleCount}/10).`);
 }
 
 async function cmdResume(slug: string): Promise<void> {
@@ -56,14 +66,14 @@ async function cmdResume(slug: string): Promise<void> {
     console.error("Usage: pipeline-state resume <slug>");
     process.exit(1);
   }
-  const { cycleCount, halted } = await store.resumeAfterElevated(slug);
-  if (halted) {
+  const result = await runAdminCommand(adminHost, slug, { type: "resume-after-elevated" });
+  if (result.halted) {
     console.error(
-      `⛔ PIPELINE HALTED — "${slug}" has used ${cycleCount} elevated resume cycles. Requires human intervention.`,
+      `⛔ PIPELINE HALTED — "${slug}" has used ${result.cycleCount} elevated resume cycles. Requires human intervention.`,
     );
     process.exit(2);
   }
-  console.log(`🔄 Resumed pipeline after elevated apply (cycle ${cycleCount}/5). Standard CI will re-verify.`);
+  console.log(`🔄 Resumed pipeline after elevated apply (cycle ${result.cycleCount}/5). Standard CI will re-verify.`);
 }
 
 async function cmdRecoverElevated(slug: string, errorMessage: string): Promise<void> {
@@ -71,14 +81,16 @@ async function cmdRecoverElevated(slug: string, errorMessage: string): Promise<v
     console.error("Usage: pipeline-state recover-elevated <slug> <error-message>");
     process.exit(1);
   }
-  const result = await store.recoverElevated(slug, errorMessage);
+  const result = await runAdminCommand(adminHost, slug, {
+    type: "recover-elevated",
+    errorMessage,
+  });
   if (result.halted) {
     console.error(`⛔ PIPELINE HALTED — "${slug}" has exhausted recovery cycles. Requires human intervention.`);
     process.exit(2);
   }
-  const cycleCount = "cycleCount" in result ? result.cycleCount : 0;
   console.log(
-    `🔄 Recovery initiated after elevated apply failure (redevelopment cycle ${cycleCount}/5). Agent will diagnose and fix.`,
+    `🔄 Recovery initiated after elevated apply failure (redevelopment cycle ${result.cycleCount}/5). Agent will diagnose and fix.`,
   );
 }
 

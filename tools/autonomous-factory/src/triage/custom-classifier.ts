@@ -6,15 +6,16 @@
  * Classifiers are cached per resolved path for the lifetime of the process.
  */
 
-import path from "node:path";
-import type { CopilotClient } from "@github/copilot-sdk";
+import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageResult } from "../types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
+import { resolveLocalPluginPath } from "../apm/local-path-validator.js";
 
 /** Context forwarded to a custom classifier in addition to the trace/profile. */
 export interface CustomClassifierContext {
-  readonly client?: CopilotClient;
+  /** Vendor-agnostic triage LLM port. Undefined when LLM is disabled. */
+  readonly triageLlm?: TriageLlm;
   readonly slug?: string;
   readonly logger?: PipelineLogger;
 }
@@ -28,20 +29,6 @@ export type ClassifyFn = (
 
 const classifierCache = new Map<string, ClassifyFn>();
 
-function assertWithinRepo(resolved: string, repoRoot: string): void {
-  const normalizedResolved = path.resolve(resolved);
-  const normalizedRepo = path.resolve(repoRoot);
-  if (
-    !normalizedResolved.startsWith(normalizedRepo + path.sep) &&
-    normalizedResolved !== normalizedRepo
-  ) {
-    throw new Error(
-      `Security: Classifier path "${resolved}" resolves outside the repository boundary. ` +
-        `All custom classifiers must reside within the repository.`,
-    );
-  }
-}
-
 /**
  * Load a custom classifier from a local file path.
  * The module must export a default function or named `classify` function.
@@ -51,8 +38,7 @@ export async function loadCustomClassifier(
   appRoot: string,
   repoRoot: string,
 ): Promise<ClassifyFn> {
-  const resolved = path.resolve(appRoot, filePath);
-  assertWithinRepo(resolved, repoRoot);
+  const resolved = resolveLocalPluginPath(filePath, appRoot, repoRoot, { kind: "classifier" });
 
   const cached = classifierCache.get(resolved);
   if (cached) return cached;

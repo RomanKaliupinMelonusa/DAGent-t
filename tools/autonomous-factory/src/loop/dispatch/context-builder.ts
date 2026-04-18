@@ -18,6 +18,7 @@ import type { StateStore } from "../../ports/state-store.js";
 import type { Shell } from "../../ports/shell.js";
 import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js";
+import type { TriageLlm } from "../../ports/triage-llm.js";
 
 export interface ContextBuilderConfig {
   readonly slug: string;
@@ -27,6 +28,7 @@ export interface ContextBuilderConfig {
   readonly apmContext: ApmCompiledOutput;
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
+  readonly triageLlm?: TriageLlm;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
   readonly shell: Shell;
@@ -87,6 +89,7 @@ export function buildNodeContext(
     handlerData,
     onHeartbeat: () => {}, // Placeholder — wired by the loop layer
     client: config.client,
+    triageLlm: config.triageLlm,
     logger: config.logger,
     vcs: config.vcs,
     stateReader: config.stateReader,

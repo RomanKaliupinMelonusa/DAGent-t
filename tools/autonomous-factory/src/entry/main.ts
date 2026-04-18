@@ -29,6 +29,7 @@ import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
+import { CopilotTriageLlm } from "../adapters/copilot-triage-llm.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "../handlers/registry.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
@@ -125,6 +126,7 @@ export async function runWithKernel(
   const shell = new NodeShellAdapter();
   const copilotSessionRunner = new NodeCopilotSessionRunner();
   const telemetry = new JsonlTelemetry(logger);
+  const triageLlm = new CopilotTriageLlm(client);
   const effectPorts = { stateStore, telemetry };
 
   // Load initial DAG state from the persisted _STATE.json
@@ -173,6 +175,7 @@ export async function runWithKernel(
     apmContext: config.apmContext,
     logger,
     client,
+    triageLlm,
     lifecycle,
     vcs,
     stateReader: stateStore,

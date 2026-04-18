@@ -36,6 +36,7 @@ import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type { TriageLlm } from "../ports/triage-llm.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
@@ -74,6 +75,7 @@ export interface PipelineLoopConfig {
   readonly apmContext: ApmCompiledOutput;
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
+  readonly triageLlm?: TriageLlm;
   readonly lifecycle: LoopLifecycle;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
@@ -122,6 +124,7 @@ export async function runPipelineLoop(
     apmContext: config.apmContext,
     logger: config.logger,
     client: config.client,
+    triageLlm: config.triageLlm,
     vcs: config.vcs,
     stateReader: config.stateReader,
     shell: config.shell,

@@ -24,13 +24,14 @@ import {
   completeItem as completeItemRule,
   failItem as failItemRule,
   resetNodes as resetNodesRule,
-  resetScripts as resetScriptsRule,
-  resumeAfterElevated as resumeElevatedRule,
   salvageForDraft as salvageForDraftRule,
-  findInfraPollKey,
-  findInfraDevKey,
   type TransitionState,
 } from "../domain/transitions.js";
+import {
+  applyAdminCommand,
+  bumpCycleCounter,
+  type AdminCommand,
+} from "../kernel/admin.js";
 import { initState as initStateImpl } from "./file-state/init.js";
 import { readStateOrThrow, readStateOrNull, writeState } from "./file-state/io.js";
 import { withLock } from "./file-state/lock.js";
@@ -48,20 +49,6 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
     );
   }
   return item;
-}
-
-/**
- * Persist a `cycleCounters[logKey] = count` update on the state object.
- * Domain reset functions only mutate `errorLog`; the persisted file format
- * also carries the typed counters, so we sync them here.
- */
-function bumpCycleCounter(
-  state: PipelineState & { cycleCounters?: Record<string, number> },
-  logKey: string,
-  count: number,
-): void {
-  if (!state.cycleCounters) state.cycleCounters = {};
-  state.cycleCounters[logKey] = count;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,40 +256,30 @@ export class JsonFileStateStore implements StateStore {
     return initStateImpl(slug, workflowName, contextJsonPath);
   }
 
-  // ── Operations not yet on the StateStore port (used by CLI router) ───────
-  // These are exposed as instance methods so the slim CLI in pipeline-state.mjs
-  // can call into the adapter without knowing about its internals.
+  // ── Admin operations (Phase 3: prefer `runAdminCommand` in kernel/admin.ts) ─
+  // These instance methods remain as convenient adapter-internal shortcuts,
+  // but the canonical entry point for CLI admin verbs is now
+  // `runAdminCommand(host, slug, cmd)` where `host.withLockedWrite` delegates
+  // back to this adapter's lock. All three methods below go through the same
+  // pure reducer (`applyAdminCommand`) that `runAdminCommand` calls, so CLI
+  // and kernel paths produce byte-identical state by construction.
 
+  /** @internal Prefer `runAdminCommand` in kernel/admin.ts. */
   async resetScripts(slug: string, category: string, maxCycles?: number) {
     if (!slug || !category) throw new Error("resetScripts requires slug and category");
-    const logKey = `reset-scripts:${category}`;
-    return withLock(slug, () => {
-      const state = readStateOrThrow(slug);
-      const result = resetScriptsRule(state as unknown as TransitionState, category, maxCycles);
-      const next = result.state as unknown as PipelineState;
-      if (!result.halted) bumpCycleCounter(next, logKey, result.cycleCount);
-      writeState(slug, next);
-      return { state: next, cycleCount: result.cycleCount, halted: result.halted };
-    });
+    return this.#runAdmin(slug, { type: "reset-scripts", category, maxCycles });
   }
 
+  /** @internal Prefer `runAdminCommand` in kernel/admin.ts. */
   async resumeAfterElevated(slug: string, maxCycles?: number) {
     if (!slug) throw new Error("resumeAfterElevated requires slug");
-    const logKey = "resume-elevated";
-    return withLock(slug, () => {
-      const state = readStateOrThrow(slug);
-      const result = resumeElevatedRule(state as unknown as TransitionState, maxCycles);
-      const next = result.state as unknown as PipelineState;
-      if (!result.halted) bumpCycleCounter(next, logKey, result.cycleCount);
-      writeState(slug, next);
-      return { state: next, cycleCount: result.cycleCount, halted: result.halted };
-    });
+    return this.#runAdmin(slug, { type: "resume-after-elevated", maxCycles });
   }
 
   /**
-   * Recover after a failed elevated infra apply: record the failure on the
-   * infra CI poll node, then cascade-reset from the infra dev entry point.
-   * Composes failItem + resetNodes inside a single lock-scoped operation.
+   * @internal Prefer `runAdminCommand` in kernel/admin.ts.
+   * Recover after a failed elevated infra apply: composes failItem +
+   * resetNodes inside a single lock-scoped operation via the pure reducer.
    */
   async recoverElevated(
     slug: string,
@@ -311,40 +288,42 @@ export class JsonFileStateStore implements StateStore {
     maxDevCycles: number = 5,
   ) {
     if (!slug) throw new Error("recoverElevated requires slug");
+    return this.#runAdmin(slug, {
+      type: "recover-elevated",
+      errorMessage,
+      maxFailCount,
+      maxDevCycles,
+    });
+  }
+
+  async #runAdmin(slug: string, cmd: AdminCommand): Promise<{ state: PipelineState; cycleCount: number; halted: boolean; failCount?: number }> {
     return withLock(slug, () => {
-      let state = readStateOrThrow(slug) as unknown as TransitionState;
+      const state = readStateOrThrow(slug);
+      const result = applyAdminCommand(state, cmd);
+      writeState(slug, result.state);
+      const base = { state: result.state, cycleCount: result.cycleCount, halted: result.halted };
+      return result.kind === "recover-elevated" && result.failCount !== undefined
+        ? { ...base, failCount: result.failCount }
+        : base;
+    });
+  }
 
-      // Step 1: record the failure on the infra CI poll node (if any).
-      const infraPollKey = findInfraPollKey(state);
-      if (infraPollKey) {
-        const failed = failItemRule(
-          state,
-          infraPollKey,
-          `Elevated apply failed: ${errorMessage}`,
-          maxFailCount,
-        );
-        state = failed.state;
-        if (failed.halted) {
-          const next = state as unknown as PipelineState;
-          writeState(slug, next);
-          return { state: next, failCount: failed.failCount, halted: true };
-        }
-      }
-
-      // Step 2: cascade-reset from the infra dev entry node.
-      const infraDevKey = findInfraDevKey(state);
-      if (!infraDevKey) {
-        const next = state as unknown as PipelineState;
-        writeState(slug, next);
-        throw new Error("Cannot recover elevated state: no infrastructure dev node found in DAG.");
-      }
-
-      const reason = `Elevated infra apply failed — agent will diagnose and fix TF code. Error: ${errorMessage.slice(0, 200)}`;
-      const reset = resetNodesRule(state, infraDevKey, reason, maxDevCycles, "reset-for-dev");
-      const next = reset.state as unknown as PipelineState;
-      if (!reset.halted) bumpCycleCounter(next, "reset-for-dev", reset.cycleCount);
+  /**
+   * Execute `fn` under the state-store lock: receive the current state,
+   * produce the next state plus an arbitrary result value. Used by
+   * `runAdminCommand` in kernel/admin.ts so the CLI can drive admin
+   * transitions through the same atomic path the adapter uses internally.
+   */
+  async withLockedWrite<T>(
+    slug: string,
+    fn: (state: PipelineState) => { next: PipelineState; result: T },
+  ): Promise<T> {
+    if (!slug) throw new Error("withLockedWrite requires slug");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const { next, result } = fn(state);
       writeState(slug, next);
-      return { state: next, cycleCount: reset.cycleCount, halted: reset.halted };
+      return result;
     });
   }
 

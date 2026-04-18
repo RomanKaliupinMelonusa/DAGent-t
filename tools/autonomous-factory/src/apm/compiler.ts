@@ -34,6 +34,31 @@ import {
 } from "./capability-profiles.js";
 
 // ---------------------------------------------------------------------------
+// Plugin discovery — record app-local plugin paths in compiled output
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan `.apm/<kind>/*.ts` and record app-root-relative module paths for every
+ * plugin category the runtime supports. Paths are not imported here — the
+ * compiler stays a pure transform; `src/apm/plugin-loader.ts` loads modules
+ * at bootstrap.
+ */
+function scanPluginDirs(apmDir: string): { middlewares: string[] } {
+  return {
+    middlewares: listPluginFiles(path.join(apmDir, "middlewares")),
+  };
+}
+
+function listPluginFiles(dir: string): string[] {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isFile() && /\.(ts|mts|js|mjs)$/.test(e.name) && !e.name.endsWith(".d.ts"))
+    .map((e) => `./.apm/${path.basename(dir)}/${e.name}`)
+    .sort();
+}
+
+// ---------------------------------------------------------------------------
 // Token estimation
 
 // ---------------------------------------------------------------------------
@@ -551,6 +576,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
     workflows,
     triage_profiles: triageProfiles,
+    plugins: scanPluginDirs(apmDir),
   };
 
   // --- 8. Write to .compiled/context.json ---

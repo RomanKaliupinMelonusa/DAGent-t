@@ -12,6 +12,7 @@
 
 import path from "node:path";
 import type { NodeHandler, HandlerMetadata } from "./types.js";
+import { resolveLocalPluginPath } from "../apm/local-path-validator.js";
 
 // ---------------------------------------------------------------------------
 // Built-in handler registry
@@ -80,24 +81,6 @@ export function inferHandler(
 // Path sandboxing
 // ---------------------------------------------------------------------------
 
-/**
- * Validate that a resolved path is within the repository boundary.
- * Prevents directory traversal attacks via handler references like
- * `../../etc/passwd` or `/absolute/path/outside/repo`.
- *
- * @throws Error if the path escapes the repo boundary
- */
-function assertWithinRepo(resolved: string, repoRoot: string): void {
-  const normalizedResolved = path.resolve(resolved);
-  const normalizedRepo = path.resolve(repoRoot);
-  if (!normalizedResolved.startsWith(normalizedRepo + path.sep) && normalizedResolved !== normalizedRepo) {
-    throw new Error(
-      `Security: Handler path "${resolved}" resolves outside the repository boundary. ` +
-      `All custom handlers must reside within the repository.`,
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Local handler loading
 // ---------------------------------------------------------------------------
@@ -112,8 +95,7 @@ async function loadLocalHandler(
   repoRoot: string,
   nameOverride?: string,
 ): Promise<NodeHandler> {
-  const resolved = path.resolve(appRoot, filePath);
-  assertWithinRepo(resolved, repoRoot);
+  const resolved = resolveLocalPluginPath(filePath, appRoot, repoRoot, { kind: "handler" });
 
   try {
     const mod = await import(resolved) as Record<string, unknown>;

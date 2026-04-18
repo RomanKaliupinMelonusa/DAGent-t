@@ -12,6 +12,7 @@ export type { CiGateway, CiRunStatus } from "./ci-gateway.js";
 export type { ContextCompiler } from "./context-compiler.js";
 export type { FeatureFilesystem } from "./feature-filesystem.js";
 export type { CognitiveBreaker, CognitiveBreakerFactory } from "./cognitive-breaker.js";
+export type { TriageLlm, TriageLlmRequest } from "./triage-llm.js";
 export type {
   Shell,
   ShellExecOptions,

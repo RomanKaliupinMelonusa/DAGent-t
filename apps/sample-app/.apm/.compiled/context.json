@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-18T19:43:27.538Z",
+  "compiledAt": "2026-04-18T20:50:54.326Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -2426,5 +2426,8 @@
         }
       ]
     }
+  },
+  "plugins": {
+    "middlewares": []
   }
 }

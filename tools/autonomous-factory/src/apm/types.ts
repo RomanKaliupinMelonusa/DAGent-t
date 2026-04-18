@@ -803,6 +803,14 @@ export const ApmCompiledOutputSchema = z.object({
 
   /** Compiled triage profiles — keyed by "<workflow>.<profile>" (e.g. "default.storefront"). */
   triage_profiles: z.record(z.string(), CompiledTriageProfileSchema).default({}),
+
+  /** Auto-discovered app-local plugin modules. Paths are app-root-relative and
+   *  were sandboxed at compile time. Populated by scanning `.apm/<kind>/*.ts`.
+   *  The runtime plugin loader (src/apm/plugin-loader.ts) imports these at
+   *  bootstrap and registers them into their respective sinks. */
+  plugins: z.object({
+    middlewares: z.array(z.string()).default([]),
+  }).default({ middlewares: [] }),
 });
 
 // ---------------------------------------------------------------------------
