@@ -256,9 +256,10 @@ export function wireToolLogging(
         `\n\n⚠️ SYSTEM NOTICE: You have executed ${totalCalls} tool calls in this session ` +
         `(soft limit: ${breaker.soft}). You appear to be stuck in a debugging loop. ` +
         `If you are fighting a persistent testing framework limitation, document it ` +
-        `with pipeline:doc-note and test.skip() the test. If this is a real ` +
-        `implementation bug, use \`npm run pipeline:fail\` to trigger a redevelopment ` +
-        `cycle. DO NOT continue debugging — decide now.`;
+        `via report_outcome (status: "completed", docNote: "...") and test.skip() ` +
+        `the test. If this is a real implementation bug, call report_outcome with ` +
+        `status: "failed" to trigger a redevelopment cycle. ` +
+        `DO NOT continue debugging — decide now.`;
 
       appendToToolResult(event.data, frustrationPrompt);
 
@@ -278,7 +279,7 @@ export function wireToolLogging(
         const writeDensityPrompt =
           `\n\n⚠️ SYSTEM NOTICE: You have edited "${file}" ${count} times. You are thrashing. ` +
           `If failures persist due to upstream component issues, STOP editing and escalate ` +
-          `immediately via pipeline:fail with a TriageDiagnostic JSON ` +
+          `immediately by calling report_outcome with status: "failed" and a TriageDiagnostic JSON ` +
           `(e.g. {"fault_domain":"frontend","diagnostic_trace":"<test output>"}).`;
 
         appendToToolResult(event.data, writeDensityPrompt);
@@ -300,9 +301,9 @@ export function wireToolLogging(
       const wrapUpPrompt =
         `\n\n⏰ SYSTEM NOTICE: Session timeout approaching — ~${remainingSec}s remaining. ` +
         `You MUST wrap up NOW. Commit whatever work you have completed so far via ` +
-        `agent-commit.sh, then call pipeline:complete if the feature is functional, ` +
-        `or pipeline:fail with a diagnostic if it is not. ` +
-        `Do NOT start new exploratory work. Prioritize: commit → test → complete/fail.`;
+        `agent-commit.sh, then call report_outcome with status: "completed" if the feature ` +
+        `is functional, or status: "failed" with a diagnostic if it is not. ` +
+        `Do NOT start new exploratory work. Prioritize: commit → test → report_outcome.`;
 
       appendToToolResult(event.data, wrapUpPrompt);
 
@@ -475,7 +476,8 @@ export function wireUsageTracking(
       const warning =
         `\n\n⚠️ SYSTEM NOTICE: Token budget alert — you have consumed ${consumed.toLocaleString()} of ` +
         `${runtimeTokenBudget.toLocaleString()} tokens (${pct}%). ` +
-        `Wrap up your current task, commit your work, and call pipeline:complete. ` +
+        `Wrap up your current task, commit your work, and call report_outcome ` +
+        `(status: "completed" or "failed"). ` +
         `The session will be force-disconnected at 100%.`;
       appendToToolResult(event.data, warning);
     });

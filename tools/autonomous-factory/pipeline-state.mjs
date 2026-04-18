@@ -21,16 +21,18 @@
  *
  * Commands:
  *   init              <slug> <type>               — Create state + TRANS for a new feature
- *   complete          <slug> <item-key>           — Mark an item as done
- *   fail              <slug> <item-key> <message> — Record a failure
  *   reset-scripts     <slug> <category>            — Reset script-type nodes in the given category for re-push
  *   resume            <slug>                      — Resume pipeline after elevated apply
  *   recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply
  *   status            <slug>                      — Print current state JSON to stdout
  *   next              <slug>                      — Print the next actionable item key
- *   set-note          <slug> <note>               — Append implementation note
- *   doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item
- *   set-url           <slug> <url>                — Set deployed URL
+ *
+ * State-mutating verbs (complete, fail, doc-note, set-url, set-note,
+ * handoff-artifact) were removed in Phase A.6. The kernel is the sole
+ * writer of pipeline state for agent-driven outcomes — agents call the
+ * `report_outcome` SDK tool, which the orchestrator translates into
+ * Commands. The programmatic mutation API (pipeline-state/mutations.mjs)
+ * remains for kernel use.
  */
 
 // ─── Re-exports (public API) ────────────────────────────────────────────────
@@ -58,18 +60,11 @@ export {
 export { getStatus, getNext, getNextAvailable } from "./pipeline-state/queries.mjs";
 
 // ─── CLI implementation (imports for local use in command wrappers) ────────
-import { readState } from "./pipeline-state/io.mjs";
 import {
   initState,
-  completeItem,
-  failItem,
   resumeAfterElevated,
   recoverElevated,
   resetScripts,
-  setNote,
-  setDocNote,
-  setHandoffArtifact,
-  setUrl,
 } from "./pipeline-state/mutations.mjs";
 import { getStatus, getNext } from "./pipeline-state/queries.mjs";
 
@@ -89,53 +84,6 @@ function cmdInit(slug, workflowName) {
     console.log(`✔ Initialized pipeline state for "${slug}" (${workflowName})`);
     console.log(`  State: ${result.statePath}`);
     console.log(`  TRANS:  ${result.transPath}`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdComplete(slug, itemKey) {
-  if (!slug || !itemKey) {
-    console.error("Usage: pipeline-state.mjs complete <slug> <item-key>");
-    process.exit(1);
-  }
-
-  // Check for N/A before delegating (special console message)
-  const state = readState(slug);
-  const item = state.items.find((i) => i.key === itemKey);
-  if (!item) {
-    console.error(`ERROR: Unknown item key "${itemKey}". Valid keys: ${state.items.map((i) => i.key).join(", ")}`);
-    process.exit(1);
-  }
-  if (item.status === "na") {
-    console.log(`⏭  Item "${itemKey}" is marked N/A — skipping.`);
-    return;
-  }
-
-  try {
-    completeItem(slug, itemKey);
-    console.log(`✔ Marked "${itemKey}" as done.`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdFail(slug, itemKey, message) {
-  if (!slug || !itemKey) {
-    console.error("Usage: pipeline-state.mjs fail <slug> <item-key> <message>");
-    process.exit(1);
-  }
-
-  try {
-    const { failCount, halted } = failItem(slug, itemKey, message);
-    if (halted) {
-      console.error(`⛔ PIPELINE HALTED — "${itemKey}" has failed ${failCount} times. Requires human intervention.`);
-      process.exit(2);  // Exit code 2 = halted
-    } else {
-      console.log(`⚠️  Recorded failure for "${itemKey}" (attempt ${failCount}/10).`);
-    }
   } catch (err) {
     console.error(`ERROR: ${err.message}`);
     process.exit(1);
@@ -232,66 +180,6 @@ function cmdNext(slug) {
   }
 }
 
-function cmdSetNote(slug, note) {
-  if (!slug || !note) {
-    console.error("Usage: pipeline-state.mjs set-note <slug> <note>");
-    process.exit(1);
-  }
-
-  try {
-    setNote(slug, note);
-    console.log(`✔ Added implementation note.`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdSetDocNote(slug, itemKey, note) {
-  if (!slug || !itemKey || !note) {
-    console.error("Usage: pipeline-state.mjs doc-note <slug> <item-key> <note>");
-    process.exit(1);
-  }
-
-  try {
-    setDocNote(slug, itemKey, note);
-    console.log(`✔ Added doc note for "${itemKey}".`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdSetUrl(slug, url) {
-  if (!slug || !url) {
-    console.error("Usage: pipeline-state.mjs set-url <slug> <url>");
-    process.exit(1);
-  }
-
-  try {
-    setUrl(slug, url);
-    console.log(`✔ Set deployed URL to: ${url}`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
-function cmdSetHandoffArtifact(slug, itemKey, artifactJson) {
-  if (!slug || !itemKey || !artifactJson) {
-    console.error("Usage: pipeline-state.mjs handoff-artifact <slug> <item-key> <json>");
-    process.exit(1);
-  }
-
-  try {
-    setHandoffArtifact(slug, itemKey, artifactJson);
-    console.log(`✔ Set handoff artifact for "${itemKey}".`);
-  } catch (err) {
-    console.error(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-}
-
 // ─── CLI Router ─────────────────────────────────────────────────────────────
 // Only run when executed directly (not when imported as a module by the orchestrator).
 
@@ -300,40 +188,9 @@ const __isCLI = process.argv[1]?.endsWith("pipeline-state.mjs");
 if (__isCLI) {
 const [,, command, ...args] = process.argv;
 
-// Phase A.5 — Kernel-sole-writer migration.
-// State-mutating verbs invoked from inside an in-pipeline Copilot agent
-// session (detected via INSIDE_COPILOT_SESSION=1, set by the SDK shell tool
-// in src/harness/shell-tools.ts) emit a stderr deprecation warning. Agents
-// must use the `report_outcome` SDK tool instead. The verbs continue to
-// function so legacy automation and external CI keep working until A.6.
-const IN_SESSION_DEPRECATED = new Set([
-  "complete",
-  "fail",
-  "doc-note",
-  "set-url",
-  "set-note",
-  "handoff-artifact",
-]);
-function warnIfInSession(cmd) {
-  if (process.env.INSIDE_COPILOT_SESSION === "1" && IN_SESSION_DEPRECATED.has(cmd)) {
-    console.error(
-      `[DEPRECATED] 'pipeline-state.mjs ${cmd}' invoked from inside a Copilot ` +
-      `agent session. Use the 'report_outcome' SDK tool instead. ` +
-      `Bash invocation will be removed in Phase A.6.`,
-    );
-  }
-}
-warnIfInSession(command);
-
 switch (command) {
   case "init":
     cmdInit(args[0], args[1]);
-    break;
-  case "complete":
-    cmdComplete(args[0], args[1]);
-    break;
-  case "fail":
-    cmdFail(args[0], args[1], args.slice(2).join(" "));
     break;
   case "reset-scripts":
     cmdResetScripts(args[0], args[1]);
@@ -350,39 +207,37 @@ switch (command) {
   case "next":
     cmdNext(args[0]);
     break;
-  case "set-note":
-    cmdSetNote(args[0], args.slice(1).join(" "));
-    break;
+  // Phase A.6: state-mutating verbs (complete, fail, doc-note, set-url,
+  // set-note, handoff-artifact) were removed. Agents must use the
+  // `report_outcome` SDK tool. We keep an explicit error case so any
+  // straggling caller gets a precise message instead of a generic
+  // "Unknown command".
+  case "complete":
+  case "fail":
   case "doc-note":
-    cmdSetDocNote(args[0], args[1], args.slice(2).join(" "));
-    break;
-  case "handoff-artifact":
-    cmdSetHandoffArtifact(args[0], args[1], args.slice(2).join(" "));
-    break;
   case "set-url":
-    cmdSetUrl(args[0], args.slice(1).join(" "));
-    break;
+  case "set-note":
+  case "handoff-artifact":
+    console.error(
+      `ERROR: 'pipeline-state.mjs ${command}' was removed in Phase A.6. ` +
+        `The kernel is now the sole writer of pipeline state. ` +
+        `Agents must use the 'report_outcome' SDK tool instead.`,
+    );
+    process.exit(1);
   default:
     console.error(`Unknown command: ${command || "(none)"}`);
     console.error("");
     console.error("Usage: pipeline-state.mjs <command> <args>");
     console.error("");
     console.error("Commands:");
-    console.error("  init         <slug> <type>               — Initialize pipeline state");
-    console.error("  complete     <slug> <item-key>           — Mark item as done");
-    console.error("  fail         <slug> <item-key> <message> — Record a failure");
-    console.error("  reset-scripts    <slug> <category>              — Reset script-type nodes in the given category for re-push");
+    console.error("  init              <slug> <type>               — Initialize pipeline state");
+    console.error("  reset-scripts     <slug> <category>           — Reset script-type nodes in the given category for re-push");
     console.error("  resume            <slug>                      — Resume pipeline after elevated apply");
     console.error("  recover-elevated  <slug> <error-message>      — Recover pipeline after failed elevated apply");
     console.error("  status            <slug>                      — Print state JSON");
     console.error("  next              <slug>                      — Print next actionable item");
-    console.error("  set-note          <slug> <note>               — Append implementation note");
-    console.error("  doc-note          <slug> <item-key> <note>    — Set doc note on a pipeline item");
-    console.error("  handoff-artifact  <slug> <item-key> <json>    — Set structured handoff artifact (JSON) on a pipeline item");
-    console.error("  set-url           <slug> <url>                — Set deployed URL");
     console.error("");
     console.error("Item keys are dynamically defined in your app's workflows.yml");
-    console.error("");
     console.error("");
     console.error("Workflow types: Backend, Frontend, Full-Stack, Infra");
     process.exit(1);

@@ -44,7 +44,7 @@ export const SAFE_READ_TOOLS = new Set([
 
 export const ERR_WRITE_DENIED =
   "ERROR: Write Access Denied. Your security profile forbids modifying this path. " +
-  "If fixing an out-of-scope bug, use pipeline:fail to route the error to the appropriate agent.";
+  "If fixing an out-of-scope bug, use report_outcome with status: 'failed' to route the error to the appropriate agent.";
 
 export const ERR_COMMAND_BLOCKED =
   "ERROR: Command execution denied by security profile. " +
