@@ -16,7 +16,7 @@
 
 import { CopilotClient } from "@github/copilot-sdk";
 import type { PipelineRunConfig } from "./kernel-types.js";
-import type { ApmWorkflowNode } from "./apm-types.js";
+import type { ApmWorkflowNode } from "./apm/types.js";
 import type { AvailableItem } from "./kernel-types.js";
 import type { NodeHandler } from "./handlers/types.js";
 import type { PipelineState } from "./types.js";

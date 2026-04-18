@@ -13,7 +13,7 @@
 
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { TriageResult } from "../types.js";
-import type { CompiledTriageProfile } from "../apm-types.js";
+import type { CompiledTriageProfile } from "../apm/types.js";
 import type { PipelineLogger } from "../logger.js";
 import { retrieveTopMatches } from "./retriever.js";
 import { askLlmRouter } from "./llm-router.js";

@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { approveAll } from "@github/copilot-sdk";
-import type { TriageSignature } from "../apm-types.js";
+import type { TriageSignature } from "../apm/types.js";
 
 // ---------------------------------------------------------------------------
 // Types

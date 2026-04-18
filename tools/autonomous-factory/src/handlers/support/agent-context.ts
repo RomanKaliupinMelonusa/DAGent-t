@@ -5,7 +5,7 @@
 
 import path from "node:path";
 import type { NodeContext } from "../types.js";
-import type { AgentContext } from "../../agents.js";
+import type { AgentContext } from "../../apm/agents.js";
 
 /** Collect validated handoff artifacts from upstream completed items. */
 export function collectUpstreamArtifacts(

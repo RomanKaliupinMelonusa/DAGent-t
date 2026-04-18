@@ -8,7 +8,7 @@
  */
 
 import { execSync } from "node:child_process";
-import type { ApmConfig } from "./apm-types.js";
+import type { ApmConfig } from "./apm/types.js";
 
 // ---------------------------------------------------------------------------
 // Types

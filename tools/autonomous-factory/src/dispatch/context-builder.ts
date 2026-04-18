@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { NodeContext } from "../handlers/types.js";
 import type { PipelineState, ItemSummary } from "../types.js";
-import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm-types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
 import type { RunState } from "../kernel/types.js";
 import type { AvailableItem } from "../kernel-types.js";
 import type { PipelineLogger } from "../logger.js";

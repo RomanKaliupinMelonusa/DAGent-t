@@ -26,7 +26,7 @@ import type { Command } from "../kernel/commands.js";
 import type { Effect } from "../kernel/effects.js";
 import type { NodeHandler, NodeContext } from "../handlers/types.js";
 import type { AvailableItem } from "../kernel-types.js";
-import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm-types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";

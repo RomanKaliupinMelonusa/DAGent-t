@@ -6,7 +6,7 @@
  * RegExp objects and assembles the agent's sandbox configuration.
  */
 
-import type { ApmCompiledOutput } from "./apm-types.js";
+import type { ApmCompiledOutput } from "./apm/types.js";
 
 export interface AgentSandbox {
   allowedWritePaths: RegExp[];

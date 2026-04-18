@@ -24,7 +24,7 @@
 
 import type { NodeBudgetPolicy } from "../session/shared.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
-import type { CompiledTriageProfile } from "../apm-types.js";
+import type { CompiledTriageProfile } from "../apm/types.js";
 import type { TriageRecord, TriageResult } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";

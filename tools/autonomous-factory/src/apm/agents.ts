@@ -9,7 +9,7 @@
  * Template content lives in `.apm/agents/` and is injected via `systemPromptTemplate`.
  */
 
-import type { ApmCompiledOutput, ApmMcpConfig } from "./apm-types.js";
+import type { ApmCompiledOutput, ApmMcpConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types

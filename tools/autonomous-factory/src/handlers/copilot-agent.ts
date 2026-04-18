@@ -19,7 +19,7 @@
  * state-module imports are permitted in this file.
  */
 
-import { getAgentConfig, buildTaskPrompt } from "../agents.js";
+import { getAgentConfig, buildTaskPrompt } from "../apm/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { writeChangeManifest } from "../reporting.js";
 import { runCopilotSession } from "../adapters/copilot-session-runner.js";

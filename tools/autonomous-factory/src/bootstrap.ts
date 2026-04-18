@@ -9,11 +9,11 @@
 import path from "node:path";
 import type { CliArgs } from "./cli.js";
 import type { PipelineRunConfig } from "./kernel-types.js";
-import type { ApmCompiledOutput } from "./apm-types.js";
-import { ApmCompileError, ApmBudgetExceededError } from "./apm-types.js";
+import type { ApmCompiledOutput } from "./apm/types.js";
+import { ApmCompileError, ApmBudgetExceededError } from "./apm/types.js";
 import { BootstrapError } from "./errors.js";
 import { createFeatureBranch } from "./git-ops.js";
-import { loadApmContext } from "./apm-context-loader.js";
+import { loadApmContext } from "./apm/context-loader.js";
 import { runResolveEnvironment } from "./hooks.js";
 // Bootstrap runs at the composition root level — it legitimately owns the
 // entry-time read of persisted state. Importing the CLI module directly

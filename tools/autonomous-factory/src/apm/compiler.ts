@@ -27,7 +27,7 @@ import {
   type ApmWorkflow,
   type TriageSignature,
   type CompiledTriageProfile,
-} from "./apm-types.js";
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Token estimation

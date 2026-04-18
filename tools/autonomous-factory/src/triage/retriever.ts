@@ -9,7 +9,7 @@
  */
 
 import { normalizeError } from "./error-fingerprint.js";
-import type { TriageSignature } from "../apm-types.js";
+import type { TriageSignature } from "../apm/types.js";
 
 /**
  * Match a raw error trace against the triage knowledge base.

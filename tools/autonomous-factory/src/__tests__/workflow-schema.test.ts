@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { ApmWorkflowSchema, topoSort } from "../apm-types.js";
+import { ApmWorkflowSchema, topoSort } from "../apm/types.js";
 
 /** Graph-only fields that are never inherited from the node pool. */
 const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);

@@ -17,8 +17,8 @@ import {
   ApmCompiledOutputSchema,
   ApmCompileError,
   type ApmCompiledOutput,
-} from "./apm-types.js";
-import { compileApm, getApmSourceMtime } from "./apm-compiler.js";
+} from "./types.js";
+import { compileApm, getApmSourceMtime } from "./compiler.js";
 
 // ---------------------------------------------------------------------------
 // Native APM CLI detection (cached per process)

@@ -5,9 +5,9 @@
  */
 
 import type { ContextCompiler } from "../ports/context-compiler.js";
-import type { ApmCompiledOutput } from "../apm-types.js";
-import { loadApmContext } from "../apm-context-loader.js";
-import { compileApm } from "../apm-compiler.js";
+import type { ApmCompiledOutput } from "../apm/types.js";
+import { loadApmContext } from "../apm/context-loader.js";
+import { compileApm } from "../apm/compiler.js";
 
 export class ApmFileCompiler implements ContextCompiler {
   async compile(appRoot: string): Promise<ApmCompiledOutput> {
