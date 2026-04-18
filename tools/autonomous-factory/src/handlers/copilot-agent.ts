@@ -8,9 +8,9 @@
  * 4. Delegate the session to `adapters/copilot-session-runner`
  * 5. Post-session: record HEAD, git-diff fallback, budget utilization
  *    (support/agent-post-session — all git I/O via ctx.vcs port)
- * 6. Classify outcome — prefer `reportedOutcome` (Phase A: kernel-sole-writer),
- *    fall back to ctx.stateReader.getStatus() for un-migrated agents that
- *    still call pipeline:complete/fail from bash.
+ * 6. Classify outcome from `reportedOutcome` (Phase A: kernel-sole-writer).
+ *    The agent must terminate by calling the `report_outcome` SDK tool;
+ *    a missing outcome is treated as a failure.
  *
  * This handler is an OBSERVER — it does not call completeItem/failItem.
  * The kernel is the sole authority on pipeline state transitions.
@@ -182,10 +182,11 @@ const copilotAgentHandler: NodeHandler = {
       };
     }
 
-    // Phase A: prefer the agent-reported outcome (via the `report_outcome`
-    // SDK tool). Falls back to a state re-read for un-migrated agents that
-    // still call `pipeline:complete/fail` from bash. The fallback path will
-    // be removed in Phase A.6 once all `.apm/` prompts emit `report_outcome`.
+    // Phase A: the agent must report its terminal outcome via the
+    // `report_outcome` SDK tool. The static guard in arch-check.mjs locks
+    // every prompt onto this contract; the bash mutation verbs no longer
+    // exist (Phase A.6). A missing reportedOutcome here means the agent
+    // ended its session without signalling — treat as a failure.
     if (reportedOutcome) {
       if (reportedOutcome.status === "failed") {
         const message = reportedOutcome.message;
@@ -204,26 +205,18 @@ const copilotAgentHandler: NodeHandler = {
       return { outcome: "completed", summary: telemetry };
     }
 
-    // Legacy fallback — observe post-state via StateStore port. This path
-    // is exercised only by agents that haven't yet been migrated to
-    // `report_outcome`. The trailing `item.end` carries source="state_fallback"
-    // so we can verify zero callers before removing this branch in A.6.
-    const postState = await ctx.stateReader.getStatus(slug);
-    const item = postState.items.find((i) => i.key === itemKey);
-    if (item?.status === "failed") {
-      telemetry.outcome = "failed";
-      telemetry.errorMessage = item.error ?? "Unknown failure";
-      const diagTrace = extractDiagnosticTrace(item.error ?? "");
-      return {
-        outcome: "failed",
-        errorMessage: item.error ?? "Unknown failure",
-        summary: telemetry,
-        ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
-      };
-    }
-
-    ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "state_fallback" });
-    return { outcome: "completed", summary: telemetry };
+    const missingOutcomeMsg =
+      "Agent session ended without calling report_outcome. " +
+      "Every agent prompt must terminate by invoking the report_outcome SDK tool " +
+      "with status: 'completed' or 'failed'.";
+    telemetry.outcome = "failed";
+    telemetry.errorMessage = missingOutcomeMsg;
+    ctx.logger.event("item.end", itemKey, { outcome: "failed", source: "missing_outcome" });
+    return {
+      outcome: "failed",
+      errorMessage: missingOutcomeMsg,
+      summary: telemetry,
+    };
   },
 };
 
