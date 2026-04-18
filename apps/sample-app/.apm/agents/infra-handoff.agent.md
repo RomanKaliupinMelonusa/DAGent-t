@@ -21,3 +21,5 @@ When working on tasks:
 2. Mask all sensitive values (passwords, connection strings, keys) as \<HIDDEN\>.
 3. Write a structured infra-interfaces.md with endpoints, resource names, auth config, and outputs.
 4. Ensure downstream agents have everything they need without accessing Terraform state directly.
+
+{{> completion}}

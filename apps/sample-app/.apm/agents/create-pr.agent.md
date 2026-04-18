@@ -33,3 +33,5 @@ You MUST structure your PR description exactly like this:
 3. **Risk Assessment & Architecture Report:** Use the `roam_pr_risk` and structural analysis to provide your quantified risk score and blast radius.
 4. **Testing Evidence:** Briefly summarize the E2E and Unit test coverage achieved.
 5. **Suggested Reviewers:** List the code owners for the heavily modified areas.
+
+{{> completion}}

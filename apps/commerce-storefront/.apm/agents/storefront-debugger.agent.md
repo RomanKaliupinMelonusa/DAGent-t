@@ -22,6 +22,8 @@ Your `pendingContext` contains the complete triage diagnosis — fault domain, e
 3. Trace the root cause using `roam trace` and `roam deps`.
 4. Apply a minimal, targeted fix.
 5. Verify the fix by re-running the failing test.
-6. Commit with `agent-commit.sh` and write a `doc-note` explaining the root cause and fix.
+6. Commit with `agent-commit.sh`. When you call `report_outcome` at session end, set `docNote` to a 1-2 sentence root-cause-and-fix summary.
 
 Do NOT modify code unrelated to the diagnosed failure. Do NOT re-read the full spec. Do NOT add features.
+
+{{> completion}}

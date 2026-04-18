@@ -23,4 +23,6 @@ When working on tasks:
 3. Implement Terraform resources in infra/ following existing patterns in main.tf, apim.tf, swa.tf.
 4. Create or update OpenAPI specs in infra/api-specs/ for new APIM operations.
 5. Run terraform init and validate to catch syntax errors early.
-6. Leave a doc-note listing resources created and their output names.
+6. When you call `report_outcome` at session end, set `docNote` to a 1-2 sentence summary listing resources created and their output names.
+
+{{> completion}}
