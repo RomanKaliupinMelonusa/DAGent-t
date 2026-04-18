@@ -1,7 +1,7 @@
 /**
  * session/transient-poll.ts — Shared transient retry loop for CI polling.
  *
- * Extracted from github-ci-poll handler and script-executor to eliminate
+ * Extracted from github-ci-poll handler to eliminate
  * duplicated transient retry logic. Both callers execute the same poll-ci.sh
  * command with identical retry semantics; only the post-result handling differs.
  */
@@ -132,7 +132,7 @@ export async function runPollWithRetries(
 
 /**
  * Build the environment variables for poll-ci.sh execution.
- * Shared between github-ci-poll handler and script-executor.
+ * Shared between poll-based handlers.
  */
 export function buildPollEnv(
   inProgressDir: string,

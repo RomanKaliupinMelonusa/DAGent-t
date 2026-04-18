@@ -27,7 +27,7 @@ import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.j
 import type { CompiledTriageProfile } from "../apm-types.js";
 import type { TriageRecord, TriageResult } from "../types.js";
 import { RESET_OPS } from "../types.js";
-import { evaluateTriage } from "../triage.js";
+import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/shared.js";
 import { getStatus } from "../state.js";

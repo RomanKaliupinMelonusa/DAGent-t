@@ -155,7 +155,7 @@ export interface NodeResult {
 
 /**
  * Discriminated union of graph-mutation commands that any handler can return.
- * The kernel's command executor (`command-executor.ts`) is the sole authority
+ * The kernel's dispatch layer is the sole authority
  * that translates these into state API calls. This is the independently
  * scalable interface between handlers and the graph engine.
  *

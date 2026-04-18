@@ -5,6 +5,8 @@
  * The production adapter is the existing PipelineLogger from logger.ts.
  */
 
+import type { PreviousSummaryTotals } from "../kernel-types.js";
+
 /**
  * Structured event context — mirrors PipelineLogger.event() payload.
  * Keys are open-ended to support handler-specific telemetry.
@@ -23,4 +25,10 @@ export interface Telemetry {
 
   /** Log informational output. */
   info(message: string): void;
+
+  /**
+   * Load structured telemetry from a previous session's _SUMMARY-DATA.json.
+   * Returns null if no prior session data exists.
+   */
+  loadPreviousSummary?(appRoot: string, slug: string): PreviousSummaryTotals | null;
 }

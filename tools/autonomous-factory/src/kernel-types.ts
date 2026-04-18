@@ -2,19 +2,15 @@
  * kernel-types.ts — Cross-boundary type definitions for the orchestrator kernel.
  *
  * Houses all types that flow between the major orchestrator modules
- * (watchdog, session-runner, session/shared, handlers). By centralizing
- * these here, we break the circular import between session-runner.ts and
- * session/shared.ts — both import from this file, never from each other.
+ * (kernel, dispatch, handlers, loop). By centralizing these here we
+ * avoid circular imports — every module imports from this file.
  *
  * Rule: Zero executable code. Pure type definitions only.
  */
 
-import type { CopilotClient } from "@github/copilot-sdk";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm-types.js";
-import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
+import type { NextAction, ItemSummary } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
-import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./handlers/types.js";
-import type { HookContext } from "./session/lifecycle-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline run — immutable config + mutable state
@@ -163,51 +159,6 @@ export interface TriageActivation {
   /** Summary snapshot of the failing node's last attempt. */
   failingNodeSummary: ItemSummary;
 }
-
-// ---------------------------------------------------------------------------
-// Dispatch pipeline — composable middleware for item execution
-// ---------------------------------------------------------------------------
-
-/**
- * Mutable context that flows through the dispatch pipeline.
- * Accumulated by each step — earlier steps populate fields that later
- * steps read. Avoids re-computation and makes each step independently testable.
- */
-export interface DispatchContext {
-  // ── Immutable inputs (set once at pipeline entry) ─────────────────
-  readonly client: CopilotClient;
-  readonly next: AvailableItem;
-  readonly config: PipelineRunConfig;
-  readonly state: PipelineRunState;
-
-  // ── Mutable fields (accumulated by steps) ─────────────────────────
-  /** Resolved workflow node (populated by stepInit) */
-  node: ApmWorkflowNode | undefined;
-  /** Unified budget policy for this node. */
-  budgetPolicy: NodeBudgetPolicy;
-  /** Item telemetry summary (populated by stepInit) */
-  itemSummary: ItemSummary;
-  /** Step start timestamp in ms (populated by stepInit) */
-  stepStart: number;
-  /** Resolved handler (populated by stepResolve) */
-  handler?: NodeHandler;
-  /** Assembled NodeContext for the handler (populated by stepResolve) */
-  handlerCtx?: NodeContext;
-  /** Lifecycle hook context (populated by stepResolve) */
-  hookCtx?: HookContext;
-  /** Handler execution result (populated by stepExecute) */
-  result?: NodeResult;
-  /** Triage activation for dispatch (populated by stepResolve for triage nodes) */
-  triageActivation?: TriageActivation;
-}
-
-/**
- * A dispatch step is a named async function that may:
- * - Return a SessionOutcome to short-circuit the pipeline (early exit)
- * - Return undefined to continue to the next step
- * - Mutate the DispatchContext to pass data downstream
- */
-export type DispatchStep = (dc: DispatchContext) => Promise<SessionOutcome | undefined | void>;
 
 // ---------------------------------------------------------------------------
 // NodeBudgetPolicy — unified retry/cycle limits

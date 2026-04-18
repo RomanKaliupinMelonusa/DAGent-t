@@ -20,4 +20,16 @@ export interface FeatureFilesystem {
 
   /** List files matching a glob pattern. */
   glob(pattern: string, cwd: string): Promise<string[]>;
+
+  /**
+   * Archive feature artifacts from in-progress/ to archive/features/<slug>/
+   * and commit via the git wrapper.
+   */
+  archiveFeature(slug: string, appRoot: string, repoRoot: string): void;
+
+  /**
+   * Commit and push pipeline state files after a parallel execution batch.
+   * Implements push-guard logic to prevent premature CI triggers.
+   */
+  commitAndPushState(repoRoot: string, appRoot: string, branch: string, batchNumber: number): void;
 }

@@ -25,13 +25,11 @@ import { DefaultKernelRules } from "./kernel/rules.js";
 import { createRunState } from "./kernel/types.js";
 import { JsonlTelemetry } from "./adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "./adapters/json-file-state-store.js";
+import { GitShellAdapter } from "./adapters/git-shell-adapter.js";
+import { LocalFilesystem } from "./adapters/local-filesystem.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "./loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "./handlers/registry.js";
 import { getWorkflowNode } from "./session/dag-utils.js";
-import { syncBranch, getCurrentBranch, pushWithRetry } from "./git-ops.js";
-import { archiveFeatureFiles, commitAndPushState } from "./archive.js";
-import { readState } from "./state.js";
-import { loadPreviousSummary } from "./reporting.js";
 
 // ---------------------------------------------------------------------------
 // HandlerResolver adapter — wraps the existing handler registry
@@ -122,22 +120,23 @@ export async function runWithKernel(
 ): Promise<KernelRunResult> {
   const { slug, appRoot, repoRoot, baseBranch, logger } = config;
 
+  // Instantiate adapters
+  const stateStore = new JsonFileStateStore();
+  const vcs = new GitShellAdapter(repoRoot, logger);
+  const filesystem = new LocalFilesystem();
+  const telemetry = new JsonlTelemetry(logger);
+  const effectPorts = { stateStore, telemetry };
+
   // Load initial DAG state from the persisted _STATE.json
-  const initialDagState = await readState(slug) as PipelineState;
+  const initialDagState = await stateStore.getStatus(slug) as PipelineState;
 
   // Load prior session telemetry for monotonic accumulation
-  const baseTelemetry = loadPreviousSummary(appRoot, slug);
+  const baseTelemetry = telemetry.loadPreviousSummary(appRoot, slug);
   const initialRunState = createRunState(baseTelemetry);
 
   // Instantiate kernel
   const rules = new DefaultKernelRules();
   const kernel = new PipelineKernel(slug, initialDagState, initialRunState, rules);
-
-  // Instantiate adapters for effect execution
-  const effectPorts = {
-    stateStore: new JsonFileStateStore(),
-    telemetry: new JsonlTelemetry(logger),
-  };
 
   // Handler resolution
   const handlerResolver = new RegistryHandlerResolver(config);
@@ -145,16 +144,16 @@ export async function runWithKernel(
   // Lifecycle hooks — concrete I/O wired here, injected into the loop
   const lifecycle: LoopLifecycle = {
     syncBranch() {
-      syncBranch(repoRoot);
+      vcs.syncBranch(baseBranch);
     },
-    commitState(batchNumber: number) {
-      const currentBranch = getCurrentBranch(repoRoot);
-      commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
+    async commitState(batchNumber: number) {
+      const currentBranch = await vcs.getCurrentBranch();
+      filesystem.commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
     },
     async archiveAndPush(slug: string) {
-      archiveFeatureFiles(slug, appRoot, repoRoot);
+      filesystem.archiveFeature(slug, appRoot, repoRoot);
       try {
-        await pushWithRetry(repoRoot, baseBranch, logger);
+        await vcs.pushWithRetry(baseBranch);
       } catch (err) {
         console.error(`  ✖ ${err instanceof Error ? err.message : String(err)}`);
       }

@@ -429,7 +429,7 @@ export const ApmWorkflowNodeRefSchema = z.object({
 
 // ---------------------------------------------------------------------------
 // Full merged workflow node — the shape after compiler merges pool + ref + defaults.
-// This is what the runtime (session-runner, agents.ts) consumes.
+// This is what the runtime (dispatch, agents.ts) consumes.
 // ---------------------------------------------------------------------------
 
 const ApmWorkflowNodeSchemaBase = z.object({

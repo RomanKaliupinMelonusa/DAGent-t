@@ -6,6 +6,8 @@
 
 import type { Telemetry, EventContext } from "../ports/telemetry.js";
 import type { PipelineLogger } from "../logger.js";
+import type { PreviousSummaryTotals } from "../kernel-types.js";
+import { loadPreviousSummary as loadSummary } from "../reporting.js";
 
 export class JsonlTelemetry implements Telemetry {
   private readonly logger: PipelineLogger;
@@ -28,5 +30,9 @@ export class JsonlTelemetry implements Telemetry {
 
   info(message: string): void {
     console.log(`[pipeline] ${message}`);
+  }
+
+  loadPreviousSummary(appRoot: string, slug: string): PreviousSummaryTotals | null {
+    return loadSummary(appRoot, slug);
   }
 }

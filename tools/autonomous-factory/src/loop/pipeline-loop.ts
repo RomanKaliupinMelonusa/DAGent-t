@@ -44,9 +44,9 @@ import { interpretSignals, type LoopDirective } from "./signal-handler.js";
  */
 export interface LoopLifecycle {
   /** Sync the feature branch before dispatching a batch. */
-  syncBranch(): void;
+  syncBranch(): void | Promise<void>;
   /** Commit + push state files after a batch completes. */
-  commitState(batchNumber: number): void;
+  commitState(batchNumber: number): void | Promise<void>;
   /** Archive feature files and push for PR creation. */
   archiveAndPush(slug: string): Promise<void>;
   /** Get the workflow node definition for an item key. */
@@ -151,7 +151,7 @@ export async function runPipelineLoop(
       }
 
       // Step 3: Pre-batch git sync
-      lifecycle.syncBranch();
+      await lifecycle.syncBranch();
 
       // Step 4: Build handler+context pairs
       const dagSnap = kernel.dagSnapshot();
@@ -169,7 +169,7 @@ export async function runPipelineLoop(
       const batchResult = await dispatchBatch(dispatchPairs);
 
       // Step 6: Post-batch state commit
-      lifecycle.commitState(batchNumber);
+      await lifecycle.commitState(batchNumber);
 
       // Step 7: Feed commands to kernel, collect effects
       const allEffects: Effect[] = [];

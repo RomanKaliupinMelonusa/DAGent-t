@@ -1,15 +1,11 @@
 /**
- * session-runner-guards.test.ts — Unit tests for session-runner hardening:
- *   1. Circuit breaker error preservation (no overwrite by catch block)
- *   2. appendToToolResult non-destructive mutation
- *
- * CI log truncation (Issue 2) is tested indirectly — the constant and
- * slicing logic are inline in `runPollCi` which is integration-tested
- * by the pipeline-fail-validation suite. We verify the slicing behavior
- * in isolation here via a standalone helper test.
+ * session-events.test.ts — Unit tests for session event utilities:
+ *   1. appendToToolResult non-destructive mutation
+ *   2. Circuit breaker error preservation pattern
+ *   3. CI log truncation pattern
  *
  * Uses Node.js built-in test runner (node:test).
- * Run: npx tsx src/__tests__/session-runner-guards.test.ts
+ * Run: npx tsx src/__tests__/session-events.test.ts
  */
 
 import { describe, it } from "node:test";
