@@ -1,9 +1,9 @@
 /**
  * adapters/file-state/init.ts — Pipeline state initialization.
  *
- * TypeScript port of `pipeline-state/mutations.mjs#initState`. Bootstraps a
- * fresh _STATE.json from the APM-compiled context.json. If the compiled
- * context is missing, runs the APM compiler in-process (no shell-out).
+ * Bootstraps a fresh _STATE.json from the APM-compiled context.json.
+ * If the compiled context is missing, runs the APM compiler in-process
+ * (no shell-out).
  *
  * The DAG-seeding math (topological sort + item factory) is delegated to
  * `domain/init-state.ts` so the impure adapter only owns I/O.

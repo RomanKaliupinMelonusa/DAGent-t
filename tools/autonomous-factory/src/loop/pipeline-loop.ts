@@ -141,6 +141,21 @@ export async function runPipelineLoop(
   const runStartMs = Date.now();
   let hardeningState: HardeningState = { prevKey: null, lastProgressMs: runStartMs };
 
+  // Build per-key wait-timeout map. Per-node `ready_within_hours` wins; else
+  // pipeline-wide `policy.ready_within_hours_default`; else the node is opted out.
+  const readyWithinHoursByKey = new Map<string, number>();
+  {
+    const defaultHours = policy?.ready_within_hours_default;
+    const workflow = config.apmContext.workflows?.[config.workflowName];
+    const workflowNodes = workflow?.nodes ?? {};
+    for (const [key, node] of Object.entries(workflowNodes)) {
+      const hours = (node as { ready_within_hours?: number }).ready_within_hours ?? defaultHours;
+      if (typeof hours === "number" && hours > 0) {
+        readyWithinHoursByKey.set(key, hours);
+      }
+    }
+  }
+
   // ── run.start telemetry ─────────────────────────────────────────
   logger.event("run.start", null, {
     slug,
@@ -153,6 +168,27 @@ export async function runPipelineLoop(
 
   try {
     for (let batchNumber = 1; batchNumber <= maxIterations; batchNumber++) {
+      // Step 0: DAG-level stall detection (ready_within_hours).
+      // Fail any pending item whose upstream wait has exceeded its budget.
+      // The failure flows through the normal on_failure.triage path.
+      if (readyWithinHoursByKey.size > 0) {
+        const stallCommands = kernel.collectStallCommands(Date.now(), readyWithinHoursByKey);
+        if (stallCommands.length > 0) {
+          const stallEffects: Effect[] = [];
+          for (const cmd of stallCommands) {
+            const processResult = kernel.process(cmd);
+            stallEffects.push(...processResult.effects);
+          }
+          await executeEffects(stallEffects, effectPorts);
+          logger.event("state.stall", null, {
+            batch_number: batchNumber,
+            stalled_keys: stallCommands
+              .filter((c) => c.type === "fail-item")
+              .map((c) => (c as { itemKey: string }).itemKey),
+          });
+        }
+      }
+
       // Step 1: Get next batch from kernel
       const batch = kernel.getNextBatch();
 

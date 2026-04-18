@@ -23,7 +23,7 @@ graph LR
 
 That's the whole system. Everything below zooms deeper into each part.
 
-> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/entry/watchdog.ts) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). The dispatch kernel lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts), routing items to handler plugins in [handlers/](tools/autonomous-factory/src/handlers/).
+> **Key files at this level:** The loop lives in [pipeline-loop.ts](tools/autonomous-factory/src/loop/pipeline-loop.ts) (driven from [watchdog.ts](tools/autonomous-factory/src/entry/watchdog.ts)). State ownership lives in the [kernel](tools/autonomous-factory/src/kernel/pipeline-kernel.ts) (sole writer), persisted by the [JsonFileStateStore adapter](tools/autonomous-factory/src/adapters/json-file-state-store.ts). Dispatch to handler plugins lives in [src/dispatch/](tools/autonomous-factory/src/dispatch/), with handlers in [src/handlers/](tools/autonomous-factory/src/handlers/).
 
 ---
 
@@ -103,13 +103,12 @@ graph TD
 **What controls which items exist:** Workflow type. A `Backend`-only feature skips `frontend-dev`, `frontend-unit-test`, and `live-ui` (marked `N/A` at init). The DAG shape adapts, but its edges never change.
 
 > **Key code at this level:**
-> - Item list: `ALL_ITEMS` — [pipeline-state.mjs#L51](tools/autonomous-factory/pipeline-state.mjs#L51)
-> - Dependency edges: `ITEM_DEPENDENCIES` — [pipeline-state.mjs#L95](tools/autonomous-factory/pipeline-state.mjs#L95)
-> - Workflow-based N/A items: `NA_ITEMS_BY_TYPE` — [pipeline-state.mjs#L79](tools/autonomous-factory/pipeline-state.mjs#L79)
-> - DAG resolution: `getNextAvailable()` — [pipeline-state.mjs#L761](tools/autonomous-factory/pipeline-state.mjs#L761) — scans all items, returns everything whose deps are `done`/`na`
-> - Completion: `completeItem()` — [pipeline-state.mjs#L280](tools/autonomous-factory/pipeline-state.mjs#L280) — validates phase gating
-> - Failure: `failItem()` — [pipeline-state.mjs#L320](tools/autonomous-factory/pipeline-state.mjs#L320) — records error, checks retry limit
-> - Concurrency lock: `withLock()` — [pipeline-state.mjs#L219](tools/autonomous-factory/pipeline-state.mjs#L219) — POSIX `mkdirSync` atomic mutex
+> - Workflow DAG definition: [apps/sample-app/.apm/workflows.yml](apps/sample-app/.apm/workflows.yml) — declarative `nodes:` with `depends_on`, workflow-type overrides, `na_items`, `salvage_survivors`
+> - State initialization from YAML: [src/adapters/file-state/init.ts](tools/autonomous-factory/src/adapters/file-state/init.ts) — reads workflows.yml, snapshots dependencies, node types, categories into `_STATE.json`
+> - DAG resolution: [src/domain/scheduling.ts](tools/autonomous-factory/src/domain/scheduling.ts) — `schedule(items, deps)` returns every pending item whose deps are `done`/`na`
+> - Pure state reducers: [src/domain/transitions.ts](tools/autonomous-factory/src/domain/transitions.ts) — `completeItem`, `failItem`, `resetNodes`, `salvageForDraft`
+> - State authority: [src/kernel/pipeline-kernel.ts](tools/autonomous-factory/src/kernel/pipeline-kernel.ts) — sole writer, Command/Effect model
+> - Concurrency lock: [src/adapters/file-state/lock.ts](tools/autonomous-factory/src/adapters/file-state/lock.ts) — POSIX `mkdirSync` atomic mutex
 
 ---
 
@@ -290,8 +289,8 @@ Hard limits: 10 retries per item, 5 redevelopment cycles per feature, 3 re-deplo
 >   - `parseTriageDiagnostic()` — extracts structured JSON from error strings
 > - Failure rerouting: `handleFailureReroute()` — [session-runner.ts#L1246](tools/autonomous-factory/src/session-runner.ts#L1246)
 > - State mutations:
->   - `resetForDev()` — [pipeline-state.mjs#L627](tools/autonomous-factory/pipeline-state.mjs#L627) — resets items for redevelopment
->   - `salvageForDraft()` — [pipeline-state.mjs#L358](tools/autonomous-factory/pipeline-state.mjs#L358) — graceful degradation to Draft PR
+>   - `resetNodes()` — [src/domain/transitions.ts](tools/autonomous-factory/src/domain/transitions.ts) — generic DAG-cascading reset used for redevelopment, redeploy, reroute
+>   - `salvageForDraft()` — [src/domain/transitions.ts](tools/autonomous-factory/src/domain/transitions.ts) — graceful degradation to Draft PR
 > - Circuit breakers:
 >   - Identical-error: `shouldSkipRetry()` — [session-runner.ts#L260](tools/autonomous-factory/src/session-runner.ts#L260), `normalizeDiagnosticTrace()` — [session-runner.ts#L229](tools/autonomous-factory/src/session-runner.ts#L229)
 >   - Cognitive (soft+hard): `wireToolLogging()` — [session-runner.ts#L1345](tools/autonomous-factory/src/session-runner.ts#L1345)
@@ -436,7 +435,10 @@ The same `pipelineSummaries[]` array that produces reports also drives the self-
 
 | File | What it does |
 |---|---|
-| `tools/autonomous-factory/pipeline-state.mjs` | DAG definition, state mutations, `getNextAvailable()` |
+| `apps/<app>/.apm/workflows.yml` | DAG definition — nodes, deps, node types, categories |
+| `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` | State authority (sole writer) — Command/Effect model |
+| `tools/autonomous-factory/src/adapters/json-file-state-store.ts` | JSON persistence of `_STATE.json` with POSIX lock |
+| `tools/autonomous-factory/src/domain/scheduling.ts` | `schedule()` — returns items whose deps are `done`/`na` |
 | `tools/autonomous-factory/src/entry/watchdog.ts` | Main loop — spawn, wait, advance |
 | `tools/autonomous-factory/src/session-runner.ts` | Per-item lifecycle, circuit breakers, context injection orchestration |
 | `tools/autonomous-factory/src/agents.ts` | Prompt factory — `ITEM_ROUTING` map, all prompt builders |

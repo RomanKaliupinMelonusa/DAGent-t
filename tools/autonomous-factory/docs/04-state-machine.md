@@ -1,7 +1,7 @@
 # Pipeline State Machine — DAG & Lifecycle
 
 > 19 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
-> Source: `tools/autonomous-factory/pipeline-state.mjs` · `tools/autonomous-factory/src/state.ts`
+> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI)
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
@@ -232,7 +232,7 @@ sequenceDiagram
     participant W as watchdog.ts /\nloop/pipeline-loop.ts
     participant TF as triageFailure()
     participant S as state.ts
-    participant PS as pipeline-state.mjs
+    participant PS as PipelineKernel +\nJsonFileStateStore
     participant R as roam index
 
     Note over W: Post-deploy or test item<br/>(poll-app-ci, poll-infra-plan,<br/>integration-test, live-ui,<br/>backend-unit-test, frontend-unit-test) fails
@@ -382,7 +382,7 @@ classDiagram
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
-> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — `pipeline-state.mjs` contains no hardcoded item lists or dependency mappings.
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
 
 ---
 
@@ -432,32 +432,38 @@ flowchart TD
 
 ---
 
-## state.ts — Typed Wrapper
+## State Architecture — Kernel + Adapter
 
 ```mermaid
 flowchart LR
-    subgraph TS["state.ts (TypeScript)"]
+    subgraph KERNEL["src/kernel/pipeline-kernel.ts (Command/Effect)"]
         direction TB
-        LAZY["Lazy module cache\nlet _mod = null"]
-        LOAD["First call:\nimport('pipeline-state.mjs')"]
-        CACHE["Cache module ref\n_mod = imported module"]
-        FN["Typed async functions:\ninitState(), completeItem(),\nfailItem(), resetCi(),\nresetInfraPlan(), resetForDev(),\nredevelopInfra(), resume(),\nrecoverElevated(), getStatus(),\ngetNext(), getNextAvailable(),\nsetNote(), setDocNote(),\nsetUrl(), readState(),\ngetAllItems(), getPhases(),\ngetNaItemsByType(),\ngetItemDependencies()"]
+        CMD["Commands in\n(complete/fail/reset/\ninit/salvage/\nadmin verbs)"]
+        RED["Pure reducer\n(domain/transitions.ts)"]
+        EFF["Effects out\n(persistence, telemetry)"]
     end
 
-    subgraph JS["pipeline-state.mjs (JavaScript)"]
-        DAG2["DAG definitions"]
-        STATE2["State mutation functions"]
-        FILE2["File I/O (_STATE.json, _TRANS.md)"]
+    subgraph ADAPTER["src/adapters/json-file-state-store.ts"]
+        LOCK["POSIX lock\n(file-state/lock.ts)"]
+        IO["Atomic read/write\n(file-state/io.ts)"]
+        INIT["initState\n(file-state/init.ts)"]
     end
 
-    LAZY --> LOAD --> CACHE --> FN
-    FN -->|"dynamic import()"| JS
+    subgraph CLI["src/cli/pipeline-state.ts (admin)"]
+        VERBS["init / reset-scripts /\nresume / recover-elevated /\nstatus / next"]
+    end
 
-    style TS fill:#e3f2fd
-    style JS fill:#e8f5e9
+    CMD --> RED --> EFF
+    EFF -->|"persist"| ADAPTER
+    CLI -->|"runAdminCommand(\nadminHost, slug, cmd)"| KERNEL
+    LOOP["src/loop/pipeline-loop.ts"] -->|"issue Command"| KERNEL
+
+    style KERNEL fill:#e8f5e9
+    style ADAPTER fill:#fff3e0
+    style CLI fill:#e3f2fd
 ```
 
-> `state.ts` exists because the pipeline state machine is written in JavaScript (`.mjs`) for CLI use, but the orchestrator needs TypeScript types. The lazy-loaded dynamic import bridges the gap with zero re-imports after first call.
+> The kernel is the sole state writer. Every mutation flows through `runCommand(cmd) → Effects[]`. The `JsonFileStateStore` adapter consumes persistence effects under a POSIX `mkdir` lock. Handlers and admin CLI never write state directly.
 
 ---
 

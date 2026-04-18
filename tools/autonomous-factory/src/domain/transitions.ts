@@ -94,6 +94,7 @@ export function failItem(
   itemKey: string,
   message: string,
   maxFailures: number = 10,
+  signatureFn: (msg: string) => string = computeErrorSignature,
 ): FailResult {
   const item = state.items.find((i) => i.key === itemKey);
   if (!item) {
@@ -112,7 +113,7 @@ export function failItem(
     timestamp: new Date().toISOString(),
     itemKey,
     message: message || "Unknown failure",
-    errorSignature: message ? computeErrorSignature(message) : null,
+    errorSignature: message ? signatureFn(message) : null,
   };
   const newErrorLog = [...state.errorLog, newEntry];
   const failCount = newErrorLog.filter((e) => e.itemKey === itemKey).length;
@@ -146,6 +147,7 @@ export function resetNodes(
   reason: string,
   maxCycles: number = 5,
   logKey: string = "reset-nodes",
+  signatureFn: (msg: string) => string = computeErrorSignature,
 ): ResetResult {
   const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
   if (cycleCount >= maxCycles) {
@@ -166,7 +168,7 @@ export function resetNodes(
     timestamp: new Date().toISOString(),
     itemKey: logKey,
     message: `Reset cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset items: ${[...keysToReset].join(", ")}`,
-    errorSignature: reason ? computeErrorSignature(reason) : null,
+    errorSignature: reason ? signatureFn(reason) : null,
   };
 
   return {

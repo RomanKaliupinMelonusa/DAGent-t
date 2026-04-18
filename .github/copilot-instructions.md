@@ -13,7 +13,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 |---|---|
 | Monorepo | npm workspaces · `apps/sample-app/` (skeleton) · `apps/commerce-storefront/` (PWA Kit) · `tools/autonomous-factory/` (engine) |
 | Orchestrator | TypeScript · `@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod v4 · Node 22 |
-| State Machine | DAG scheduler · `pipeline-state.mjs` · JSON state files |
+| State Machine | DAG scheduler · `PipelineKernel` (sole writer) · `JsonFileStateStore` adapter · JSON state files |
 | APM Compiler | `apm-compiler.ts` · per-agent token budgets · modular `.md` instruction fragments |
 | Structural Intelligence | roam-code v11.2 · Python 3.11 · AST semantic graph · MCP server |
 | CI/CD | GitHub Actions · OIDC federated credentials · 10 workflows |
@@ -22,7 +22,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 
 ## Hard Rules
 
-1. **Pipeline state is managed by `tools/autonomous-factory/pipeline-state.mjs`.** Agents never edit `_TRANS.md` or `_STATE.json` by hand — use `npm run pipeline:complete/fail/reset-ci/doc-note`.
+1. **Pipeline state is owned by the `PipelineKernel`** (`tools/autonomous-factory/src/kernel/pipeline-kernel.ts`) and persisted by `JsonFileStateStore`. Agents never edit `_TRANS.md` or `_STATE.json` by hand — they call the `report_outcome` SDK tool, which produces kernel commands. Admin/CLI entry is `tools/autonomous-factory/src/cli/pipeline-state.ts` (invoked via `npm run pipeline:*`).
 2. **Git operations use wrapper scripts.** `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push` in agent prompts.
 3. **Devcontainer provides Node 22 and Python 3.11.** No NVM commands needed. `.nvmrc` at repo root is used by CI workflows (`node-version-file: '.nvmrc'`). Python is used only by the roam-code orchestrator toolchain.
 4. **All Azure data-plane auth uses `DefaultAzureCredential`.** Zero API keys in code.
@@ -87,7 +87,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | CI/CD: Storefront deploy (Managed Runtime) | `.github/workflows/deploy-storefront.yml` |
 | ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
 | ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
-| Pipeline state script | `tools/autonomous-factory/pipeline-state.mjs` |
+| Pipeline state CLI | `tools/autonomous-factory/src/cli/pipeline-state.ts` |
 | Agent commit wrapper | `tools/autonomous-factory/agent-commit.sh` |
 | Agent branch wrapper | `tools/autonomous-factory/agent-branch.sh` |
 | CI polling script | `tools/autonomous-factory/poll-ci.sh` |
@@ -152,7 +152,7 @@ The orchestrator is a deterministic `while` loop that:
 
 ### Hard Rules
 
-- **State management:** Pipeline state is managed by `tools/autonomous-factory/pipeline-state.mjs`. Use `npm run pipeline:complete/fail/reset-ci`. Never edit `_TRANS.md` or `_STATE.json` directly.
+- **State management:** Pipeline state is owned by `PipelineKernel` and persisted via `JsonFileStateStore`. Admin operations go through `tools/autonomous-factory/src/cli/pipeline-state.ts` (use `npm run pipeline:init/status/next/resume/reset-scripts/recover-elevated`). Never edit `_TRANS.md` or `_STATE.json` directly.
 - **Git operations:** Use `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push`.
 - **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `BASE_BRANCH` env var) is the final administrative step.
 - **Prompt rules:** Coding rules live in `apps/<your-app>/.apm/instructions/` (single source of truth), declared in `.apm/apm.yml`. The APM compiler resolves per-agent instruction sets and validates token budgets.

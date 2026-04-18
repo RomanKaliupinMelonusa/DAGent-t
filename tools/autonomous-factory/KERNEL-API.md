@@ -1,8 +1,9 @@
 # Kernel API — DAG State Machine
 
 > Minimal API surface for node implementors and external consumers.
-> All functions are accessed through `src/state.ts` (async TypeScript wrappers)
-> or `pipeline-state.mjs` (synchronous JavaScript, CLI).
+> State authority lives in `src/kernel/pipeline-kernel.ts` (Command/Effect reducer),
+> persistence in `src/adapters/json-file-state-store.ts`, and the admin CLI in
+> `src/cli/pipeline-state.ts` (invoked via `npm run pipeline:*`).
 
 ## State Primitives
 
@@ -42,7 +43,7 @@
 | `setUrl` | `(slug, url) → PipelineState` | Set deployed URL |
 | `setLastTriageRecord` | `(slug, record) → PipelineState` | Persist triage classification result |
 
-## CLI Convenience (pipeline-state.mjs)
+## CLI Convenience (src/cli/pipeline-state.ts)
 
 | Function | Signature | Purpose |
 |---|---|---|

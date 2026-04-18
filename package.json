@@ -10,12 +10,12 @@
     "tools/*"
   ],
   "scripts": {
-    "pipeline:init": "node tools/autonomous-factory/pipeline-state.mjs init",
-    "pipeline:reset-scripts": "node tools/autonomous-factory/pipeline-state.mjs reset-scripts",
-    "pipeline:status": "node tools/autonomous-factory/pipeline-state.mjs status",
-    "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
-    "pipeline:resume": "node tools/autonomous-factory/pipeline-state.mjs resume",
-    "pipeline:recover-elevated": "node tools/autonomous-factory/pipeline-state.mjs recover-elevated",
+    "pipeline:init": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts init",
+    "pipeline:reset-scripts": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts reset-scripts",
+    "pipeline:status": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts status",
+    "pipeline:next": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts next",
+    "pipeline:resume": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts resume",
+    "pipeline:recover-elevated": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts recover-elevated",
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "cd tools/autonomous-factory && npx tsx src/entry/watchdog.ts",

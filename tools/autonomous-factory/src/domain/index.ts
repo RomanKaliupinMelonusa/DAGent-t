@@ -8,6 +8,14 @@
 export { computeErrorSignature } from "./error-signature.js";
 
 export {
+  DEFAULT_VOLATILE_PATTERNS,
+  compileVolatilePatterns,
+  mergeVolatilePatterns,
+  type VolatilePattern,
+  type ConfiguredVolatilePattern,
+} from "./volatile-patterns.js";
+
+export {
   getDownstream,
   getUpstream,
   cascadeBarriers,
@@ -96,3 +104,10 @@ export {
   type HardeningState,
   type HardeningVerdict,
 } from "./progress-tracker.js";
+
+export {
+  detectStalledItems,
+  formatStallError,
+  type StallableItem,
+  type StalledItem,
+} from "./stall-detection.js";

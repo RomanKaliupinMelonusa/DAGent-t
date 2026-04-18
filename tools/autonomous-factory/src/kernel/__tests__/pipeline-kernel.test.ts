@@ -254,3 +254,107 @@ describe("PipelineKernel — snapshot isolation", () => {
     assert.equal(snap2.attemptCounts["A"], 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stall detection (DAG-level wait timeout)
+// ---------------------------------------------------------------------------
+
+const HOUR_MS = 60 * 60 * 1000;
+
+describe("PipelineKernel — collectStallCommands", () => {
+  it("returns empty when no wait thresholds are configured", () => {
+    const kernel = makeKernel();
+    const cmds = kernel.collectStallCommands(Date.now(), new Map());
+    assert.deepEqual(cmds, []);
+  });
+
+  it("returns empty when pending items are still within threshold", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const kernel = makeKernel({ started: "2025-01-01T00:00:00Z" });
+    const thresholds = new Map([["A", 5]]); // 5h
+    const cmds = kernel.collectStallCommands(started + 1 * HOUR_MS, thresholds);
+    assert.deepEqual(cmds, []);
+  });
+
+  it("emits a fail-item command when pending item exceeds its threshold", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const kernel = makeKernel({ started: "2025-01-01T00:00:00Z" });
+    const thresholds = new Map([["A", 2]]);
+    const cmds = kernel.collectStallCommands(started + 3 * HOUR_MS, thresholds);
+    assert.equal(cmds.length, 1);
+    assert.equal(cmds[0]!.type, "fail-item");
+    if (cmds[0]!.type === "fail-item") {
+      assert.equal(cmds[0].itemKey, "A");
+      assert.match(cmds[0].message, /^stalled-upstream:/);
+    }
+  });
+
+  it("ignores non-pending items (done, failed, na, dormant)", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const kernel = makeKernel({
+      started: "2025-01-01T00:00:00Z",
+      items: [
+        { key: "A", label: "A", agent: null, status: "done", error: null },
+        { key: "B", label: "B", agent: null, status: "failed", error: "x" },
+        { key: "C", label: "C", agent: null, status: "na", error: null },
+        { key: "D", label: "D", agent: null, status: "dormant", error: null },
+      ],
+    });
+    const thresholds = new Map([["A", 1], ["B", 1], ["C", 1], ["D", 1]]);
+    const cmds = kernel.collectStallCommands(started + 10 * HOUR_MS, thresholds);
+    assert.deepEqual(cmds, []);
+  });
+
+  it("resets the pending clock when a reset-op log entry mentions the key", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const resetAt = started + 5 * HOUR_MS;
+    const kernel = makeKernel({
+      started: "2025-01-01T00:00:00Z",
+      errorLog: [
+        {
+          timestamp: new Date(resetAt).toISOString(),
+          itemKey: "reset-nodes",
+          message: "Reset cycle 1/5: retry. Reset items: A, B",
+        },
+      ],
+    });
+    const thresholds = new Map([["A", 2]]);
+    // Now = reset + 1h — within threshold measured from reset, NOT pipeline start
+    const cmds = kernel.collectStallCommands(resetAt + 1 * HOUR_MS, thresholds);
+    assert.deepEqual(cmds, []);
+  });
+
+  it("flags a key once its post-reset wait also exceeds the threshold", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const resetAt = started + 5 * HOUR_MS;
+    const kernel = makeKernel({
+      started: "2025-01-01T00:00:00Z",
+      errorLog: [
+        {
+          timestamp: new Date(resetAt).toISOString(),
+          itemKey: "reset-nodes",
+          message: "Reset cycle 1/5: retry. Reset items: A",
+        },
+      ],
+    });
+    const thresholds = new Map([["A", 2]]);
+    // Now = reset + 3h — exceeds 2h threshold measured from reset
+    const cmds = kernel.collectStallCommands(resetAt + 3 * HOUR_MS, thresholds);
+    assert.equal(cmds.length, 1);
+    if (cmds[0]!.type === "fail-item") {
+      assert.equal(cmds[0].itemKey, "A");
+    }
+  });
+
+  it("process(fail-item) on a stall command transitions the item to failed", () => {
+    const started = new Date("2025-01-01T00:00:00Z").getTime();
+    const kernel = makeKernel({ started: "2025-01-01T00:00:00Z" });
+    const thresholds = new Map([["A", 2]]);
+    const cmds = kernel.collectStallCommands(started + 3 * HOUR_MS, thresholds);
+    for (const cmd of cmds) kernel.process(cmd);
+    const snap = kernel.dagSnapshot();
+    const a = snap.items.find((i) => i.key === "A");
+    assert.equal(a?.status, "failed");
+    assert.match(a!.error ?? "", /^stalled-upstream:/);
+  });
+});

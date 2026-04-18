@@ -23,6 +23,7 @@ import type { PipelineState } from "../types.js";
 import { PipelineKernel } from "../kernel/pipeline-kernel.js";
 import { DefaultKernelRules } from "../kernel/rules.js";
 import { createRunState } from "../kernel/types.js";
+import { compileVolatilePatterns, type VolatilePattern } from "../domain/index.js";
 import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
 import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
@@ -90,6 +91,7 @@ class RegistryHandlerResolver implements HandlerResolver {
       this.appRoot,
       this.repoRoot,
       this.apmContext.config?.handlers,
+      this.apmContext.config?.handler_packages,
     );
   }
 }
@@ -137,7 +139,22 @@ export async function runWithKernel(
   const initialRunState = createRunState(baseTelemetry);
 
   // Instantiate kernel
-  const rules = new DefaultKernelRules();
+  // Compile volatile-token patterns from APM config (workflow + per-node)
+  // and inject into the rules so fail/reset compute stable signatures that
+  // normalize framework-specific tokens (SFCC session IDs, test UUIDs, etc).
+  const workflowPatterns = compileVolatilePatterns(
+    config.apmContext.config?.error_signature?.volatile_patterns,
+  );
+  const perNodePatterns = new Map<string, ReadonlyArray<VolatilePattern>>();
+  const workflowNodes =
+    config.apmContext.workflows?.[config.workflowName]?.nodes ?? {};
+  for (const [nodeKey, node] of Object.entries(workflowNodes)) {
+    const extras = compileVolatilePatterns(
+      node?.error_signature?.volatile_patterns,
+    );
+    if (extras.length > 0) perNodePatterns.set(nodeKey, extras);
+  }
+  const rules = new DefaultKernelRules({ workflowPatterns, perNodePatterns });
   const kernel = new PipelineKernel(slug, initialDagState, initialRunState, rules);
 
   // Handler resolution

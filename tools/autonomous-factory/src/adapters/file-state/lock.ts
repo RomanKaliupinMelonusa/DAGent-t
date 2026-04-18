@@ -1,7 +1,7 @@
 /**
  * adapters/file-state/lock.ts — POSIX atomic state file lock.
  *
- * TypeScript port of `pipeline-state/lock.mjs`. Prevents TOCTOU races when
+ * Prevents TOCTOU races when
  * parallel agents (e.g. backend-dev + frontend-dev) call mutating operations
  * concurrently. `mkdirSync` is guaranteed atomic by POSIX — only one process
  * can create the directory; others get EEXIST. Includes stale-lock detection

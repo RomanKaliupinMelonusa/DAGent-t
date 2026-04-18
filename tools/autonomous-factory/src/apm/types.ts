@@ -223,6 +223,11 @@ export const ApmConfigSchema = z.object({
      *  - `"halt"`: halt the whole pipeline
      *  Default: "halt". */
     approval_default_on_timeout: z.enum(["salvage", "fail", "halt"]).default("halt"),
+    /** Default DAG-level wait timeout applied to every node that does not
+     *  declare its own `ready_within_hours`. Nodes remain "pending" while
+     *  waiting for upstream deps; once elapsed exceeds this threshold the
+     *  scheduler fails them with `stalled-upstream:`. Default: undefined. */
+    ready_within_hours_default: z.number().positive().optional(),
   }).optional(),
 
 
@@ -257,6 +262,36 @@ export const ApmConfigSchema = z.object({
     outputs: z.array(z.string()).optional(),
   })).optional(),
 
+  /** Allowlist of npm packages that may provide handlers. Third-party plugin
+   *  resolution is opt-in: only packages declared here can be loaded as handlers
+   *  via an `npm:<pkg>[#<export>]` reference from workflows.yml or
+   *  `handler_defaults`. Keys are the bare package specifier (e.g.
+   *  `@acme/webhook-handler` or `some-pkg`). Values configure the import:
+   *
+   *    handler_packages:
+   *      "@acme/webhook-handler":
+   *        export: "default"        # optional; default | handler | <named>
+   *        version: "^1.0.0"        # optional pin — validated against installed version
+   *        description: "..."
+   *        inputs: { url: required }
+   *        outputs: ["responseStatus"]
+   *
+   *  Security: Unlisted packages are rejected. The `version` field, if set,
+   *  must match the installed package's version (semver range) — rejection
+   *  is fatal at resolution time. */
+  handler_packages: z.record(z.string(), z.object({
+    /** Which export to use. Defaults to "default" → "handler" fallback. */
+    export: z.string().optional(),
+    /** Optional semver range the installed package must satisfy. */
+    version: z.string().optional(),
+    /** Human-readable description. */
+    description: z.string().optional(),
+    /** Input keys expected from handlerData. */
+    inputs: z.record(z.string(), z.enum(["required", "optional"])).optional(),
+    /** Output keys the handler produces. */
+    outputs: z.array(z.string()).optional(),
+  })).optional(),
+
   /** Node categories that trigger a roam-code re-index after triage reroute.
    *  When a triage handler reroutes to a node whose category is in this list,
    *  the kernel refreshes the semantic graph index before re-execution.
@@ -273,6 +308,23 @@ export const ApmConfigSchema = z.object({
     default: z.array(z.string()).optional(),
     /** Per-handler additions, applied AFTER default middlewares (innermost). */
     by_handler: z.record(z.string(), z.array(z.string())).optional(),
+  }).optional(),
+
+  /** Declarative volatile-token patterns for the error-signature fingerprinter.
+   *  The built-in stack-agnostic patterns (timestamps, PIDs, ports, UUIDs, hex hashes,
+   *  paths, line:col, …) are always applied; entries here are appended and used to
+   *  strip framework-specific tokens (e.g. SFCC session IDs, test UUIDs, cloud ARNs)
+   *  before hashing. Per-node `error_signature.volatile_patterns` overrides/extend
+   *  this workflow-level list (additive). */
+  error_signature: z.object({
+    /** Additional volatile-token patterns beyond the built-in defaults.
+     *  Each entry: { pattern: regexSource, flags?: "gi", replacement: "<TOKEN>" }.
+     *  Invalid regex is rejected at compile time. */
+    volatile_patterns: z.array(z.object({
+      pattern: z.string(),
+      flags: z.string().optional(),
+      replacement: z.string(),
+    })).default([]),
   }).optional(),
 });
 
@@ -418,6 +470,12 @@ const nodeBodyFields = {
    *  Hours the approval gate may remain pending before the SLA expires.
    *  When omitted, falls back to `config.policy.approval_default_timeout_hours`. */
   timeout_hours: z.number().positive().optional(),
+  /** DAG-level wait timeout. Maximum hours this node may remain in `pending`
+   *  status (i.e. waiting for its upstream deps to resolve) before the scheduler
+   *  declares it stalled-upstream and fails it with a `stalled-upstream:` error.
+   *  The failure flows through the standard `on_failure.triage` path, so per-node
+   *  triage decides whether to retry, skip, or salvage. Omitted = no wait timeout. */
+  ready_within_hours: z.number().positive().optional(),
   /** Approval SLA action — how to respond when the approval timeout expires.
    *  - `"salvage"`: graceful degradation (mark salvage survivors `na`, fail the gate)
    *  - `"fail"`: fail the approval item (retries per normal rules)
@@ -455,6 +513,17 @@ const nodeBodyFields = {
    *  lint rules reason about node purpose. Values: "agent" | "script" |
    *  "control-flow" | "diagnostic". Has no runtime effect. */
   node_kind: z.enum(["agent", "script", "control-flow", "diagnostic"]).optional(),
+  /** Per-node volatile-token patterns for the error-signature fingerprinter.
+   *  Applied ADDITIVELY on top of the built-in defaults and any workflow-level
+   *  `config.error_signature.volatile_patterns`. Use to strip node-specific
+   *  noise (e.g. this particular test's per-run fixture ID) before hashing. */
+  error_signature: z.object({
+    volatile_patterns: z.array(z.object({
+      pattern: z.string(),
+      flags: z.string().optional(),
+      replacement: z.string(),
+    })).default([]),
+  }).optional(),
 } as const;
 
 // ---------------------------------------------------------------------------

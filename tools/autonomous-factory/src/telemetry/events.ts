@@ -33,6 +33,7 @@ export type EventKind =
   | "state.fail"
   | "state.reset"
   | "state.salvage"
+  | "state.stall"
   // Triage
   | "triage.evaluate"
   // Handoff

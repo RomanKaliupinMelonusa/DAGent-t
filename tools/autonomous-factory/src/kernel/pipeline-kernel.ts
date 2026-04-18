@@ -17,6 +17,7 @@ import type { Effect } from "./effects.js";
 import type { CommandResult, RunState, createRunState } from "./types.js";
 import type { KernelRules } from "./rules.js";
 import type { TransitionState } from "../domain/transitions.js";
+import { formatStallError, type StalledItem } from "../domain/stall-detection.js";
 
 // ---------------------------------------------------------------------------
 // ProcessResult — command result + effects
@@ -83,6 +84,57 @@ export class PipelineKernel {
     }
 
     return result;
+  }
+
+  // ─── Stall detection (DAG-level wait timeout) ───────────────────────
+
+  /**
+   * Compute `FailItemCommand`s for any pending items whose wait for upstream
+   * deps has exceeded their `ready_within_hours` budget.
+   *
+   * `pendingSinceMs` is derived per-key as the latest of:
+   *   - pipeline start time, and
+   *   - the most recent reset-op log entry whose message references the key.
+   *
+   * The returned commands should be processed by the caller; stall failures
+   * then flow through the standard `on_failure.triage` path like any other
+   * failure.
+   */
+  collectStallCommands(
+    nowMs: number,
+    readyWithinHoursByKey: ReadonlyMap<string, number>,
+  ): Command[] {
+    if (readyWithinHoursByKey.size === 0) return [];
+
+    const startedMs = Date.parse(this.dagState.started);
+    const pipelineStartMs = Number.isFinite(startedMs) ? startedMs : nowMs;
+    const pendingSinceMsByKey = new Map<string, number>();
+
+    for (const item of this.dagState.items) {
+      if (item.status !== "pending") continue;
+      // Latest reset-op entry mentioning this key re-sets the pending clock.
+      let pendingSince = pipelineStartMs;
+      for (const entry of this.dagState.errorLog) {
+        if (!entry.itemKey.startsWith("reset-")) continue;
+        if (!entry.message.includes(item.key)) continue;
+        const ts = Date.parse(entry.timestamp);
+        if (Number.isFinite(ts) && ts > pendingSince) pendingSince = ts;
+      }
+      pendingSinceMsByKey.set(item.key, pendingSince);
+    }
+
+    const stalled = this.rules.detectStalls(
+      this.dagState.items,
+      nowMs,
+      pendingSinceMsByKey,
+      readyWithinHoursByKey,
+    );
+
+    return stalled.map((s: StalledItem): Command => ({
+      type: "fail-item",
+      itemKey: s.key,
+      message: formatStallError(s),
+    }));
   }
 
   // ─── Command processing ─────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /**
  * adapters/file-state/io.ts — File I/O for the JSON file state adapter.
  *
- * TypeScript port of `pipeline-state/io.mjs`. The single source of truth for:
+ * Single source of truth for:
  *  - REPO_ROOT / APP_ROOT / IN_PROGRESS path resolution
  *  - state/TRANS path helpers
  *  - readState / writeState (sync; state files are small)

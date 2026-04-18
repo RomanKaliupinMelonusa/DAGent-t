@@ -2,7 +2,7 @@
 
 ## 1. The DAG: Structure and Purpose
 
-The pipeline is a **Directed Acyclic Graph** of 19 items defined in `tools/autonomous-factory/pipeline-state.mjs`, organized into a **Two-Wave model** (infra first, app second) with 6 phases.
+The pipeline is a **Directed Acyclic Graph** declared in each app's `.apm/workflows.yml`, organized into a **Two-Wave model** (infra first, app second) with 6 phases. The state authority is `PipelineKernel` ([src/kernel/pipeline-kernel.ts](tools/autonomous-factory/src/kernel/pipeline-kernel.ts)), persisted by `JsonFileStateStore` ([src/adapters/json-file-state-store.ts](tools/autonomous-factory/src/adapters/json-file-state-store.ts)).
 
 ```mermaid
 graph TD
@@ -67,20 +67,20 @@ graph TD
     DARC --> PPR
 ```
 
-The DAG dependency map lives in `ITEM_DEPENDENCIES` at `pipeline-state.mjs` L94–118. The key insight: `backend-dev` and `frontend-dev` **run in parallel** because they share the same dependency set (`schema-dev` + `infra-handoff`). Similarly, `backend-unit-test` and `frontend-unit-test` are parallelizable.
+The DAG dependency map is declared in `<appRoot>/.apm/workflows.yml` under each node's `depends_on` field and loaded into `_STATE.json` at `pipeline:init` time. The key insight: `backend-dev` and `frontend-dev` **run in parallel** because they share the same dependency set (`schema-dev` + `infra-handoff`). Similarly, `backend-unit-test` and `frontend-unit-test` are parallelizable.
 
-Workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) control which items are marked `N/A` at init via `NA_ITEMS_BY_TYPE` at `pipeline-state.mjs` L81–90 — e.g., a `Backend` workflow skips `frontend-dev`, `frontend-unit-test`, and `live-ui`.
+Workflow types (`Backend`, `Frontend`, `Full-Stack`, `Infra`, `App-Only`, `Backend-Only`) control which items are marked `N/A` at init via each workflow's `na_items` list in `workflows.yml` — e.g., a `Backend` workflow skips `frontend-dev`, `frontend-unit-test`, and `live-ui`.
 
 ## 2. State: the Single Source of Truth
 
-The **State** (`_STATE.json`) is owned exclusively by `pipeline-state.mjs` and serves 4 critical purposes:
+The **State** (`_STATE.json`) is owned exclusively by `PipelineKernel` and serves 4 critical purposes:
 
 | Purpose | How |
 |---|---|
-| **DAG resolution** | `getNextAvailable()` (L761–806) scans all items, checks if every dependency is `done` or `na`, returns **all parallelizable items** |
-| **Phase gating** | `completeItem()` (L276–312) validates no items in prior phases are incomplete |
-| **Failure routing** | `failItem()` records structured errors; `resetForDev()` resets items for redevelopment cycles with **cascading post-deploy resets** — when deploy items are reset, any `done` post-deploy items are also reset to prevent stale verification results |
-| **Concurrency control** | `withLock()` (L217–236) uses POSIX `mkdirSync` as an atomic mutex to prevent TOCTOU races when parallel agents complete simultaneously |
+| **DAG resolution** | `schedule()` ([src/domain/scheduling.ts](tools/autonomous-factory/src/domain/scheduling.ts)) scans all items, checks if every dependency is `done` or `na`, returns **all parallelizable items** |
+| **Phase gating** | `completeItem` transition ([src/domain/transitions.ts](tools/autonomous-factory/src/domain/transitions.ts)) validates no items in prior phases are incomplete |
+| **Failure routing** | `failItem()` records structured errors; `resetNodes()` resets items for redevelopment cycles with **cascading post-deploy resets** — when deploy items are reset, any `done` post-deploy items are also reset to prevent stale verification results |
+| **Concurrency control** | `withLock()` in [src/adapters/file-state/lock.ts](tools/autonomous-factory/src/adapters/file-state/lock.ts) uses POSIX `mkdirSync` as an atomic mutex to prevent TOCTOU races when parallel agents complete simultaneously |
 
 State transitions are **strictly deterministic** — agents never edit state files directly. They can only call:
 
@@ -357,7 +357,7 @@ Step by step:
 2. Agent calls `pipeline:fail` with a structured `TriageDiagnostic` JSON (`fault_domain: "backend"`)
 3. **`handleFailureReroute()`** in `session-runner.ts` reads the error and calls `triageFailure()`
 4. **`triageFailure()`** in `triage.ts` parses the JSON, extracts `fault_domain`, and calls `applyFaultDomain("backend")` → returns `["backend-dev", "backend-unit-test", "integration-test"]`
-5. **`resetForDev()`** in `pipeline-state.mjs` sets those items + `push-app` + `poll-app-ci` back to `"pending"`, cascades any `done` post-deploy items back to `"pending"`, records a `"reset-for-dev"` entry in `errorLog`, and checks the 5-cycle limit
+5. **`resetNodes()`** in [src/domain/transitions.ts](tools/autonomous-factory/src/domain/transitions.ts) sets those items + `push-app` + `poll-app-ci` back to `"pending"`, cascades any `done` post-deploy items back to `"pending"`, records a `"reset-for-dev"` entry in `errorLog`, and checks the 5-cycle limit
 6. The **watchdog loop** calls `getNextAvailable()` again — `backend-dev` is now pending with all its DAG dependencies still `"done"`, so it's immediately runnable
 7. **`runItemSession()`** creates a new session for `backend-dev` with `attemptCounts[backend-dev] = 2`
 8. Context injection kicks in: `buildRetryContext()` appends the previous failure details, `buildDownstreamFailureContext()` appends the exact integration-test error including `"GET /api/jobs returns 500"`
@@ -746,7 +746,7 @@ The `pipelineSummaries[]` array and the flushed files serve **4 downstream purpo
 
 ### Doc-Notes: Agent → State → Manifest
 
-Doc-notes follow a separate path from telemetry. When a dev agent calls `npm run pipeline:doc-note <slug> <key> <note>`, `pipeline-state.mjs` writes the note to `state.items[key].docNote` in `_STATE.json`. These are **not** captured in `ItemSummary`. Instead, `writeChangeManifest()` reads them from `_STATE.json` when building `_CHANGES.json` for the `docs-archived` agent, combining them with `filesChanged` from `pipelineSummaries`.
+Doc-notes follow a separate path from telemetry. When a dev agent emits a doc-note via the `report_outcome` SDK tool, the kernel writes the note to `state.items[key].docNote` in `_STATE.json`. These are **not** captured in `ItemSummary`. Instead, `writeChangeManifest()` reads them from `_STATE.json` when building `_CHANGES.json` for the `docs-archived` agent, combining them with `filesChanged` from `pipelineSummaries`.
 
 ```mermaid
 graph TD
@@ -789,7 +789,12 @@ graph TD
 
 | File | Role |
 |---|---|
-| `tools/autonomous-factory/pipeline-state.mjs` | DAG definition, state machine, all mutations |
+| `apps/<app>/.apm/workflows.yml` | DAG definition — nodes, deps, phases, node types, categories |
+| `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` | State authority (sole writer) — Command/Effect model |
+| `tools/autonomous-factory/src/adapters/json-file-state-store.ts` | JSON persistence of `_STATE.json` with POSIX lock |
+| `tools/autonomous-factory/src/domain/transitions.ts` | Pure state-transition reducers (complete / fail / reset / salvage) |
+| `tools/autonomous-factory/src/domain/scheduling.ts` | `schedule()` — returns items whose deps are `done`/`na` |
+| `tools/autonomous-factory/src/cli/pipeline-state.ts` | Admin CLI (init / status / next / resume / reset-scripts / recover-elevated) |
 | `tools/autonomous-factory/src/entry/watchdog.ts` | Main orchestrator loop |
 | `tools/autonomous-factory/src/session-runner.ts` | Dispatch kernel — routes items to handler plugins |
 | `tools/autonomous-factory/src/handlers/` | Handler plugin system (copilot-agent, git-push, github-ci-poll, github-pr-publish, local-exec) |
@@ -803,5 +808,4 @@ graph TD
 | `tools/autonomous-factory/src/reporting/` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
 | `tools/autonomous-factory/src/archive.ts` | Feature file archiving logic |
 | `tools/autonomous-factory/src/types.ts` | Shared TypeScript interfaces (`ItemSummary`, `ShellEntry`, `PlaywrightLogEntry`) |
-| `tools/autonomous-factory/src/state.ts` | Thin async wrappers over `pipeline-state.mjs` |
 | `apps/sample-app/.apm/apm.yml` | APM manifest (agent declarations, budgets, MCP) |

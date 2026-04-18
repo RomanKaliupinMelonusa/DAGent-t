@@ -1,9 +1,9 @@
 /**
  * ports/state-store.ts — Port interface for pipeline state persistence.
  *
- * Abstracts the file-based `pipeline-state.mjs` CLI behind an async interface.
- * The production adapter (`JsonFileStateStore`) imports the CLI module
- * directly; tests use an in-memory stub.
+ * Abstracts pipeline state read/write behind an async interface. The
+ * production adapter (`JsonFileStateStore`) owns all file I/O; tests use
+ * an in-memory stub.
  */
 
 import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord } from "../types.js";

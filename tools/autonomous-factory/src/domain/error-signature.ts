@@ -5,39 +5,38 @@
  * tokens (timestamps, PIDs, ports, hex hashes, paths). Enables cross-cycle
  * identity tracking: two errors with the same root cause produce the same hash.
  *
+ * Volatile-token patterns live in `./volatile-patterns.ts` — the single source
+ * of truth consumed by this module AND by `triage/error-fingerprint.ts`.
+ * Framework-specific patterns can be injected via the optional
+ * `additionalPatterns` parameter (supplied from APM config).
+ *
  * Pure function — zero I/O, zero side effects.
- * Keep in sync with VOLATILE_RE in pipeline-state.mjs and
- * VOLATILE_PATTERNS in triage/error-fingerprint.ts.
  */
 
 import { createHash } from "node:crypto";
-
-/**
- * Regex/replacement pairs for stripping volatile tokens from error messages.
- * Only universal (stack-agnostic) patterns — framework-specific normalization
- * belongs in APM triage packs.
- */
-const VOLATILE_RE: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>"],
-  [/\b\d{13}\b/g, "<EPOCH>"],
-  [/\bpid[=:]\d+/gi, "pid=<PID>"],
-  [/:\d{4,5}\b/g, ":<PORT>"],
-  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
-  [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],
-  [/(?:\/[\w@.+-]+){2,}(?:\/[^\s'")]*)?/g, "<PATH>"],
-  [/[A-Z]:\\[^\s'")\]]+/g, "<PATH>"],
-  [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
-  [/:\d+:\d+/g, ":<L>:<C>"],
-];
+import {
+  DEFAULT_VOLATILE_PATTERNS,
+  type VolatilePattern,
+} from "./volatile-patterns.js";
 
 /**
  * Compute a stable 16-hex-char fingerprint from a raw error message.
- * Strips volatile tokens, collapses whitespace, then SHA-256 hashes.
+ * Strips volatile tokens (defaults + optional extras), collapses whitespace,
+ * then SHA-256 hashes. Extras are applied AFTER the defaults so user-supplied
+ * patterns refine — not remove — baseline normalization.
  */
-export function computeErrorSignature(msg: string): string {
+export function computeErrorSignature(
+  msg: string,
+  additionalPatterns?: ReadonlyArray<VolatilePattern>,
+): string {
   let normalized = msg;
-  for (const [re, repl] of VOLATILE_RE) {
+  for (const [re, repl] of DEFAULT_VOLATILE_PATTERNS) {
     normalized = normalized.replace(re, repl);
+  }
+  if (additionalPatterns) {
+    for (const [re, repl] of additionalPatterns) {
+      normalized = normalized.replace(re, repl);
+    }
   }
   normalized = normalized.replace(/\s+/g, " ").trim();
   return createHash("sha256").update(normalized).digest("hex").slice(0, 16);

@@ -1,0 +1,89 @@
+/**
+ * domain/volatile-patterns.ts — Single source of truth for error-fingerprint
+ * volatile-token patterns.
+ *
+ * "Volatile" tokens are the parts of an error message that change between
+ * retries but don't affect the root cause (timestamps, PIDs, ports, UUIDs,
+ * hex hashes, absolute paths, line/col numbers, …). Stripping them produces
+ * a stable error signature that survives cross-cycle comparison.
+ *
+ * Policy:
+ *   - `DEFAULT_VOLATILE_PATTERNS` is the built-in, stack-agnostic baseline.
+ *   - Framework-specific patterns (SFCC session IDs, Playwright test UUIDs,
+ *     cloud-provider resource ARNs, etc.) belong in config — declared per
+ *     workflow and/or per node — and are merged on top of the baseline.
+ *
+ * Pure — no I/O, no side effects.
+ */
+
+/** A volatile-token rule: regex + replacement token. */
+export type VolatilePattern = readonly [RegExp, string];
+
+/** User-supplied pattern from YAML/JSON config — compiled to a VolatilePattern. */
+export interface ConfiguredVolatilePattern {
+  /** Regex source (without surrounding slashes). */
+  readonly pattern: string;
+  /** Optional regex flags (defaults to "g"). */
+  readonly flags?: string;
+  /** Replacement token. */
+  readonly replacement: string;
+}
+
+/**
+ * Built-in stack-agnostic patterns. The order matters — UUID runs before
+ * generic HEX so the full UUID is captured; path patterns run late so
+ * path-like tokens inside other patterns aren't swallowed.
+ */
+export const DEFAULT_VOLATILE_PATTERNS: ReadonlyArray<VolatilePattern> = [
+  [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>"],
+  [/\b\d{13}\b/g, "<EPOCH>"],
+  [/\bpid[=:]\d+/gi, "pid=<PID>"],
+  [/:\d{4,5}\b/g, ":<PORT>"],
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
+  [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],
+  [/(?:\/[\w@.+-]+){2,}(?:\/[^\s'")]*)?/g, "<PATH>"],
+  [/[A-Z]:\\[^\s'")\]]+/g, "<PATH>"],
+  [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
+  [/:\d+:\d+/g, ":<L>:<C>"],
+];
+
+/**
+ * Compile a list of user-supplied patterns (from YAML config) into
+ * runtime `VolatilePattern`s. Invalid regex sources throw with a clear
+ * diagnostic so the compile-time APM validator can surface bad config
+ * early rather than silently ignoring it at fingerprint time.
+ */
+export function compileVolatilePatterns(
+  raw: ReadonlyArray<ConfiguredVolatilePattern> | undefined,
+): VolatilePattern[] {
+  if (!raw || raw.length === 0) return [];
+  const compiled: VolatilePattern[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i]!;
+    const flags = entry.flags ?? "g";
+    try {
+      compiled.push([new RegExp(entry.pattern, flags), entry.replacement]);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `volatile_patterns[${i}]: invalid regex /${entry.pattern}/${flags} — ${reason}`,
+      );
+    }
+  }
+  return compiled;
+}
+
+/**
+ * Merge two pattern lists into a single ordered sequence.
+ * Defaults run first so user patterns can refine — but not remove —
+ * baseline normalization.
+ */
+export function mergeVolatilePatterns(
+  ...lists: ReadonlyArray<ReadonlyArray<VolatilePattern>>
+): VolatilePattern[] {
+  const out: VolatilePattern[] = [];
+  for (const list of lists) {
+    for (const p of list) out.push(p);
+  }
+  return out;
+}

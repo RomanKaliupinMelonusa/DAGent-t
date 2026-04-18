@@ -165,8 +165,7 @@ flowchart LR
     end
 
     subgraph INFRA["Infrastructure"]
-        PS["pipeline-state.mjs\nDAG state CLI"]
-        ST["state.ts\n(facade — Phase 2 will retire)"]
+        PS["src/cli/pipeline-state.ts\nadmin CLI (runAdminCommand)"]
         AC_SH["agent-commit.sh · agent-branch.sh · poll-ci.sh"]
     end
 
@@ -195,8 +194,8 @@ flowchart LR
     H_LE --> HKS
     H_TR --> TRG
     AG --> AC_MOD
-    A_SS -.delegates.-> ST
-    ST -.proxies.-> PS
+    A_SS -.persists via.-> ADAPTERS
+    PS -.admin verbs.-> K
     BS --> PF
     L --> RP
     L --> AS
@@ -244,7 +243,8 @@ mindmap
       Vision capabilities
       Screenshot output
     State Management
-      pipeline-state.mjs (JavaScript)
+      PipelineKernel (Command/Effect)
+      JsonFileStateStore (POSIX lock)
       _STATE.json (machine-readable)
       _TRANS.md (human-readable)
       DAG dependency solver

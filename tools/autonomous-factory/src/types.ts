@@ -1,12 +1,13 @@
 /**
  * types.ts — Shared TypeScript interfaces for the orchestrator.
  *
- * These types mirror the runtime shapes produced by pipeline-state.mjs
- * and are used by state.ts, agents.ts, and watchdog.ts.
+ * These types mirror the runtime shapes produced by the JsonFileStateStore
+ * adapter (src/adapters/json-file-state-store.ts) and consumed by the
+ * kernel, loop, and handlers.
  */
 
 // ---------------------------------------------------------------------------
-// Reset operation keys — shared protocol between pipeline-state.mjs and TS
+// Reset operation keys — shared protocol between the state adapter and kernel
 // ---------------------------------------------------------------------------
 
 /**
