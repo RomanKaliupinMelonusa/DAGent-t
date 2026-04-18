@@ -67,7 +67,11 @@ export function buildShellTool(
       for (const [key, value] of Object.entries(args.env_vars || {})) {
         safeEnvVars[key] = String(value);
       }
-      const env = { ...process.env, ...safeEnvVars };
+      // INSIDE_COPILOT_SESSION marks every shell invocation that originates
+      // from an in-pipeline agent. The pipeline-state CLI uses it to emit
+      // deprecation warnings when an agent calls a state-mutating verb that
+      // should be replaced by the `report_outcome` SDK tool (Phase A).
+      const env = { ...process.env, INSIDE_COPILOT_SESSION: "1", ...safeEnvVars };
 
       try {
         const stdout = execSync(args.command, {
@@ -98,7 +102,7 @@ export function buildShellTool(
             `${partialStdout}\n${partialStderr}\n\n` +
             `[SYSTEM ENFORCED: Command forcefully terminated after ${shellTimeoutMs / 1000}s ` +
             `to prevent hanging. Assess the partial output above. ` +
-            `DO NOT retry this exact command. Call pipeline:fail or pipeline:complete.]`
+            `DO NOT retry this exact command. Call \`report_outcome\` to report failure or completion.]`
           );
         }
         if (err && typeof err === "object" && "stderr" in err) {

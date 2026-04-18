@@ -300,6 +300,31 @@ const __isCLI = process.argv[1]?.endsWith("pipeline-state.mjs");
 if (__isCLI) {
 const [,, command, ...args] = process.argv;
 
+// Phase A.5 — Kernel-sole-writer migration.
+// State-mutating verbs invoked from inside an in-pipeline Copilot agent
+// session (detected via INSIDE_COPILOT_SESSION=1, set by the SDK shell tool
+// in src/harness/shell-tools.ts) emit a stderr deprecation warning. Agents
+// must use the `report_outcome` SDK tool instead. The verbs continue to
+// function so legacy automation and external CI keep working until A.6.
+const IN_SESSION_DEPRECATED = new Set([
+  "complete",
+  "fail",
+  "doc-note",
+  "set-url",
+  "set-note",
+  "handoff-artifact",
+]);
+function warnIfInSession(cmd) {
+  if (process.env.INSIDE_COPILOT_SESSION === "1" && IN_SESSION_DEPRECATED.has(cmd)) {
+    console.error(
+      `[DEPRECATED] 'pipeline-state.mjs ${cmd}' invoked from inside a Copilot ` +
+      `agent session. Use the 'report_outcome' SDK tool instead. ` +
+      `Bash invocation will be removed in Phase A.6.`,
+    );
+  }
+}
+warnIfInSession(command);
+
 switch (command) {
   case "init":
     cmdInit(args[0], args[1]);
