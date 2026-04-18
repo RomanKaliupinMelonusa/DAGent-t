@@ -13,7 +13,6 @@ import type { CopilotClient } from "@github/copilot-sdk";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm-types.js";
 import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
-import type { PreviousSummaryTotals } from "./reporting.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./handlers/types.js";
 import type { HookContext } from "./session/lifecycle-hooks.js";
 
@@ -66,6 +65,20 @@ export interface HandlerOutputBag {
   headAfterAttempt?: string;
   /** Extensible: handlers may emit arbitrary keys. */
   [key: string]: unknown;
+}
+
+/**
+ * Totals from a previous pipeline run, loaded from _SUMMARY-DATA.json.
+ * Used for monotonic metric accumulation across restarts.
+ */
+export interface PreviousSummaryTotals {
+  steps: number;
+  completed: number;
+  failed: number;
+  durationMs: number;
+  filesChanged: number;
+  tokens: number;
+  costUsd: number;
 }
 
 // ---------------------------------------------------------------------------

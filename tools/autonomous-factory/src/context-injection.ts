@@ -1,6 +1,13 @@
 /**
  * context-injection.ts — Backward-compatible re-exports + non-failure utilities.
  *
+ * @deprecated `computeEffectiveDevAttempts` is superseded by
+ * `kernel/types.ts` RunState.attemptCounts + domain/cycle-counter.ts.
+ * `writeChangeManifest` is retained (not yet migrated to an adapter).
+ * Failure-related re-exports are consumed by handlers in both paths.
+ * Remove this file once KERNEL_MODE becomes the sole execution path
+ * and writeChangeManifest is migrated.
+ *
  * Failure-related context builders have been migrated to `triage/context-builder.ts`.
  * This module re-exports them for backward compatibility and retains:
  *   - `computeEffectiveDevAttempts` — attempt count computation (kernel utility)

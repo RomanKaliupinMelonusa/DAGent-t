@@ -1,46 +1,46 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-17T22:03:42.251Z",
+  "compiledAt": "2026-04-18T02:36:18.097Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock backend developer for Python service\"\n---\n# Backend Developer (Mock)\n"
     },
     "backend-unit-test": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n"
     },
     "push-app": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock push code agent\"\n---\n# Push Code (Mock)\n"
     },
     "poll-app-ci": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock CI polling agent\"\n---\n# Poll CI (Mock)\n"
     },
     "integration-test": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n"
     },
     "publish-pr": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
-      "tokenCount": 47,
+      "tokenCount": 39,
       "mcp": {},
       "skills": {},
       "systemPromptTemplate": "---\ndescription: \"Mock publish PR agent\"\n---\n# Publish PR (Mock)\n"

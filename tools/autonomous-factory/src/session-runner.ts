@@ -1,6 +1,11 @@
 /**
  * session-runner.ts — Orchestration kernel for individual pipeline items.
  *
+ * @deprecated Superseded by `dispatch/` (item-dispatch, batch-dispatcher,
+ * result-translator) and `loop/pipeline-loop.ts`. Retained for the legacy
+ * watchdog.ts path (active when KERNEL_MODE is not set).
+ * Remove this file once KERNEL_MODE becomes the sole execution path.
+ *
  * This module is the thin dispatcher that routes each DAG step to a
  * registered NodeHandler via the handler plugin system. All heavyweight
  * logic lives in handler implementations under `handlers/`:

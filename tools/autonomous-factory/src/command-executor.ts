@@ -1,6 +1,11 @@
 /**
  * command-executor.ts — Generic kernel command executor.
  *
+ * @deprecated Superseded by `kernel/pipeline-kernel.ts` which processes
+ * DagCommands via the Command union and produces Effects. Retained for the
+ * legacy session-runner.ts path (active when KERNEL_MODE is not set).
+ * Remove this file once KERNEL_MODE becomes the sole execution path.
+ *
  * Translates declarative DagCommands (returned by any handler) into state API
  * calls. This is the sole authority for handler-initiated graph mutations.
  *

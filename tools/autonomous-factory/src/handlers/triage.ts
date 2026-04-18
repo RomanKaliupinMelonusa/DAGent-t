@@ -32,7 +32,7 @@ import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/shared.js";
 import { getStatus } from "../state.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
-import { computeEffectiveDevAttempts } from "../context-injection.js";
+import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption

@@ -157,15 +157,8 @@ export function buildCostAnalysisLines(
 // ---------------------------------------------------------------------------
 
 /** Totals parsed from a previous session's _SUMMARY.md Overview table */
-export interface PreviousSummaryTotals {
-  steps: number;
-  completed: number;
-  failed: number;
-  durationMs: number;
-  filesChanged: number;
-  tokens: number;
-  costUsd: number;
-}
+import type { PreviousSummaryTotals } from "./kernel-types.js";
+export type { PreviousSummaryTotals } from "./kernel-types.js";
 
 /**
  * Load structured telemetry from a previous session's _SUMMARY-DATA.json sidecar.
@@ -609,5 +602,74 @@ export function writeTerminalLog(
     fs.writeFileSync(logPath, lines.join("\n"), "utf-8");
   } catch {
     console.error("  ⚠ Could not write terminal log file");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Change manifest (migrated from context-injection.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Write the change manifest JSON for the docs-expert agent.
+ * Contains a structured summary of all completed steps, files changed,
+ * and per-item docNotes (written by dev agents via pipeline:doc-note).
+ */
+export async function writeChangeManifest(
+  slug: string,
+  appRoot: string,
+  repoRoot: string,
+  pipelineSummaries: readonly ItemSummary[],
+  readStateFn: (slug: string) => Promise<{ items: Array<{ key: string; docNote?: string | null }> }>,
+): Promise<void> {
+  const manifestPath = path.join(appRoot, "in-progress", `${slug}_CHANGES.json`);
+  let stateItems: Array<{ key: string; docNote?: string | null }> = [];
+  try {
+    const currentState = await readStateFn(slug);
+    stateItems = currentState.items;
+  } catch { /* best effort — manifest still useful without docNotes */ }
+  let allFilesChanged: string[] = [];
+  try {
+    const baseBranch = process.env.BASE_BRANCH || "main";
+    if (!/^[\w.\-/]+$/.test(baseBranch)) {
+      throw new Error(`Invalid BASE_BRANCH value: ${baseBranch}`);
+    }
+    const mergeBase = execSync(`git merge-base origin/${baseBranch} HEAD`, {
+      cwd: repoRoot, encoding: "utf-8",
+    }).trim();
+
+    const diff = execSync(`git diff --name-only ${mergeBase}..HEAD`, {
+      cwd: repoRoot, encoding: "utf-8",
+    }).trim();
+
+    if (diff) {
+      allFilesChanged = diff.split("\n").filter(f => !f.includes("in-progress/"));
+    }
+  } catch {
+    console.warn("  ⚠ Could not compute full git diff for _CHANGES.json. Falling back to session memory.");
+    allFilesChanged = [...new Set(pipelineSummaries.flatMap((s) => s.filesChanged))];
+  }
+  const manifest = {
+    feature: slug,
+    stepsCompleted: pipelineSummaries
+      .filter((s) => s.outcome === "completed")
+      .map((s) => {
+        const stateItem = stateItems.find((i) => i.key === s.key);
+        return {
+          key: s.key,
+          agent: s.agent,
+          filesChanged: s.filesChanged,
+          docNote: stateItem?.docNote ?? null,
+        };
+      }),
+    allFilesChanged,
+    summaryIntents: pipelineSummaries
+      .filter((s) => s.outcome === "completed")
+      .flatMap((s) => s.intents),
+  };
+  try {
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+    console.log(`  📋 Change manifest written to ${path.relative(repoRoot, manifestPath)}`);
+  } catch {
+    console.warn("  ⚠ Could not write change manifest — docs-expert will use git diff");
   }
 }

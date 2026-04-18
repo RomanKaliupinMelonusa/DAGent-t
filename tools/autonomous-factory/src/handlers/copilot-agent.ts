@@ -20,15 +20,12 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { approveAll } from "@github/copilot-sdk";
 import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
-import { getStatus } from "../state.js";
+import { getStatus, readState } from "../state.js";
 import { getAgentConfig, buildTaskPrompt } from "../agents.js";
 import type { AgentContext } from "../agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { getAgentDirectoryPrefixes } from "../session/shared.js";
-import { writeFlightData } from "../reporting.js";
-import {
-  writeChangeManifest,
-} from "../context-injection.js";
+import { writeFlightData, writeChangeManifest } from "../reporting.js";
 import {
   buildSessionHooks,
   buildCustomTools,
@@ -261,7 +258,7 @@ const copilotAgentHandler: NodeHandler = {
 
     // Write change manifest (manifest-driven)
     if (node?.generates_change_manifest) {
-      await writeChangeManifest(slug, appRoot, repoRoot, pipelineSummaries as ItemSummary[]);
+      await writeChangeManifest(slug, appRoot, repoRoot, pipelineSummaries as ItemSummary[], readState);
     }
 
     // --- Send prompt and wait ---

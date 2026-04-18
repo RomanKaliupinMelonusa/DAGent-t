@@ -405,3 +405,33 @@ export function composeTriageContext(opts: {
 
   return parts.join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Effective attempt counter (migrated from context-injection.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the effective attempt count for items that track persisted cycles.
+ * Combines in-memory attemptCounts (resets on orchestrator restart) with
+ * persisted redevelopment cycle count from state (survives restarts).
+ *
+ * When `allowsRevertBypass` is true, persisted cycles are factored in.
+ * Otherwise returns inMemoryAttempts.
+ */
+export async function computeEffectiveDevAttempts(
+  itemKey: string,
+  inMemoryAttempts: number,
+  slug: string,
+  allowsRevertBypass?: boolean,
+): Promise<number> {
+  if (!allowsRevertBypass) return inMemoryAttempts;
+  try {
+    const pipeState = await readState(slug);
+    const persistedCycles = pipeState.errorLog.filter(
+      (e) => (REDEVELOPMENT_RESET_OPS as readonly string[]).includes(e.itemKey),
+    ).length;
+    return Math.max(inMemoryAttempts, persistedCycles);
+  } catch {
+    return inMemoryAttempts;
+  }
+}
