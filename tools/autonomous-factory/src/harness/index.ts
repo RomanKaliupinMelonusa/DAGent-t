@@ -7,7 +7,7 @@
  */
 
 import type { Tool } from "@github/copilot-sdk";
-import type { AgentSandbox } from "../agent-sandbox.js";
+import type { AgentSandbox } from "../harness/sandbox.js";
 import {
   type ResolvedHarnessLimits,
   defaultHarnessLimits,

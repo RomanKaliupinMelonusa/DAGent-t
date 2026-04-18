@@ -12,7 +12,7 @@ import type { PipelineRunConfig } from "./kernel-types.js";
 import type { ApmCompiledOutput } from "./apm/types.js";
 import { ApmCompileError, ApmBudgetExceededError } from "./apm/types.js";
 import { BootstrapError } from "./errors.js";
-import { createFeatureBranch } from "./git-ops.js";
+import { createFeatureBranch } from "./adapters/git-ops.js";
 import { loadApmContext } from "./apm/context-loader.js";
 import { runResolveEnvironment } from "./lifecycle/hooks.js";
 // Bootstrap runs at the composition root level — it legitimately owns the

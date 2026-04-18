@@ -24,7 +24,7 @@ import {
   buildSessionHooks,
   type ResolvedHarnessLimits,
 } from "../harness/index.js";
-import type { AgentSandbox } from "../agent-sandbox.js";
+import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
 import {

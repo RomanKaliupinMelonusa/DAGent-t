@@ -12,7 +12,7 @@
  * A tool call flows through exactly one path — never both.
  */
 
-import type { AgentSandbox } from "../agent-sandbox.js";
+import type { AgentSandbox } from "../harness/sandbox.js";
 import type {
   SessionHooks,
   PreToolUseHookOutput,

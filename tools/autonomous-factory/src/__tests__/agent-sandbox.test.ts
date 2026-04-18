@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAgentSandbox } from "../agent-sandbox.js";
+import { resolveAgentSandbox } from "../harness/sandbox.js";
 import type { ApmCompiledOutput } from "../apm/types.js";
 
 function makeContext(overrides?: Partial<ApmCompiledOutput>): ApmCompiledOutput {

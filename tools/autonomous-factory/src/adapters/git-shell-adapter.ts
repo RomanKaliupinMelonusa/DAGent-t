@@ -11,7 +11,7 @@ import {
   getCurrentBranch,
   syncBranch,
   pushWithRetry,
-} from "../git-ops.js";
+} from "./git-ops.js";
 import type { PipelineLogger } from "../logger.js";
 
 export class GitShellAdapter implements VersionControl {

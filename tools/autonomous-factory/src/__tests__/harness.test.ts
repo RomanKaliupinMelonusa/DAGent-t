@@ -58,7 +58,7 @@ const NO_MCP_PREFIXES = new Set<string>();
 const PLAYWRIGHT_PREFIX = new Set(["playwright-"]);
 
 /** Default sandbox for migration-mode tests (all writes allowed, no restrictions) */
-import type { AgentSandbox } from "../agent-sandbox.js";
+import type { AgentSandbox } from "../harness/sandbox.js";
 const GLOBAL_SANDBOX: AgentSandbox = {
   allowedWritePaths: GLOBAL_PATHS,
   blockedCommandRegexes: NO_CMD_BLOCK,

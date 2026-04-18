@@ -7,7 +7,7 @@
  */
 
 import type { NodeContext } from "../types.js";
-import type { AgentSandbox } from "../../agent-sandbox.js";
+import type { AgentSandbox } from "../../harness/sandbox.js";
 import type { ResolvedHarnessLimits } from "../../harness/index.js";
 import {
   DEFAULT_FILE_READ_LINE_LIMIT,
@@ -16,7 +16,7 @@ import {
   DEFAULT_SHELL_TIMEOUT_MS,
   buildCustomTools,
 } from "../../harness/index.js";
-import { resolveAgentSandbox } from "../../agent-sandbox.js";
+import { resolveAgentSandbox } from "../../harness/sandbox.js";
 import {
   TOOL_LIMIT_FALLBACK_SOFT,
   TOOL_LIMIT_FALLBACK_HARD,

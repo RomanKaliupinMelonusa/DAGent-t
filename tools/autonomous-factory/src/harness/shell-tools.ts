@@ -9,7 +9,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { defineTool } from "@github/copilot-sdk";
 import type { Tool } from "@github/copilot-sdk";
-import type { AgentSandbox } from "../agent-sandbox.js";
+import type { AgentSandbox } from "../harness/sandbox.js";
 import {
   type ResolvedHarnessLimits,
   defaultHarnessLimits,
