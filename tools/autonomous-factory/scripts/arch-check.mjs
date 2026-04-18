@@ -162,5 +162,67 @@ if (violations > 0) {
   process.exit(1);
 }
 
-console.log(`arch-check: clean (${allowedHits} known-debt entr(ies) still active).`);
+// ─── APM prompt guard (Phase A.6) ───────────────────────────────────────────
+// Forbid agent-facing prompts from invoking state-mutating CLI verbs.
+// All such calls must use the `report_outcome` SDK tool. The deliberate
+// deprecation warning in safety-rules.md is the sole exception.
+const APM_FORBIDDEN_RE = /npm\s+run\s+pipeline:(complete|fail|doc-note|set-url|set-note|handoff-artifact)\b/;
+const APM_ALLOWLIST = new Set([
+  "apps/sample-app/.apm/instructions/always/safety-rules.md",
+]);
+
+function collectMdFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      if (entry === "node_modules" || entry === ".compiled") continue;
+      out.push(...collectMdFiles(full));
+    } else if (entry.endsWith(".md")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+const REPO_ROOT = join(ROOT, "..", "..");
+const APM_ROOTS = [
+  join(REPO_ROOT, "apps", "sample-app", ".apm"),
+  join(REPO_ROOT, "apps", "commerce-storefront", ".apm"),
+];
+
+let apmViolations = 0;
+const apmAllowlistHit = new Set();
+for (const apmRoot of APM_ROOTS) {
+  for (const file of collectMdFiles(apmRoot)) {
+    const rel = relative(REPO_ROOT, file);
+    const source = readFileSync(file, "utf-8");
+    if (!APM_FORBIDDEN_RE.test(source)) continue;
+    if (APM_ALLOWLIST.has(rel)) {
+      apmAllowlistHit.add(rel);
+      continue;
+    }
+    const lineNo = source.slice(0, source.search(APM_FORBIDDEN_RE)).split("\n").length;
+    console.error(`✗ [apm-prompts] ${rel}:${lineNo}`);
+    console.error(`    forbidden: state-mutating 'npm run pipeline:*' verb`);
+    console.error(`    fix:       use the 'report_outcome' SDK tool instead`);
+    apmViolations++;
+  }
+}
+if (apmViolations > 0) {
+  console.error(`\narch-check: ${apmViolations} APM prompt violation(s) found.`);
+  process.exit(1);
+}
+
+console.log(
+  `arch-check: clean (${allowedHits} known-debt entr(ies) still active, ` +
+    `${apmAllowlistHit.size} APM allowlist match(es)).`,
+);
 
