@@ -11,8 +11,8 @@ import type {
   PipelineRunState,
   SessionOutcome,
   TriageActivation,
-} from "../kernel-types.js";
-import { writeFlightData } from "../reporting.js";
+} from "../app-types.js";
+import { writeFlightData } from "../reporting/index.js";
 
 // ---------------------------------------------------------------------------
 // Report flushing

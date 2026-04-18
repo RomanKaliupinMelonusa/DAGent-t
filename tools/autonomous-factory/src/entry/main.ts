@@ -15,23 +15,23 @@
  */
 
 import { CopilotClient } from "@github/copilot-sdk";
-import type { PipelineRunConfig } from "./kernel-types.js";
-import type { ApmWorkflowNode } from "./apm/types.js";
-import type { AvailableItem } from "./kernel-types.js";
-import type { NodeHandler } from "./handlers/types.js";
-import type { PipelineState } from "./types.js";
-import { PipelineKernel } from "./kernel/pipeline-kernel.js";
-import { DefaultKernelRules } from "./kernel/rules.js";
-import { createRunState } from "./kernel/types.js";
-import { JsonlTelemetry } from "./adapters/jsonl-telemetry.js";
-import { JsonFileStateStore } from "./adapters/json-file-state-store.js";
-import { GitShellAdapter } from "./adapters/git-shell-adapter.js";
-import { LocalFilesystem } from "./adapters/local-filesystem.js";
-import { NodeShellAdapter } from "./adapters/node-shell-adapter.js";
-import { NodeCopilotSessionRunner } from "./adapters/copilot-session-runner.js";
-import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "./loop/pipeline-loop.js";
-import { resolveHandler, inferHandler } from "./handlers/registry.js";
-import { getWorkflowNode } from "./session/dag-utils.js";
+import type { PipelineRunConfig } from "../app-types.js";
+import type { ApmWorkflowNode } from "../apm/types.js";
+import type { AvailableItem } from "../app-types.js";
+import type { NodeHandler } from "../handlers/types.js";
+import type { PipelineState } from "../types.js";
+import { PipelineKernel } from "../kernel/pipeline-kernel.js";
+import { DefaultKernelRules } from "../kernel/rules.js";
+import { createRunState } from "../kernel/types.js";
+import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
+import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
+import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
+import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
+import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
+import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
+import { resolveHandler, inferHandler } from "../handlers/registry.js";
+import { getWorkflowNode } from "../session/dag-utils.js";
 
 // ---------------------------------------------------------------------------
 // HandlerResolver adapter — wraps the existing handler registry

@@ -5,7 +5,7 @@
  * Moved from watchdog.ts — already a pure function.
  */
 
-/** Minimal outcome shape. Mirrors kernel-types SessionOutcome. */
+/** Minimal outcome shape. Mirrors app-types SessionOutcome. */
 export type BatchOutcome =
   | { readonly kind: "continue" }
   | { readonly kind: "halt" }

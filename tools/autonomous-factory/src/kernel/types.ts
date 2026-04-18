@@ -1,16 +1,16 @@
 /**
  * kernel/types.ts — Core kernel types for the Command-Sourced Pipeline Kernel.
  *
- * Replaces the mutable PipelineRunState from kernel-types.ts with an
+ * Replaces the mutable PipelineRunState from app-types.ts with an
  * immutable snapshot model. The kernel owns the only mutable copy;
  * consumers receive frozen snapshots.
  *
  * Pure types only — zero executable code.
  */
 
-import type { PreviousSummaryTotals } from "../kernel-types.js";
+import type { PreviousSummaryTotals } from "../app-types.js";
 import type { ItemSummary } from "../types.js";
-import type { HandlerOutputBag } from "../kernel-types.js";
+import type { HandlerOutputBag } from "../app-types.js";
 
 // ---------------------------------------------------------------------------
 // RunState — replaces mutable PipelineRunState

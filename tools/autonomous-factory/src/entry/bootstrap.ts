@@ -8,19 +8,19 @@
 
 import path from "node:path";
 import type { CliArgs } from "./cli.js";
-import type { PipelineRunConfig } from "./kernel-types.js";
-import type { ApmCompiledOutput } from "./apm/types.js";
-import { ApmCompileError, ApmBudgetExceededError } from "./apm/types.js";
-import { BootstrapError } from "./errors.js";
-import { createFeatureBranch } from "./adapters/git-ops.js";
-import { loadApmContext } from "./apm/context-loader.js";
-import { runResolveEnvironment } from "./lifecycle/hooks.js";
+import type { PipelineRunConfig } from "../app-types.js";
+import type { ApmCompiledOutput } from "../apm/types.js";
+import { ApmCompileError, ApmBudgetExceededError } from "../apm/types.js";
+import { BootstrapError } from "../errors.js";
+import { createFeatureBranch } from "../adapters/git-ops.js";
+import { loadApmContext } from "../apm/context-loader.js";
+import { runResolveEnvironment } from "../lifecycle/hooks.js";
 // Bootstrap runs at the composition root level — it legitimately owns the
 // entry-time read of persisted state. Importing the file-state I/O helpers
 // directly keeps the dependency explicit without threading the StateStore
 // port through preflight checks.
-import type { PipelineState } from "./types.js";
-import { readStateOrThrow } from "./adapters/file-state/io.js";
+import type { PipelineState } from "../types.js";
+import { readStateOrThrow } from "../adapters/file-state/io.js";
 import {
   checkJunkFiles,
   checkInProgressArtifacts,
@@ -28,10 +28,10 @@ import {
   checkGitHubLogin,
   checkStateContextDrift,
   buildRoamIndex,
-} from "./lifecycle/preflight.js";
-import { loadPreviousSummary, setModelPricing } from "./reporting.js";
-import type { PreviousSummaryTotals } from "./reporting.js";
-import { createPipelineLogger } from "./logger.js";
+} from "../lifecycle/preflight.js";
+import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
+import type { PreviousSummaryTotals } from "../reporting/index.js";
+import { createPipelineLogger } from "../telemetry/index.js";
 
 // ---------------------------------------------------------------------------
 // Bootstrap result (extends PipelineRunConfig with boot-time extras)

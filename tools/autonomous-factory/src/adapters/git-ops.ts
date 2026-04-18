@@ -9,7 +9,7 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { GitError } from "../errors.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 
 // ---------------------------------------------------------------------------
 // Branch operations

@@ -8,7 +8,7 @@
  * Existing imports like `import { getWorkflowNode, finishItem } from "./session/shared.js"`
  * continue to work unchanged.
  *
- * Types are re-exported from kernel-types.ts (the single source of truth for
+ * Types are re-exported from app-types.ts (the single source of truth for
  * cross-boundary type definitions).
  */
 
@@ -31,7 +31,7 @@ export {
   finishItem,
 } from "./telemetry.js";
 
-// Re-export cross-boundary types from kernel-types (single source of truth)
+// Re-export cross-boundary types from app-types (single source of truth)
 export type {
   ResolvedCircuitBreaker,
   NodeBudgetPolicy,
@@ -40,4 +40,4 @@ export type {
   SessionOutcome,
   SessionResult,
   TriageActivation,
-} from "../kernel-types.js";
+} from "../app-types.js";

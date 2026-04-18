@@ -26,7 +26,7 @@ import type { PipelineState } from "../types.js";
 // the old CLI-backed `readState` would call process.exit mid-session.
 import { readStateOrThrow } from "../adapters/file-state/io.js";
 import { computeErrorSignature } from "./error-fingerprint.js";
-import { getHeadSha } from "../session/shared.js";
+import { getHeadSha } from "../session/dag-utils.js";
 
 // ---------------------------------------------------------------------------
 // Retry context (in-memory attempt > 1)

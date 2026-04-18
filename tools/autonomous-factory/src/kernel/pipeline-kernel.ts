@@ -11,7 +11,7 @@
  */
 
 import type { PipelineState } from "../types.js";
-import type { SchedulerResult, AvailableItem } from "../kernel-types.js";
+import type { SchedulerResult, AvailableItem } from "../app-types.js";
 import type { Command } from "./commands.js";
 import type { Effect } from "./effects.js";
 import type { CommandResult, RunState, createRunState } from "./types.js";
@@ -180,7 +180,7 @@ export class PipelineKernel {
 
   private processRecordHandlerOutput(
     itemKey: string,
-    output: import("../kernel-types.js").HandlerOutputBag,
+    output: import("../app-types.js").HandlerOutputBag,
     effects: Effect[],
   ): ProcessResult {
     this.runState = {

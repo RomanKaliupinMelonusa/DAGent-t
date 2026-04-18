@@ -21,7 +21,7 @@
 
 import { getAgentConfig, buildTaskPrompt } from "../apm/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { writeChangeManifest } from "../reporting.js";
+import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";

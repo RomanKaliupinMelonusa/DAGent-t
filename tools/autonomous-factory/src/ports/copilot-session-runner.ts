@@ -13,7 +13,7 @@ import type { CopilotClient } from "@github/copilot-sdk";
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ResolvedHarnessLimits } from "../harness/index.js";
 import type { ItemSummary } from "../types.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 import type { ReportedOutcome } from "../harness/outcome-tool.js";
 
 export interface CopilotSessionParams {

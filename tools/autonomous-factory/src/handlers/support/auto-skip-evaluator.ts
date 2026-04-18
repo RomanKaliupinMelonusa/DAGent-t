@@ -14,7 +14,7 @@ import path from "node:path";
 import type { ApmCompiledOutput } from "../../apm/types.js";
 import type { SkipResult } from "../types.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../../lifecycle/auto-skip.js";
-import { findUpstreamKeysByCategory } from "../../session/shared.js";
+import { findUpstreamKeysByCategory } from "../../session/dag-utils.js";
 
 // ---------------------------------------------------------------------------
 // Return type

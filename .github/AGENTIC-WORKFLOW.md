@@ -25,7 +25,7 @@
 
 ## Overview
 
-This project uses a **DAG-based feature-branch pipeline** for autonomous feature implementation. A deterministic TypeScript orchestrator (`tools/autonomous-factory/src/watchdog.ts` + supporting modules) drives the pipeline — reading state, spinning up `@github/copilot-sdk` sessions per specialist task, and advancing through phases until the feature is complete. Independent items within each phase run in parallel.
+This project uses a **DAG-based feature-branch pipeline** for autonomous feature implementation. A deterministic TypeScript orchestrator (`tools/autonomous-factory/src/entry/watchdog.ts` + supporting modules) drives the pipeline — reading state, spinning up `@github/copilot-sdk` sessions per specialist task, and advancing through phases until the feature is complete. Independent items within each phase run in parallel.
 
 **Key design principles:**
 

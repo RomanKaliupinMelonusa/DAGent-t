@@ -12,7 +12,7 @@ import {
   syncBranch,
   pushWithRetry,
 } from "./git-ops.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 
 export class GitShellAdapter implements VersionControl {
   private readonly repoRoot: string;

@@ -5,9 +5,9 @@
  */
 
 import type { Telemetry, EventContext } from "../ports/telemetry.js";
-import type { PipelineLogger } from "../logger.js";
-import type { PreviousSummaryTotals } from "../kernel-types.js";
-import { loadPreviousSummary as loadSummary } from "../reporting.js";
+import type { PipelineLogger } from "../telemetry/index.js";
+import type { PreviousSummaryTotals } from "../app-types.js";
+import { loadPreviousSummary as loadSummary } from "../reporting/index.js";
 
 export class JsonlTelemetry implements Telemetry {
   private readonly logger: PipelineLogger;

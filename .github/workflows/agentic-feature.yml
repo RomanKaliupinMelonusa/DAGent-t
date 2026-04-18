@@ -9,7 +9,7 @@
 #   2. GitHub Secret: COPILOT_PAT (PAT with copilot scope for SDK auth)
 #
 # References:
-#   - tools/autonomous-factory/src/watchdog.ts
+#   - tools/autonomous-factory/src/entry/watchdog.ts
 # =============================================================================
 
 name: Agentic Feature Pipeline

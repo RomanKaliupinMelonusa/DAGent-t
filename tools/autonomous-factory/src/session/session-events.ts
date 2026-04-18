@@ -9,7 +9,7 @@
 
 import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 import { extractShellWrittenFiles } from "../harness/index.js";
 import {
   SessionCircuitBreaker,

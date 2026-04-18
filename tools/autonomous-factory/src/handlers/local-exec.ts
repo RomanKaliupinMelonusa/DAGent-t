@@ -13,7 +13,7 @@
 
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ShellExecError } from "../ports/shell.js";
-import { getWorkflowNode } from "../session/shared.js";
+import { getWorkflowNode } from "../session/dag-utils.js";
 // Script output condensation lives in the `result-processor` middleware —
 // handlers return raw output and the middleware chain sanitizes on failure.
 

@@ -5,7 +5,7 @@
  * The production adapter is the existing PipelineLogger from logger.ts.
  */
 
-import type { PreviousSummaryTotals } from "../kernel-types.js";
+import type { PreviousSummaryTotals } from "../app-types.js";
 
 /**
  * Structured event context — mirrors PipelineLogger.event() payload.

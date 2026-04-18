@@ -20,11 +20,11 @@ import {
 } from "../harness/index.js";
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events.js";
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
 import { isFatalSdkError } from "../domain/error-classification.js";
-import { writeFlightData } from "../reporting.js";
+import { writeFlightData } from "../reporting/index.js";
 
 // ---------------------------------------------------------------------------
 // Public types

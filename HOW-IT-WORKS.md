@@ -23,7 +23,7 @@ graph LR
 
 That's the whole system. Everything below zooms deeper into each part.
 
-> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/watchdog.ts) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). The dispatch kernel lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts), routing items to handler plugins in [handlers/](tools/autonomous-factory/src/handlers/).
+> **Key files at this level:** The loop lives in [watchdog.ts](tools/autonomous-factory/src/entry/watchdog.ts) (`while (true)`). State lives in [pipeline-state.mjs](tools/autonomous-factory/pipeline-state.mjs). The dispatch kernel lives in [session-runner.ts](tools/autonomous-factory/src/session-runner.ts), routing items to handler plugins in [handlers/](tools/autonomous-factory/src/handlers/).
 
 ---
 
@@ -354,11 +354,11 @@ Everything else enters `runAgentSession`, which:
 > - Auto-skip: `tryAutoSkip()` — [session-runner.ts#L511](tools/autonomous-factory/src/session-runner.ts#L511)
 > - Deterministic bypasses: `runPushCode()` — [session-runner.ts#L660](tools/autonomous-factory/src/session-runner.ts#L660), `runPollCi()` — [session-runner.ts#L728](tools/autonomous-factory/src/session-runner.ts#L728)
 > - Report flush: `flushReports()` — [session-runner.ts#L1564](tools/autonomous-factory/src/session-runner.ts#L1564)
-> - Report writer: `writePipelineSummary()` — [reporting.ts#L247](tools/autonomous-factory/src/reporting.ts#L247)
-> - Telemetry type: `PreviousSummaryTotals` — [reporting.ts#L185](tools/autonomous-factory/src/reporting.ts#L185)
+> - Report writer: `writePipelineSummary()` — [reporting.ts#L247](tools/autonomous-factory/src/reporting/)
+> - Telemetry type: `PreviousSummaryTotals` — [reporting.ts#L185](tools/autonomous-factory/src/reporting/)
 > - Auto-skip helpers: [auto-skip.ts](tools/autonomous-factory/src/auto-skip.ts) — `getMergeBase()` [L12](tools/autonomous-factory/src/auto-skip.ts#L12), `getAutoSkipBaseRef()` [L26](tools/autonomous-factory/src/auto-skip.ts#L26), `getGitChangedFiles()` [L46](tools/autonomous-factory/src/auto-skip.ts#L46)
-> - State commit after batch: `commitAndPushState()` — [watchdog.ts#L219](tools/autonomous-factory/src/watchdog.ts#L219) — includes a **push guard** that defers push when unpushed code commits exist (prevents premature deploy-workflow triggers)
-> - Feature archiving: `archiveFeatureFiles()` — [watchdog.ts#L114](tools/autonomous-factory/src/watchdog.ts#L114)
+> - State commit after batch: `commitAndPushState()` — [watchdog.ts#L219](tools/autonomous-factory/src/entry/watchdog.ts#L219) — includes a **push guard** that defers push when unpushed code commits exist (prevents premature deploy-workflow triggers)
+> - Feature archiving: `archiveFeatureFiles()` — [watchdog.ts#L114](tools/autonomous-factory/src/entry/watchdog.ts#L114)
 
 ---
 
@@ -421,12 +421,12 @@ The same `pipelineSummaries[]` array that produces reports also drives the self-
 > - Shell write detection: `SHELL_WRITE_PATTERNS` — [session-runner.ts#L66](tools/autonomous-factory/src/session-runner.ts#L66), `extractShellWrittenFiles()` — [session-runner.ts#L82](tools/autonomous-factory/src/session-runner.ts#L82)
 > - Tool categories: `TOOL_CATEGORIES` — [session-runner.ts#L139](tools/autonomous-factory/src/session-runner.ts#L139), `TOOL_LABELS` — [session-runner.ts#L126](tools/autonomous-factory/src/session-runner.ts#L126)
 > - Report flushing: `flushReports()` — [session-runner.ts#L1564](tools/autonomous-factory/src/session-runner.ts#L1564)
-> - Report writers — all in [reporting.ts](tools/autonomous-factory/src/reporting.ts):
->   - `writePipelineSummary()` — [L252](tools/autonomous-factory/src/reporting.ts#L252) → `_SUMMARY.md`
->   - `writeTerminalLog()` — [L418](tools/autonomous-factory/src/reporting.ts#L418) → `_TERMINAL-LOG.md`
->   - `writePlaywrightLog()` — [L143](tools/autonomous-factory/src/reporting.ts#L143) → `_PLAYWRIGHT-LOG.md`
-> - Boot-time telemetry parse: `parsePreviousSummary()` — [reporting.ts#L200](tools/autonomous-factory/src/reporting.ts#L200), `PreviousSummaryTotals` — [reporting.ts#L183](tools/autonomous-factory/src/reporting.ts#L183)
-> - Boot-time wiring: [watchdog.ts#L337](tools/autonomous-factory/src/watchdog.ts#L337)
+> - Report writers — all in [reporting.ts](tools/autonomous-factory/src/reporting/):
+>   - `writePipelineSummary()` — [L252](tools/autonomous-factory/src/reporting/) → `_SUMMARY.md`
+>   - `writeTerminalLog()` — [L418](tools/autonomous-factory/src/reporting/) → `_TERMINAL-LOG.md`
+>   - `writePlaywrightLog()` — [L143](tools/autonomous-factory/src/reporting/) → `_PLAYWRIGHT-LOG.md`
+> - Boot-time telemetry parse: `parsePreviousSummary()` — [reporting.ts#L200](tools/autonomous-factory/src/reporting/), `PreviousSummaryTotals` — [reporting.ts#L183](tools/autonomous-factory/src/reporting/)
+> - Boot-time wiring: [watchdog.ts#L337](tools/autonomous-factory/src/entry/watchdog.ts#L337)
 
 ---
 
@@ -437,13 +437,13 @@ The same `pipelineSummaries[]` array that produces reports also drives the self-
 | File | What it does |
 |---|---|
 | `tools/autonomous-factory/pipeline-state.mjs` | DAG definition, state mutations, `getNextAvailable()` |
-| `tools/autonomous-factory/src/watchdog.ts` | Main loop — spawn, wait, advance |
+| `tools/autonomous-factory/src/entry/watchdog.ts` | Main loop — spawn, wait, advance |
 | `tools/autonomous-factory/src/session-runner.ts` | Per-item lifecycle, circuit breakers, context injection orchestration |
 | `tools/autonomous-factory/src/agents.ts` | Prompt factory — `ITEM_ROUTING` map, all prompt builders |
 | `tools/autonomous-factory/src/apm-compiler.ts` | APM manifest → compiled rules + token validation |
 | `tools/autonomous-factory/src/context-injection.ts` | Retry/downstream/revert/infra prompt builders |
 | `tools/autonomous-factory/src/triage.ts` | Error triage → fault domain → item reset routing |
-| `tools/autonomous-factory/src/reporting.ts` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
+| `tools/autonomous-factory/src/reporting/` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
 | `tools/autonomous-factory/src/types.ts` | Shared interfaces: `ItemSummary`, `ShellEntry`, `PlaywrightLogEntry` |
 | `apps/sample-app/.apm/apm.yml` | Agent declarations, instruction refs, MCP servers, tool limits |
 

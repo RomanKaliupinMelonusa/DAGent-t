@@ -157,7 +157,7 @@ flowchart LR
 
     subgraph SUPPORT["Support"]
         PF["preflight.ts"]
-        RP["reporting.ts"]
+        RP["reporting/index.ts"]
         AS["auto-skip.ts"]
         AR["archive.ts"]
         HKS["hooks.ts"]

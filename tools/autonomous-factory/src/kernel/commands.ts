@@ -10,7 +10,7 @@
 
 import type { ItemSummary, TriageRecord, ExecutionRecord } from "../types.js";
 import type { DagCommand } from "../dag-commands.js";
-import type { HandlerOutputBag } from "../kernel-types.js";
+import type { HandlerOutputBag } from "../app-types.js";
 
 // ---------------------------------------------------------------------------
 // Command union

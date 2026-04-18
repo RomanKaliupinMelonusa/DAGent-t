@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { writePipelineSummary } from "../reporting.js";
+import { writePipelineSummary } from "../reporting/index.js";
 import type { ItemSummary } from "../types.js";
 
 // ---------------------------------------------------------------------------

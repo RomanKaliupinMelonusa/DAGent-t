@@ -18,9 +18,9 @@ import path from "node:path";
 import { CopilotClient } from "@github/copilot-sdk";
 import { parseCli } from "./cli.js";
 import { bootstrap } from "./bootstrap.js";
-import { FatalPipelineError } from "./errors.js";
+import { FatalPipelineError } from "../errors.js";
 import { runWithKernel } from "./main.js";
-import type { JsonlPipelineLogger } from "./logger.js";
+import type { JsonlPipelineLogger } from "../telemetry/index.js";
 
 // ---------------------------------------------------------------------------
 // SDK client lifecycle
@@ -52,7 +52,7 @@ async function stopClient(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const repoRoot = path.resolve(import.meta.dirname, "../../..");
+  const repoRoot = path.resolve(import.meta.dirname, "../../../..");
   const cli = parseCli(process.argv.slice(2), repoRoot);
   const { config } = await bootstrap(cli);
 

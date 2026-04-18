@@ -19,7 +19,7 @@
 
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState, ItemSummary } from "../types.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";

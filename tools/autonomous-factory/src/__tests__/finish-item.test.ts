@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { finishItem } from "../session/shared.js";
+import { finishItem } from "../session/telemetry.js";
 import type { ItemSummary } from "../types.js";
-import type { PipelineRunConfig, PipelineRunState } from "../kernel-types.js";
+import type { PipelineRunConfig, PipelineRunState } from "../app-types.js";
 
 function makeItemSummary(overrides?: Partial<ItemSummary>): ItemSummary {
   return {

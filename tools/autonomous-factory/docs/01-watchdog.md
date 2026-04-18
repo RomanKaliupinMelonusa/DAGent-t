@@ -1,9 +1,9 @@
 # Orchestrator — watchdog.ts & Pipeline Layers
 
 > The deterministic headless loop that drives the entire pipeline.
-> Thin entry: `tools/autonomous-factory/src/watchdog.ts`
-> Composition root: `tools/autonomous-factory/src/main.ts`
-> Bootstrap (preflight + APM compile + config): `tools/autonomous-factory/src/bootstrap.ts`
+> Thin entry: `tools/autonomous-factory/src/entry/watchdog.ts`
+> Composition root: `tools/autonomous-factory/src/entry/main.ts`
+> Bootstrap (preflight + APM compile + config): `tools/autonomous-factory/src/entry/bootstrap.ts`
 > Pipeline Kernel (Command/Effect, sole state owner): `tools/autonomous-factory/src/kernel/`
 > Pure domain (DAG math, transitions, scheduling): `tools/autonomous-factory/src/domain/`
 > Ports / adapters: `tools/autonomous-factory/src/ports/` · `tools/autonomous-factory/src/adapters/`
@@ -11,7 +11,7 @@
 > Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, barrier, triage-handler)
 > Handler support helpers: `tools/autonomous-factory/src/handlers/support/` (agent-context, agent-limits, agent-post-session)
 > Harness: `tools/autonomous-factory/src/harness/` (RBAC, circuit breaker, tool wiring)
-> Supporting modules: `preflight.ts`, `reporting.ts`, `auto-skip.ts`, `hooks.ts`, `archive.ts`
+> Supporting modules: `preflight.ts`, `reporting/index.ts`, `auto-skip.ts`, `hooks.ts`, `archive.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 > **Note (2026-04):** The orchestrator has been refactored into a hexagonal / Command-Sourced Kernel architecture. `watchdog.ts` is now a thin entry that delegates to `main.ts` (composition root), which wires ports/adapters, the kernel, and the reactive loop. The legacy `session-runner.ts` monolith has been replaced by `loop/pipeline-loop.ts` + `dispatch/` + `handlers/`. Layering is enforced by `npm run arch:check`.
@@ -310,14 +310,14 @@ classDiagram
 | `handleCiPoll()` | handlers/github-ci-poll.ts | Poll GitHub CI status via `poll-ci.sh` | Handler registry |
 | `handleTriage()` | handlers/triage-handler.ts | Multi-tier fault classification and redevelopment reroute (renamed from `handlers/triage.ts` on 2026-04-18) | `runPipelineLoop()` |
 | `resolveHandler()` / `inferHandler()` | handlers/registry.ts | Look up / infer a handler by name or by node `type` + `script_type` | `dispatchItem()` |
-| `shouldSkipRetry()` | session/shared.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` to detect semantically identical errors across retries | `dispatchItem()` |
-| `normalizeDiagnosticTrace()` | session/shared.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces | `shouldSkipRetry()` |
-| `getAgentDirectoryPrefixes()` | session/shared.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution | Post-session `filesChanged` fallback |
-| `getTimeout()` | session/shared.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in `workflows.yml`) | Copilot agent handler |
+| `shouldSkipRetry()` | session/dag-utils.ts | Circuit breaker — normalizes diagnostic traces via `normalizeDiagnosticTrace()` to detect semantically identical errors across retries | `dispatchItem()` |
+| `normalizeDiagnosticTrace()` | session/dag-utils.ts | Strip dynamic metadata (SHAs, timestamps, run IDs) from diagnostic traces | `shouldSkipRetry()` |
+| `getAgentDirectoryPrefixes()` | session/dag-utils.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution | Post-session `filesChanged` fallback |
+| `getTimeout()` | session/dag-utils.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in `workflows.yml`) | Copilot agent handler |
 | `wireToolLogging()` | harness/ | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | Copilot agent handler |
 | `checkJunkFiles()` / `checkApimRoutes()` / `checkInProgressArtifacts()` / `checkPreflightAuth()` / `buildRoamIndex()` | preflight.ts | Pre-flight guards and Phase 0 semantic graph build | `bootstrap()` |
 | `getAutoSkipBaseRef()` / `getGitChangedFiles()` | auto-skip.ts | Git-diff change detection for the auto-skip optimization | `dispatchItem()` |
-| `writePipelineSummary()` / `writeTerminalLog()` / `writePlaywrightLog()` / `parsePreviousSummary()` | reporting.ts | Generate/merge `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` | `runPipelineLoop()` / Copilot agent handler |
+| `writePipelineSummary()` / `writeTerminalLog()` / `writePlaywrightLog()` / `parsePreviousSummary()` | reporting/index.ts | Generate/merge `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` | `runPipelineLoop()` / Copilot agent handler |
 | `triageFailure()` | handlers/triage-handler.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router) | `runPipelineLoop()` on downstream failure |
 | `validateFaultDomain()` | handlers/triage-handler.ts | Defense-in-Depth: detect CI/CD root-cause indicators and augment reset list with deploy items | `triageFailure()` Tier 1 |
 | `retrieveTopMatches()` | triage/retriever.ts | Local substring matcher against pre-compiled triage pack signatures (Tier 4) | `triageFailure()`, `validateFaultDomain()` |

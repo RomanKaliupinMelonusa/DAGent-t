@@ -10,7 +10,7 @@ import path from "node:path";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { TriageResult } from "../types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
-import type { PipelineLogger } from "../logger.js";
+import type { PipelineLogger } from "../telemetry/index.js";
 
 /** Context forwarded to a custom classifier in addition to the trace/profile. */
 export interface CustomClassifierContext {

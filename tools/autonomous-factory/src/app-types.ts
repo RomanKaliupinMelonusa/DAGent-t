@@ -1,5 +1,5 @@
 /**
- * kernel-types.ts — Cross-boundary type definitions for the orchestrator kernel.
+ * app-types.ts — App-wide cross-boundary type definitions.
  *
  * Houses all types that flow between the major orchestrator modules
  * (kernel, dispatch, handlers, loop). By centralizing these here we
@@ -10,7 +10,7 @@
 
 import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm/types.js";
 import type { NextAction, ItemSummary } from "./types.js";
-import type { PipelineLogger } from "./logger.js";
+import type { PipelineLogger } from "./telemetry/index.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline run — immutable config + mutable state

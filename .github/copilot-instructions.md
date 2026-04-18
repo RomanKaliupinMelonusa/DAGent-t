@@ -41,9 +41,9 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
-| SDK orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Composition root (kernel + adapters + loop) | `tools/autonomous-factory/src/main.ts` |
-| Bootstrap (preflight + APM compile + config) | `tools/autonomous-factory/src/bootstrap.ts` |
+| SDK orchestrator entry point | `tools/autonomous-factory/src/entry/watchdog.ts` |
+| Composition root (kernel + adapters + loop) | `tools/autonomous-factory/src/entry/main.ts` |
+| Bootstrap (preflight + APM compile + config) | `tools/autonomous-factory/src/entry/bootstrap.ts` |
 | Command-Sourced Pipeline Kernel | `tools/autonomous-factory/src/kernel/` |
 | Pure domain (DAG math, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
 | Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
@@ -58,7 +58,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
-| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
@@ -99,8 +99,8 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 
 | What | Where |
 |---|---|
-| Orchestrator entry point | `tools/autonomous-factory/src/watchdog.ts` |
-| Composition root | `tools/autonomous-factory/src/main.ts` |
+| Orchestrator entry point | `tools/autonomous-factory/src/entry/watchdog.ts` |
+| Composition root | `tools/autonomous-factory/src/entry/main.ts` |
 | Pipeline Kernel (sole state owner, Command/Effect) | `tools/autonomous-factory/src/kernel/` |
 | Pure domain functions (DAG, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
 | Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
@@ -115,7 +115,7 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
 | Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
 | Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
-| Pipeline reporting | `tools/autonomous-factory/src/reporting.ts` |
+| Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
 | Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
 | Feature archiving | `tools/autonomous-factory/src/archive.ts` |
 | State machine API binding | `tools/autonomous-factory/src/state.ts` |

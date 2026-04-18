@@ -92,7 +92,7 @@ npm run pipeline:doc-note <slug> <item-key> <note>
 
 ## 3. The Orchestrator Loop: How Agents Talk to the DAG
 
-Agents **never see the DAG**. The orchestrator (`tools/autonomous-factory/src/watchdog.ts`) is the sole mediator:
+Agents **never see the DAG**. The orchestrator (`tools/autonomous-factory/src/entry/watchdog.ts`) is the sole mediator:
 
 ```mermaid
 sequenceDiagram
@@ -790,7 +790,7 @@ graph TD
 | File | Role |
 |---|---|
 | `tools/autonomous-factory/pipeline-state.mjs` | DAG definition, state machine, all mutations |
-| `tools/autonomous-factory/src/watchdog.ts` | Main orchestrator loop |
+| `tools/autonomous-factory/src/entry/watchdog.ts` | Main orchestrator loop |
 | `tools/autonomous-factory/src/session-runner.ts` | Dispatch kernel — routes items to handler plugins |
 | `tools/autonomous-factory/src/handlers/` | Handler plugin system (copilot-agent, git-push, github-ci-poll, github-pr-publish, local-exec) |
 | `tools/autonomous-factory/src/session/` | Session submodules (shared, readiness-probe, triage-dispatcher, session-events, script-executor) |
@@ -800,7 +800,7 @@ graph TD
 | `tools/autonomous-factory/src/context-injection.ts` | Retry/downstream/revert prompt augmentation |
 | `tools/autonomous-factory/src/triage.ts` | Structured error triage and fault routing |
 | `tools/autonomous-factory/src/triage/` | Triage subsystem (retriever, llm-router, error-fingerprint) |
-| `tools/autonomous-factory/src/reporting.ts` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
+| `tools/autonomous-factory/src/reporting/` | Report writers: `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` |
 | `tools/autonomous-factory/src/archive.ts` | Feature file archiving logic |
 | `tools/autonomous-factory/src/types.ts` | Shared TypeScript interfaces (`ItemSummary`, `ShellEntry`, `PlaywrightLogEntry`) |
 | `tools/autonomous-factory/src/state.ts` | Thin async wrappers over `pipeline-state.mjs` |

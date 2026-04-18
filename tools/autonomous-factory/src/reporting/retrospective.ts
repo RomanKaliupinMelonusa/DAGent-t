@@ -19,9 +19,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { PipelineEvent, PipelineBlob } from "./logger.js";
-import { formatDuration, formatUsd, computeStepCost, outcomeIcon, buildCostAnalysisLines } from "./reporting.js";
-import type { ItemSummary } from "./types.js";
+import type { PipelineEvent, PipelineBlob } from "../telemetry/index.js";
+import { formatDuration, formatUsd, computeStepCost, outcomeIcon, buildCostAnalysisLines } from "./index.js";
+import type { ItemSummary } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // JSONL loader
