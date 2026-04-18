@@ -22,7 +22,7 @@ import {
   runPollWithRetries,
 } from "./transient-poll.js";
 import type { ApmCompiledOutput, CompiledTriageProfile } from "../apm-types.js";
-import type { PipelineRunConfig, PipelineRunState, SessionResult } from "../session-runner.js";
+import type { PipelineRunConfig, PipelineRunState, SessionOutcome } from "../kernel-types.js";
 import type { ItemSummary } from "../types.js";
 
 /** Resolve compiled triage profile for a workflow node. */
@@ -122,7 +122,7 @@ export async function runPushCode(
   state: PipelineRunState,
   itemSummary: ItemSummary,
   stepStart: number,
-): Promise<SessionResult> {
+): Promise<SessionOutcome> {
   const { slug, appRoot, repoRoot, baseBranch, apmContext } = config;
   const { pipelineSummaries } = state;
 
@@ -246,7 +246,7 @@ export async function runPollCi(
   pollTarget: string,
   ciWorkflowKey: string,
   postRunHook?: string,
-): Promise<SessionResult> {
+): Promise<SessionOutcome> {
   const { slug, appRoot, repoRoot } = config;
 
   const inProgressDir = path.join(appRoot, "in-progress");
@@ -299,8 +299,8 @@ export async function runPollCi(
           finishItem(itemSummary, "failed", stepStart, config, state, { errorMessage: failMsg, intents: ["App validation failed — blocking before post-deploy agents"] });
           const triageProfileApp = resolveTriageProfile(config.apmContext, config.workflowName, itemKey);
           // Note: triage routing now handled by the kernel via on_failure edges.
-          // This legacy path returns halt:true — the kernel will dispatch triage.
-          return { summary: itemSummary, halt: true, createPr: false };
+          // This legacy path returns halt — the kernel will dispatch triage.
+          return { kind: "halt", summary: itemSummary, error: failMsg } as const;
         }
       }
 
@@ -341,8 +341,8 @@ export async function runPollCi(
 
       const triageProfileCi = resolveTriageProfile(config.apmContext, config.workflowName, itemKey);
       // Note: triage routing now handled by the kernel via on_failure edges.
-      // This legacy path returns halt:true — the kernel will dispatch triage.
-      return { summary: itemSummary, halt: true, createPr: false };
+      // This legacy path returns halt — the kernel will dispatch triage.
+      return { kind: "halt", summary: itemSummary, error: failureContext } as const;
     }
   }
 }

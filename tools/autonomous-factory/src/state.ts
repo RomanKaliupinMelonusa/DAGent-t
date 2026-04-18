@@ -99,3 +99,36 @@ export const setPendingContext = stateProxy.setPendingContext;
 export const readState = stateProxy.readState;
 export const getDownstream = stateProxy.getDownstream;
 export const getUpstream = stateProxy.getUpstream;
+
+// ---------------------------------------------------------------------------
+// Typed scheduler adapter — eliminates sentinel detection from the main loop
+// ---------------------------------------------------------------------------
+
+import type { SchedulerResult } from "./kernel-types.js";
+
+/**
+ * DAG scheduler adapter. Wraps `getNextAvailable()` with a typed discriminated
+ * union so the main loop never sees `key === null` or string-compares on status.
+ */
+export async function getNextBatch(slug: string): Promise<SchedulerResult> {
+  const available = await getNextAvailable(slug);
+
+  // Sentinel: single entry with null key means pipeline is complete or blocked
+  if (available.length === 1 && !available[0].key) {
+    if (available[0].status === "blocked") {
+      return { kind: "blocked" };
+    }
+    return { kind: "complete" };
+  }
+
+  // Filter to items with actual keys (type narrowing)
+  const items = available.filter(
+    (item): item is typeof item & { key: string } => item.key !== null,
+  );
+
+  if (items.length === 0) {
+    return { kind: "complete" };
+  }
+
+  return { kind: "items", items };
+}

@@ -10,6 +10,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "./apm-types.js";
 import type { PipelineState } from "./types.js";
+import { StateError } from "./errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 
 /**
@@ -188,5 +189,5 @@ export async function checkStateContextDrift(
     `    APP_ROOT=<app-path> npm run pipeline:init -- ${slug} <workflowName>`,
   );
 
-  throw new Error(lines.join("\n"));
+  throw new StateError(lines.join("\n"));
 }

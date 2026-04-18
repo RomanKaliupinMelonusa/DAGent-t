@@ -10,13 +10,11 @@
  *   - handlers/triage.ts          — Failure classification (RAG + LLM)
  *
  * Supporting modules:
- *   - session/shared.ts           — Workflow node helpers, reporting utilities
+ *   - session/shared.ts           — Barrel re-export (dag-utils + telemetry)
  *   - session/readiness-probe.ts  — Data-plane readiness polling and validation hooks
  *
- * Retained here:
- *   - PipelineRunState / PipelineRunConfig / SessionResult interfaces
- *   - runItemSession()  — Unified dispatch (auto-skip, readiness, handler routing, state transitions)
- *   - resolveTriageActivation() — Builds TriageActivation payload for watchdog dispatch
+ * Types defined in kernel-types.ts (single source of truth for cross-boundary types).
+ * Re-exported here for backward compatibility.
  */
 
 import fs from "node:fs";
@@ -24,10 +22,26 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { getStatus, failItem, completeItem, salvageForDraft } from "./state.js";
-import type { ApmCompiledOutput } from "./apm-types.js";
 import type { NextAction, ItemSummary } from "./types.js";
 import type { PipelineLogger } from "./logger.js";
 import { writeFlightData } from "./reporting.js";
+
+// ── Types from kernel-types (single source of truth) ───────────────────────
+import type {
+  PipelineRunConfig,
+  PipelineRunState,
+  SessionOutcome,
+  SessionResult,
+  TriageActivation,
+  AvailableItem,
+  DispatchContext,
+  DispatchStep,
+  NodeBudgetPolicy,
+} from "./kernel-types.js";
+
+// Re-export for backward compat — consumers that import from session-runner.ts
+// continue to work unchanged.
+export type { PipelineRunConfig, PipelineRunState, SessionOutcome, SessionResult, TriageActivation, AvailableItem };
 
 // ── Submodule imports ──────────────────────────────────────────────────────
 import {
@@ -54,131 +68,14 @@ import { executeCommands } from "./command-executor.js";
 
 
 // ---------------------------------------------------------------------------
-// Shared mutable state passed from the orchestrator
-// ---------------------------------------------------------------------------
-
-/** All mutable state that persists across pipeline iterations */
-export interface PipelineRunState {
-  /** Collected summaries across the whole pipeline run */
-  pipelineSummaries: ItemSummary[];
-  /** Track attempt number per item key across retries */
-  attemptCounts: Record<string, number>;
-  /** Track git commit SHA before each dev step for reliable change detection */
-  preStepRefs: Record<string, string>;
-  /**
-   * Telemetry from a prior session's _SUMMARY.md, parsed once at boot time.
-   * Guarantees monotonic metric accumulation across sessions — every flush
-   * simply adds baseTelemetry to the current session's totals.
-   */
-  baseTelemetry: import("./reporting.js").PreviousSummaryTotals | null;
-  /**
-   * Accumulated handler output from all preceding items in this pipeline run.
-   * Keyed by item key. The kernel propagates the full bag into handlerData
-   * so downstream handlers can access output from any upstream handler.
-   * Also stores `lastPushedSha` for deploy nodes (previously in a separate map).
-   */
-  handlerOutputs: Record<string, Record<string, unknown>>;
-  /** Per-item flag: whether force_run_if_changed dirs had changes (set by evaluateAutoSkip, consumed by copilot-agent handler via ctx.forceRunChanges). Keyed by item key to prevent cross-contamination in parallel batches. */
-  forceRunChangesDetected: Record<string, boolean>;
-  /**
-   * Temporary payload for triage dispatch through the standard pipeline.
-   * Set by the watchdog before calling runItemSession for a triage node,
-   * consumed by stepResolve to populate failure context on NodeContext.
-   * Cleared by the watchdog after the triage session completes.
-   */
-  pendingTriageActivation?: TriageActivation | undefined;
-}
-
-/** Immutable config for the pipeline run */
-export interface PipelineRunConfig {
-  slug: string;
-  workflowName: string;
-  appRoot: string;
-  repoRoot: string;
-  baseBranch: string;
-  apmContext: ApmCompiledOutput;
-  roamAvailable: boolean;
-  logger: PipelineLogger;
-}
-
-export interface SessionResult {
-  summary: ItemSummary;
-  halt: boolean;
-  createPr: boolean;
-  approvalPending?: boolean;
-  /** When set, the kernel should dispatch a triage node for failure classification.
-   *  The watchdog reads this after runItemSession returns and dispatches the
-   *  triage node through the standard pipeline (runItemSession again). */
-  triageActivation?: TriageActivation;
-}
-
-/**
- * Payload for activating a triage node via the standard dispatch pipeline.
- * Carries the failure context that the triage handler needs.
- */
-export interface TriageActivation {
-  /** Key of the triage node to dispatch. */
-  triageNodeKey: string;
-  /** Key of the node that failed. */
-  failingKey: string;
-  /** Raw error message from the failing node. */
-  rawError: string;
-  /** Stable error fingerprint (SHA-256 prefix). */
-  errorSignature: string;
-  /** Route map from the failing node's on_failure.routes. */
-  failureRoutes: Record<string, string | null>;
-  /** Summary snapshot of the failing node's last attempt. */
-  failingNodeSummary: ItemSummary;
-}
-
-// ---------------------------------------------------------------------------
-// Dispatch pipeline — composable middleware for item execution
+// NOTE: PipelineRunState, PipelineRunConfig, SessionResult, SessionOutcome,
+// TriageActivation, DispatchContext, DispatchStep are now defined in
+// kernel-types.ts and re-exported from this file for backward compat.
 // ---------------------------------------------------------------------------
 
 import type { ApmWorkflowNode } from "./apm-types.js";
 import type { NodeHandler } from "./handlers/index.js";
-import type { ResolvedCircuitBreaker, NodeBudgetPolicy } from "./session/shared.js";
-
-/**
- * Mutable context that flows through the dispatch pipeline.
- * Accumulated by each step — earlier steps populate fields that later
- * steps read. Avoids re-computation and makes each step independently testable.
- */
-export interface DispatchContext {
-  // ── Immutable inputs (set once at pipeline entry) ─────────────────
-  readonly client: CopilotClient;
-  readonly next: NextAction & { key: string };
-  readonly config: PipelineRunConfig;
-  readonly state: PipelineRunState;
-
-  // ── Mutable fields (accumulated by steps) ─────────────────────────
-  /** Resolved workflow node (populated by stepInit) */
-  node: ApmWorkflowNode | undefined;
-  /** Resolved circuit breaker config (populated by stepInit) */
-  cb: ResolvedCircuitBreaker;
-  /** Unified budget policy for this node — consolidates all retry/cycle limits. */
-  budgetPolicy: NodeBudgetPolicy;
-  /** Item telemetry summary (populated by stepInit) */
-  itemSummary: ItemSummary;
-  /** Step start timestamp in ms (populated by stepInit) */
-  stepStart: number;
-  /** Resolved handler (populated by stepResolve) */
-  handler?: NodeHandler;
-  /** Assembled NodeContext for the handler (populated by stepResolve) */
-  handlerCtx?: NodeContext;
-  /** Lifecycle hook context (populated by stepResolve) */
-  hookCtx?: HookContext;
-  /** Handler execution result (populated by stepExecute) */
-  result?: NodeResult;
-}
-
-/**
- * A dispatch step is a named async function that may:
- * - Return a SessionResult to short-circuit the pipeline (early exit)
- * - Return undefined to continue to the next step
- * - Mutate the DispatchContext to pass data downstream
- */
-export type DispatchStep = (dc: DispatchContext) => Promise<SessionResult | undefined | void>;
+import type { ApmCompiledOutput } from "./apm-types.js";
 
 // ---------------------------------------------------------------------------
 // Failure-edge dispatch — on_failure triage routing
@@ -418,7 +315,7 @@ const stepReadiness: DispatchStep = async (dc) => {
  * Populates dc.handler, dc.handlerCtx, dc.hookCtx.
  */
 const stepResolve: DispatchStep = async (dc) => {
-  const { next, config, state, node, cb, client } = dc;
+  const { next, config, state, node, budgetPolicy, client } = dc;
   const { slug, appRoot, repoRoot, baseBranch, apmContext, logger } = config;
   const { pipelineSummaries, attemptCounts, preStepRefs } = state;
 
@@ -439,7 +336,7 @@ const stepResolve: DispatchStep = async (dc) => {
 
   // Wrap the handler with the node wrapper for execution tracking
   dc.handler = createNodeWrapper(dc.handler, {
-    circuitBreaker: cb,
+    circuitBreaker: budgetPolicy,
     attempt: attemptCounts[next.key],
     slug,
     repoRoot,
@@ -496,18 +393,18 @@ const stepResolve: DispatchStep = async (dc) => {
     logger,
   };
 
-  // ── Triage activation: inject failure context from pendingTriageActivation ──
-  // When the watchdog dispatches a triage node through the standard pipeline,
-  // it stores the activation payload in state.pendingTriageActivation.
-  // stepResolve populates the failure-specific NodeContext fields from it.
-  const triageActivation = state.pendingTriageActivation;
-  if (triageActivation && next.key === triageActivation.triageNodeKey) {
+  // ── Triage activation: inject failure context from explicit param ──
+  // When the watchdog dispatches a triage node, it passes triageActivation
+  // explicitly to runItemSession(). stepResolve populates the failure-specific
+  // NodeContext fields from it.
+  const activation = dc.triageActivation;
+  if (activation && next.key === activation.triageNodeKey) {
     Object.assign(dc.handlerCtx, {
-      failingNodeKey: triageActivation.failingKey,
-      rawError: triageActivation.rawError,
-      errorSignature: triageActivation.errorSignature,
-      failingNodeSummary: triageActivation.failingNodeSummary,
-      failureRoutes: triageActivation.failureRoutes,
+      failingNodeKey: activation.failingKey,
+      rawError: activation.rawError,
+      errorSignature: activation.errorSignature,
+      failingNodeSummary: activation.failingNodeSummary,
+      failureRoutes: activation.failureRoutes,
     });
   }
 
@@ -648,7 +545,7 @@ function buildSalvageCommands(
 
 /**
  * Step 7b: Triage guard — kernel pre-checks before the triage handler runs.
- * Only activates when the dispatch context carries a pendingTriageActivation
+ * Only activates when the dispatch context carries a triageActivation
  * targeting this node. Four guards short-circuit classification:
  *   1. SDK timeout → transient retry (re-schedule $SELF)
  *   2. Unfixable signals → graceful degradation (salvage to Draft PR)
@@ -660,7 +557,7 @@ const stepTriageGuard: DispatchStep = async (dc) => {
   const { slug, appRoot, repoRoot, apmContext, logger } = config;
   const { itemSummary, stepStart } = dc;
 
-  const activation = state.pendingTriageActivation;
+  const activation = dc.triageActivation;
   if (!activation || next.key !== activation.triageNodeKey) return;
 
   const { failingKey, rawError, errorSignature } = activation;
@@ -767,7 +664,7 @@ const stepTriageGuard: DispatchStep = async (dc) => {
  * Step 8: Execute handler + post-execute (telemetry, state transitions, signals, post-hook).
  */
 const stepExecute: DispatchStep = async (dc) => {
-  const { next, config, state, client, handler, handlerCtx, hookCtx, cb } = dc;
+  const { next, config, state, client, handler, handlerCtx, hookCtx } = dc;
   const { slug, repoRoot, apmContext, logger } = config;
   const { pipelineSummaries, attemptCounts } = state;
   const { itemSummary, stepStart, node } = dc;
@@ -906,7 +803,7 @@ const stepExecute: DispatchStep = async (dc) => {
 
 /**
  * The ordered dispatch pipeline. Each step runs in sequence.
- * A step returning a SessionResult short-circuits the pipeline.
+ * A step returning a SessionOutcome short-circuits the pipeline.
  */
 const DISPATCH_PIPELINE: readonly DispatchStep[] = [
   stepInit,
@@ -927,14 +824,18 @@ const DISPATCH_PIPELINE: readonly DispatchStep[] = [
  * Run a single pipeline item — the core of each DAG step.
  *
  * Executes a linear pipeline of named steps:
- * init → auto-skip → readiness → resolve → handler-skip → pre-hook → execute
+ * init → auto-skip → readiness → resolve → handler-skip → pre-hook → triage-guard → execute
+ *
+ * @param triageActivation  When dispatching a triage node, pass the failure
+ *   context explicitly. Replaces the old `state.pendingTriageActivation` side-channel.
  */
 export async function runItemSession(
   client: CopilotClient,
-  next: NextAction & { key: string },
+  next: AvailableItem,
   config: PipelineRunConfig,
   state: PipelineRunState,
-): Promise<SessionResult> {
+  triageActivation?: TriageActivation,
+): Promise<SessionOutcome> {
   state.attemptCounts[next.key] = (state.attemptCounts[next.key] ?? 0) + 1;
 
   // Bootstrap dispatch context with minimal fields — steps populate the rest
@@ -946,12 +847,10 @@ export async function runItemSession(
     state,
     node,
     budgetPolicy: resolveNodeBudgetPolicy(node, config.apmContext),
-    cb: undefined!, // alias into budgetPolicy — set immediately below
     itemSummary: undefined as unknown as ItemSummary, // populated by stepInit
     stepStart: 0,
+    triageActivation,
   };
-  // NodeBudgetPolicy extends ResolvedCircuitBreaker, so one resolution serves both.
-  dc.cb = dc.budgetPolicy;
 
   for (const step of DISPATCH_PIPELINE) {
     const earlyResult = await step(dc);

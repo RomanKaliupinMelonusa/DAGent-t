@@ -1,264 +1,43 @@
 /**
- * session/shared.ts — Shared utilities used across session submodules.
+ * session/shared.ts — Barrel re-export for backward compatibility.
  *
- * Contains workflow node resolution, DAG traversal, report flushing,
- * circuit breaker logic, and diagnostic normalization.
- */
-
-import path from "node:path";
-import { execSync } from "node:child_process";
-import type { ApmCompiledOutput } from "../apm-types.js";
-import type { ApmWorkflowNode } from "../apm-types.js";
-import type { ItemSummary } from "../types.js";
-import { writeFlightData } from "../reporting.js";
-import type { PipelineRunConfig, PipelineRunState, SessionResult, TriageActivation } from "../session-runner.js";
-
-// ---------------------------------------------------------------------------
-// Workflow node helpers
-// ---------------------------------------------------------------------------
-
-/** Resolve the workflow definition for a named workflow. */
-export function getWorkflow(apmContext: ApmCompiledOutput, workflowName: string) {
-  return apmContext.workflows?.[workflowName];
-}
-
-/** Resolve the workflow node definition for an item key within a named workflow. */
-export function getWorkflowNode(apmContext: ApmCompiledOutput, workflowName: string, itemKey: string): ApmWorkflowNode | undefined {
-  return apmContext.workflows?.[workflowName]?.nodes?.[itemKey];
-}
-
-/**
- * Get the current HEAD SHA. Returns null on failure (non-fatal).
- * Single abstraction for all git HEAD operations in the kernel.
- */
-export function getHeadSha(repoRoot: string): string | null {
-  try {
-    return execSync("git rev-parse HEAD", {
-      cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
-    }).trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Resolved circuit breaker config with defaults based on node type/category.
- *  @deprecated Use `NodeBudgetPolicy` — this is a subset kept for backward compat. */
-export interface ResolvedCircuitBreaker {
-  minAttemptsBeforeSkip: number;
-  allowsRevertBypass: boolean;
-  allowsTimeoutSalvage: boolean;
-  haltOnIdentical: boolean;
-  revertWarningAt: number;
-}
-
-/**
- * Unified budget policy for a single DAG node. Consolidates all retry/cycle
- * limits that were previously scattered across circuit_breaker, config.cycle_limits,
- * config.max_same_error_cycles, and the hardcoded failItem() cap.
+ * All functionality has been split into focused submodules:
+ *   - dag-utils.ts   — Workflow node resolution, DAG traversal, budget policy
+ *   - telemetry.ts   — Item finalization, telemetry merging, report flushing
  *
- * Resolved once per node in the dispatch pipeline and threaded through
- * DispatchContext so every consumer reads from the same source.
- */
-export interface NodeBudgetPolicy extends ResolvedCircuitBreaker {
-  /** Maximum total failures (errorLog entries) before the pipeline halts this item.
-   *  Replaces the hardcoded `failCount >= 10` in failItem(). Default: 10. */
-  maxItemFailures: number;
-  /** Number of identical error signatures (across all items) before declaring
-   *  a death spiral and triggering graceful degradation. Default: 3. */
-  maxSameError: number;
-  /** Maximum triage reroute cycles (resetNodes calls tagged "reset-nodes").
-   *  Default: 5 (from config.cycle_limits.reroute). */
-  maxRerouteCycles: number;
-  /** Maximum script-only reset cycles per category (resetScripts calls).
-   *  Default: 10 (from config.cycle_limits.scripts). */
-  maxScriptCycles: number;
-}
-
-/**
- * Resolve circuit breaker configuration for a workflow node.
- * @deprecated Use `resolveNodeBudgetPolicy()` for full budget resolution.
- * All behavior is config-driven — nodes must declare explicit `circuit_breaker`
- * settings in workflows.yml. Only `min_attempts_before_skip` and `revert_warning_at`
- * have universal numeric defaults.
- */
-export function resolveCircuitBreaker(node: ApmWorkflowNode | undefined): ResolvedCircuitBreaker {
-  const cb = node?.circuit_breaker;
-  return {
-    minAttemptsBeforeSkip: cb?.min_attempts_before_skip ?? 3,
-    allowsRevertBypass: cb?.allows_revert_bypass ?? false,
-    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? false,
-    haltOnIdentical: cb?.halt_on_identical ?? false,
-    revertWarningAt: cb?.revert_warning_at ?? 3,
-  };
-}
-
-/**
- * Resolve the full budget policy for a workflow node.
+ * Existing imports like `import { getWorkflowNode, finishItem } from "./session/shared.js"`
+ * continue to work unchanged.
  *
- * Resolution order per field:
- *   1. Per-node `circuit_breaker.*` in workflows.yml
- *   2. Workflow/config-level defaults (`cycle_limits`, `max_same_error_cycles`)
- *   3. Code-level fallback constants
- *
- * Returns a policy object suitable for threading through DispatchContext.
+ * Types are re-exported from kernel-types.ts (the single source of truth for
+ * cross-boundary type definitions).
  */
-export function resolveNodeBudgetPolicy(
-  node: ApmWorkflowNode | undefined,
-  apmContext: ApmCompiledOutput,
-): NodeBudgetPolicy {
-  const cb = node?.circuit_breaker;
-  const config = apmContext.config;
 
-  return {
-    // Circuit breaker fields (per-node → code defaults)
-    minAttemptsBeforeSkip: cb?.min_attempts_before_skip ?? 3,
-    allowsRevertBypass: cb?.allows_revert_bypass ?? false,
-    allowsTimeoutSalvage: cb?.allows_timeout_salvage ?? false,
-    haltOnIdentical: cb?.halt_on_identical ?? false,
-    revertWarningAt: cb?.revert_warning_at ?? 3,
+// Re-export DAG utilities
+export {
+  getWorkflow,
+  getWorkflowNode,
+  getHeadSha,
+  getTimeout,
+  resolveCircuitBreaker,
+  resolveNodeBudgetPolicy,
+  findUpstreamKeysByCategory,
+  getAgentDirectoryPrefixes,
+} from "./dag-utils.js";
 
-    // Failure cap (per-node → code default 10)
-    maxItemFailures: cb?.max_item_failures ?? 10,
+// Re-export telemetry utilities
+export {
+  flushReports,
+  mergeTelemetry,
+  finishItem,
+} from "./telemetry.js";
 
-    // Global limits (config → code defaults)
-    maxSameError: config?.max_same_error_cycles ?? 3,
-    maxRerouteCycles: config?.cycle_limits?.reroute ?? 5,
-    maxScriptCycles: config?.cycle_limits?.scripts ?? 10,
-  };
-}
-
-export function getTimeout(itemKey: string, apmContext: ApmCompiledOutput, workflowName?: string): number {
-  const wfName = workflowName ?? Object.keys(apmContext.workflows ?? {})[0] ?? "default";
-  const node = getWorkflowNode(apmContext, wfName, itemKey);
-  return (node?.timeout_minutes ?? 15) * 60_000;
-}
-
-/**
- * Walk the DAG backward from `startKey` to find all upstream nodes
- * matching any of the given categories. Uses BFS on inverted edges (predecessors).
- * Returns matching node keys in discovery order (nearest first).
- */
-export function findUpstreamKeysByCategory(
-  nodes: Record<string, ApmWorkflowNode>,
-  startKey: string,
-  categories: ReadonlyArray<string>,
-): string[] {
-  const categorySet = new Set(categories);
-  // Build inverted adjacency list: child → parents
-  const parents: Record<string, string[]> = {};
-  for (const [key, node] of Object.entries(nodes)) {
-    for (const dep of node.depends_on ?? []) {
-      (parents[key] ??= []).push(dep);
-    }
-  }
-
-  const visited = new Set<string>();
-  const queue: string[] = [...(parents[startKey] ?? [])];
-  const matchedKeys: string[] = [];
-
-  while (queue.length > 0) {
-    const key = queue.shift()!;
-    if (visited.has(key)) continue;
-    visited.add(key);
-    const node = nodes[key];
-    if (!node) continue;
-    if (node.category && categorySet.has(node.category)) matchedKeys.push(key);
-    for (const parent of parents[key] ?? []) {
-      if (!visited.has(parent)) queue.push(parent);
-    }
-  }
-
-  return matchedKeys;
-}
-
-/**
- * Map workflow nodes to their owned directory prefixes for scoped git-diff
- * attribution. Prevents cross-agent pollution when parallel dev agents
- * run in parallel. Returns empty array for nodes without diff_attribution_dirs
- * (e.g. code-cleanup, docs-archived), which falls back to "all non-state files".
- */
-export function getAgentDirectoryPrefixes(
-  node: ApmWorkflowNode | undefined,
-  appRel: string,
-  directories?: Record<string, string | null>,
-): string[] {
-  if (!node?.diff_attribution_dirs?.length) return [];
-  const prefix = appRel ? `${appRel}/` : "";
-  return node.diff_attribution_dirs.map((dir) => {
-    // Entries ending with "/" are literal path prefixes (e.g. .github/)
-    if (dir.endsWith("/")) return dir;
-    // Resolve from APM config.directories map, fall back to literal key
-    const resolved = directories?.[dir] ?? dir;
-    return `${prefix}${resolved}/`;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Circuit breaker
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Report flushing
-// ---------------------------------------------------------------------------
-
-/** Flush flight data after each item completes (summary + terminal log are generated once at pipeline end) */
-export function flushReports(config: PipelineRunConfig, state: PipelineRunState): void {
-  const { appRoot, slug } = config;
-  writeFlightData(appRoot, slug, state.pipelineSummaries);
-}
-
-// ---------------------------------------------------------------------------
-// Telemetry merge
-// ---------------------------------------------------------------------------
-
-/**
- * Merge partial handler telemetry into the kernel's item summary.
- * Additive: arrays append (deduplicated for filesChanged), counters accumulate.
- */
-export function mergeTelemetry(target: ItemSummary, source: Partial<ItemSummary>): void {
-  if (source.intents) target.intents.push(...source.intents);
-  if (source.filesChanged) {
-    for (const f of source.filesChanged) {
-      if (!target.filesChanged.includes(f)) target.filesChanged.push(f);
-    }
-  }
-  if (source.filesRead) target.filesRead.push(...source.filesRead);
-  if (source.shellCommands) target.shellCommands.push(...source.shellCommands);
-  if (source.toolCounts) {
-    for (const [k, v] of Object.entries(source.toolCounts)) {
-      target.toolCounts[k] = (target.toolCounts[k] ?? 0) + v;
-    }
-  }
-  if (source.inputTokens) target.inputTokens += source.inputTokens;
-  if (source.outputTokens) target.outputTokens += source.outputTokens;
-  if (source.cacheReadTokens) target.cacheReadTokens += source.cacheReadTokens;
-  if (source.cacheWriteTokens) target.cacheWriteTokens += source.cacheWriteTokens;
-  if (source.messages) target.messages.push(...source.messages);
-}
-
-// ---------------------------------------------------------------------------
-// Finish-item helper
-// ---------------------------------------------------------------------------
-
-/**
- * Finalize an item summary, push it to the pipeline summaries, flush reports,
- * and return a SessionResult. Eliminates the repeated 6-line pattern across
- * session-runner.ts and script-executor.ts.
- */
-export function finishItem(
-  itemSummary: ItemSummary,
-  outcome: ItemSummary["outcome"],
-  stepStart: number,
-  config: PipelineRunConfig,
-  state: PipelineRunState,
-  opts?: { errorMessage?: string; halt?: boolean; createPr?: boolean; approvalPending?: boolean; intents?: string[]; triageActivation?: TriageActivation },
-): SessionResult {
-  itemSummary.outcome = outcome;
-  if (opts?.errorMessage) itemSummary.errorMessage = opts.errorMessage;
-  if (opts?.intents) itemSummary.intents.push(...opts.intents);
-  itemSummary.finishedAt = new Date().toISOString();
-  itemSummary.durationMs = Date.now() - stepStart;
-  state.pipelineSummaries.push(itemSummary);
-  flushReports(config, state);
-  return { summary: itemSummary, halt: opts?.halt ?? false, createPr: opts?.createPr ?? false, approvalPending: opts?.approvalPending ?? false, triageActivation: opts?.triageActivation };
-}
+// Re-export cross-boundary types from kernel-types (single source of truth)
+export type {
+  ResolvedCircuitBreaker,
+  NodeBudgetPolicy,
+  PipelineRunConfig,
+  PipelineRunState,
+  SessionOutcome,
+  SessionResult,
+  TriageActivation,
+} from "../kernel-types.js";

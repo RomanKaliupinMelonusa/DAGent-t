@@ -122,11 +122,17 @@ export interface PipelineState {
   executionLog?: ExecutionRecord[];
 }
 
+/** Status values for pipeline items in the DAG scheduler. */
+export type PipelineItemStatus = "pending" | "done" | "failed" | "na" | "dormant";
+
+/** Scheduler-level status (superset: includes terminal sentinel values). */
+export type SchedulerStatus = PipelineItemStatus | "complete" | "blocked";
+
 export interface NextAction {
   key: string | null;
   label: string;
   agent: string | null;
-  status: string;
+  status: SchedulerStatus;
 }
 
 export interface FailResult {

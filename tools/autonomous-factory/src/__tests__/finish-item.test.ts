@@ -64,8 +64,7 @@ describe("finishItem", () => {
     assert.equal(result.summary.outcome, "completed");
     assert.ok(result.summary.finishedAt);
     assert.ok(result.summary.durationMs >= 4000);
-    assert.equal(result.halt, false);
-    assert.equal(result.createPr, false);
+    assert.equal(result.kind, "continue");
     assert.equal(state.pipelineSummaries.length, 1);
     assert.equal(state.pipelineSummaries[0], summary);
   });
@@ -105,18 +104,17 @@ describe("finishItem", () => {
       createPr: true,
     });
 
-    assert.equal(result.halt, true);
-    assert.equal(result.createPr, true);
+    // halt takes priority over createPr in the discriminated union
+    assert.equal(result.kind, "halt");
   });
 
-  it("defaults halt and createPr to false", () => {
+  it("defaults to continue when no flags set", () => {
     const summary = makeItemSummary();
     const config = makeConfig();
     const state = makeState();
 
     const result = finishItem(summary, "completed", Date.now(), config, state);
 
-    assert.equal(result.halt, false);
-    assert.equal(result.createPr, false);
+    assert.equal(result.kind, "continue");
   });
 });

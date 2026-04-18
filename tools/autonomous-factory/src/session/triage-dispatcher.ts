@@ -16,7 +16,7 @@ import { getStatus, failItem, resetNodes, salvageForDraft, setLastTriageRecord }
 import { evaluateTriage, isUnfixableError, isOrchestratorTimeout } from "../triage.js";
 import type { CompiledTriageProfile } from "../apm-types.js";
 import { getWorkflowNode } from "./shared.js";
-import type { PipelineRunConfig, SessionResult } from "../session-runner.js";
+import type { PipelineRunConfig, SessionResult } from "../kernel-types.js";
 import type { ItemSummary, TriageRecord } from "../types.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 

@@ -6,7 +6,7 @@
  */
 
 import { executeHook, buildHookEnv } from "../hooks.js";
-import type { PipelineRunConfig } from "../session-runner.js";
+import type { PipelineRunConfig } from "../kernel-types.js";
 
 // ---------------------------------------------------------------------------
 // Constants

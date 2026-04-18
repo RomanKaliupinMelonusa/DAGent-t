@@ -1,0 +1,225 @@
+/**
+ * kernel-types.ts — Cross-boundary type definitions for the orchestrator kernel.
+ *
+ * Houses all types that flow between the major orchestrator modules
+ * (watchdog, session-runner, session/shared, handlers). By centralizing
+ * these here, we break the circular import between session-runner.ts and
+ * session/shared.ts — both import from this file, never from each other.
+ *
+ * Rule: Zero executable code. Pure type definitions only.
+ */
+
+import type { CopilotClient } from "@github/copilot-sdk";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm-types.js";
+import type { NextAction, ItemSummary, TriageRecord } from "./types.js";
+import type { PipelineLogger } from "./logger.js";
+import type { PreviousSummaryTotals } from "./reporting.js";
+import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./handlers/types.js";
+import type { HookContext } from "./session/lifecycle-hooks.js";
+
+// ---------------------------------------------------------------------------
+// Pipeline run — immutable config + mutable state
+// ---------------------------------------------------------------------------
+
+/** Immutable config for the pipeline run. Assembled once by bootstrap. */
+export interface PipelineRunConfig {
+  readonly slug: string;
+  readonly workflowName: string;
+  readonly appRoot: string;
+  readonly repoRoot: string;
+  readonly baseBranch: string;
+  readonly apmContext: ApmCompiledOutput;
+  readonly roamAvailable: boolean;
+  readonly logger: PipelineLogger;
+}
+
+/** All mutable state that persists across pipeline iterations. */
+export interface PipelineRunState {
+  /** Collected summaries across the whole pipeline run */
+  pipelineSummaries: ItemSummary[];
+  /** Track attempt number per item key across retries */
+  attemptCounts: Record<string, number>;
+  /** Track git commit SHA before each dev step for reliable change detection */
+  preStepRefs: Record<string, string>;
+  /**
+   * Telemetry from a prior session's _SUMMARY.md, parsed once at boot time.
+   * Guarantees monotonic metric accumulation across sessions — every flush
+   * simply adds baseTelemetry to the current session's totals.
+   */
+  baseTelemetry: PreviousSummaryTotals | null;
+  /**
+   * Accumulated handler output from all preceding items in this pipeline run.
+   * Keyed by item key. The kernel propagates the full bag into handlerData
+   * so downstream handlers can access output from any upstream handler.
+   * Also stores `lastPushedSha` for deploy nodes.
+   */
+  handlerOutputs: Record<string, HandlerOutputBag>;
+  /** Per-item flag: whether force_run_if_changed dirs had changes. */
+  forceRunChangesDetected: Record<string, boolean>;
+}
+
+/** Typed handler output bag — known keys + extensible index. */
+export interface HandlerOutputBag {
+  /** Git SHA captured after a push operation (consumed by deploy/CI-poll handlers). */
+  lastPushedSha?: string;
+  /** Git SHA captured after handler execution. */
+  headAfterAttempt?: string;
+  /** Extensible: handlers may emit arbitrary keys. */
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// SessionOutcome — discriminated union for dispatch results
+// ---------------------------------------------------------------------------
+
+/**
+ * Discriminated union returned by `runItemSession()` and consumed by the
+ * DAG loop in `watchdog.ts`. Replaces the old `SessionResult` flag bag.
+ *
+ * Each variant carries an `ItemSummary` for telemetry. The `kind` field
+ * drives exhaustive `switch` handling in the main loop.
+ */
+export type SessionOutcome =
+  | { readonly kind: "continue"; readonly summary: ItemSummary }
+  | { readonly kind: "halt"; readonly summary: ItemSummary; readonly error?: string }
+  | { readonly kind: "create-pr"; readonly summary: ItemSummary }
+  | { readonly kind: "approval-pending"; readonly summary: ItemSummary; readonly gateKey: string }
+  | { readonly kind: "triage"; readonly summary: ItemSummary; readonly activation: TriageActivation };
+
+/**
+ * @deprecated Use `SessionOutcome`. Kept during migration for backward compat
+ * with tests that construct the old shape.
+ */
+export interface SessionResult {
+  summary: ItemSummary;
+  halt: boolean;
+  createPr: boolean;
+  approvalPending?: boolean;
+  triageActivation?: TriageActivation;
+}
+
+// ---------------------------------------------------------------------------
+// SchedulerResult — typed DAG scheduler return
+// ---------------------------------------------------------------------------
+
+/** An item available for execution (key is guaranteed non-null). */
+export type AvailableItem = NextAction & { key: string };
+
+/**
+ * Discriminated union returned by `getNextBatch()`. Eliminates sentinel
+ * detection (key === null) from the main loop.
+ */
+export type SchedulerResult =
+  | { readonly kind: "items"; readonly items: AvailableItem[] }
+  | { readonly kind: "complete" }
+  | { readonly kind: "blocked" };
+
+// ---------------------------------------------------------------------------
+// BatchSignals — pure result of interpreting a batch of session outcomes
+// ---------------------------------------------------------------------------
+
+/** Signals extracted from a batch of session outcomes. Pure data, no side effects. */
+export interface BatchSignals {
+  readonly shouldHalt: boolean;
+  readonly createPr: boolean;
+  readonly approvalPendingKeys: readonly string[];
+  readonly triageActivations: readonly TriageActivation[];
+  /** Errors from rejected promises (unexpected crashes). */
+  readonly unexpectedErrors: readonly Error[];
+}
+
+// ---------------------------------------------------------------------------
+// TriageActivation — payload for triage dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Payload for activating a triage node via the standard dispatch pipeline.
+ * Carries the failure context that the triage handler needs.
+ */
+export interface TriageActivation {
+  /** Key of the triage node to dispatch. */
+  triageNodeKey: string;
+  /** Key of the node that failed. */
+  failingKey: string;
+  /** Raw error message from the failing node. */
+  rawError: string;
+  /** Stable error fingerprint (SHA-256 prefix). */
+  errorSignature: string;
+  /** Route map from the failing node's on_failure.routes. */
+  failureRoutes: Record<string, string | null>;
+  /** Summary snapshot of the failing node's last attempt. */
+  failingNodeSummary: ItemSummary;
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch pipeline — composable middleware for item execution
+// ---------------------------------------------------------------------------
+
+/**
+ * Mutable context that flows through the dispatch pipeline.
+ * Accumulated by each step — earlier steps populate fields that later
+ * steps read. Avoids re-computation and makes each step independently testable.
+ */
+export interface DispatchContext {
+  // ── Immutable inputs (set once at pipeline entry) ─────────────────
+  readonly client: CopilotClient;
+  readonly next: AvailableItem;
+  readonly config: PipelineRunConfig;
+  readonly state: PipelineRunState;
+
+  // ── Mutable fields (accumulated by steps) ─────────────────────────
+  /** Resolved workflow node (populated by stepInit) */
+  node: ApmWorkflowNode | undefined;
+  /** Unified budget policy for this node. */
+  budgetPolicy: NodeBudgetPolicy;
+  /** Item telemetry summary (populated by stepInit) */
+  itemSummary: ItemSummary;
+  /** Step start timestamp in ms (populated by stepInit) */
+  stepStart: number;
+  /** Resolved handler (populated by stepResolve) */
+  handler?: NodeHandler;
+  /** Assembled NodeContext for the handler (populated by stepResolve) */
+  handlerCtx?: NodeContext;
+  /** Lifecycle hook context (populated by stepResolve) */
+  hookCtx?: HookContext;
+  /** Handler execution result (populated by stepExecute) */
+  result?: NodeResult;
+  /** Triage activation for dispatch (populated by stepResolve for triage nodes) */
+  triageActivation?: TriageActivation;
+}
+
+/**
+ * A dispatch step is a named async function that may:
+ * - Return a SessionOutcome to short-circuit the pipeline (early exit)
+ * - Return undefined to continue to the next step
+ * - Mutate the DispatchContext to pass data downstream
+ */
+export type DispatchStep = (dc: DispatchContext) => Promise<SessionOutcome | undefined | void>;
+
+// ---------------------------------------------------------------------------
+// NodeBudgetPolicy — unified retry/cycle limits
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolved circuit breaker config with defaults based on node type/category.
+ * @deprecated Use `NodeBudgetPolicy` — this is a subset kept for backward compat.
+ */
+export interface ResolvedCircuitBreaker {
+  minAttemptsBeforeSkip: number;
+  allowsRevertBypass: boolean;
+  allowsTimeoutSalvage: boolean;
+  haltOnIdentical: boolean;
+  revertWarningAt: number;
+}
+
+/**
+ * Unified budget policy for a single DAG node. Consolidates all retry/cycle
+ * limits that were previously scattered across circuit_breaker, config.cycle_limits,
+ * config.max_same_error_cycles, and the hardcoded failItem() cap.
+ */
+export interface NodeBudgetPolicy extends ResolvedCircuitBreaker {
+  maxItemFailures: number;
+  maxSameError: number;
+  maxRerouteCycles: number;
+  maxScriptCycles: number;
+}
