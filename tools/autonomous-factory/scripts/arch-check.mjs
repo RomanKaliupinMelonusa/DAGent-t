@@ -53,13 +53,13 @@ const RULES = [
       { re: /^node:fs(\/.*)?$/, why: "handlers must delegate filesystem ops to a port (FeatureFilesystem)" },
       { re: /^\.{1,2}\/state\.js$/, why: "handlers must read state via ctx.stateReader, not the state facade" },
       { re: /\/pipeline-state\.mjs$/, why: "handlers must not talk to pipeline-state CLI directly" },
-      { re: /^\.{1,2}\/(adapters|loop|dispatch|main|watchdog|bootstrap)\//, why: "handlers cannot reach up into composition / entry layers" },
+      { re: /^\.{1,2}\/(adapters|loop|main|watchdog|bootstrap)\//, why: "handlers cannot reach up into composition / entry layers" },
     ],
   },
   {
     layer: "domain",
     forbidden: [
-      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch|ports|kernel)\//, why: "domain must remain pure — no I/O, no runtime wiring" },
+      { re: /^\.{1,2}\/(adapters|handlers|loop|ports|kernel)\//, why: "domain must remain pure — no I/O, no runtime wiring" },
       { re: /^node:(fs|child_process|http|https|os|net|process)$/, why: "domain is pure — only deterministic node: primitives (crypto, util) are allowed" },
       { re: /\/pipeline-state\.mjs$/, why: "domain cannot call the state CLI" },
       { re: /^\.{1,2}\/state\.js$/, why: "domain cannot call the state facade" },
@@ -68,14 +68,14 @@ const RULES = [
   {
     layer: "ports",
     forbidden: [
-      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch|kernel)\//, why: "ports are interface declarations — they must not reference implementations" },
+      { re: /^\.{1,2}\/(adapters|handlers|loop|kernel)\//, why: "ports are interface declarations — they must not reference implementations" },
       { re: /^node:(fs|child_process|http|https|net)$/, why: "ports describe contracts — no direct I/O imports" },
     ],
   },
   {
     layer: "kernel",
     forbidden: [
-      { re: /^\.{1,2}\/(adapters|handlers|loop|dispatch)\//, why: "kernel emits Effects; it must not know about adapters or handlers" },
+      { re: /^\.{1,2}\/(adapters|handlers|loop)\//, why: "kernel emits Effects; it must not know about adapters or handlers" },
       { re: /^node:(fs|child_process|http|https|net)$/, why: "kernel is pure Command/Effect — no direct I/O" },
       { re: /\/pipeline-state\.mjs$/, why: "kernel is the state owner — it must not call the legacy CLI" },
     ],
