@@ -104,7 +104,7 @@ export interface PipelineState {
   }>;
   /** DAG dependency graph — persisted at init from workflows.yml */
   dependencies: Record<string, string[]>;
-  /** Node execution types — open set; built-in: agent, script, approval, barrier, triage. */
+  /** Node execution types — open set; built-in: agent, script, approval, triage. */
   nodeTypes: Record<string, string>;
   /** Node semantic categories — open set; built-in: dev, test, deploy, finalize. */
   nodeCategories: Record<string, string>;

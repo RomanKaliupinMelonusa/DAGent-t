@@ -9,7 +9,7 @@
  */
 
 import type { ItemSummary, TriageRecord, ExecutionRecord } from "../types.js";
-import type { DagCommand } from "../handlers/types.js";
+import type { DagCommand } from "../dag-commands.js";
 import type { HandlerOutputBag } from "../kernel-types.js";
 
 // ---------------------------------------------------------------------------

@@ -25,15 +25,25 @@ import { executeEffects } from "../kernel/effect-executor.js";
 import type { Command } from "../kernel/commands.js";
 import type { Effect } from "../kernel/effects.js";
 import type { NodeHandler, NodeContext } from "../handlers/types.js";
+import type { NodeMiddleware } from "../handlers/middleware.js";
+import { resolveMiddlewareChain } from "../handlers/middlewares/registry.js";
 import type { AvailableItem } from "../kernel-types.js";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
+import type { Shell } from "../ports/shell.js";
+import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
+import {
+  snapshotProgress,
+  evaluateHardening,
+  type HardeningState,
+} from "../domain/progress-tracker.js";
 
 // ---------------------------------------------------------------------------
 // Loop configuration
@@ -67,6 +77,9 @@ export interface PipelineLoopConfig {
   readonly lifecycle: LoopLifecycle;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
+  readonly shell: Shell;
+  readonly filesystem: FeatureFilesystem;
+  readonly copilotSessionRunner: CopilotSessionRunner;
 }
 
 export interface HandlerResolver {
@@ -76,7 +89,7 @@ export interface HandlerResolver {
 
 export interface LoopResult {
   /** How the loop terminated. */
-  reason: "complete" | "halted" | "blocked" | "create-pr" | "approval-pending";
+  reason: "complete" | "halted" | "blocked" | "create-pr" | "approval-pending" | "idle-timeout" | "failure-budget";
   /** Approval-pending keys (if reason is "approval-pending"). */
   approvalPendingKeys?: string[];
 }
@@ -111,10 +124,19 @@ export async function runPipelineLoop(
     client: config.client,
     vcs: config.vcs,
     stateReader: config.stateReader,
+    shell: config.shell,
+    filesystem: config.filesystem,
+    copilotSessionRunner: config.copilotSessionRunner,
   };
 
-  const maxIterations = 500; // Safety valve
+  const policy = config.apmContext.config?.policy;
+  const maxIterations = policy?.max_iterations ?? 500; // Safety valve
+  const hardeningPolicy = {
+    maxIdleMs: policy?.max_idle_minutes ? policy.max_idle_minutes * 60_000 : undefined,
+    maxTotalFailures: policy?.max_total_failures,
+  };
   const runStartMs = Date.now();
+  let hardeningState: HardeningState = { prevKey: null, lastProgressMs: runStartMs };
 
   // ── run.start telemetry ─────────────────────────────────────────
   logger.event("run.start", null, {
@@ -163,12 +185,17 @@ export async function runPipelineLoop(
       const dagSnap = kernel.dagSnapshot();
       const runSnap = kernel.runSnapshot();
 
-      const dispatchPairs: Array<readonly [NodeHandler, NodeContext]> = [];
+      const dispatchPairs: Array<readonly [NodeHandler, NodeContext, ReadonlyArray<NodeMiddleware>]> = [];
       for (const item of runnableItems) {
         const node = lifecycle.getWorkflowNode(item.key);
         const handler = handlerResolver.resolve(item, node);
         const ctx = buildNodeContext(item, node, dagSnap, runSnap, ctxConfig);
-        dispatchPairs.push([handler, ctx] as const);
+        const middlewares = resolveMiddlewareChain(
+          handler.name,
+          config.apmContext.config?.node_middleware,
+          node?.middleware,
+        );
+        dispatchPairs.push([handler, ctx, middlewares] as const);
       }
 
       // Step 5: Dispatch batch
@@ -191,6 +218,29 @@ export async function runPipelineLoop(
 
       // Step 8: Execute effects
       await executeEffects(allEffects, effectPorts);
+
+      // Step 8a: Phase 4 — operational hardening checks.
+      // (a) Progress tracking for max_idle_minutes.
+      // (b) max_total_failures pipeline-wide halt budget.
+      {
+        const snap = kernel.dagSnapshot();
+        const progress = snapshotProgress(snap.items);
+        const verdict = evaluateHardening(
+          progress,
+          hardeningState,
+          Date.now(),
+          hardeningPolicy,
+        );
+        if (verdict.kind === "idle-timeout") {
+          terminationReason = "idle-timeout";
+          return { reason: "idle-timeout" };
+        }
+        if (verdict.kind === "failure-budget") {
+          terminationReason = "failure-budget";
+          return { reason: "failure-budget" };
+        }
+        hardeningState = verdict.state;
+      }
 
       // Step 9: Interpret signals
       const directive = interpretSignals(batchResult.itemResults);

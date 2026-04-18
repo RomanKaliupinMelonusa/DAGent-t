@@ -167,7 +167,7 @@ agents:
         roam-code: "*"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Node Pool — Reusable work units (agent, script, barrier, triage, approval)
+# Node Pool — Reusable work units (agent, script, triage, approval)
 # Nodes define WHAT to execute; workflows define HOW to connect them.
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
@@ -189,7 +189,7 @@ nodes:
     timeout_minutes: 20
     commit_scope: infra
     diff_attribution_dirs: [infra]
-    injects_infra_rollback: true
+    injects_triage_rejection: true
     circuit_breaker:
       allows_revert_bypass: true
       allows_timeout_salvage: true
@@ -225,6 +225,9 @@ nodes:
     category: deploy
     timeout_minutes: 15
     commit_scope: pipeline
+    # Phase 4 approval SLA — fall back to config.policy defaults if omitted.
+    timeout_hours: 24
+    on_timeout: halt
 
   infra-handoff:
     type: agent
@@ -361,9 +364,27 @@ nodes:
     type: triage
     category: finalize
     timeout_minutes: 5
+    node_kind: control-flow
+
+  # Hidden diagnostic node — Phase 3 example of `triggers: [route]`.
+  # Invisible to the scheduler; only runs when triage `route_to` targets it
+  # (e.g. the "diagnostic" fault domain). No dependents — purely routed.
+  deep-debug:
+    type: agent
+    category: test
+    agent: "@backend-dev"
+    timeout_minutes: 10
+    node_kind: diagnostic
 
 config:
   defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
+  # Phase 4 operational hardening — stops stuck pipelines before they burn hours.
+  policy:
+    max_iterations: 500
+    max_idle_minutes: 45           # no batch progress for 45 min → self-terminate
+    max_total_failures: 15         # pipeline-wide halt budget
+    approval_default_timeout_hours: 24
+    approval_default_on_timeout: halt
   hooks:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateInfra: "bash .apm/hooks/validate-infra.sh"

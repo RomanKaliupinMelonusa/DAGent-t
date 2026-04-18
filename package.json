@@ -20,6 +20,8 @@
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "cd tools/autonomous-factory && npx tsx src/watchdog.ts",
     "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
+    "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",
+    "pipeline:viz": "npx tsx tools/autonomous-factory/scripts/viz-pipeline.ts",
     "build:instructions": "node tools/autonomous-factory/build-instructions.mjs",
     "retro": "cd tools/autonomous-factory && npx tsx src/retrospective.ts"
   },

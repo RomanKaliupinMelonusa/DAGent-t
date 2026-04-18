@@ -16,14 +16,11 @@ import { createFeatureBranch } from "./adapters/git-ops.js";
 import { loadApmContext } from "./apm/context-loader.js";
 import { runResolveEnvironment } from "./lifecycle/hooks.js";
 // Bootstrap runs at the composition root level — it legitimately owns the
-// entry-time read of persisted state. Importing the CLI module directly
-// avoids a thin facade (previously `./state.js`) and keeps the dependency
-// explicit.
+// entry-time read of persisted state. Importing the file-state I/O helpers
+// directly keeps the dependency explicit without threading the StateStore
+// port through preflight checks.
 import type { PipelineState } from "./types.js";
-import * as pipelineState from "../pipeline-state.mjs";
-// `readStateOrThrow` throws on missing file (catch-able); `readState`
-// calls process.exit, which we don't want at the composition root.
-const readStateOrThrow = pipelineState.readStateOrThrow as (slug: string) => PipelineState;
+import { readStateOrThrow } from "./adapters/file-state/io.js";
 import {
   checkJunkFiles,
   checkInProgressArtifacts,

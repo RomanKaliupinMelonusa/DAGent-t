@@ -22,7 +22,7 @@
 import { getAgentConfig, buildTaskPrompt } from "../apm/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { writeChangeManifest } from "../reporting.js";
-import { runCopilotSession } from "../adapters/copilot-session-runner.js";
+import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
@@ -134,10 +134,9 @@ const copilotAgentHandler: NodeHandler = {
 
     // ── 4. Run the SDK session via adapter ──────────────────────────────────
     const telemetry = initTelemetry(itemKey, attempt);
-    const defaultFatalPatterns = ["authentication info", "custom provider", "rate limit"];
-    const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? defaultFatalPatterns;
+    const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? DEFAULT_FATAL_SDK_PATTERNS;
 
-    const { sessionError, fatalError, reportedOutcome } = await runCopilotSession(client, {
+    const { sessionError, fatalError, reportedOutcome } = await ctx.copilotSessionRunner.run(client, {
       slug, itemKey, appRoot, repoRoot,
       model: agentConfig.model,
       systemMessage: agentConfig.systemMessage,

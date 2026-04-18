@@ -7,12 +7,12 @@
  *
  * This handler is an OBSERVER — it never calls completeItem/failItem.
  * The kernel manages state transitions based on the returned NodeResult.
+ *
+ * All I/O flows through ctx ports (shell, filesystem). Direct
+ * `node:fs` / `node:child_process` imports are forbidden here —
+ * shared helpers live in `session/`.
  */
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { execSync } from "node:child_process";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import {
   DEFAULT_TRANSIENT_RETRIES,
@@ -21,6 +21,7 @@ import {
   buildPollEnv,
   runPollWithRetries,
 } from "../session/transient-poll.js";
+import { postCiArtifactToPr } from "../session/ci-artifact-poster.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helper
@@ -28,74 +29,6 @@ import {
 
 function getWorkflowNode(ctx: NodeContext) {
   return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];
-}
-
-// ---------------------------------------------------------------------------
-// CI artifact → PR comment (self-contained to avoid circular deps)
-// ---------------------------------------------------------------------------
-
-async function postCiArtifactToPr(ctx: NodeContext): Promise<void> {
-  const { repoRoot, apmContext, slug } = ctx;
-  const branch = `feature/${slug}`;
-  const infraPlanFile = (apmContext.config?.ciWorkflows as Record<string, string> | undefined)?.infraPlanFile ?? "deploy-infra.yml";
-
-  const runIdOutput = execSync(
-    `gh run list --branch "${branch}" --workflow ${infraPlanFile} --status success --limit 1 --json databaseId -q '.[0].databaseId'`,
-    { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-  ).toString().trim();
-
-  if (!runIdOutput) return;
-
-  // Dedup: skip if we already posted a plan comment for this CI run
-  const marker = `<!-- tf-plan-run-${runIdOutput} -->`;
-  let alreadyPosted = false;
-  try {
-    const existingComments = execSync(
-      `gh pr view "${branch}" --json comments --jq '.comments[].body'`,
-      { cwd: repoRoot, stdio: "pipe", timeout: 30_000 },
-    ).toString();
-    alreadyPosted = existingComments.includes(marker);
-  } catch { /* ignore — proceed to post */ }
-
-  if (alreadyPosted) {
-    console.log(`  📋 Terraform plan already posted for run ${runIdOutput} — skipping`);
-    return;
-  }
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-"));
-  try {
-    execSync(`gh run download ${runIdOutput} -n plan-output -D "${tmpDir}"`, {
-      cwd: repoRoot, stdio: "pipe", timeout: 60_000,
-    });
-    const planFile = path.join(tmpDir, "plan-output.txt");
-    if (fs.existsSync(planFile)) {
-      const planText = fs.readFileSync(planFile, "utf-8").trim();
-      const prCommentTemplate = (apmContext.config?.ciWorkflows as Record<string, unknown> | undefined)?.pr_comment_template as string | undefined
-        ?? "> Comment `/dagent approve-infra` to apply this plan.";
-      const commentBody = [
-        marker,
-        "### Terraform Plan — `success`",
-        "",
-        "<details><summary>Click to expand plan output</summary>",
-        "",
-        "```",
-        planText,
-        "```",
-        "",
-        "</details>",
-        "",
-        prCommentTemplate,
-      ].join("\n");
-      const commentFile = path.join(tmpDir, "plan-comment.md");
-      fs.writeFileSync(commentFile, commentBody, "utf-8");
-      execSync(`gh pr comment "${branch}" --body-file "${commentFile}"`, {
-        cwd: repoRoot, stdio: "pipe", timeout: 30_000,
-      });
-      console.log(`  📋 Posted Terraform plan to Draft PR`);
-    }
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +47,7 @@ const githubCiPollHandler: NodeHandler = {
   },
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { slug, repoRoot, appRoot, apmContext } = ctx;
+    const { slug, repoRoot, appRoot, apmContext, filesystem } = ctx;
     const node = getWorkflowNode(ctx);
 
     const pollTarget = node?.poll_target;
@@ -128,8 +61,8 @@ const githubCiPollHandler: NodeHandler = {
       };
     }
 
-    const inProgressDir = path.join(appRoot, "in-progress");
-    const diagFile = path.join(inProgressDir, `${slug}_CI-FAILURE.log`);
+    const inProgressDir = filesystem.joinPath(appRoot, "in-progress");
+    const diagFile = filesystem.joinPath(inProgressDir, `${slug}_CI-FAILURE.log`);
 
     // Resolve the pushed SHA from the corresponding push item's handler output
     const lastPushedSha = (ctx.handlerData[`${pollTarget}:lastPushedSha`] as string) ?? null;
@@ -159,7 +92,13 @@ const githubCiPollHandler: NodeHandler = {
         // ── Download CI artifact and post to Draft PR (if node declares it) ──
         if (node?.post_ci_artifact_to_pr) {
           try {
-            await postCiArtifactToPr(ctx);
+            await postCiArtifactToPr({
+              repoRoot,
+              slug,
+              apmConfig: apmContext.config as Record<string, unknown> | undefined,
+              shell: ctx.shell,
+              filesystem: ctx.filesystem,
+            });
           } catch (planErr) {
             ctx.logger.event("tool.call", ctx.itemKey, { tool: "post-ci-artifact", category: "ci", detail: ` failed: ${planErr instanceof Error ? planErr.message : String(planErr)}`, is_write: false });
           }
@@ -194,13 +133,20 @@ const githubCiPollHandler: NodeHandler = {
 
         // ── File-based diagnostic handoff ──────────────────────────────
         let failureContext: string;
-        try {
-          const diagContent = fs.readFileSync(diagFile, "utf-8").trim();
-          failureContext = diagContent || pollResult.capturedOutput || pollResult.message;
-          if (diagContent) {
-            ctx.logger.event("tool.call", ctx.itemKey, { tool: "read-ci-diag", category: "diagnostic", detail: ` → ${path.relative(repoRoot, diagFile)}`, is_write: false });
+        if (filesystem.existsSync(diagFile)) {
+          try {
+            const diagContent = filesystem.readFileSync(diagFile).trim();
+            failureContext = diagContent || pollResult.capturedOutput || pollResult.message;
+            if (diagContent) {
+              const relDiag = diagFile.startsWith(repoRoot + "/")
+                ? diagFile.slice(repoRoot.length + 1)
+                : diagFile;
+              ctx.logger.event("tool.call", ctx.itemKey, { tool: "read-ci-diag", category: "diagnostic", detail: ` → ${relDiag}`, is_write: false });
+            }
+          } catch {
+            failureContext = pollResult.capturedOutput || pollResult.message;
           }
-        } catch {
+        } else {
           failureContext = pollResult.capturedOutput || pollResult.message;
         }
         return {

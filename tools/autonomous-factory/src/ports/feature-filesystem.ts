@@ -18,6 +18,27 @@ export interface FeatureFilesystem {
   /** Remove a file or directory. */
   remove(filePath: string): Promise<void>;
 
+  /** Synchronous existence check (callers in hot paths / transient retries). */
+  existsSync(filePath: string): boolean;
+
+  /** Synchronous read. */
+  readFileSync(filePath: string): string;
+
+  /** Synchronous write (creates parent directories as needed). */
+  writeFileSync(filePath: string, content: string): void;
+
+  /** Synchronous remove (recursive + force). */
+  removeSync(filePath: string): void;
+
+  /**
+   * Create a fresh temporary directory (inside the OS tmp dir) and return
+   * its absolute path. Used for staging CI artifact downloads.
+   */
+  mkdtempSync(prefix: string): string;
+
+  /** Platform-safe `path.join` — exposed so handlers do not need `node:path`. */
+  joinPath(...segments: string[]): string;
+
   /** List files matching a glob pattern. */
   glob(pattern: string, cwd: string): Promise<string[]>;
 

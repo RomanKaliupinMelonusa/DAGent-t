@@ -20,11 +20,15 @@ function makeCtx(key: string): NodeContext {
     apmContext: { agents: {}, workflows: {} } as NodeContext["apmContext"],
     pipelineState: { items: {}, deps: {}, metadata: {} } as unknown as NodeContext["pipelineState"],
     pipelineSummaries: [],
+    preStepRefs: {},
     handlerData: {},
     onHeartbeat: () => {},
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    shell: {} as NodeContext["shell"],
+    filesystem: {} as NodeContext["filesystem"],
+    copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
   };
 }
 

@@ -199,6 +199,32 @@ export const ApmConfigSchema = z.object({
    *  into upstream dev agents. Default: ["test"]. */
   redevelopment_categories: z.array(z.string()).default(["test"]),
 
+  /** Pipeline-level operational hardening policy (Phase 4).
+   *  All fields are optional; omitted fields retain their code-level defaults. */
+  policy: z.object({
+    /** Maximum wall-clock minutes without any item completing / failing before
+     *  the orchestrator self-terminates. Guards against stuck pipelines.
+     *  Default: undefined (no idle timeout — legacy behavior). */
+    max_idle_minutes: z.number().int().positive().optional(),
+    /** Maximum loop iterations before the safety valve trips (replaces the
+     *  hardcoded 500). Default: 500. */
+    max_iterations: z.number().int().positive().default(500),
+    /** Pipeline-wide halt budget: if the total number of failed items (across
+     *  all keys) reaches this threshold, the orchestrator halts even if
+     *  individual items have not exceeded their per-node max_item_failures.
+     *  Default: undefined (no pipeline-level cap). */
+    max_total_failures: z.number().int().positive().optional(),
+    /** Default approval SLA applied to every `type: "approval"` node that
+     *  does not declare its own `timeout_hours`. Default: undefined. */
+    approval_default_timeout_hours: z.number().positive().optional(),
+    /** Default action when an approval SLA expires. One of:
+     *  - `"salvage"`: graceful degradation (mark salvage survivors na, fail the gate)
+     *  - `"fail"`: fail the approval item (retries per normal rules)
+     *  - `"halt"`: halt the whole pipeline
+     *  Default: "halt". */
+    approval_default_on_timeout: z.enum(["salvage", "fail", "halt"]).default("halt"),
+  }).optional(),
+
 
 
   /** Handler inference map: node type (or "type:script_type") → handler key.
@@ -206,7 +232,7 @@ export const ApmConfigSchema = z.object({
    *  Extend this to register new node types without changing kernel code.
    *  Built-in defaults (applied when not overridden):
    *    agent → copilot-agent, script:poll → github-ci-poll, script → local-exec,
-   *    approval → approval, barrier → barrier, triage → triage */
+   *    approval → approval, triage → triage */
   handler_defaults: z.record(z.string(), z.string()).optional(),
 
   /** Custom handler declarations — pre-register handlers with metadata.
@@ -236,6 +262,18 @@ export const ApmConfigSchema = z.object({
    *  the kernel refreshes the semantic graph index before re-execution.
    *  Default: ["dev", "test"]. Set to [] to disable auto-reindex. */
   reindex_categories: z.array(z.string()).default(["dev", "test"]),
+
+  /** Node middleware chain registration. Middlewares wrap every `handler.execute()`
+   *  call in onion order (first entry is outermost). Built-in names:
+   *    - "auto-skip"         — honours workflow auto_skip_if_no_changes_in / _no_deletions
+   *    - "lifecycle-hooks"   — runs node.pre before + node.post after the handler
+   *  When omitted, a sensible default chain is applied (auto-skip + lifecycle-hooks). */
+  node_middleware: z.object({
+    /** Middlewares applied to every handler. Replaces the engine default when set. */
+    default: z.array(z.string()).optional(),
+    /** Per-handler additions, applied AFTER default middlewares (innermost). */
+    by_handler: z.record(z.string(), z.array(z.string())).optional(),
+  }).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -293,7 +331,7 @@ export const OnFailureSchema = z.object({
  * post_ci_artifact_to_pr) are NOT included here.
  */
 const nodeBodyFields = {
-  /** Execution type: built-in types are "agent", "script", "approval", "barrier", "triage".
+  /** Execution type: built-in types are "agent", "script", "approval", "triage".
    *  Custom types are allowed — declare a matching handler in config.handler_defaults or node.handler. */
   type: z.string().default("agent"),
   /** Semantic category — built-in: "dev", "test", "deploy", "finalize".
@@ -376,14 +414,47 @@ const nodeBodyFields = {
   consumes: z.array(consumesEntrySchema).default([]),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
+  /** Approval SLA — only meaningful on `type: "approval"` nodes.
+   *  Hours the approval gate may remain pending before the SLA expires.
+   *  When omitted, falls back to `config.policy.approval_default_timeout_hours`. */
+  timeout_hours: z.number().positive().optional(),
+  /** Approval SLA action — how to respond when the approval timeout expires.
+   *  - `"salvage"`: graceful degradation (mark salvage survivors `na`, fail the gate)
+   *  - `"fail"`: fail the approval item (retries per normal rules)
+   *  - `"halt"`: halt the whole pipeline
+   *  When omitted, falls back to `config.policy.approval_default_on_timeout`. */
+  on_timeout: z.enum(["salvage", "fail", "halt"]).optional(),
   /** Per-node circuit breaker configuration. Controls retry behavior, identical-error
    *  detection, and failure escalation. Replaces hardcoded category-based checks. */
   circuit_breaker: circuitBreakerSchema.optional(),
+  /** Per-node middleware override. Shape:
+   *    middleware:
+   *      mode: "replace"   # default: "append"
+   *      names: ["auto-skip", "metrics"]
+   *  When mode is "append" (default), names are added INNERMOST after the
+   *  chain resolved from `config.node_middleware`. When "replace", the
+   *  resolved chain is ignored and only `names` apply. Unknown names
+   *  throw at resolve time. */
+  middleware: z.object({
+    mode: z.enum(["append", "replace"]).default("append"),
+    names: z.array(z.string()),
+  }).optional(),
   /** Activation mode for this node.
    *  - `"triage-only"`: Node starts as `dormant` at init and is invisible to the scheduler.
    *    Only activated when triage `resetNodes()` targets it. Dependents are blocked until activation.
    *  - Omitted (default): Node starts as `pending` and participates in normal DAG scheduling. */
   activation: z.enum(["triage-only"]).optional(),
+  /** Scheduling triggers declared for this node. Controls when the scheduler considers the node.
+   *  - `["schedule"]` (default): Participates in normal DAG scheduling after its deps complete.
+   *  - `["route"]`: Hidden from the scheduler; only runs when a triage `resetNodes()` targets it.
+   *    Equivalent to `activation: "triage-only"` but composable.
+   *  - `["schedule", "route"]`: Runs on normal DAG order AND can be explicitly routed.
+   *  When `triggers` is set it takes precedence over the legacy `activation` field. */
+  triggers: z.array(z.enum(["schedule", "route"])).default(["schedule"]),
+  /** Documentation-only taxonomy. Helps canvas tooling visualize the DAG and
+   *  lint rules reason about node purpose. Values: "agent" | "script" |
+   *  "control-flow" | "diagnostic". Has no runtime effect. */
+  node_kind: z.enum(["agent", "script", "control-flow", "diagnostic"]).optional(),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -478,11 +549,6 @@ const NODE_CONSTRAINTS: NodeConstraint[] = [
   // ── script constraints ──
   { type: "script", message: "Workflow node with script_type 'poll' must declare a 'poll_target' field.", check: (n) => n.script_type !== "poll" || typeof n.poll_target === "string" },
   { type: "script", message: "Workflow node with script_type 'local-exec' must declare a 'command' field.", check: (n) => n.script_type !== "local-exec" || typeof n.command === "string" },
-  // ── barrier constraints ──
-  { type: "barrier", message: "Barrier node must declare at least 2 entries in 'depends_on'.", check: (n) => Array.isArray(n.depends_on) && (n.depends_on as string[]).length >= 2 },
-  { type: "barrier", message: "Barrier node must not declare an 'agent' field.", check: (n) => !n.agent },
-  { type: "barrier", message: "Barrier node must not declare a 'command' field.", check: (n) => !n.command },
-  { type: "barrier", message: "Barrier node must not declare a 'script_type' field.", check: (n) => !n.script_type },
   // ── triage constraints ──
   { type: "triage", message: "Triage node must declare a 'triage_profile' field.", check: (n) => typeof n.triage_profile === "string" },
   { type: "triage", message: "Triage node must not declare an 'agent' field.", check: (n) => !n.agent },
@@ -579,10 +645,14 @@ export const TriageProfileSchema = z.object({
   llm_fallback: z.boolean().default(true),
   /** Classification strategy for the triage engine.
    *  - `"rag+llm"` (default): RAG first, LLM fallback if no match.
-   *  - `"rag-only"`: Deterministic RAG only — no LLM cost.
-   *  - `"llm-only"`: Skip RAG, always use LLM cognitive classification.
+   *  - `"rag-only"` / `"rag"`: Deterministic RAG only — no LLM cost.
+   *  - `"llm-only"` / `"llm"`: Skip RAG, always use LLM cognitive classification.
+   *  - `"./path/to/classifier.ts"`: Custom classifier module resolved against
+   *    the app root (sandboxed to the repo boundary). Must export a default
+   *    function or `classify` with signature
+   *    `(errorTrace, profile, ctx) => Promise<TriageResult>`.
    *  When set, overrides `llm_fallback`. */
-  classifier: z.enum(["rag+llm", "rag-only", "llm-only"]).optional(),
+  classifier: z.string().optional(),
   /** Maximum total reroutes allowed for this profile before the pipeline halts.
    *  Replaces the separate max_redevelopment_cycles / max_redeploy_cycles budgets. */
   max_reroutes: z.number().int().positive().default(5),
@@ -712,8 +782,10 @@ export const TriagePackSchema = z.object({
 export const CompiledTriageProfileSchema = z.object({
   /** @deprecated Use `classifier` instead. */
   llm_fallback: z.boolean(),
-  /** Classification strategy — resolved from profile. When absent, derive from llm_fallback. */
-  classifier: z.enum(["rag+llm", "rag-only", "llm-only"]).optional(),
+  /** Classification strategy — resolved from profile. When absent, derive from llm_fallback.
+   *  Accepts built-in strategy keys (rag+llm / rag-only / rag / llm-only / llm)
+   *  or a sandboxed local path (`"./path/to/classifier.ts"`). */
+  classifier: z.string().optional(),
   max_reroutes: z.number().int().positive(),
   routing: z.record(z.string(), TriageRouteEntrySchema),
   /** Resolved signatures from the referenced packs. */
@@ -737,6 +809,51 @@ export const ApmCompiledOutputSchema = z.object({
 // apm.yml manifest schemas
 // ---------------------------------------------------------------------------
 
+/**
+ * Capability profile — object-capability / least-privilege declaration.
+ *
+ * Replaces the flat `security` + `tools` split with a single structured
+ * profile per agent. Profiles may extend a base via `extends:` (resolved
+ * transitively by the compiler, with `allow` / `deny` lists merged and
+ * deduplicated). Inner keys map onto the runtime sandbox as follows:
+ *
+ *   mcp_tools.allow / deny  → tools.core ∪ tools.mcp allow-lists
+ *                              + pre-tool denial in rbac hooks
+ *   shell.allow / deny       → blockedCommandRegexes (deny-first);
+ *                              allow acts as an allow-list when non-empty
+ *   filesystem.write         → allowedWritePaths (app-relative regexes)
+ *   filesystem.read / deny   → advisory (loggers), hard-enforcement TBD
+ *   preferences.prefer       → injected into the agent system prompt
+ *   preferences.require      → injected into the agent system prompt
+ *
+ * Profiles not referencing `extends` are standalone. Circular references
+ * are rejected at compile time.
+ */
+export const ApmCapabilityProfileSchema = z.object({
+  extends: z.string().optional().describe("Name of a sibling profile to inherit from."),
+  mcp_tools: z.object({
+    allow: z.array(z.string()).default([]),
+    deny: z.array(z.string()).default([]),
+  }).optional(),
+  shell: z.object({
+    allow: z.array(z.string()).default([]),
+    deny: z.array(z.string()).default([]),
+  }).optional(),
+  filesystem: z.object({
+    write: z.array(z.string()).default([]),
+    read: z.array(z.string()).default([]),
+    deny: z.array(z.string()).default([]),
+  }).optional(),
+  preferences: z.object({
+    prefer: z.array(z.object({
+      tool: z.string(),
+      over: z.array(z.string()),
+      for: z.string(),
+    })).default([]),
+    require: z.array(z.string()).default([]),
+  }).optional(),
+});
+
 export const ApmAgentDeclSchema = z.object({
   instructions: z.array(z.string()),
   /** Path to the Handlebars agent template relative to .apm/agents/. */
@@ -746,6 +863,10 @@ export const ApmAgentDeclSchema = z.object({
   toolLimits: ApmToolLimitsSchema,
   tools: ApmAgentToolsSchema,
   security: ApmAgentSecuritySchema,
+  /** Either a string reference to a `capability_profiles` entry, or an inline profile.
+   *  When set, the compiler resolves it (including `extends`) into the effective
+   *  `security` and `tools` blocks — taking precedence over any flat values above. */
+  capability_profile: z.union([z.string(), ApmCapabilityProfileSchema]).optional(),
 });
 
 export const ApmGeneratedInstructionSchema = z.object({
@@ -763,7 +884,10 @@ export const ApmManifestSchema = z.object({
    *  Compensates for model-specific tokenizer differences. Default: 1.1. */
   tokenizerMargin: z.number().min(1).default(1.1),
   agents: z.record(z.string(), ApmAgentDeclSchema),
-  /** Reusable node pool — all node types (agent, script, barrier, triage, approval).
+  /** Reusable capability profiles. Referenced by `agents.<name>.capability_profile`
+   *  (either by name string or inlined). Profiles may inherit via `extends`. */
+  capability_profiles: z.record(z.string(), ApmCapabilityProfileSchema).default({}),
+  /** Reusable node pool — all node types (agent, script, triage, approval).
    *  Replaces `_templates` from workflows.yml. Nodes define WHAT to execute;
    *  workflows define HOW to connect them (edges, failure routing). */
   nodes: z.record(z.string(), ApmNodeCatalogEntrySchema).default({}),
@@ -823,6 +947,7 @@ export type ApmMcpConfig = z.infer<typeof ApmMcpConfigSchema>;
 export type ApmToolLimits = z.infer<typeof ApmToolLimitsSchema>;
 export type ApmAgentTools = z.infer<typeof ApmAgentToolsSchema>;
 export type ApmAgentSecurity = z.infer<typeof ApmAgentSecuritySchema>;
+export type ApmCapabilityProfile = z.infer<typeof ApmCapabilityProfileSchema>;
 export type ApmCompiledAgent = z.infer<typeof ApmCompiledAgentSchema>;
 export type ApmCompiledOutput = z.infer<typeof ApmCompiledOutputSchema>;
 export type ApmWorkflowNode = z.infer<typeof ApmWorkflowNodeSchema>;

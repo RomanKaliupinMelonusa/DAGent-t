@@ -24,19 +24,9 @@ const SRC = join(ROOT, "src");
  * RULE: never add to this list without filing a cleanup ticket.
  */
 const KNOWN_DEBT = new Set([
-  // Phase 2 (covers the next three): local-exec + github-ci-poll shell out
-  // directly. A shared ShellPort / CiGateway impl will swallow these.
-  "handlers::src/handlers/local-exec.ts::node:child_process",
-  "handlers::src/handlers/github-ci-poll.ts::node:child_process",
-  "handlers::src/handlers/github-ci-poll.ts::node:fs",
-  // Phase 6 (future): invert copilot-session-runner behind a
-  // CopilotSessionRunner port so copilot-agent depends on the port,
-  // not the adapter directly.
-  "handlers::src/handlers/copilot-agent.ts::../adapters/copilot-session-runner.js",
-  // Phase 2: kernel/commands.ts pulls a handler type to describe the
-  // agent-session effect payload. Once NodeContext lives in a shared
-  // types module, this inversion disappears.
-  "kernel::src/kernel/commands.ts::../handlers/types.js",
+  // (intentionally empty — Phase 2 + Phase 6 cleanups landed together.
+  //  Shell + FeatureFilesystem + CopilotSessionRunner ports now inject
+  //  all previously-direct I/O. DagCommand types live in dag-commands.ts.)
 ]);
 
 /**

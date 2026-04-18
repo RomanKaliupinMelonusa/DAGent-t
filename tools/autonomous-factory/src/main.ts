@@ -27,6 +27,8 @@ import { JsonlTelemetry } from "./adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "./adapters/json-file-state-store.js";
 import { GitShellAdapter } from "./adapters/git-shell-adapter.js";
 import { LocalFilesystem } from "./adapters/local-filesystem.js";
+import { NodeShellAdapter } from "./adapters/node-shell-adapter.js";
+import { NodeCopilotSessionRunner } from "./adapters/copilot-session-runner.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "./loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "./handlers/registry.js";
 import { getWorkflowNode } from "./session/dag-utils.js";
@@ -69,10 +71,6 @@ class RegistryHandlerResolver implements HandlerResolver {
       async execute(ctx) {
         const handler = await getHandler();
         return handler.execute(ctx);
-      },
-      async shouldSkip(ctx) {
-        const handler = await getHandler();
-        return handler.shouldSkip?.(ctx) ?? null;
       },
     };
   }
@@ -124,6 +122,8 @@ export async function runWithKernel(
   const stateStore = new JsonFileStateStore();
   const vcs = new GitShellAdapter(repoRoot, logger);
   const filesystem = new LocalFilesystem();
+  const shell = new NodeShellAdapter();
+  const copilotSessionRunner = new NodeCopilotSessionRunner();
   const telemetry = new JsonlTelemetry(logger);
   const effectPorts = { stateStore, telemetry };
 
@@ -176,6 +176,9 @@ export async function runWithKernel(
     lifecycle,
     vcs,
     stateReader: stateStore,
+    shell,
+    filesystem,
+    copilotSessionRunner,
   });
 
   return { loopResult };

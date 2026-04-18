@@ -104,7 +104,7 @@ agents:
         roam-code: "*"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Node Pool — Reusable work units (agent, script, barrier, triage)
+# Node Pool — Reusable work units (agent, script, triage)
 # Nodes define WHAT to execute; workflows define HOW to connect them.
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
@@ -182,10 +182,6 @@ nodes:
     circuit_breaker:
       halt_on_identical: true
 
-  validation-gate:
-    type: barrier
-    category: test
-
   code-cleanup:
     type: agent
     category: finalize
@@ -249,6 +245,7 @@ nodes:
     type: triage
     category: finalize
     timeout_minutes: 5
+    node_kind: control-flow
 
   storefront-debugger:
     type: agent
@@ -257,13 +254,22 @@ nodes:
     timeout_minutes: 20
     commit_scope: all
     diff_attribution_dirs: [storefront]
-    activation: triage-only
+    # Phase 3 — declarative hidden-node trigger (preferred over legacy `activation`).
+    triggers: [route]
+    node_kind: diagnostic
     circuit_breaker:
       allows_revert_bypass: true
       allows_timeout_salvage: true
 
 config:
   defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
+  # Phase 4 operational hardening.
+  policy:
+    max_iterations: 500
+    max_idle_minutes: 45
+    max_total_failures: 15
+    approval_default_timeout_hours: 24
+    approval_default_on_timeout: halt
   hooks:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"

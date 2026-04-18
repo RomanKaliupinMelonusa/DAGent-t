@@ -1,20 +1,13 @@
 /**
- * adapters/copilot-session-runner.ts — SDK session lifecycle orchestrator.
+ * adapters/copilot-session-runner.ts — SDK session lifecycle adapter.
  *
- * Encapsulates every direct interaction with `@github/copilot-sdk`:
- *   - createSession (with hooks, tools, MCP servers)
- *   - wire* event listeners (tool logging, MCP telemetry, intent, messages, usage)
- *   - sendAndWait + disconnect + error classification
- *   - cognitive circuit breaker (constructed here so its onTrip can
- *     disconnect the session it belongs to)
+ * Pure orchestration. Creates the SDK session, attaches the breaker's
+ * disconnect-on-trip callback, delegates all telemetry wiring to
+ * `wireSessionTelemetry`, awaits the send, classifies the outcome via
+ * `domain/error-classification`, and guarantees disconnect.
  *
- * The handler (`handlers/copilot-agent.ts`) calls `runCopilotSession(...)` and
- * focuses on orchestration — building context, resolving limits, observing
- * post-state — without ever touching SDK primitives.
- *
- * **Telemetry is mutated in place:** callers pass a pre-populated `ItemSummary`
- * and receive the same object back, with counts/intents/messages updated by
- * the wire helpers during the session.
+ * **Telemetry is still mutated in place** by the wire helpers. Full
+ * event-bus extraction happens in Phase 2 (telemetry-init middleware).
  */
 
 import { approveAll } from "@github/copilot-sdk";
@@ -28,15 +21,9 @@ import {
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
-import {
-  TOOL_CATEGORIES,
-  SessionCircuitBreaker,
-  wireToolLogging,
-  wireMcpTelemetry,
-  wireIntentLogging,
-  wireMessageCapture,
-  wireUsageTracking,
-} from "../session/session-events.js";
+import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events.js";
+import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
+import { isFatalSdkError } from "../domain/error-classification.js";
 import { writeFlightData } from "../reporting.js";
 
 // ---------------------------------------------------------------------------
@@ -62,7 +49,7 @@ export interface CopilotSessionParams {
   telemetry: ItemSummary;
   pipelineSummaries: ReadonlyArray<ItemSummary>;
   /** Fatal SDK error patterns — a match causes `fatalError: true`. */
-  fatalPatterns: string[];
+  fatalPatterns: readonly string[];
   writeThreshold?: number;
   preTimeoutPercent?: number;
   runtimeTokenBudget?: number;
@@ -74,12 +61,7 @@ export interface CopilotSessionResult {
   sessionError?: string;
   /** Whether the error matches a non-retryable SDK / auth pattern. */
   fatalError: boolean;
-  /**
-   * Outcome reported by the agent via the `report_outcome` SDK tool.
-   * Pass-through of `params.telemetry.reportedOutcome` for handler convenience.
-   * Undefined when the agent never called the tool — handlers may then fall
-   * back to legacy state observation (`getStatus`) during the Phase A migration.
-   */
+  /** Outcome reported by the agent via the `report_outcome` SDK tool. */
   reportedOutcome?: import("../harness/outcome-tool.js").ReportedOutcome;
 }
 
@@ -87,35 +69,24 @@ export interface CopilotSessionResult {
 // Runner
 // ---------------------------------------------------------------------------
 
-/**
- * Run a Copilot SDK agent session end-to-end.
- * Creates the session, wires telemetry, sends the prompt, and disconnects.
- * Mutates `params.telemetry` in place; returns error classification.
- */
 export async function runCopilotSession(
   client: CopilotClient,
   params: CopilotSessionParams,
 ): Promise<CopilotSessionResult> {
-  const {
-    slug, itemKey, appRoot, repoRoot, model, systemMessage, taskPrompt,
-    timeout, tools, mcpServers, sandbox, harnessLimits, toolLimits,
-    telemetry, pipelineSummaries, fatalPatterns,
-    writeThreshold, preTimeoutPercent, runtimeTokenBudget,
-    logger,
-  } = params;
+  const { telemetry, itemKey, logger, appRoot, slug, pipelineSummaries } = params;
 
-  let isSessionActive = true;
   let session: Awaited<ReturnType<CopilotClient["createSession"]>>;
 
-  // Constructed here so the onTrip closure can capture `session` by reference.
+  // Breaker is constructed before the session; its onTrip callback captures
+  // `session` by forward reference and disconnects on hard-limit breach.
   const breaker = new SessionCircuitBreaker(
-    toolLimits.soft,
-    toolLimits.hard,
+    params.toolLimits.soft,
+    params.toolLimits.hard,
     (total) => {
       logger.event("breaker.fire", itemKey, {
         type: "hard",
         tool_count: total,
-        threshold: toolLimits.hard,
+        threshold: params.toolLimits.hard,
       });
       telemetry.errorMessage = `Cognitive circuit breaker: exceeded ${total} tool calls`;
       telemetry.outcome = "error";
@@ -124,22 +95,25 @@ export async function runCopilotSession(
   );
 
   session = await client.createSession({
-    model,
-    workingDirectory: repoRoot,
+    model: params.model,
+    workingDirectory: params.repoRoot,
     onPermissionRequest: approveAll,
-    systemMessage: { mode: "replace", content: systemMessage },
+    systemMessage: { mode: "replace", content: params.systemMessage },
     // `report_outcome` is appended unconditionally — every agent must be
-    // able to signal its outcome to the orchestrator (Phase A).
-    tools: [...(tools as any[]), buildReportOutcomeTool(telemetry)],
-    hooks: buildSessionHooks(repoRoot, sandbox, appRoot, (toolName) => {
+    // able to signal its outcome to the orchestrator.
+    tools: [...(params.tools as any[]), buildReportOutcomeTool(telemetry)],
+    hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);
-    }, harnessLimits),
-    ...(mcpServers
-      ? { mcpServers: mcpServers as Record<string, MCPServerConfig> }
+    }, params.harnessLimits),
+    ...(params.mcpServers
+      ? { mcpServers: params.mcpServers as Record<string, MCPServerConfig> }
       : {}),
   });
 
+  // Heartbeat: snapshot _FLIGHT.json while the session is live so the
+  // watcher (or Live UI) can render progress without waiting for finish.
+  let isSessionActive = true;
   let lastHeartbeat = 0;
   const triggerHeartbeat = () => {
     if (!isSessionActive) return;
@@ -149,25 +123,34 @@ export async function runCopilotSession(
     writeFlightData(appRoot, slug, liveSummaries, true);
   };
 
-  wireToolLogging(session, telemetry, repoRoot, breaker, timeout, logger, triggerHeartbeat, writeThreshold, preTimeoutPercent);
-  wireMcpTelemetry(session, mcpServers ?? {}, itemKey, logger, triggerHeartbeat);
-  wireIntentLogging(session, telemetry, logger);
-  wireMessageCapture(session, telemetry, logger);
-  wireUsageTracking(session, telemetry, logger, triggerHeartbeat, runtimeTokenBudget, (consumed, budget) => {
-    telemetry.errorMessage = `Runtime token budget exceeded: ${consumed.toLocaleString()} / ${budget.toLocaleString()} tokens`;
-    telemetry.outcome = "error";
-    session.disconnect().catch(() => { /* best-effort */ });
+  wireSessionTelemetry(session, {
+    itemSummary: telemetry,
+    itemKey,
+    repoRoot: params.repoRoot,
+    breaker,
+    sessionTimeout: params.timeout,
+    logger,
+    mcpServers: params.mcpServers,
+    triggerHeartbeat,
+    writeThreshold: params.writeThreshold,
+    preTimeoutPercent: params.preTimeoutPercent,
+    runtimeTokenBudget: params.runtimeTokenBudget,
+    onTokenBudgetExceeded: (consumed, budget) => {
+      telemetry.errorMessage = `Runtime token budget exceeded: ${consumed.toLocaleString()} / ${budget.toLocaleString()} tokens`;
+      telemetry.outcome = "error";
+      session.disconnect().catch(() => { /* best-effort */ });
+    },
   });
 
   let sessionError: string | undefined;
   let fatalError = false;
   try {
-    await session.sendAndWait({ prompt: taskPrompt }, timeout);
+    await session.sendAndWait({ prompt: params.taskPrompt }, params.timeout);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logger.event("state.fail", itemKey, { error_preview: message });
 
-    // Don't overwrite circuit breaker messages
+    // Don't overwrite circuit-breaker-authored messages.
     if (!telemetry.errorMessage?.includes("Cognitive circuit breaker")) {
       telemetry.outcome = "error";
       telemetry.errorMessage = message;
@@ -176,9 +159,12 @@ export async function runCopilotSession(
       sessionError = telemetry.errorMessage;
     }
 
-    // Fast-fail for fatal SDK / authentication errors (non-retryable)
-    if (fatalPatterns.some((p) => message.toLowerCase().includes(p))) {
-      logger.event("item.end", itemKey, { outcome: "error", halted: true, error_preview: "Non-retryable SDK/Auth error" });
+    if (isFatalSdkError(message, params.fatalPatterns)) {
+      logger.event("item.end", itemKey, {
+        outcome: "error",
+        halted: true,
+        error_preview: "Non-retryable SDK/Auth error",
+      });
       fatalError = true;
     }
   } finally {
@@ -188,3 +174,16 @@ export async function runCopilotSession(
 
   return { sessionError, fatalError, reportedOutcome: telemetry.reportedOutcome };
 }
+
+// ---------------------------------------------------------------------------
+// Port adapter — wraps runCopilotSession behind the CopilotSessionRunner port
+// ---------------------------------------------------------------------------
+
+import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+
+export class NodeCopilotSessionRunner implements CopilotSessionRunner {
+  run(client: CopilotClient, params: CopilotSessionParams): Promise<CopilotSessionResult> {
+    return runCopilotSession(client, params);
+  }
+}
+

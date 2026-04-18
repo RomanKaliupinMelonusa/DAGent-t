@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { dispatchItem } from "../item-dispatch.js";
 import type { NodeHandler, NodeContext, NodeResult } from "../../../handlers/types.js";
+import type { NodeMiddleware } from "../../../handlers/middleware.js";
 
 /** Minimal NodeContext factory for testing. */
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
@@ -21,20 +22,37 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
     apmContext: { agents: {}, workflows: {} } as NodeContext["apmContext"],
     pipelineState: { items: {}, deps: {}, metadata: {} } as unknown as NodeContext["pipelineState"],
     pipelineSummaries: [],
+    preStepRefs: {},
     handlerData: {},
     onHeartbeat: () => {},
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    shell: {} as NodeContext["shell"],
+    filesystem: {} as NodeContext["filesystem"],
+    copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
     ...overrides,
   };
 }
 
-function makeHandler(result: NodeResult, skip?: { reason: string } | null): NodeHandler {
+function makeHandler(result: NodeResult): NodeHandler {
   return {
     name: "test-handler",
     async execute() { return result; },
-    async shouldSkip() { return skip ?? null; },
+  };
+}
+
+/** A middleware that short-circuits with the given skip reason. */
+function makeSkipMiddleware(reason: string): NodeMiddleware {
+  return {
+    name: "test-skip",
+    async run(_ctx, _next) {
+      return {
+        outcome: "completed",
+        errorMessage: `Skipped: ${reason}`,
+        summary: { outcome: "completed", errorMessage: `Skipped: ${reason}` },
+      };
+    },
   };
 }
 
@@ -42,7 +60,7 @@ describe("dispatchItem", () => {
   it("returns complete-item when handler completes", async () => {
     const handler = makeHandler({ outcome: "completed", summary: {} });
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, []);
 
     // record-attempt + complete-item
     assert.equal(res.commands.length, 2);
@@ -50,14 +68,12 @@ describe("dispatchItem", () => {
     assert.equal(res.commands[1].type, "complete-item");
   });
 
-  it("returns complete-item when handler skips", async () => {
-    const handler = makeHandler(
-      { outcome: "completed", summary: {} },
-      { reason: "no changes" },
-    );
+  it("skips record-attempt when middleware short-circuits", async () => {
+    const handler = makeHandler({ outcome: "completed", summary: {} });
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, [makeSkipMiddleware("no changes")]);
 
+    // No record-attempt — short-circuited before handler
     assert.equal(res.commands.length, 1);
     assert.equal(res.commands[0].type, "complete-item");
   });
@@ -69,7 +85,7 @@ describe("dispatchItem", () => {
       summary: {},
     });
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, []);
 
     // record-attempt + fail-item
     assert.equal(res.commands.length, 2);
@@ -83,7 +99,7 @@ describe("dispatchItem", () => {
       async execute() { throw new Error("BOOM"); },
     };
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, []);
 
     assert.equal(res.commands.length, 2);
     assert.equal(res.commands[0].type, "record-attempt");
@@ -98,7 +114,7 @@ describe("dispatchItem", () => {
       signal: "create-pr",
     });
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, []);
     assert.equal(res.signal, "create-pr");
   });
 
@@ -109,7 +125,8 @@ describe("dispatchItem", () => {
       signals: { halt: true, "create-pr": false },
     });
     const ctx = makeCtx();
-    const res = await dispatchItem(handler, ctx);
+    const res = await dispatchItem(handler, ctx, []);
     assert.deepEqual(res.signals, { halt: true, "create-pr": false });
   });
 });
+

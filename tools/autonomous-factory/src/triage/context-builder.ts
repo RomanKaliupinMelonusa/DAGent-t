@@ -19,15 +19,12 @@ import path from "node:path";
 import type { ItemSummary, TriageRecord, ExecutionRecord } from "../types.js";
 import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
 import type { PipelineState } from "../types.js";
-// Direct import of the state CLI module. `context-builder` is part of the
-// triage subsystem and is allowed to read state synchronously; wrapping it
-// behind the StateStore port would force every caller to thread the port
-// through — we favor the simpler direct dependency here.
-import * as pipelineState from "../../pipeline-state.mjs";
-// Use readStateOrThrow — the readState export calls process.exit on missing
-// files, which would tear down the orchestrator mid-session. Try/catch blocks
-// below treat any read failure as "no context to build".
-const readStateOrThrow = pipelineState.readStateOrThrow as (slug: string) => PipelineState;
+// Direct import of the file-state I/O helpers. `context-builder` is part of
+// the triage subsystem and is allowed to read state synchronously; wrapping
+// it behind the StateStore port would force every caller to thread the port
+// through. `readStateOrThrow` throws on missing files (catch-able below);
+// the old CLI-backed `readState` would call process.exit mid-session.
+import { readStateOrThrow } from "../adapters/file-state/io.js";
 import { computeErrorSignature } from "./error-fingerprint.js";
 import { getHeadSha } from "../session/shared.js";
 

@@ -11,56 +11,24 @@ import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
 import { extractShellWrittenFiles } from "../harness/index.js";
+import {
+  SessionCircuitBreaker,
+  TOOL_LIMIT_FALLBACK_SOFT,
+  TOOL_LIMIT_FALLBACK_HARD,
+} from "../adapters/session-circuit-breaker.js";
+import type { CognitiveBreaker } from "../ports/cognitive-breaker.js";
+
+// Re-export for backward compatibility. New code should import from
+// adapters/session-circuit-breaker.js or ports/cognitive-breaker.js.
+export {
+  SessionCircuitBreaker,
+  TOOL_LIMIT_FALLBACK_SOFT,
+  TOOL_LIMIT_FALLBACK_HARD,
+};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/**
- * Cognitive Circuit Breaker — absolute last-resort fallback.
- * Only used if apm.yml has neither per-agent toolLimits nor config.defaultToolLimits.
- * All real configuration should be in apm.yml.
- */
-export const TOOL_LIMIT_FALLBACK_SOFT = 30;
-export const TOOL_LIMIT_FALLBACK_HARD = 40;
-
-// ---------------------------------------------------------------------------
-// Circuit breaker object
-// ---------------------------------------------------------------------------
-
-/**
- * Encapsulates the cognitive circuit breaker state — soft warning
- * and hard kill thresholds — in a single object that is shared between
- * wireToolLogging, the onDenial callback, and any future trigger points.
- */
-export class SessionCircuitBreaker {
-  private _tripped = false;
-  private _totalCalls = 0;
-  private _softFired = false;
-
-  constructor(
-    readonly soft: number,
-    readonly hard: number,
-    private onTrip: (total: number) => void,
-  ) {}
-
-  get tripped(): boolean { return this._tripped; }
-
-  recordCall(category: string, toolCounts: Record<string, number>): void {
-    toolCounts[category] = (toolCounts[category] ?? 0) + 1;
-    this._totalCalls = Object.values(toolCounts).reduce((a, b) => a + b, 0);
-    if (this._totalCalls >= this.hard && !this._tripped) {
-      this._tripped = true;
-      this.onTrip(this._totalCalls);
-    }
-  }
-
-  get shouldWarnSoft(): boolean {
-    if (this._softFired || this._totalCalls < this.soft) return false;
-    this._softFired = true;
-    return true;
-  }
-}
 
 /** Friendly labels for built-in SDK tools */
 export const TOOL_LABELS: Record<string, string> = {
@@ -163,7 +131,7 @@ export function wireToolLogging(
   session: any,
   itemSummary: ItemSummary,
   repoRoot: string,
-  breaker: SessionCircuitBreaker,
+  breaker: CognitiveBreaker,
   sessionTimeout: number,
   logger: PipelineLogger,
   triggerHeartbeat?: () => void,
@@ -484,4 +452,54 @@ export function wireUsageTracking(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Session telemetry facade
+// ---------------------------------------------------------------------------
+
+export interface WireSessionTelemetryParams {
+  itemSummary: ItemSummary;
+  itemKey: string;
+  repoRoot: string;
+  breaker: CognitiveBreaker;
+  sessionTimeout: number;
+  logger: PipelineLogger;
+  mcpServers?: Record<string, unknown>;
+  triggerHeartbeat?: () => void;
+  writeThreshold?: number;
+  preTimeoutPercent?: number;
+  runtimeTokenBudget?: number;
+  onTokenBudgetExceeded?: (consumed: number, budget: number) => void;
+}
+
+/**
+ * Wire every telemetry concern onto the given SDK session in one call.
+ * The copilot-session-runner adapter used to invoke five `wire*` helpers
+ * in sequence; this facade hides that layout so the runner stays small.
+ */
+export function wireSessionTelemetry(session: any, p: WireSessionTelemetryParams): void {
+  wireToolLogging(
+    session,
+    p.itemSummary,
+    p.repoRoot,
+    p.breaker,
+    p.sessionTimeout,
+    p.logger,
+    p.triggerHeartbeat,
+    p.writeThreshold,
+    p.preTimeoutPercent,
+  );
+  wireMcpTelemetry(session, p.mcpServers ?? {}, p.itemKey, p.logger, p.triggerHeartbeat);
+  wireIntentLogging(session, p.itemSummary, p.logger);
+  wireMessageCapture(session, p.itemSummary, p.logger);
+  wireUsageTracking(
+    session,
+    p.itemSummary,
+    p.logger,
+    p.triggerHeartbeat,
+    p.runtimeTokenBudget,
+    p.onTokenBudgetExceeded,
+  );
+}
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
+

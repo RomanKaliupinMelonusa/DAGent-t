@@ -232,3 +232,167 @@ export function salvageForDraft(
     skippedKeys,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Reset scripts (in-category script-node reset for re-push cycles)
+// ---------------------------------------------------------------------------
+
+export interface ResetScriptsResult {
+  state: TransitionState;
+  cycleCount: number;
+  halted: boolean;
+  resetKeys: string[];
+}
+
+/**
+ * Reset all `script`-type nodes in the given category back to pending.
+ * Used by the deploy-manager to retry a deploy step (and any cascading
+ * barriers) without disturbing dev/test items upstream.
+ *
+ * Cycle counting is sourced from `state.errorLog` for parity with
+ * `resetNodes`; the adapter is responsible for keeping `cycleCounters`
+ * in sync if it persists that field.
+ */
+export function resetScripts(
+  state: TransitionState,
+  category: string,
+  maxCycles: number = 10,
+): ResetScriptsResult {
+  const logKey = `reset-scripts:${category}`;
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
+  if (cycleCount >= maxCycles) {
+    return { state, cycleCount, halted: true, resetKeys: [] };
+  }
+
+  const resetKeys = new Set(
+    state.items
+      .filter(
+        (i) =>
+          state.nodeTypes[i.key] === "script" &&
+          state.nodeCategories[i.key] === category,
+      )
+      .map((i) => i.key),
+  );
+  cascadeBarriers(state.dependencies, state.nodeTypes, resetKeys);
+
+  const newItems = state.items.map((i) => {
+    if (!resetKeys.has(i.key) || i.status === "na") return i;
+    return { ...i, status: "pending" as const, error: null };
+  });
+
+  const newEntry: ErrorLogEntry = {
+    timestamp: new Date().toISOString(),
+    itemKey: logKey,
+    message: `Script re-push cycle for category "${category}" (cycle ${cycleCount + 1}/${maxCycles}). Reset items: ${[...resetKeys].join(", ")}`,
+  };
+
+  return {
+    state: { ...state, items: newItems, errorLog: [...state.errorLog, newEntry] },
+    cycleCount: cycleCount + 1,
+    halted: false,
+    resetKeys: [...resetKeys],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Resume after elevated infra apply
+// ---------------------------------------------------------------------------
+
+export interface ResumeElevatedResult {
+  state: TransitionState;
+  cycleCount: number;
+  halted: boolean;
+  resetCount: number;
+}
+
+/**
+ * Resume the pipeline after a successful elevated infrastructure apply.
+ * Undoes salvage-driven N/A markings (except `naByType` items) and resets
+ * deploy-script nodes to pending so standard CI re-verifies the full stack.
+ *
+ * Sets `elevatedApply: true` on the returned state so downstream agents
+ * know to expect an out-of-band TF apply.
+ */
+export function resumeAfterElevated(
+  state: TransitionState,
+  maxCycles: number = 5,
+): ResumeElevatedResult {
+  const logKey = "resume-elevated";
+  const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
+  if (cycleCount >= maxCycles) {
+    return { state, cycleCount, halted: true, resetCount: 0 };
+  }
+
+  const naByType = new Set(state.naByType);
+  const forceResetKeys = new Set(
+    state.items
+      .filter(
+        (i) =>
+          state.nodeTypes[i.key] === "script" &&
+          state.nodeCategories[i.key] === "deploy",
+      )
+      .map((i) => i.key),
+  );
+
+  let resetCount = 0;
+  const newItems = state.items.map((i) => {
+    if (forceResetKeys.has(i.key) && i.status !== "na") {
+      resetCount++;
+      return { ...i, status: "pending" as const, error: null };
+    }
+    if (i.status === "na" && !naByType.has(i.key)) {
+      resetCount++;
+      return { ...i, status: "pending" as const, error: null };
+    }
+    return i;
+  });
+
+  const newEntry: ErrorLogEntry = {
+    timestamp: new Date().toISOString(),
+    itemKey: logKey,
+    message: `Elevated apply resume cycle ${cycleCount + 1}/${maxCycles}. Reset ${resetCount} items to pending for standard CI re-verification.`,
+  };
+
+  return {
+    state: {
+      ...state,
+      items: newItems,
+      errorLog: [...state.errorLog, newEntry],
+      elevatedApply: true,
+    } as TransitionState,
+    cycleCount: cycleCount + 1,
+    halted: false,
+    resetCount,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers used by `recoverElevated` (composed in the adapter)
+// ---------------------------------------------------------------------------
+
+/**
+ * Locate the infra CI poll node (script + deploy + key contains "infra").
+ * Returns the last match (innermost in topo order), or `null` if none.
+ */
+export function findInfraPollKey(state: TransitionState): string | null {
+  const matches = state.items.filter(
+    (i) =>
+      state.nodeCategories[i.key] === "deploy" &&
+      state.nodeTypes[i.key] === "script" &&
+      i.key.includes("infra"),
+  );
+  return matches.length > 0 ? matches[matches.length - 1]!.key : null;
+}
+
+/**
+ * Locate the infra dev entry node (category "dev" with no upstream deps).
+ * Returns `null` if none — caller must handle that as a hard error.
+ */
+export function findInfraDevKey(state: TransitionState): string | null {
+  const match = state.items.find(
+    (i) =>
+      state.nodeCategories[i.key] === "dev" &&
+      (state.dependencies[i.key]?.length ?? 0) === 0,
+  );
+  return match?.key ?? null;
+}

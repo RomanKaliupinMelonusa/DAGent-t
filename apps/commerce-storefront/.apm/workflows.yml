@@ -8,7 +8,7 @@
 # Graph-only fields (depends_on, on_failure, poll_target, triage_profile)
 # are NEVER inherited from the pool.
 #
-# 12-node DAG (11 work nodes + 1 barrier): no infra wave (Managed Runtime is SaaS),
+# 11-node DAG (no infra wave — Managed Runtime is SaaS, no barrier — depends_on handles fan-in),
 # no backend nodes (SCAPI is SaaS). Backend extension nodes can be
 # added later without kernel changes.
 #
@@ -57,13 +57,9 @@ storefront:
     create-draft-pr:
       depends_on: [storefront-unit-test, e2e-author]
 
-    # ── Barrier: wait for all validation branches before finalize ──────
-    validation-gate:
-      depends_on: [e2e-runner, create-draft-pr]
-
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      depends_on: [validation-gate]
+      depends_on: [e2e-runner, create-draft-pr]
 
     docs-archived:
       depends_on: [code-cleanup]
@@ -88,10 +84,9 @@ storefront:
       depends_on: []
       triage_profile: storefront
 
-    # ── Dormant Debug Agent (activated by triage only) ─────────────────
+    # ── Dormant Debug Agent (activated by triage only via Phase 3 triggers: [route]) ──
     storefront-debugger:
       depends_on: []
-      activation: triage-only
 
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:

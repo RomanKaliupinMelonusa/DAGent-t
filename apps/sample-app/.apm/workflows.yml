@@ -121,6 +121,14 @@ full-stack:
       depends_on: []
       triage_profile: full-stack
 
+    # ── Hidden diagnostic node (Phase 3 `triggers: [route]` example) ──
+    # Invisible to the scheduler — nothing depends on it and it has no
+    # scheduling trigger. Only runs if a custom triage profile routes
+    # a fault domain to `deep-debug` via `on_failure.routes`.
+    deep-debug:
+      depends_on: []
+      triggers: [route]
+
   unfixable_signals:
     - "authorization_requestdenied"
     - "aadsts700016"

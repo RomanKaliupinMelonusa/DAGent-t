@@ -31,7 +31,6 @@ export type EventKind =
   | "item.start"
   | "item.end"
   | "item.skip"
-  | "item.barrier"
   | "item.approval"
   // Tool calls
   | "tool.call"
@@ -59,7 +58,9 @@ export type EventKind =
   | "hook.pre.start"
   | "hook.pre.end"
   | "hook.post.start"
-  | "hook.post.end";
+  | "hook.post.end"
+  // Metrics (structured observation, emitted by the metrics middleware)
+  | "node.metric";
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -212,8 +213,6 @@ function renderEventToConsole(evt: PipelineEvent): string | null {
       if (st === "non_retryable") return `  ⚡ Non-retryable: ${evt.item_key} — ${d.reason}`;
       return `  ⏭ ${evt.item_key} skipped: ${d.reason}`;
     }
-    case "item.barrier":
-      return `  ⊕ Barrier ${evt.item_key} — all upstream resolved, auto-completing`;
 
     case "tool.call": {
       const label = CONSOLE_TOOL_LABELS[d.tool as string] ?? `🔧 ${d.tool}`;

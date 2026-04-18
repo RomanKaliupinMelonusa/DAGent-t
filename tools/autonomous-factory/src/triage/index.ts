@@ -17,6 +17,7 @@ import type { CompiledTriageProfile } from "../apm/types.js";
 import type { PipelineLogger } from "../logger.js";
 import { retrieveTopMatches } from "./retriever.js";
 import { askLlmRouter } from "./llm-router.js";
+import { loadCustomClassifier } from "./custom-classifier.js";
 
 export { computeErrorSignature, normalizeError } from "./error-fingerprint.js";
 
@@ -38,10 +39,40 @@ export async function evaluateTriage(
   slug?: string,
   appRoot?: string,
   logger?: PipelineLogger,
+  repoRoot?: string,
 ): Promise<TriageResult> {
-  // Resolve classifier strategy: explicit `classifier` field overrides legacy `llm_fallback`
-  const classifier = profile.classifier
-    ?? (profile.llm_fallback ? "rag+llm" : "rag-only");
+  // Resolve classifier strategy.
+  // - Built-in strategy keywords are the canonical enum + friendly aliases.
+  // - Anything starting with "./" is treated as a sandboxed custom classifier module.
+  // - Anything else falls back to "rag+llm" / "rag-only" derived from llm_fallback.
+  const raw = profile.classifier;
+  const builtinMap: Record<string, "rag+llm" | "rag-only" | "llm-only"> = {
+    "rag+llm": "rag+llm",
+    "rag-only": "rag-only",
+    "rag": "rag-only",
+    "llm-only": "llm-only",
+    "llm": "llm-only",
+  };
+
+  // Custom classifier path → delegate entirely.
+  if (raw && raw.startsWith("./")) {
+    if (!appRoot) {
+      throw new Error(`Custom classifier "${raw}" requires an appRoot for path resolution.`);
+    }
+    const classify = await loadCustomClassifier(raw, appRoot, repoRoot ?? appRoot);
+    const result = await classify(errorTrace, profile, { client, slug, logger });
+    // Validate that the returned domain exists in the routing table (or is $SELF).
+    if (result.domain !== "$SELF" && !(result.domain in profile.routing)) {
+      throw new Error(
+        `Custom classifier "${raw}" returned domain "${result.domain}" ` +
+        `which is not in profile.routing. Valid domains: ${Object.keys(profile.routing).join(", ")} or $SELF.`,
+      );
+    }
+    return result;
+  }
+
+  const classifier: "rag+llm" | "rag-only" | "llm-only" =
+    (raw ? builtinMap[raw] : undefined) ?? (profile.llm_fallback ? "rag+llm" : "rag-only");
 
   const useRag = classifier !== "llm-only";
   const useLlm = classifier !== "rag-only";

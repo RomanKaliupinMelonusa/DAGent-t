@@ -27,7 +27,6 @@ const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
   "local-exec": async () => (await import("./local-exec.js")).default,
   "triage": async () => (await import("./triage-handler.js")).default,
-  "barrier": async () => (await import("./barrier.js")).default,
   "approval": async () => (await import("./approval.js")).default,
 };
 
@@ -57,7 +56,6 @@ const BUILTIN_INFERENCE: Record<string, string> = {
   "script:local-exec": "local-exec",
   "script": "local-exec",
   "approval": "approval",
-  "barrier": "barrier",
   "triage": "triage",
 };
 

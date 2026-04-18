@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-18T16:44:57.550Z",
+  "compiledAt": "2026-04-18T19:21:59.750Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -735,6 +735,13 @@
     "redevelopment_categories": [
       "test"
     ],
+    "policy": {
+      "max_idle_minutes": 45,
+      "max_iterations": 500,
+      "max_total_failures": 15,
+      "approval_default_timeout_hours": 24,
+      "approval_default_on_timeout": "halt"
+    },
     "reindex_categories": [
       "dev",
       "test"
@@ -772,6 +779,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": []
         },
         "infra-architect": {
@@ -790,7 +800,8 @@
           ],
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
-          "injects_infra_rollback": true,
+          "injects_infra_rollback": false,
+          "injects_triage_rejection": true,
           "captures_head_sha": false,
           "signals_create_pr": false,
           "produces": [],
@@ -802,6 +813,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "schema-dev"
           ]
@@ -832,6 +846,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "infra-architect"
           ]
@@ -855,6 +872,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "push-infra"
           ]
@@ -885,6 +905,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "create-draft-pr"
           ],
@@ -909,6 +932,11 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "timeout_hours": 24,
+          "on_timeout": "halt",
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "poll-infra-plan"
           ]
@@ -940,6 +968,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "await-infra-approval"
           ]
@@ -975,6 +1006,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1011,6 +1045,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1045,6 +1082,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "backend-dev"
           ],
@@ -1088,6 +1128,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "frontend-dev"
           ],
@@ -1131,6 +1174,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "backend-unit-test",
             "frontend-unit-test"
@@ -1163,6 +1209,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "push-app"
           ],
@@ -1200,6 +1249,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "poll-app-ci"
           ],
@@ -1252,6 +1304,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "poll-app-ci",
             "integration-test"
@@ -1291,6 +1346,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "integration-test",
             "live-ui"
@@ -1316,6 +1374,9 @@
           "produces": [],
           "consumes": [],
           "salvage_survivor": true,
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "code-cleanup"
           ]
@@ -1339,6 +1400,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "code-cleanup",
             "docs-archived"
@@ -1371,6 +1435,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "doc-architect"
           ]
@@ -1393,8 +1460,37 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
+          "node_kind": "control-flow",
           "depends_on": [],
           "triage_profile": "full-stack"
+        },
+        "deep-debug": {
+          "type": "agent",
+          "category": "test",
+          "agent": "@backend-dev",
+          "timeout_minutes": 10,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "triggers": [
+            "route"
+          ],
+          "node_kind": "diagnostic",
+          "depends_on": []
         }
       },
       "default_on_failure": {
@@ -1505,6 +1601,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": []
         },
         "infra-architect": {
@@ -1523,7 +1622,8 @@
           ],
           "writes_deploy_sentinel": false,
           "generates_change_manifest": false,
-          "injects_infra_rollback": true,
+          "injects_infra_rollback": false,
+          "injects_triage_rejection": true,
           "captures_head_sha": false,
           "signals_create_pr": false,
           "produces": [],
@@ -1535,6 +1635,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "schema-dev"
           ]
@@ -1565,6 +1668,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "infra-architect"
           ]
@@ -1588,6 +1694,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "push-infra"
           ]
@@ -1618,6 +1727,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "create-draft-pr"
           ],
@@ -1642,6 +1754,11 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "timeout_hours": 24,
+          "on_timeout": "halt",
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "poll-infra-plan"
           ]
@@ -1673,6 +1790,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "await-infra-approval"
           ]
@@ -1708,6 +1828,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "schema-dev",
             "infra-handoff"
@@ -1742,6 +1865,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "backend-dev"
           ],
@@ -1786,6 +1912,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "backend-unit-test"
           ]
@@ -1817,6 +1946,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "push-app"
           ],
@@ -1854,6 +1986,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "poll-app-ci"
           ],
@@ -1891,6 +2026,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "integration-test"
           ]
@@ -1915,6 +2053,9 @@
           "produces": [],
           "consumes": [],
           "salvage_survivor": true,
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "code-cleanup"
           ]
@@ -1938,6 +2079,9 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "code-cleanup",
             "docs-archived"
@@ -1970,6 +2114,9 @@
             "revert_warning_at": 3,
             "max_item_failures": 10
           },
+          "triggers": [
+            "schedule"
+          ],
           "depends_on": [
             "doc-architect"
           ]
@@ -1992,6 +2139,10 @@
           "signals_create_pr": false,
           "produces": [],
           "consumes": [],
+          "triggers": [
+            "schedule"
+          ],
+          "node_kind": "control-flow",
           "depends_on": [],
           "triage_profile": "backend"
         }

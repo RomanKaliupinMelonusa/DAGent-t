@@ -28,6 +28,10 @@ import {
   type TriageSignature,
   type CompiledTriageProfile,
 } from "./types.js";
+import {
+  resolveCapabilityProfile,
+  renderPreferencesMarkdown,
+} from "./capability-profiles.js";
 
 // ---------------------------------------------------------------------------
 // Token estimation
@@ -430,7 +434,29 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
 
     // Assemble rules block
     const assembled = parts.join("\n\n");
-    const rulesBlock = `## Coding Rules\n\n${assembled}`;
+
+    // --- Capability profile resolution ---
+    // When the agent declares `capability_profile`, flatten its extends
+    // chain and translate into the effective `security` + `tools` blocks.
+    // Soft preferences are appended to the rules block as a dedicated
+    // "Tool Routing Guidance" section.
+    let effectiveTools = agentDecl.tools;
+    let effectiveSecurity = agentDecl.security;
+    let preferencesMd = "";
+    if (agentDecl.capability_profile !== undefined) {
+      const resolved = resolveCapabilityProfile(
+        agentDecl.capability_profile,
+        manifest.capability_profiles ?? {},
+      );
+      // Profile-derived values take precedence over flat fields.
+      effectiveTools = resolved.tools;
+      effectiveSecurity = resolved.security;
+      preferencesMd = renderPreferencesMarkdown(resolved.preferences);
+    }
+
+    const rulesBlock = preferencesMd
+      ? `## Coding Rules\n\n${assembled}\n\n${preferencesMd}`
+      : `## Coding Rules\n\n${assembled}`;
     const tokenCount = estimateTokens(rulesBlock, manifest.tokenizerMargin);
 
     // Validate token budget
@@ -478,8 +504,8 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       mcp: agentMcp,
       skills: agentSkills,
       toolLimits: agentDecl.toolLimits,
-      tools: agentDecl.tools,
-      security: agentDecl.security,
+      tools: effectiveTools,
+      security: effectiveSecurity,
       systemPromptTemplate,
     };
   }

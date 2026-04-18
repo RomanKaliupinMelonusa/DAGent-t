@@ -2,7 +2,7 @@
  * handlers/local-exec.ts — Generic local script execution handler.
  *
  * Executes a shell command defined in the workflow node's `command` field
- * natively via child_process.exec. Zero token cost — no LLM session.
+ * through the Shell port. Zero token cost — no LLM session.
  *
  * Use case: running Playwright test suites, linters, build scripts, or any
  * shell command where the orchestrator needs the output for triage routing.
@@ -11,13 +11,11 @@
  * The kernel manages state transitions based on the returned NodeResult.
  */
 
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
+import type { ShellExecError } from "../ports/shell.js";
 import { getWorkflowNode } from "../session/shared.js";
-import { sanitizeOutput } from "./support/result-processor-regex.js";
-
-const execAsync = promisify(exec);
+// Script output condensation lives in the `result-processor` middleware —
+// handlers return raw output and the middleware chain sanitizes on failure.
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
 const DEFAULT_TIMEOUT_MINUTES = 15;
@@ -61,19 +59,17 @@ const localExecHandler: NodeHandler = {
       BASE_BRANCH: baseBranch,
     };
 
-    // --- Pre-hook (optional) ---
-    // Runs before the main command on every attempt (idempotent).
-    // Use for: killing stale processes, validating environment health (SSR smoke check).
-    // NOTE: node.pre is executed by the kernel before handler.execute() is called.
-    // This handler no longer runs its own pre-hook.
+    // --- Pre-hook / Post-hook ---
+    // node.pre and node.post are executed by the `lifecycle-hooks` middleware
+    // that wraps every handler. This handler only runs the main `command`.
 
     ctx.logger.event("tool.call", itemKey, { tool: "local-exec", category: "shell", detail: ` → ${command}`, is_write: false });
 
     try {
-      const { stdout, stderr } = await execAsync(command, {
+      const { stdout, stderr } = await ctx.shell.exec(command, {
         cwd: appRoot,
         maxBuffer: MAX_BUFFER,
-        timeout: timeoutMs,
+        timeoutMs,
         env: execEnv,
       });
 
@@ -91,15 +87,15 @@ const localExecHandler: NodeHandler = {
     } catch (err: unknown) {
       onHeartbeat();
 
-      // child_process.exec rejects with an ExecException on non-zero exit or timeout
-      const execErr = err as { stdout?: string; stderr?: string; code?: number; killed?: boolean; signal?: string; message?: string };
+      // Shell port rejects with a ShellExecError on non-zero exit / timeout
+      const execErr = err as ShellExecError & { message?: string };
 
-      const stdout = typeof execErr.stdout === "string" ? execErr.stdout : "";
-      const stderr = typeof execErr.stderr === "string" ? execErr.stderr : "";
+      const stdout = execErr.stdout ?? "";
+      const stderr = execErr.stderr ?? "";
       const combinedOutput = (stdout + stderr).trim();
 
-      // Timeout kill — child_process sends SIGTERM when timeout expires
-      if (execErr.killed && execErr.signal === "SIGTERM") {
+      // Timeout kill — shell port normalizes SIGTERM timeouts to timedOut=true
+      if (execErr.timedOut) {
         const timeoutMsg = `local-exec: Process killed after ${timeoutMinutes}m timeout (SIGTERM). ` +
           `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
       ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `Process killed after ${timeoutMinutes}m timeout` });
@@ -112,16 +108,14 @@ const localExecHandler: NodeHandler = {
       }
 
       const output = combinedOutput || execErr.message || "Unknown execution error";
-      const exitCode = typeof execErr.code === "number" ? execErr.code : 1;
-
-      // Sanitize raw output — cap to 8KB and extract test stats for triage
-      const sanitized = sanitizeOutput(output);
+      const exitCode = typeof execErr.exitCode === "number" ? execErr.exitCode : 1;
 
       ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `exit code ${exitCode}` });
 
+      // errorMessage is left unset — the `result-processor` middleware
+      // sanitizes scriptOutput into a bounded triage message.
       return {
         outcome: "failed",
-        errorMessage: sanitized.condensed,
         summary: { intents: ["Native script execution — failed"] },
         handlerOutput: { scriptOutput: output, exitCode },
       };

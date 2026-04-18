@@ -18,11 +18,27 @@
  */
 
 import type { ApmCompiledOutput } from "../apm/types.js";
-import type { PipelineState, ItemSummary, TriageRecord } from "../types.js";
+import type { PipelineState, ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
+import type { Shell } from "../ports/shell.js";
+import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type { DagCommand } from "../dag-commands.js";
+
+// Re-export for backwards compatibility — the authoritative types live in
+// src/dag-commands.ts so both handlers/ and kernel/ can import them
+// without creating a layering cycle.
+export type {
+  DagCommand,
+  ResetNodesCommand,
+  SalvageDraftCommand,
+  SetPendingContextCommand,
+  SetTriageRecordCommand,
+  ReindexCommand,
+} from "../dag-commands.js";
 
 // ---------------------------------------------------------------------------
 // NodeContext — input to every handler
@@ -67,6 +83,12 @@ export interface NodeContext {
   /** True when force_run_if_changed directories had changes (auto-skip override) */
   readonly forceRunChanges?: boolean;
   /**
+   * Snapshot of per-item base refs captured by the kernel. Used by
+   * middlewares (e.g. auto-skip) to compute git diffs against the
+   * appropriate upstream baseline.
+   */
+  readonly preStepRefs: Readonly<Record<string, string>>;
+  /**
    * Opaque data bag populated by the kernel from previous handlers' output.
    * Example: kernel auto-captures `{ lastPushedSha: "abc123" }` for deploy nodes,
    * the kernel stores and passes to the downstream github-ci-poll handler.
@@ -79,7 +101,7 @@ export interface NodeContext {
   readonly onHeartbeat: () => void;
   /**
    * Copilot SDK client instance for LLM-powered handlers.
-   * Undefined for non-agent handlers (local-exec, barrier, approval, etc.).
+   * Undefined for non-agent handlers (local-exec, approval, etc.).
    * Agent handlers use this to create sessions and run LLM interactions.
    */
   readonly client?: CopilotClient;
@@ -96,6 +118,24 @@ export interface NodeContext {
    * modules directly. Full read methods exposed; handlers MUST NOT mutate.
    */
   readonly stateReader: Pick<StateStore, "getStatus">;
+  /**
+   * Shell port — handlers that need to shell out (local-exec, CI poll,
+   * artifact download) must go through this port rather than importing
+   * `node:child_process` directly.
+   */
+  readonly shell: Shell;
+  /**
+   * Feature workspace filesystem — handlers must read/write feature files
+   * (in-progress/ diagnostics, CI artifact staging, tmp dirs) through
+   * this port rather than importing `node:fs` / `node:path` directly.
+   */
+  readonly filesystem: FeatureFilesystem;
+  /**
+   * Copilot SDK session runner — the copilot-agent handler delegates the
+   * actual `sendAndWait` lifecycle to this port. The composition root
+   * wires a Node-backed adapter; tests inject a stub.
+   */
+  readonly copilotSessionRunner: CopilotSessionRunner;
 
   // ── Failure context (populated when dispatched via on_failure edge) ──
 
@@ -166,77 +206,20 @@ export interface NodeResult {
 // ---------------------------------------------------------------------------
 // DagCommand — declarative graph-mutation protocol
 // ---------------------------------------------------------------------------
-
-/**
- * Discriminated union of graph-mutation commands that any handler can return.
- * The kernel's dispatch layer is the sole authority
- * that translates these into state API calls. This is the independently
- * scalable interface between handlers and the graph engine.
- *
- * Any handler type (triage, agent, script, custom) can emit any command.
- * New command types can be added here without touching handlers.
- */
-export type DagCommand =
-  | ResetNodesCommand
-  | SalvageDraftCommand
-  | SetPendingContextCommand
-  | SetTriageRecordCommand
-  | ReindexCommand;
-
-/** Reset a node + all transitive downstream dependents to pending. */
-export interface ResetNodesCommand {
-  readonly type: "reset-nodes";
-  /** Entry-point node key for DAG cascade. */
-  readonly seedKey: string;
-  /** Human-readable reason (tagged with domain/source for diagnostics). */
-  readonly reason: string;
-  /** Cycle-budget counter key in errorLog. Default: "reset-nodes". */
-  readonly logKey?: string;
-  /** Max reset cycles before halt. Resolved from triage profile if omitted. */
-  readonly maxCycles?: number;
-}
-
-/** Graceful degradation — skip remaining nodes, jump to Draft PR. */
-export interface SalvageDraftCommand {
-  readonly type: "salvage-draft";
-  /** The node that triggered the block. */
-  readonly failedItemKey: string;
-  /** Human-readable reason for salvage. */
-  readonly reason: string;
-}
-
-/** Inject pre-built prompt context into a node's next attempt. */
-export interface SetPendingContextCommand {
-  readonly type: "set-pending-context";
-  /** Target node key. */
-  readonly itemKey: string;
-  /** Context string to inject. */
-  readonly context: string;
-}
-
-/** Persist a triage classification record for retrospective analysis. */
-export interface SetTriageRecordCommand {
-  readonly type: "set-triage-record";
-  /** Full triage record to persist. */
-  readonly record: TriageRecord;
-}
-
-/** Refresh the roam-code semantic graph index. */
-export interface ReindexCommand {
-  readonly type: "reindex";
-  /** Only reindex if the target node's category is in this list.
-   *  If omitted, always reindex. */
-  readonly categories?: string[];
-}
+//
+// The authoritative definitions live in `src/dag-commands.ts`. They are
+// re-exported at the top of this file so existing `from "./types.js"`
+// callers continue to work.
 
 // ---------------------------------------------------------------------------
 // SkipResult — structured auto-skip response
 // ---------------------------------------------------------------------------
 
 /**
- * Returned by `handler.shouldSkip()` when the handler determines the item
- * can be skipped. The kernel uses the reason for summary reporting and
- * the optional filesChanged for attribution even on skipped items.
+ * Returned by the auto-skip middleware when the workflow manifest's
+ * skip rules fire. The dispatcher translates this into a `complete-item`
+ * command and uses the reason for summary reporting. `filesChanged` is
+ * optional attribution for sentinel-file updates.
  */
 export interface SkipResult {
   /** Human-readable reason the item was skipped (logged in summary) */
@@ -294,7 +277,9 @@ export interface HandlerMetadata {
  *
  * Contract:
  * - `execute()` performs the handler's work and returns a result
- * - `shouldSkip()` optionally checks if the item can be skipped before execution
+ * - Cross-cutting concerns (auto-skip, attempt counting, telemetry hooks,
+ *   capability enforcement) are handled by the node middleware chain in
+ *   `loop/dispatch/item-dispatch.ts` — handlers stay focused on their work
  * - Handlers are OBSERVERS and must NOT call completeItem/failItem, with one
  *   exception: the triage handler has exclusive state mutation authority
  *   (resetNodes, salvageForDraft, setLastTriageRecord, setPendingContext)
@@ -318,14 +303,4 @@ export interface NodeHandler {
    * @returns Result describing outcome, telemetry, and optional control signals
    */
   execute(ctx: NodeContext): Promise<NodeResult>;
-
-  /**
-   * Optional pre-execution check. If the item should be skipped (e.g. no
-   * relevant file changes), return a structured SkipResult. Return null to
-   * proceed with execution.
-   *
-   * @param ctx - Immutable context assembled by the kernel
-   * @returns SkipResult if item should be skipped, null otherwise
-   */
-  shouldSkip?(ctx: NodeContext): Promise<SkipResult | null>;
 }

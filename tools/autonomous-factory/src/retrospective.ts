@@ -242,9 +242,6 @@ function generateTerminal(events: PipelineEvent[], slug: string): string {
       case "item.skip":
         lines.push(`${ts} ⏭ ${itemTag} SKIP (${evt.data.skip_type}): ${evt.data.reason}`);
         break;
-      case "item.barrier":
-        lines.push(`${ts} ⊕ ${itemTag} BARRIER auto-complete`);
-        break;
       case "tool.call":
         lines.push(`${ts}   🔧 ${itemTag} ${evt.data.tool}${evt.data.file ? ` → ${evt.data.file}` : ""}`);
         break;

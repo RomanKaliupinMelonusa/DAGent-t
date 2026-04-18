@@ -25,15 +25,29 @@ export {
   completeItem,
   failItem,
   resetNodes,
+  resetScripts,
+  resumeAfterElevated,
   salvageForDraft,
+  findInfraPollKey,
+  findInfraDevKey,
   type TransitionItem,
   type TransitionState,
   type ErrorLogEntry,
   type CompleteResult,
   type FailResult,
   type ResetResult,
+  type ResetScriptsResult,
+  type ResumeElevatedResult,
   type SalvageResult,
 } from "./transitions.js";
+
+export {
+  buildInitialState,
+  type CompiledNode,
+  type InitInputs,
+  type InitialState,
+  type SeedItem,
+} from "./init-state.js";
 
 export {
   computeDormantKeys,
@@ -58,3 +72,27 @@ export {
   type BatchOutcome,
   type BatchSignals,
 } from "./batch-interpreter.js";
+
+export {
+  isFatalSdkError,
+  DEFAULT_FATAL_SDK_PATTERNS,
+} from "./error-classification.js";
+
+export {
+  resolveApprovalSla,
+  checkApprovalExpired,
+  type ApprovalNodeLike,
+  type ApprovalPolicyLike,
+  type ResolvedApprovalSla,
+  type ApprovalSlaStatus,
+} from "./approval-sla.js";
+
+export {
+  snapshotProgress,
+  evaluateHardening,
+  type ProgressTrackable,
+  type ProgressSnapshot,
+  type HardeningPolicy,
+  type HardeningState,
+  type HardeningVerdict,
+} from "./progress-tracker.js";

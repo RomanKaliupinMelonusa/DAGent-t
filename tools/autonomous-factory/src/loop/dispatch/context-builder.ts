@@ -15,6 +15,9 @@ import type { PipelineLogger } from "../../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../../ports/version-control.js";
 import type { StateStore } from "../../ports/state-store.js";
+import type { Shell } from "../../ports/shell.js";
+import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
+import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js";
 
 export interface ContextBuilderConfig {
   readonly slug: string;
@@ -26,6 +29,9 @@ export interface ContextBuilderConfig {
   readonly client?: CopilotClient;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
+  readonly shell: Shell;
+  readonly filesystem: FeatureFilesystem;
+  readonly copilotSessionRunner: CopilotSessionRunner;
 }
 
 /**
@@ -77,11 +83,15 @@ export function buildNodeContext(
     downstreamFailures,
     pipelineSummaries: runState.pipelineSummaries,
     forceRunChanges: runState.forceRunChangesDetected[item.key],
+    preStepRefs: runState.preStepRefs,
     handlerData,
     onHeartbeat: () => {}, // Placeholder — wired by the loop layer
     client: config.client,
     logger: config.logger,
     vcs: config.vcs,
     stateReader: config.stateReader,
+    shell: config.shell,
+    filesystem: config.filesystem,
+    copilotSessionRunner: config.copilotSessionRunner,
   };
 }

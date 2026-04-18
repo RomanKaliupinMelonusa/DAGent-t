@@ -1,14 +1,27 @@
 /**
  * dispatch/item-dispatch.ts — Single-item dispatch pipeline.
  *
- * Executes the handler for a single DAG item and returns kernel Commands.
- * Replaces the mutable stepInit→stepExecute pipeline from session-runner.ts
- * with a pure function that returns Commands instead of mutating state.
+ * Executes the handler for a single DAG item through the node middleware
+ * chain (koa-style onion) and returns kernel Commands. Middlewares may
+ * short-circuit (e.g. auto-skip), enrich the context, transform the
+ * result, or rescue errors — all without handlers knowing.
  */
 
 import type { NodeHandler, NodeContext, NodeResult } from "../../handlers/types.js";
+import type { NodeMiddleware } from "../../handlers/middleware.js";
+import { composeMiddleware } from "../../handlers/middleware.js";
+import { autoSkipMiddleware } from "../../handlers/middlewares/auto-skip.js";
+import { lifecycleHooksMiddleware } from "../../handlers/middlewares/lifecycle-hooks.js";
 import type { Command } from "../../kernel/commands.js";
 import { translateResult } from "./result-translator.js";
+
+/** Default middleware chain applied to every handler invocation when the
+ *  caller does not supply one. Mirrors ENGINE_DEFAULT_MIDDLEWARE_NAMES in
+ *  the registry — keep in sync. */
+export const DEFAULT_NODE_MIDDLEWARES: ReadonlyArray<NodeMiddleware> = [
+  autoSkipMiddleware,
+  lifecycleHooksMiddleware,
+];
 
 export interface ItemDispatchResult {
   /** Commands to send to the kernel. */
@@ -22,12 +35,8 @@ export interface ItemDispatchResult {
 }
 
 /**
- * Dispatch a single item through its handler and return commands.
- *
- * Steps:
- * 1. Check handler.shouldSkip() — if skipped, return complete-item command
- * 2. Execute handler.execute() — translate result into commands
- * 3. Return commands + signals for loop-level handling
+ * Dispatch a single item through its middleware-wrapped handler and return
+ * kernel commands. Middlewares run in onion order around `handler.execute`.
  *
  * This function does NOT call kernelComplete/kernelFail. It returns
  * Commands that the caller feeds to the kernel.
@@ -35,30 +44,20 @@ export interface ItemDispatchResult {
 export async function dispatchItem(
   handler: NodeHandler,
   ctx: NodeContext,
+  middlewares: ReadonlyArray<NodeMiddleware> = DEFAULT_NODE_MIDDLEWARES,
 ): Promise<ItemDispatchResult> {
-  // Step 1: Auto-skip check
-  if (handler.shouldSkip) {
-    const skipResult = await handler.shouldSkip(ctx);
-    if (skipResult) {
-      return {
-        commands: [{ type: "complete-item", itemKey: ctx.itemKey }],
-        summary: {
-          outcome: "completed",
-          errorMessage: `Skipped: ${skipResult.reason}`,
-          filesChanged: skipResult.filesChanged,
-        },
-      };
-    }
-  }
+  const commands: Command[] = [];
 
-  // Step 2: Record attempt + execute
-  const commands: Command[] = [
-    { type: "record-attempt", itemKey: ctx.itemKey },
-  ];
+  // `record-attempt` is emitted only when the handler actually executes —
+  // middleware short-circuits (e.g. auto-skip) must not burn an attempt.
+  const run = composeMiddleware(middlewares, (innerCtx) => {
+    commands.push({ type: "record-attempt", itemKey: ctx.itemKey });
+    return handler.execute(innerCtx);
+  });
 
   let result: NodeResult;
   try {
-    result = await handler.execute(ctx);
+    result = await run(ctx);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     result = {
@@ -68,7 +67,6 @@ export async function dispatchItem(
     };
   }
 
-  // Step 3: Translate result into commands
   commands.push(...translateResult(ctx.itemKey, result));
 
   return {
@@ -78,3 +76,4 @@ export async function dispatchItem(
     summary: result.summary,
   };
 }
+
