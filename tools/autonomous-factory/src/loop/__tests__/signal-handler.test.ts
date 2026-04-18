@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { interpretSignals } from "../signal-handler.js";
-import type { ItemDispatchResult } from "../../dispatch/item-dispatch.js";
+import type { ItemDispatchResult } from "../dispatch/item-dispatch.js";
 
 function makeItemResult(
   key: string,

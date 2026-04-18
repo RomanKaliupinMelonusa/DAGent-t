@@ -6,7 +6,7 @@
  * not the DAG state. This module interprets them into actionable directives.
  */
 
-import type { ItemDispatchResult } from "../dispatch/item-dispatch.js";
+import type { ItemDispatchResult } from "./dispatch/item-dispatch.js";
 
 export interface LoopDirective {
   /** Whether to halt the pipeline immediately. */

@@ -6,9 +6,9 @@
  * (unchanged) and the new kernel architecture.
  */
 
-import type { NodeResult, DagCommand } from "../handlers/types.js";
-import type { Command } from "../kernel/commands.js";
-import { wrapDagCommands } from "../kernel/commands.js";
+import type { NodeResult, DagCommand } from "../../handlers/types.js";
+import type { Command } from "../../kernel/commands.js";
+import { wrapDagCommands } from "../../kernel/commands.js";
 
 /**
  * Translate a handler's NodeResult into an ordered list of kernel Commands.

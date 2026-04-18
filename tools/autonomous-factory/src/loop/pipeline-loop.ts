@@ -31,8 +31,8 @@ import type { PipelineLogger } from "../logger.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
-import { buildNodeContext, type ContextBuilderConfig } from "../dispatch/context-builder.js";
-import { dispatchBatch } from "../dispatch/batch-dispatcher.js";
+import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
+import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
 
 // ---------------------------------------------------------------------------

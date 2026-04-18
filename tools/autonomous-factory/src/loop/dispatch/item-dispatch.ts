@@ -6,8 +6,8 @@
  * with a pure function that returns Commands instead of mutating state.
  */
 
-import type { NodeHandler, NodeContext, NodeResult } from "../handlers/types.js";
-import type { Command } from "../kernel/commands.js";
+import type { NodeHandler, NodeContext, NodeResult } from "../../handlers/types.js";
+import type { Command } from "../../kernel/commands.js";
 import { translateResult } from "./result-translator.js";
 
 export interface ItemDispatchResult {

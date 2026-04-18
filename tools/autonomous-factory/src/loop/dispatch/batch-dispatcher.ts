@@ -5,8 +5,8 @@
  * commands from each, and returns the aggregated command list.
  */
 
-import type { NodeHandler, NodeContext } from "../handlers/types.js";
-import type { Command } from "../kernel/commands.js";
+import type { NodeHandler, NodeContext } from "../../handlers/types.js";
+import type { Command } from "../../kernel/commands.js";
 import { dispatchItem, type ItemDispatchResult } from "./item-dispatch.js";
 
 export interface BatchDispatchResult {

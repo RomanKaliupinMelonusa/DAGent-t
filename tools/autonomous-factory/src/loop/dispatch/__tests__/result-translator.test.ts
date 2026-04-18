@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { translateResult } from "../result-translator.js";
-import type { NodeResult } from "../../handlers/types.js";
+import type { NodeResult } from "../../../handlers/types.js";
 
 describe("translateResult", () => {
   it("maps completed outcome to complete-item command", () => {

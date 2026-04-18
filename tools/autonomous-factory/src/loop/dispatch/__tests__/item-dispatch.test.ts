@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { dispatchItem } from "../item-dispatch.js";
-import type { NodeHandler, NodeContext, NodeResult } from "../../handlers/types.js";
+import type { NodeHandler, NodeContext, NodeResult } from "../../../handlers/types.js";
 
 /** Minimal NodeContext factory for testing. */
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {

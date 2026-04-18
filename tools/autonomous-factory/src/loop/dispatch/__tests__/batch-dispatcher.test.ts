@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { dispatchBatch } from "../batch-dispatcher.js";
-import type { NodeHandler, NodeContext } from "../../handlers/types.js";
+import type { NodeHandler, NodeContext } from "../../../handlers/types.js";
 
 function makeCtx(key: string): NodeContext {
   return {
