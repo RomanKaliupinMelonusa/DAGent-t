@@ -289,6 +289,7 @@ const CONSOLE_TOOL_LABELS: Record<string, string> = {
   grep_search:  "🔍 Search",
   list_dir:     "📂 List",
   report_intent:"💭 Intent",
+  report_outcome:"🏁 Outcome",
 };
 
 function formatMs(ms: number): string {

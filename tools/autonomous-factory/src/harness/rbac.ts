@@ -28,6 +28,7 @@ export const SAFE_READ_TOOLS = new Set([
   "semantic_search", "search_code",
   // Custom / orchestrator tools
   "report_intent",
+  "report_outcome",
   // roam-code MCP tools (all are read-only analysis tools)
   "roam_understand", "roam_file_info", "roam_diff", "roam_health", "roam_deps",
   "roam_context", "roam_explore", "roam_search_symbol", "roam_trace", "roam_uses",

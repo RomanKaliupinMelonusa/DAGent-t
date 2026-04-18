@@ -75,6 +75,7 @@ export const TOOL_LABELS: Record<string, string> = {
   grep_search:  "🔍 Search",
   list_dir:     "📂 List",
   report_intent:"💭 Intent",
+  report_outcome:"🏁 Outcome",
 };
 
 /** Group tool names into summary categories */
@@ -90,6 +91,7 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   grep_search: "search",
   list_dir: "search",
   report_intent: "intent",
+  report_outcome: "outcome",
 };
 
 /** Extract a short description from tool arguments */
@@ -121,6 +123,8 @@ export function toolSummary(
       return args.path ? ` → ${path.relative(repoRoot, String(args.path))}` : "";
     case "report_intent":
       return args.intent ? ` → ${args.intent}` : "";
+    case "report_outcome":
+      return args.status ? ` → ${args.status}` : "";
     default:
       return "";
   }

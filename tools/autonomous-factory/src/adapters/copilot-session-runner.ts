@@ -22,6 +22,7 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 
 import {
   buildSessionHooks,
+  buildReportOutcomeTool,
   type ResolvedHarnessLimits,
 } from "../harness/index.js";
 import type { AgentSandbox } from "../harness/sandbox.js";
@@ -73,6 +74,13 @@ export interface CopilotSessionResult {
   sessionError?: string;
   /** Whether the error matches a non-retryable SDK / auth pattern. */
   fatalError: boolean;
+  /**
+   * Outcome reported by the agent via the `report_outcome` SDK tool.
+   * Pass-through of `params.telemetry.reportedOutcome` for handler convenience.
+   * Undefined when the agent never called the tool — handlers may then fall
+   * back to legacy state observation (`getStatus`) during the Phase A migration.
+   */
+  reportedOutcome?: import("../harness/outcome-tool.js").ReportedOutcome;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +128,9 @@ export async function runCopilotSession(
     workingDirectory: repoRoot,
     onPermissionRequest: approveAll,
     systemMessage: { mode: "replace", content: systemMessage },
-    tools: tools as any,
+    // `report_outcome` is appended unconditionally — every agent must be
+    // able to signal its outcome to the orchestrator (Phase A).
+    tools: [...(tools as any[]), buildReportOutcomeTool(telemetry)],
     hooks: buildSessionHooks(repoRoot, sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);
@@ -176,5 +186,5 @@ export async function runCopilotSession(
     await session.disconnect();
   }
 
-  return { sessionError, fatalError };
+  return { sessionError, fatalError, reportedOutcome: telemetry.reportedOutcome };
 }

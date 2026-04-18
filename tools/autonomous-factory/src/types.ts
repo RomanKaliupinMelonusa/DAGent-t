@@ -269,6 +269,13 @@ export interface ItemSummary {
     tokensConsumed: number;
     tokenBudget?: number;
   };
+  /**
+   * Outcome reported by the agent via the `report_outcome` SDK tool.
+   * Last call wins. Read by `handlers/copilot-agent.ts` to translate
+   * into a kernel Command (Phase A — kernel-sole-writer).
+   * Undefined when the agent never called the tool.
+   */
+  reportedOutcome?: import("./harness/outcome-tool.js").ReportedOutcome;
 }
 
 export interface ShellEntry {

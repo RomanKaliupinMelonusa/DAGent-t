@@ -40,7 +40,9 @@ export function buildSessionHooks(
   ): PreToolUseHookOutput | void => {
     // --- UNIVERSAL ZERO-TRUST GATE ---
     // Bypass the gate if the agent hasn't been migrated to explicit tool config yet.
-    if (allowedCoreTools.size > 0 || allowedMcpTools.size > 0) {
+    // `report_outcome` is the orchestrator's outcome-signaling channel and is
+    // always permitted regardless of agent tool config.
+    if (input.toolName !== "report_outcome" && (allowedCoreTools.size > 0 || allowedMcpTools.size > 0)) {
       const mcpAllowed = allowedMcpTools.has("*") || allowedMcpTools.has(input.toolName);
       if (!allowedCoreTools.has(input.toolName) && !mcpAllowed) {
         const msg = `ERROR: Zero-Trust Policy Violation. The tool '${input.toolName}' is not authorized for your agent persona. Do not attempt to use it again.`;
