@@ -8,12 +8,12 @@
  * 4. Delegate the session to `adapters/copilot-session-runner`
  * 5. Post-session: record HEAD, git-diff fallback, budget utilization
  *    (support/agent-post-session — all git I/O via ctx.vcs port)
- * 6. Observe post-state via ctx.stateReader port to classify outcome
+ * 6. Classify outcome — prefer `reportedOutcome` (Phase A: kernel-sole-writer),
+ *    fall back to ctx.stateReader.getStatus() for un-migrated agents that
+ *    still call pipeline:complete/fail from bash.
  *
  * This handler is an OBSERVER — it does not call completeItem/failItem.
  * The kernel is the sole authority on pipeline state transitions.
- * The SDK agent may call pipeline:complete/fail via bash during the session,
- * and the kernel's idempotent state transitions handle this gracefully.
  *
  * All I/O flows through ctx ports. No direct child_process / filesystem /
  * state-module imports are permitted in this file.
@@ -137,7 +137,7 @@ const copilotAgentHandler: NodeHandler = {
     const defaultFatalPatterns = ["authentication info", "custom provider", "rate limit"];
     const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? defaultFatalPatterns;
 
-    const { sessionError, fatalError } = await runCopilotSession(client, {
+    const { sessionError, fatalError, reportedOutcome } = await runCopilotSession(client, {
       slug, itemKey, appRoot, repoRoot,
       model: agentConfig.model,
       systemMessage: agentConfig.systemMessage,
@@ -182,7 +182,32 @@ const copilotAgentHandler: NodeHandler = {
       };
     }
 
-    // Observe post-state to determine outcome (via StateStore port)
+    // Phase A: prefer the agent-reported outcome (via the `report_outcome`
+    // SDK tool). Falls back to a state re-read for un-migrated agents that
+    // still call `pipeline:complete/fail` from bash. The fallback path will
+    // be removed in Phase A.6 once all `.apm/` prompts emit `report_outcome`.
+    if (reportedOutcome) {
+      if (reportedOutcome.status === "failed") {
+        const message = reportedOutcome.message;
+        telemetry.outcome = "failed";
+        telemetry.errorMessage = message;
+        const diagTrace = extractDiagnosticTrace(message);
+        ctx.logger.event("item.end", itemKey, { outcome: "failed", source: "report_outcome" });
+        return {
+          outcome: "failed",
+          errorMessage: message,
+          summary: telemetry,
+          ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
+        };
+      }
+      ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "report_outcome" });
+      return { outcome: "completed", summary: telemetry };
+    }
+
+    // Legacy fallback — observe post-state via StateStore port. This path
+    // is exercised only by agents that haven't yet been migrated to
+    // `report_outcome`. The trailing `item.end` carries source="state_fallback"
+    // so we can verify zero callers before removing this branch in A.6.
     const postState = await ctx.stateReader.getStatus(slug);
     const item = postState.items.find((i) => i.key === itemKey);
     if (item?.status === "failed") {
@@ -197,7 +222,7 @@ const copilotAgentHandler: NodeHandler = {
       };
     }
 
-    ctx.logger.event("item.end", itemKey, { outcome: "completed" });
+    ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "state_fallback" });
     return { outcome: "completed", summary: telemetry };
   },
 };
