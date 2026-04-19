@@ -106,6 +106,21 @@ const mockProductNoId = {
     imageGroups: []
 }
 
+// Product with only `name` (no `productName`) — tests fallback branch on line 28
+const mockProductNameOnly = {
+    productId: 'name-only-789',
+    name: 'Silver Necklace',
+    image: {alt: 'Silver Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+    imageGroups: []
+}
+
+// Product with neither `productName` nor `name` — tests empty string fallback
+const mockProductNoName = {
+    productId: 'no-name-000',
+    image: {alt: 'Mystery Product', disBaseLink: 'https://example.com/mystery.jpg'},
+    imageGroups: []
+}
+
 beforeEach(() => {
     jest.clearAllMocks()
 })
@@ -155,6 +170,20 @@ test('forwards all props to base ProductTile', () => {
     )
     // Base tile is rendered
     expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+})
+
+// --- Name Fallback Branches (improves branch coverage on line 28) ---
+
+test('aria-label uses name when productName is absent', () => {
+    renderWithProviders(<ProductTile product={mockProductNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Silver Necklace')
+})
+
+test('aria-label is "Quick View " when both productName and name are missing', () => {
+    renderWithProviders(<ProductTile product={mockProductNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
 })
 
 // --- Interaction ---
@@ -220,4 +249,16 @@ test('container has role="group" for hover pseudo', () => {
     // Walk up to find the group container
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
+})
+
+test('overlay bar is rendered as a button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName).toBe('BUTTON')
+})
+
+test('renders base product tile even for sets (without quick view bar)', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
 })

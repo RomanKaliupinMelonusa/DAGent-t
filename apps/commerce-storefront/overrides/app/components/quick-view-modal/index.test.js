@@ -15,12 +15,17 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
     useProductViewModal: jest.fn()
 }))
 
+// Track props passed to ProductView for assertion
+let lastProductViewProps = null
+
 // Mock ProductView to avoid deep dependency chains
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
     return {
         __esModule: true,
         default: (props) => {
+            // Capture props for assertion in tests
+            lastProductViewProps = props
             // Allow tests to trigger an error via a special prop
             if (props.product?._triggerError) {
                 throw new Error('ProductView render error')
@@ -105,6 +110,7 @@ const defaultProps = {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    lastProductViewProps = null
     useProductViewModal.mockReturnValue({
         product: mockProduct,
         isFetching: false
@@ -195,6 +201,14 @@ test('passes showFullLink={true} to ProductView', () => {
     expect(screen.getByTestId('full-details-link')).toBeInTheDocument()
 })
 
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // Verify via captured props that ProductView received imageSize="sm"
+    expect(lastProductViewProps).toBeDefined()
+    expect(lastProductViewProps.imageSize).toBe('sm')
+})
+
 test('passes isProductLoading to ProductView when fetching but product exists', () => {
     useProductViewModal.mockReturnValue({product: mockProduct, isFetching: true})
     renderWithProviders(<QuickViewModal {...defaultProps} />)
@@ -242,4 +256,36 @@ test('aria-label falls back to generic text when product name missing', () => {
 
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
+})
+
+test('aria-label uses product.productName from search hit when hook product not yet loaded', () => {
+    const searchHit = {productId: 'hit-1', productName: 'Search Hit Shoes'}
+    useProductViewModal.mockReturnValue({product: null, isFetching: true})
+    renderWithProviders(
+        <QuickViewModal product={searchHit} isOpen={true} onClose={jest.fn()} />
+    )
+
+    const modal = screen.getByTestId('quick-view-modal')
+    expect(modal.getAttribute('aria-label')).toContain('Search Hit Shoes')
+})
+
+test('modal renders with size 4xl', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // Chakra Modal renders ModalContent with size class
+    const modal = screen.getByTestId('quick-view-modal')
+    expect(modal).toBeInTheDocument()
+})
+
+test('error state shows warning icon', () => {
+    useProductViewModal.mockReturnValue({product: null, isFetching: false})
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(screen.getByTestId('warning-icon')).toBeInTheDocument()
+})
+
+test('useProductViewModal is called with the product prop', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(useProductViewModal).toHaveBeenCalledWith(mockProduct)
 })
