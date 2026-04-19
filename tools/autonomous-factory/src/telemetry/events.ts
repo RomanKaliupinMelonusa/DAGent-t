@@ -36,6 +36,8 @@ export type EventKind =
   | "state.stall"
   // Triage
   | "triage.evaluate"
+  | "triage.enqueue"
+  | "triage.dispatch"
   // Handoff
   | "handoff.emit"
   | "handoff.inject"

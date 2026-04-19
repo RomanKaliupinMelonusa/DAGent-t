@@ -49,12 +49,14 @@ export async function dispatchItem(
 ): Promise<ItemDispatchResult> {
   const commands: Command[] = [];
 
-  // `record-attempt` is emitted only when the handler actually executes —
-  // middleware short-circuits (e.g. auto-skip) must not burn an attempt.
-  const run = composeMiddleware(middlewares, (innerCtx) => {
-    commands.push({ type: "record-attempt", itemKey: ctx.itemKey });
-    return handler.execute(innerCtx);
-  });
+  // `record-attempt` is an invariant of every dispatch: emitting it here
+  // (before the middleware chain runs) ensures attempt counts advance even
+  // when a middleware short-circuits with `failed` (e.g. pre-hook failure).
+  // Short-circuits that produce `completed` (e.g. auto-skip) still count
+  // as an attempt but have no retry consequence — the item just finishes.
+  commands.push({ type: "record-attempt", itemKey: ctx.itemKey });
+
+  const run = composeMiddleware(middlewares, (innerCtx) => handler.execute(innerCtx));
 
   let result: NodeResult;
   try {

@@ -4,8 +4,12 @@
  * Honours `node.pre` and `node.post` fields declared in workflow manifests:
  *   - `pre`  runs BEFORE `handler.execute()`. Non-zero exit fails the node
  *            immediately without burning a handler attempt.
- *   - `post` runs AFTER a successful handler result. Non-zero exit downgrades
- *            the node to `failed`. Skipped when the handler already failed.
+ *   - `post` runs AFTER the handler body on BOTH outcomes (success OR
+ *            failure) so cleanup always happens. A non-zero post exit
+ *            downgrades a successful handler to `failed`; if the handler
+ *            already failed, post-hook errors are logged but the original
+ *            handler failure is preserved as the authoritative error.
+ *            Post-hook scripts MUST be idempotent.
  *
  * The schema claims these hooks run "for ALL handler types" but until Phase 2
  * Part B no code actually executed them. This middleware finally wires them
@@ -83,22 +87,30 @@ export const lifecycleHooksMiddleware: NodeMiddleware = {
     const result = await next();
 
     // ── Post-hook ─────────────────────────────────────────────────────────
-    // Only run post on success — matching convention that post is cleanup/validation
-    // for a healthy run. A failing handler already tells triage what to do.
-    if (postCmd && result.outcome === "completed") {
+    // Post runs on BOTH outcomes so cleanup always happens (e.g. tearing
+    // down a dev server started by the pre-hook). Post-hook authors MUST
+    // make scripts idempotent and tolerant of partial pre-hook state.
+    // When the handler already failed, a non-zero post exit is logged but
+    // the original failure is preserved as the outcome.
+    if (postCmd) {
       ctx.logger.event("hook.post.start", ctx.itemKey, { command: postCmd });
       const post = executeHook(postCmd, env, ctx.appRoot, hookTimeoutMs);
       if (post && post.exitCode !== 0) {
         const message = `Post-hook failed (exit ${post.exitCode}): ${postCmd}\n${post.stdout.slice(-2048)}`;
         ctx.logger.event("hook.post.end", ctx.itemKey, { exit_code: post.exitCode, failed: true });
-        return {
-          ...result,
-          outcome: "failed",
-          errorMessage: message,
-          signals: { ...(result.signals ?? {}), postHookFailure: true },
-        };
+        if (result.outcome === "completed") {
+          return {
+            ...result,
+            outcome: "failed",
+            errorMessage: message,
+            signals: { ...(result.signals ?? {}), postHookFailure: true },
+          };
+        }
+        // Handler already failed — keep the original failure as the
+        // authoritative error; post-hook failure is only logged.
+      } else {
+        ctx.logger.event("hook.post.end", ctx.itemKey, { exit_code: 0 });
       }
-      ctx.logger.event("hook.post.end", ctx.itemKey, { exit_code: 0 });
     }
 
     return result;

@@ -68,14 +68,17 @@ describe("dispatchItem", () => {
     assert.equal(res.commands[1].type, "complete-item");
   });
 
-  it("skips record-attempt when middleware short-circuits", async () => {
+  it("records attempt even when middleware short-circuits", async () => {
     const handler = makeHandler({ outcome: "completed", summary: {} });
     const ctx = makeCtx();
     const res = await dispatchItem(handler, ctx, [makeSkipMiddleware("no changes")]);
 
-    // No record-attempt — short-circuited before handler
-    assert.equal(res.commands.length, 1);
-    assert.equal(res.commands[0].type, "complete-item");
+    // record-attempt is an invariant of every dispatch, regardless of
+    // whether the handler body runs — short-circuited `completed` still
+    // counts the attempt but has no retry consequence.
+    assert.equal(res.commands.length, 2);
+    assert.equal(res.commands[0].type, "record-attempt");
+    assert.equal(res.commands[1].type, "complete-item");
   });
 
   it("returns fail-item when handler fails", async () => {
