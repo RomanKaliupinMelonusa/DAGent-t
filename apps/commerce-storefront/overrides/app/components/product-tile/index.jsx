@@ -3,7 +3,7 @@
  * overlay bar that slides up on hover (desktop) or is always visible
  * (mobile/tablet). Clicking the bar opens a QuickViewModal.
  */
-import React from 'react'
+import React, {useState, useEffect} from 'react'
 import PropTypes from 'prop-types'
 import {Box, useDisclosure} from '@salesforce/retail-react-app/app/components/shared/ui'
 import OriginalProductTile from '@salesforce/retail-react-app/app/components/product-tile'
@@ -14,16 +14,29 @@ import {ViewIcon} from '@chakra-ui/icons'
  * Enhanced ProductTile with Quick View overlay bar.
  * Wraps the base ProductTile in a group-hover container and adds
  * an absolutely-positioned bar at the bottom of the product image area.
+ *
+ * The Quick View button renders only after hydration (client-side) to
+ * ensure React event handlers are attached before the button can be
+ * clicked. This avoids dead-click issues from SSR hydration timing.
  */
 const ProductTile = (props) => {
     const {product, ...rest} = props
     const {isOpen, onOpen, onClose} = useDisclosure()
 
+    // Render Quick View button only after hydration so React event
+    // handlers are attached before the button becomes interactive.
+    // This prevents dead-clicks caused by SSR hydration timing
+    // issues (getServerSnapshot / useSyncExternalStore warnings).
+    const [isHydrated, setIsHydrated] = useState(false)
+    useEffect(() => {
+        setIsHydrated(true)
+    }, [])
+
     // Don't show Quick View for sets, bundles, or missing productId
     const isSet = product?.type?.set === true
     const isBundle = product?.type?.bundle === true
     const hasProductId = Boolean(product?.productId)
-    const showQuickView = hasProductId && !isSet && !isBundle
+    const showQuickView = isHydrated && hasProductId && !isSet && !isBundle
 
     const productName = product?.productName || product?.name || ''
 
