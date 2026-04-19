@@ -22,3 +22,7 @@ Thumbs.db
 # Pipeline state (generated)
 *_STATE.json
 *_TRANS.md
+
+# Pipeline telemetry (archived with PR at publish-pr time; ignored during in-progress to avoid churn on per-batch state commits)
+in-progress/*_EVENTS.jsonl
+in-progress/*_FLIGHT_DATA.json
