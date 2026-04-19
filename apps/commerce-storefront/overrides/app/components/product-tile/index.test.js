@@ -202,6 +202,15 @@ test('closing modal hides QuickViewModal', () => {
     // The closing is handled by Chakra's useDisclosure internally.
 })
 
+// --- SSR Safety ---
+
+test('QuickViewModal is not rendered when modal is closed', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    // Modal should not be in the DOM when closed (isOpen guard)
+    expect(screen.queryByTestId('quick-view-modal')).not.toBeInTheDocument()
+})
+
 // --- Visual States ---
 
 test('container has role="group" for hover pseudo', () => {

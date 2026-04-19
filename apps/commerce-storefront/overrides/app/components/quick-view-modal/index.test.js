@@ -199,6 +199,30 @@ test('passes isProductLoading to ProductView when fetching but product exists', 
     expect(screen.getByTestId('quick-view-spinner')).toBeInTheDocument()
 })
 
+// --- ErrorBoundary ---
+
+test('ErrorBoundary catches ProductView crash and shows error state', () => {
+    // Override mock to throw on render
+    const originalMock = jest.requireMock('@salesforce/retail-react-app/app/components/product-view')
+    const originalDefault = originalMock.default
+    originalMock.default = () => {
+        throw new Error('Simulated render crash')
+    }
+
+    // Suppress console.error from ErrorBoundary
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const errorElement = screen.getByTestId('quick-view-error')
+    expect(errorElement).toBeInTheDocument()
+    expect(errorElement.textContent).toContain('Unable to load product details')
+
+    // Restore
+    consoleSpy.mockRestore()
+    originalMock.default = originalDefault
+})
+
 // --- Accessibility & Focus ---
 
 test('Escape key closes modal', () => {
