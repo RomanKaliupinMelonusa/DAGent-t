@@ -15,46 +15,55 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
     useProductViewModal: jest.fn()
 }))
 
+// Track ProductView props for assertions via global
+global.__mockProductViewCalls = []
+global.__shouldProductViewThrow = false
+
 // Mock ProductView to avoid deep dependency chains
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
+    const MockProductView = (props) => {
+        global.__mockProductViewCalls.push(props)
+        if (global.__shouldProductViewThrow) {
+            throw new Error('ProductView crashed!')
+        }
+        return React.createElement(
+            'div',
+            {'data-testid': 'product-view'},
+            props.product?.name &&
+                React.createElement(
+                    'h2',
+                    {'data-testid': 'product-name'},
+                    props.product.name
+                ),
+            props.product?.price &&
+                React.createElement(
+                    'span',
+                    {'data-testid': 'product-price'},
+                    `$${props.product.price}`
+                ),
+            props.showFullLink &&
+                React.createElement(
+                    'a',
+                    {'data-testid': 'full-details-link', href: '#'},
+                    'View Full Details'
+                ),
+            props.isProductLoading &&
+                React.createElement(
+                    'div',
+                    {'data-testid': 'product-view-loading'},
+                    'Loading...'
+                ),
+            React.createElement(
+                'button',
+                {'data-testid': 'add-to-cart-btn'},
+                'Add to Cart'
+            )
+        )
+    }
     return {
         __esModule: true,
-        default: (props) => {
-            return React.createElement(
-                'div',
-                {'data-testid': 'product-view'},
-                props.product?.name &&
-                    React.createElement(
-                        'h2',
-                        {'data-testid': 'product-name'},
-                        props.product.name
-                    ),
-                props.product?.price &&
-                    React.createElement(
-                        'span',
-                        {'data-testid': 'product-price'},
-                        `$${props.product.price}`
-                    ),
-                props.showFullLink &&
-                    React.createElement(
-                        'a',
-                        {'data-testid': 'full-details-link', href: '#'},
-                        'View Full Details'
-                    ),
-                props.isProductLoading &&
-                    React.createElement(
-                        'div',
-                        {'data-testid': 'product-view-loading'},
-                        'Loading...'
-                    ),
-                React.createElement(
-                    'button',
-                    {'data-testid': 'add-to-cart-btn'},
-                    'Add to Cart'
-                )
-            )
-        }
+        default: MockProductView
     }
 })
 
@@ -101,6 +110,8 @@ const defaultProps = {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    global.__mockProductViewCalls = []
+    global.__shouldProductViewThrow = false
     useProductViewModal.mockReturnValue({
         product: mockProduct,
         isFetching: false
@@ -191,12 +202,38 @@ test('passes showFullLink={true} to ProductView', () => {
     expect(screen.getByTestId('full-details-link')).toBeInTheDocument()
 })
 
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // Verify via the captured calls that ProductView received imageSize="sm"
+    const lastCall = global.__mockProductViewCalls[global.__mockProductViewCalls.length - 1]
+    expect(lastCall).toEqual(expect.objectContaining({imageSize: 'sm'}))
+})
+
 test('passes isProductLoading to ProductView when fetching but product exists', () => {
     useProductViewModal.mockReturnValue({product: mockProduct, isFetching: true})
     renderWithProviders(<QuickViewModal {...defaultProps} />)
 
     // Our component shows the spinner when isFetching is true
     expect(screen.getByTestId('quick-view-spinner')).toBeInTheDocument()
+})
+
+// --- Error Boundary Tests ---
+
+test('error boundary catches ProductView crash and shows fallback', () => {
+    // Set the global flag so mock ProductView throws
+    global.__shouldProductViewThrow = true
+
+    // Suppress console.error for this test (React logs error boundary catches)
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const errorElement = screen.getByTestId('quick-view-error')
+    expect(errorElement).toBeInTheDocument()
+    expect(errorElement.textContent).toContain('Unable to load product details')
+
+    consoleSpy.mockRestore()
 })
 
 // --- Accessibility & Focus ---
@@ -219,4 +256,22 @@ test('aria-label falls back to generic text when product name missing', () => {
 
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
+})
+
+test('aria-label uses fetched product name over search hit name', () => {
+    const searchHit = {productId: 'prod-456', productName: 'Search Hit Name'}
+    const fetchedProduct = {productId: 'prod-456', name: 'Fetched Product Name', price: 50}
+    useProductViewModal.mockReturnValue({product: fetchedProduct, isFetching: false})
+    renderWithProviders(
+        <QuickViewModal product={searchHit} isOpen={true} onClose={jest.fn()} />
+    )
+
+    const modal = screen.getByTestId('quick-view-modal')
+    // The fetched product name should take priority
+    expect(modal.getAttribute('aria-label')).toContain('Fetched Product Name')
+})
+
+test('useProductViewModal receives the product search hit', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+    expect(useProductViewModal).toHaveBeenCalledWith(mockProduct)
 })

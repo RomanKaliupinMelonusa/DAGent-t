@@ -10,11 +10,15 @@ import {BrowserRouter} from 'react-router-dom'
 import theme from '@salesforce/retail-react-app/app/theme'
 import ProductTile from './index'
 
+// Track props passed to base ProductTile
+const mockBaseTileProps = jest.fn()
+
 // Mock the base ProductTile
 jest.mock('@salesforce/retail-react-app/app/components/product-tile', () => {
     const React = require('react')
-    const MockProductTile = React.forwardRef((props, ref) =>
-        React.createElement(
+    const MockProductTile = React.forwardRef((props, ref) => {
+        mockBaseTileProps(props)
+        return React.createElement(
             'div',
             {ref, 'data-testid': 'base-product-tile'},
             React.createElement(
@@ -23,7 +27,7 @@ jest.mock('@salesforce/retail-react-app/app/components/product-tile', () => {
                 React.createElement('div', {'data-testid': 'image-wrapper'}, 'Product Image')
             )
         )
-    )
+    })
     MockProductTile.displayName = 'MockProductTile'
     return {
         __esModule: true,
@@ -124,10 +128,33 @@ test('overlay bar contains eye icon and "Quick View" text', () => {
     expect(screen.getByTestId('view-icon')).toBeInTheDocument()
 })
 
-test('overlay bar has correct aria-label', () => {
+test('overlay bar has correct aria-label with productName', () => {
     renderWithProviders(<ProductTile product={mockStandardProduct} />)
     const btn = screen.getByTestId('quick-view-btn')
     expect(btn.getAttribute('aria-label')).toBe('Quick View Diamond Ring')
+})
+
+test('overlay bar aria-label falls back to name when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'prod-789',
+        name: 'Sapphire Necklace',
+        image: {alt: 'Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Sapphire Necklace')
+})
+
+test('overlay bar aria-label is "Quick View " when both names are missing', () => {
+    const productNoName = {
+        productId: 'prod-noname',
+        image: {alt: 'No name', disBaseLink: 'https://example.com/noname.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
 })
 
 test('does NOT render bar for product sets', () => {
@@ -145,16 +172,33 @@ test('does NOT render bar when productId is missing', () => {
     expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
 })
 
+test('does NOT render bar when product is undefined', () => {
+    renderWithProviders(<ProductTile product={undefined} />)
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
 test('forwards all props to base ProductTile', () => {
+    const extraProps = {
+        enableFavourite: true,
+        badgeDetails: [{label: 'New'}],
+        isFavourite: false,
+        imageViewType: 'large'
+    }
     renderWithProviders(
-        <ProductTile
-            product={mockStandardProduct}
-            enableFavourite={true}
-            badgeDetails={[]}
-        />
+        <ProductTile product={mockStandardProduct} {...extraProps} />
     )
     // Base tile is rendered
     expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    // Verify props passed to mock
+    expect(mockBaseTileProps).toHaveBeenCalledWith(
+        expect.objectContaining({
+            product: mockStandardProduct,
+            enableFavourite: true,
+            badgeDetails: [{label: 'New'}],
+            isFavourite: false,
+            imageViewType: 'large'
+        })
+    )
 })
 
 // --- Interaction ---
@@ -211,4 +255,29 @@ test('container has role="group" for hover pseudo', () => {
     // Walk up to find the group container
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
+})
+
+test('overlay bar renders as a button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName.toLowerCase()).toBe('button')
+})
+
+test('still renders base ProductTile for sets without quick view bar', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
+    // Base tile should still render even when quick view is hidden
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
+test('still renders base ProductTile for bundles without quick view bar', () => {
+    renderWithProviders(<ProductTile product={mockBundleProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
+test('does not render QuickViewModal until bar is clicked', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    // Before click, no modal is mounted (lazy rendering)
+    expect(screen.queryByTestId('quick-view-modal')).not.toBeInTheDocument()
 })
