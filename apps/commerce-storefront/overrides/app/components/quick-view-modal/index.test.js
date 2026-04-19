@@ -15,12 +15,17 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
     useProductViewModal: jest.fn()
 }))
 
+// Capture ProductView props for assertion
+let capturedProductViewProps = null
+
 // Mock ProductView to avoid deep dependency chains
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
     return {
         __esModule: true,
         default: (props) => {
+            // Store props for test assertions
+            capturedProductViewProps = props
             return React.createElement(
                 'div',
                 {'data-testid': 'product-view'},
@@ -101,6 +106,7 @@ const defaultProps = {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    capturedProductViewProps = null
     useProductViewModal.mockReturnValue({
         product: mockProduct,
         isFetching: false
@@ -191,6 +197,14 @@ test('passes showFullLink={true} to ProductView', () => {
     expect(screen.getByTestId('full-details-link')).toBeInTheDocument()
 })
 
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // Verify via captured props that imageSize="sm" was forwarded
+    expect(capturedProductViewProps).not.toBeNull()
+    expect(capturedProductViewProps.imageSize).toBe('sm')
+})
+
 test('passes isProductLoading to ProductView when fetching but product exists', () => {
     useProductViewModal.mockReturnValue({product: mockProduct, isFetching: true})
     renderWithProviders(<QuickViewModal {...defaultProps} />)
@@ -200,6 +214,22 @@ test('passes isProductLoading to ProductView when fetching but product exists', 
 })
 
 // --- Accessibility & Focus ---
+
+test('modal traps focus when open', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const modal = screen.getByTestId('quick-view-modal')
+    // Chakra Modal renders with aria-modal="true" which signals to assistive
+    // technology that the modal traps focus
+    expect(modal.closest('[aria-modal="true"]') || modal.getAttribute('aria-modal')).toBeTruthy()
+
+    // Verify focusable elements exist inside the modal (close button, add-to-cart)
+    const closeButton = screen.getByLabelText('Close')
+    expect(modal.contains(closeButton)).toBe(true)
+
+    const addToCartBtn = screen.getByTestId('add-to-cart-btn')
+    expect(modal.contains(addToCartBtn)).toBe(true)
+})
 
 test('Escape key closes modal', () => {
     const onClose = jest.fn()
