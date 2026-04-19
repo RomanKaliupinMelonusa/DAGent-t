@@ -821,3 +821,6 @@
 {"id":"1f8c6c04-963c-4927-87a0-e419095e65aa","ts":"2026-04-19T03:47:35.472Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"create-draft-pr","attempt":null,"kind":"state.complete","data":{}}
 {"id":"69db15ee-af6c-4c8e-bc5e-370e11ec92c5","ts":"2026-04-19T03:47:35.492Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"e2e-runner","attempt":null,"kind":"hook.pre.start","data":{"command":"bash .apm/hooks/e2e-runner-pre.sh"}}
 {"id":"ed85b7d6-2ddb-4c23-97f1-78b0d2cfadbc","ts":"2026-04-19T03:47:42.526Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"e2e-runner","attempt":null,"kind":"hook.pre.end","data":{"exit_code":1,"failed":true}}
+{"id":"7d0be17b-a149-4c0a-b383-b529c79943b0","ts":"2026-04-19T03:47:43.904Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"e2e-runner","attempt":null,"kind":"state.fail","data":{"failCount":2,"halted":false}}
+{"id":"12b29683-1621-404a-a093-278230fa6938","ts":"2026-04-19T03:47:43.927Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"e2e-runner","attempt":null,"kind":"hook.pre.start","data":{"command":"bash .apm/hooks/e2e-runner-pre.sh"}}
+{"id":"9ef000e9-24a7-44db-8468-ca174fc36921","ts":"2026-04-19T03:47:50.954Z","run_id":"c0306554-7ac4-45df-aee7-1c5361c2b1d6","item_key":"e2e-runner","attempt":null,"kind":"hook.pre.end","data":{"exit_code":1,"failed":true}}
