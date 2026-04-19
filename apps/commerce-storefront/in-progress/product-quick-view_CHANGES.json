@@ -1,0 +1,40 @@
+{
+  "feature": "product-quick-view",
+  "timestamp": "2026-04-19T20:27:58.243Z",
+  "changes": [
+    {
+      "file": "overrides/app/components/product-tile/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Override base ProductTile to add Quick View overlay bar with hover slide-up on desktop and always-visible on mobile"
+    },
+    {
+      "file": "overrides/app/components/product-tile/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "Unit tests for ProductTile overlay bar: rendering, click handler, accessibility, set/bundle exclusion"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Quick View modal component reusing base ProductView and useProductViewModal hook with ErrorBoundary and loading states"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "Unit tests for QuickViewModal: loading spinner, product view rendering, error boundary, close behavior"
+    },
+    {
+      "file": "e2e/product-quick-view.spec.ts",
+      "type": "added",
+      "category": "e2e",
+      "description": "Playwright E2E tests for Quick View: trigger visibility, modal open/close, product content loading, keyboard accessibility"
+    }
+  ],
+  "testing": {
+    "unitTests": { "passed": 0, "failed": 0, "skipped": 0 },
+    "e2eTests": { "passed": 0, "failed": 0, "skipped": 0 }
+  }
+}
