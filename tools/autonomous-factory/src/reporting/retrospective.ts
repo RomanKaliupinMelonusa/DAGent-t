@@ -251,9 +251,12 @@ function generateTerminal(events: PipelineEvent[], slug: string): string {
       case "agent.usage":
         lines.push(`${ts}   📊 ${itemTag} +${evt.data.input_tokens}in / +${evt.data.output_tokens}out`);
         break;
-      case "state.reset":
-        lines.push(`${ts} 🔄 ${itemTag} REROUTE → ${evt.data.route_to} (domain: ${evt.data.domain})`);
+      case "state.reset": {
+        const rej = evt.data.rejectedReason ? ` [REJECTED: ${evt.data.rejectedReason}]` : "";
+        const cyc = evt.data.cycleCount != null ? ` cycle=${evt.data.cycleCount}${evt.data.halted ? " halted" : ""}` : "";
+        lines.push(`${ts} 🔄 ${itemTag} RESET seed=${evt.data.seedKey}${cyc}${rej}`);
         break;
+      }
       case "state.salvage":
         lines.push(`${ts} 🛑 ${itemTag} SALVAGE — ${evt.data.reason}`);
         break;
@@ -335,7 +338,9 @@ function generateTriage(events: PipelineEvent[], blobs: PipelineBlob[], slug: st
         lines.push(``);
       }
     } else if (evt.kind === "state.reset") {
-      lines.push(`**🔄 Reroute:** ${item} → ${evt.data.route_to} (domain: ${evt.data.domain}, source: ${evt.data.source})`);
+      const rej = evt.data.rejectedReason ? ` **[REJECTED: ${evt.data.rejectedReason}]**` : "";
+      const cyc = evt.data.cycleCount != null ? ` (cycle ${evt.data.cycleCount}${evt.data.halted ? " — halted" : ""})` : "";
+      lines.push(`**🔄 Reset:** seed=${evt.data.seedKey}${cyc}${rej}`);
       lines.push(``);
     } else if (evt.kind === "state.salvage") {
       lines.push(`**🛑 Salvage:** ${item} — ${(evt.data.reason as string)?.slice(0, 200)}`);

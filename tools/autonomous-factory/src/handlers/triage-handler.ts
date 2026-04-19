@@ -248,6 +248,55 @@ const triageHandler: NodeHandler = {
       }
       routeToKey = resolvedRoute === "$SELF" ? failingNodeKey : resolvedRoute;
 
+      // Sticky salvage guard — if the target has already been salvaged in a
+      // prior cycle, refuse to resurrect it and degrade gracefully instead.
+      // Keeps the `salvage-draft` guarantee even when a new failure later
+      // classifies into the same domain.
+      try {
+        const pipeState = await ctx.stateReader.getStatus(slug);
+        const routeItem = pipeState.items.find((i) => i.key === routeToKey);
+        if (routeItem?.salvaged) {
+          logger.event("triage.evaluate", failingNodeKey, {
+            domain: triageResult.domain,
+            reason: `route_to "${routeToKey}" is salvaged — escalating to graceful degradation`,
+            source: triageResult.source,
+            route_to: "$BLOCKED",
+          });
+          const record: TriageRecord = {
+            failing_item: failingNodeKey,
+            error_signature: errorSig,
+            guard_result: "passed",
+            rag_matches: triageResult.rag_matches ?? [],
+            rag_selected: triageResult.source === "rag" ? (triageResult.rag_matches?.[0]?.snippet ?? null) : null,
+            llm_invoked: triageResult.source === "llm",
+            llm_domain: triageResult.source === "llm" ? triageResult.domain : undefined,
+            llm_reason: triageResult.source === "llm" ? triageResult.reason : undefined,
+            llm_response_ms: triageResult.llm_response_ms,
+            domain: triageResult.domain,
+            reason: `route_to "${routeToKey}" is salvaged`,
+            source: triageResult.source,
+            route_to: "$BLOCKED",
+            cascade: [],
+            cycle_count: 0,
+            domain_retry_count: 0,
+          };
+          return {
+            outcome: "completed",
+            summary: { intents: [`triage: ${triageResult.domain} → ${routeToKey} salvaged → degradation`] },
+            signals: { halt: false },
+            commands: buildSalvageCommands(failingNodeKey, rawError, record),
+            handlerOutput: {
+              routeToKey: null,
+              domain: triageResult.domain,
+              reason: `route_to "${routeToKey}" is salvaged`,
+              source: triageResult.source,
+              triageRecord: record,
+              guardResult: "passed",
+            } satisfies TriageHandlerOutput,
+          };
+        }
+      } catch { /* continue with reroute; kernel reducer will also refuse */ }
+
       // Per-domain retry cap (from profile routing table)
       if (routeEntry?.retries) {
         try {

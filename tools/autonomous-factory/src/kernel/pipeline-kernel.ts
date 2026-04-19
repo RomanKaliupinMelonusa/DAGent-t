@@ -281,7 +281,7 @@ export class PipelineKernel {
     switch (inner.type) {
       case "reset-nodes": {
         const asTransition = this.dagState as unknown as TransitionState;
-        const { state, cycleCount, halted } = this.rules.reset(
+        const { state, cycleCount, halted, rejectedReason } = this.rules.reset(
           asTransition,
           inner.seedKey,
           inner.reason,
@@ -296,9 +296,25 @@ export class PipelineKernel {
         effects.push({
           type: "telemetry-event",
           category: "state.reset",
-          itemKey: null,
-          context: { seedKey: inner.seedKey, cycleCount, halted },
+          itemKey: inner.seedKey,
+          context: {
+            seedKey: inner.seedKey,
+            cycleCount,
+            halted,
+            reason: inner.reason,
+            ...(rejectedReason ? { rejectedReason } : {}),
+          },
         });
+        if (rejectedReason === "salvaged") {
+          return {
+            result: {
+              ok: false,
+              halt: false,
+              message: `Reset of "${inner.seedKey}" rejected: item is salvaged (sticky)`,
+            },
+            effects,
+          };
+        }
         return {
           result: { ok: true, halt: halted, message: halted ? `Cycle budget exhausted at ${cycleCount}` : undefined },
           effects,

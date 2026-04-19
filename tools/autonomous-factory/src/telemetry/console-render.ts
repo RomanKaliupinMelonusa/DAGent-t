@@ -86,8 +86,13 @@ export function renderEventToConsole(evt: PipelineEvent): string | null {
       return null; // Covered by item.end
     case "state.fail":
       return null; // Covered by item.end
-    case "state.reset":
-      return `\n  🔄 Triage reroute: ${evt.item_key} → route_to: ${d.route_to} (domain: ${d.domain}, source: ${d.source})`;
+    case "state.reset": {
+      if (d.rejectedReason === "salvaged") {
+        return `\n  🚫 Reset rejected (salvaged): ${evt.item_key ?? d.seedKey}`;
+      }
+      const cycleInfo = d.cycleCount != null ? ` (cycle ${d.cycleCount}${d.halted ? " — halted" : ""})` : "";
+      return `\n  🔄 Reset node: ${evt.item_key ?? d.seedKey}${cycleInfo}`;
+    }
     case "state.salvage":
       return `  🛑 Triggering Graceful Degradation — pipeline will open a Draft PR for human remediation.`;
 

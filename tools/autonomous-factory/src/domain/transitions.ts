@@ -22,6 +22,8 @@ export interface TransitionItem {
   docNote?: string | null;
   handoffArtifact?: string | null;
   pendingContext?: string | null;
+  /** Sticky salvage marker — see PipelineItem.salvaged in src/types.ts. */
+  salvaged?: boolean;
 }
 
 export interface ErrorLogEntry {
@@ -163,6 +165,10 @@ export interface ResetResult {
   cycleCount: number;
   halted: boolean;
   resetKeys: string[];
+  /** Set when the reset was refused because the seed item is salvaged (sticky).
+   *  The reducer does not mutate state in this case; callers should treat it
+   *  as a no-op and escalate (typically to `blocked`). */
+  rejectedReason?: "salvaged";
 }
 
 /**
@@ -181,6 +187,20 @@ export function resetNodes(
   const cycleCount = state.errorLog.filter((e) => e.itemKey === logKey).length;
   if (cycleCount >= maxCycles) {
     return { state, cycleCount, halted: true, resetKeys: [] };
+  }
+
+  // Sticky salvage: once an item has been gracefully degraded, refuse to
+  // resurrect it via later triage reroutes. The caller (triage handler) is
+  // expected to treat this as "route exhausted" and escalate.
+  const seedItem = state.items.find((i) => i.key === seedKey);
+  if (seedItem?.salvaged) {
+    return {
+      state,
+      cycleCount,
+      halted: false,
+      resetKeys: [],
+      rejectedReason: "salvaged",
+    };
   }
 
   const keysToReset = new Set(getDownstream(state.dependencies, [seedKey]));
@@ -247,7 +267,9 @@ export function salvageForDraft(
     if (i.status === "dormant") return i;
     if ((skipKeys.has(i.key) || i.key === failedItemKey) && i.status !== "done") {
       skippedKeys.push(i.key);
-      return { ...i, status: "na" as const };
+      // Sticky salvage marker — subsequent `resetNodes` calls targeting this
+      // key will be rejected by the reducer (see ResetResult.rejectedReason).
+      return { ...i, status: "na" as const, salvaged: true };
     }
     return i;
   });

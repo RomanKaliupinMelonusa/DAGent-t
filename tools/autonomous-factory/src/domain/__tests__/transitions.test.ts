@@ -237,4 +237,47 @@ describe("salvageForDraft", () => {
     const result = salvageForDraft(state, "B");
     assert.equal(result.state.items.find((i) => i.key === "D")?.status, "pending");
   });
+
+  it("marks salvaged items with sticky salvaged flag", () => {
+    const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("C", "pending")];
+    const state = makeState(items, { dependencies: { A: [], B: ["A"], C: ["B"] } });
+    const result = salvageForDraft(state, "B");
+    const b = result.state.items.find((i) => i.key === "B")!;
+    const c = result.state.items.find((i) => i.key === "C")!;
+    assert.equal(b.status, "na");
+    assert.equal(b.salvaged, true, "B must be marked salvaged");
+    assert.equal(c.status, "na");
+    assert.equal(c.salvaged, true, "downstream C must also be marked salvaged");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetNodes — sticky salvage interaction
+// ---------------------------------------------------------------------------
+
+describe("resetNodes + sticky salvage", () => {
+  it("refuses to reset a salvaged seed and leaves state unchanged", () => {
+    const items = [
+      makeItem("A", "done"),
+      { ...makeItem("B", "na"), salvaged: true },
+    ];
+    const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
+    const result = resetNodes(state, "B", "late triage reroute");
+    assert.equal(result.rejectedReason, "salvaged");
+    assert.equal(result.halted, false);
+    assert.deepEqual(result.resetKeys, []);
+    // State pointer unchanged (no-op) — items + errorLog untouched.
+    assert.equal(result.state, state);
+    assert.equal(result.state.items.find((i) => i.key === "B")!.status, "na");
+    assert.equal(result.state.errorLog.length, 0);
+  });
+
+  it("still resets non-salvaged items normally", () => {
+    const items = [makeItem("A", "done"), makeItem("B", "done")];
+    const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
+    const result = resetNodes(state, "A", "normal reroute");
+    assert.equal(result.rejectedReason, undefined);
+    assert.equal(result.halted, false);
+    assert.ok(result.resetKeys.includes("A"));
+  });
 });

@@ -45,6 +45,11 @@ export interface PipelineItem {
    *  for injection into the next attempt of this item. Consumed and cleared
    *  by the node wrapper before handler execution. */
   pendingContext?: string | null;
+  /** Sticky salvage marker — set when the kernel applies `salvage-draft` to
+   *  this item. Subsequent `reset-nodes` dag-commands targeting a salvaged
+   *  item are rejected by the reducer (no-op) and produce a telemetry signal.
+   *  Prevents later triage cycles from resurrecting a gracefully-degraded node. */
+  salvaged?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +126,11 @@ export interface PipelineState {
   lastTriageRecord?: TriageRecord | null;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
+  /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.
+   *  Authoritatively mutated by the kernel (`applyAdminCommand`, `applyDagCommand`)
+   *  and persisted via `StateStore.persistDagSnapshot`. Legacy state files without
+   *  this field are backfilled on read from `errorLog` reset entries. */
+  cycleCounters?: Record<string, number>;
 }
 
 /** Status values for pipeline items in the DAG scheduler. */

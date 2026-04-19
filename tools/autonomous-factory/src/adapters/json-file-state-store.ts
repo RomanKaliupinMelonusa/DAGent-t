@@ -271,12 +271,14 @@ export class JsonFileStateStore implements StateStore {
           error: kernelItem.error,
         };
       });
-      // cycleCounters is derived from errorLog by backfillCycleCounters
-      // on subsequent reads — no need to merge it here.
+      // cycleCounters: kernel is the authoritative writer (mutated via
+      // applyAdminCommand / applyDagCommand). `backfillCycleCounters` on read
+      // is a legacy migration path for state files predating this field.
       const next: PipelineState = {
         ...disk,
         items: mergedItems,
         errorLog: snapshot.errorLog,
+        cycleCounters: snapshot.cycleCounters ?? disk.cycleCounters ?? {},
         implementationNotes: snapshot.implementationNotes ?? disk.implementationNotes,
         deployedUrl: snapshot.deployedUrl ?? disk.deployedUrl,
         salvageSurvivors: snapshot.salvageSurvivors ?? disk.salvageSurvivors,

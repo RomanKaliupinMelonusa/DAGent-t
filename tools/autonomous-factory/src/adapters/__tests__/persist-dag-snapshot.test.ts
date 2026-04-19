@@ -92,6 +92,20 @@ describe("JsonFileStateStore.persistDagSnapshot", () => {
     assert.equal(disk.errorLog[0]!.errorSignature, "abc123");
   });
 
+  it("persists cycleCounters from the kernel snapshot", async () => {
+    const store = new JsonFileStateStore();
+    const snapshot: PipelineState = {
+      ...buildInitialState(),
+      cycleCounters: { "storefront-dev": 2, "reset-for-reroute": 3 },
+    };
+    await store.persistDagSnapshot(SLUG, snapshot);
+    const disk = await store.getStatus(SLUG);
+    assert.deepEqual(disk.cycleCounters, {
+      "storefront-dev": 2,
+      "reset-for-reroute": 3,
+    });
+  });
+
   it("preserves lastTriageRecord written by a racing setLastTriageRecord", async () => {
     const store = new JsonFileStateStore();
 
