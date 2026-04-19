@@ -241,3 +241,28 @@ test('renders as a semantic button element for keyboard accessibility', () => {
     // Box as="button" should render as a <button> element
     expect(btn.tagName.toLowerCase()).toBe('button')
 })
+
+// --- productName fallback branches (line 28) ---
+
+test('aria-label falls back to product.name when productName is absent', () => {
+    const productWithOnlyName = {
+        productId: 'name-only-123',
+        name: 'Fallback Name',
+        image: {alt: 'Fallback', disBaseLink: 'https://example.com/fallback.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithOnlyName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name')
+})
+
+test('aria-label uses empty string when both productName and name are absent', () => {
+    const productWithNoName = {
+        productId: 'no-name-456',
+        image: {alt: 'No Name', disBaseLink: 'https://example.com/noname.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
