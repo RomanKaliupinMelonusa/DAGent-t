@@ -14,7 +14,7 @@ import { autoSkipMiddleware } from "../../handlers/middlewares/auto-skip.js";
 import { lifecycleHooksMiddleware } from "../../handlers/middlewares/lifecycle-hooks.js";
 import type { Command } from "../../kernel/commands.js";
 import { translateResult, type FailPolicy } from "./result-translator.js";
-import { resolveNodeBudgetPolicy, getWorkflowNode } from "../../session/dag-utils.js";
+import { resolveNodeBudgetPolicy, getWorkflowNode, resolveWorkflowHaltPolicy } from "../../session/dag-utils.js";
 
 /** Default middleware chain applied to every handler invocation when the
  *  caller does not supply one. Mirrors ENGINE_DEFAULT_MIDDLEWARE_NAMES in
@@ -92,8 +92,15 @@ function resolveFailPolicy(ctx: NodeContext): FailPolicy | undefined {
   const node = getWorkflowNode(ctx.apmContext, workflowName, ctx.itemKey);
   if (!node) return undefined;
   const policy = resolveNodeBudgetPolicy(node, ctx.apmContext);
+  const wfHalt = resolveWorkflowHaltPolicy(ctx.apmContext, workflowName);
   return {
     maxFailures: policy.maxItemFailures,
     haltOnIdentical: policy.haltOnIdentical,
+    ...(wfHalt?.enabled && wfHalt.threshold > 0
+      ? {
+          haltOnIdenticalThreshold: wfHalt.threshold,
+          haltOnIdenticalExcludedKeys: wfHalt.excludedKeys,
+        }
+      : {}),
   };
 }

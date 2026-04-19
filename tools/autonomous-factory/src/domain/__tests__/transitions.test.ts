@@ -145,6 +145,71 @@ describe("failItem", () => {
     const result = failItem(state, "A", "x", 3);
     assert.equal(result.halted, false);
   });
+
+  it("halts when haltOnIdenticalThreshold is reached across different item keys", () => {
+    // Feature-scoped halt: same signature rotating through different items.
+    // 2 prior entries on B and C share a signature; a 3rd failure on A
+    // bringing the global count to 3 (threshold=3) must halt — even though
+    // A itself has never failed before.
+    const sig = "deadbeefcafebabe";
+    const state = makeState([makeItem("A"), makeItem("B"), makeItem("C")], {
+      errorLog: [
+        { timestamp: "t1", itemKey: "B", message: "m1", errorSignature: sig },
+        { timestamp: "t2", itemKey: "C", message: "m2", errorSignature: sig },
+      ],
+    });
+    const result = failItem(
+      state,
+      "A",
+      "m3",
+      { haltOnIdenticalThreshold: 3 },
+      () => sig,
+    );
+    assert.equal(result.halted, true);
+    assert.equal(result.haltedByThreshold, true);
+    assert.equal(result.thresholdMatchCount, 3);
+    assert.equal(result.errorSignature, sig);
+  });
+
+  it("does not halt on threshold when failing key is excluded", () => {
+    const sig = "deadbeefcafebabe";
+    const state = makeState([makeItem("A"), makeItem("B"), makeItem("C")], {
+      errorLog: [
+        { timestamp: "t1", itemKey: "B", message: "m1", errorSignature: sig },
+        { timestamp: "t2", itemKey: "C", message: "m2", errorSignature: sig },
+      ],
+    });
+    const result = failItem(
+      state,
+      "A",
+      "m3",
+      {
+        haltOnIdenticalThreshold: 3,
+        haltOnIdenticalExcludedKeys: ["A"],
+      },
+      () => sig,
+    );
+    assert.equal(result.halted, false);
+    assert.equal(result.haltedByThreshold, undefined);
+  });
+
+  it("does not halt when threshold not yet reached", () => {
+    const sig = "deadbeefcafebabe";
+    const state = makeState([makeItem("A"), makeItem("B")], {
+      errorLog: [
+        { timestamp: "t1", itemKey: "B", message: "m1", errorSignature: sig },
+      ],
+    });
+    const result = failItem(
+      state,
+      "A",
+      "m2",
+      { haltOnIdenticalThreshold: 3 },
+      () => sig,
+    );
+    assert.equal(result.halted, false);
+    assert.equal(result.haltedByThreshold, undefined);
+  });
 });
 
 // ---------------------------------------------------------------------------

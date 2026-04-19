@@ -147,7 +147,15 @@ export class PipelineKernel {
       case "complete-item":
         return this.processComplete(cmd.itemKey, effects);
       case "fail-item":
-        return this.processFail(cmd.itemKey, cmd.message, cmd.maxFailures, effects, cmd.haltOnIdentical);
+        return this.processFail(
+          cmd.itemKey,
+          cmd.message,
+          cmd.maxFailures,
+          effects,
+          cmd.haltOnIdentical,
+          cmd.haltOnIdenticalThreshold,
+          cmd.haltOnIdenticalExcludedKeys,
+        );
       case "record-attempt":
         return this.processRecordAttempt(cmd.itemKey, effects);
       case "record-summary":
@@ -189,13 +197,20 @@ export class PipelineKernel {
     maxFailures: number | undefined,
     effects: Effect[],
     haltOnIdentical?: boolean,
+    haltOnIdenticalThreshold?: number,
+    haltOnIdenticalExcludedKeys?: readonly string[],
   ): ProcessResult {
     const asTransition = this.dagState as unknown as TransitionState;
-    const { state, failCount, halted } = this.rules.fail(
+    const { state, failCount, halted, haltedByThreshold, thresholdMatchCount, errorSignature } = this.rules.fail(
       asTransition,
       itemKey,
       message,
-      { maxFailures, haltOnIdentical },
+      {
+        maxFailures,
+        haltOnIdentical,
+        haltOnIdenticalThreshold,
+        haltOnIdenticalExcludedKeys,
+      },
     );
     this.dagState = {
       ...this.dagState,
@@ -206,9 +221,36 @@ export class PipelineKernel {
       type: "telemetry-event",
       category: "state.fail",
       itemKey,
-      context: { failCount, halted },
+      context: { failCount, halted, haltedByThreshold },
     });
-    return { result: { ok: true, halt: halted, message: halted ? `Max failures (${failCount}) reached for ${itemKey}` : undefined }, effects };
+    // Feature-scoped threshold halt — emit a halt-artifact effect so the
+    // adapter can write <slug>_HALT.md with the N identical failures.
+    if (haltedByThreshold && errorSignature && haltOnIdenticalThreshold) {
+      const samples = state.errorLog
+        .filter((e) => e.errorSignature === errorSignature)
+        .map((e) => ({ itemKey: e.itemKey, timestamp: e.timestamp, message: e.message }));
+      effects.push({
+        type: "write-halt-artifact",
+        slug: this.slug,
+        failingItemKey: itemKey,
+        errorSignature,
+        thresholdMatchCount: thresholdMatchCount ?? samples.length,
+        threshold: haltOnIdenticalThreshold,
+        sampleFailures: samples,
+      });
+    }
+    return {
+      result: {
+        ok: true,
+        halt: halted,
+        message: halted
+          ? (haltedByThreshold
+              ? `Halt-on-identical threshold reached (${thresholdMatchCount}/${haltOnIdenticalThreshold}) for signature ${errorSignature} — most recent failure on "${itemKey}"`
+              : `Max failures (${failCount}) reached for ${itemKey}`)
+          : undefined,
+      },
+      effects,
+    };
   }
 
   private processRecordAttempt(itemKey: string, effects: Effect[]): ProcessResult {

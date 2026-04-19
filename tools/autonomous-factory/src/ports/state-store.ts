@@ -75,4 +75,12 @@ export interface StateStore {
 
   /** Initialize pipeline state from APM-compiled context. */
   initState(slug: string, workflowName: string, contextJsonPath?: string): Promise<InitResult>;
+
+  /**
+   * Write a human-readable halt-escalation artifact to
+   * `in-progress/<slug>_HALT.md`. Best-effort; failures must not break the
+   * halt itself (the kernel halt signal is authoritative — this is just
+   * for operator visibility and resume pointers).
+   */
+  writeHaltArtifact(slug: string, content: string): Promise<void>;
 }

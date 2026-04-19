@@ -83,6 +83,46 @@ export async function executeEffects(
         }
         break;
 
+      case "write-halt-artifact":
+        try {
+          const lines: string[] = [];
+          lines.push(`# ⛔ Pipeline halted — identical error recurred`);
+          lines.push("");
+          lines.push(`- **Feature:** \`${effect.slug}\``);
+          lines.push(`- **Most recent failing node:** \`${effect.failingItemKey}\``);
+          lines.push(`- **Error signature:** \`${effect.errorSignature}\``);
+          lines.push(`- **Threshold:** ${effect.thresholdMatchCount}/${effect.threshold} identical failures`);
+          lines.push("");
+          lines.push(`## Why this halted`);
+          lines.push("");
+          lines.push(
+            "The kernel saw the **same error signature** recur across multiple dispatches within this feature run.",
+            "Rather than burn more cycles on a stuck dev agent, the pipeline halted for human review.",
+          );
+          lines.push("");
+          lines.push(`## Identical failures (newest last)`);
+          lines.push("");
+          for (const f of effect.sampleFailures) {
+            const excerpt = f.message.split(/\r?\n/).slice(0, 6).join("\n");
+            lines.push(`### \`${f.itemKey}\` — ${f.timestamp}`);
+            lines.push("```");
+            lines.push(excerpt);
+            lines.push("```");
+            lines.push("");
+          }
+          lines.push(`## Resume`);
+          lines.push("");
+          lines.push("1. Investigate the root cause (the recurring error above).");
+          lines.push("2. Commit any fix to the feature branch.");
+          lines.push(`3. Run: \`npm run pipeline:resume ${effect.slug}\` — (not yet implemented for escalation halts; reset the stuck node via \`pipeline:reset-scripts\` or clear \`${effect.slug}_HALT.md\` and re-run \`agent:run\` to retry).`);
+          lines.push("");
+          await ports.stateStore.writeHaltArtifact(effect.slug, lines.join("\n") + "\n");
+          executed++;
+        } catch {
+          // Non-fatal — halt itself is already recorded via telemetry + kernel signal
+        }
+        break;
+
       default: {
         const _exhaustive: never = effect;
         break;

@@ -20,6 +20,7 @@ export type Effect =
   | PersistTriageRecordEffect
   | ReindexEffect
   | TelemetryEventEffect
+  | WriteHaltArtifactEffect
   ;
 
 /** Persist the full pipeline state to the state store. */
@@ -69,4 +70,23 @@ export interface ReindexEffect {
   readonly type: "reindex";
   /** Only reindex if the target node's category is in this list. */
   readonly categories?: string[];
+}
+
+/**
+ * Write a human-readable halt-escalation artifact to `in-progress/<slug>_HALT.md`.
+ * Emitted when the kernel halts a pipeline due to `halt_on_identical.threshold`
+ * — i.e. the same error signature has recurred N times within the run. The
+ * artifact is a resume-pointer for humans; it does not drive any subsequent
+ * kernel behaviour.
+ */
+export interface WriteHaltArtifactEffect {
+  readonly type: "write-halt-artifact";
+  readonly slug: string;
+  readonly failingItemKey: string;
+  readonly errorSignature: string;
+  readonly thresholdMatchCount: number;
+  readonly threshold: number;
+  /** Last N failure messages that share the signature (newest first is fine
+   *  — the adapter owns formatting). */
+  readonly sampleFailures: ReadonlyArray<{ itemKey: string; timestamp: string; message: string }>;
 }

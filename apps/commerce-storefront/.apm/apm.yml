@@ -217,6 +217,11 @@ nodes:
 
 config:
   defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000, idleTimeoutLimit: 2 }
+  # Raw-mode redevelopment context. The storefront has repeatedly looped on
+  # SSR hydration errors where the LLM-condensed "Automated Diagnosis" block
+  # misdirected the dev agent. Switch to historian + raw failure output.
+  context:
+    raw_mode: true
   # Phase 4 operational hardening.
   policy:
     max_iterations: 500

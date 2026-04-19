@@ -143,6 +143,7 @@ async function buildRerouteCommands(
       ciWorkflowFilePatterns: ctx.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
       ciScopeWarning: ctx.apmContext.config?.ci_scope_warning as string | undefined,
       rejectionContext: rejectionCtx || undefined,
+      rawMode: ctx.apmContext.config?.context?.raw_mode === true,
     });
     if (composed) {
       // B1 — emit structured handoff alongside the narrative so the adapter

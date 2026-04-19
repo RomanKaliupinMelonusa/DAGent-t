@@ -14,6 +14,10 @@ import { wrapDagCommands } from "../../kernel/commands.js";
 export interface FailPolicy {
   readonly maxFailures?: number;
   readonly haltOnIdentical?: boolean;
+  /** Workflow-level halt threshold. See `ApmWorkflow.halt_on_identical.threshold`. */
+  readonly haltOnIdenticalThreshold?: number;
+  /** Workflow-level exclusions. */
+  readonly haltOnIdenticalExcludedKeys?: readonly string[];
 }
 
 /**
@@ -44,6 +48,12 @@ export function translateResult(
       message: result.errorMessage ?? "Unknown failure",
       ...(failPolicy?.maxFailures !== undefined ? { maxFailures: failPolicy.maxFailures } : {}),
       ...(failPolicy?.haltOnIdentical ? { haltOnIdentical: true } : {}),
+      ...(failPolicy?.haltOnIdenticalThreshold !== undefined
+        ? { haltOnIdenticalThreshold: failPolicy.haltOnIdenticalThreshold }
+        : {}),
+      ...(failPolicy?.haltOnIdenticalExcludedKeys && failPolicy.haltOnIdenticalExcludedKeys.length > 0
+        ? { haltOnIdenticalExcludedKeys: failPolicy.haltOnIdenticalExcludedKeys }
+        : {}),
     });
   }
 

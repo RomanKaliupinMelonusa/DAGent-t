@@ -171,6 +171,16 @@ export const ApmConfigSchema = z.object({
    *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */
   ci_scope_warning: z.string().optional(),
 
+  /** Redevelopment context strategy. When `raw_mode` is true, the triage
+   *  handler emits a historian-built prior-attempts block + the raw ANSI-
+   *  stripped failure output (head+tail truncated at ~12 KB) instead of the
+   *  LLM-condensed "Automated Diagnosis" + identical-error warning. Designed
+   *  for loops where the dev agent is repeatedly misled by a condensed summary
+   *  while the true root cause lives in the full failure log. */
+  context: z.object({
+    raw_mode: z.boolean().default(false),
+  }).optional(),
+
   // -----------------------------------------------------------------------
   // Kernel tuning — extracted from hardcoded constants (Phase 1 refactor)
   // -----------------------------------------------------------------------
@@ -762,6 +772,28 @@ export const ApmWorkflowSchema = z.object({
   /** Error substrings that signal unfixable conditions — no agent can fix these.
    *  When any signal matches, the pipeline halts immediately for human intervention. */
   unfixable_signals: z.array(z.string()).default([]),
+  /**
+   * Workflow-level circuit breaker: halt the feature run when the same
+   * `errorSignature` recurs N times across any combination of nodes within
+   * a single run. Protects against the "same error rotating through
+   * different nodes forever" loop that per-item budgets cannot detect.
+   *
+   * - `enabled`: master toggle (default false — zero behaviour change).
+   * - `threshold`: minimum number of errorLog entries sharing the same
+   *   signature (inclusive of the new failure) required to halt.
+   * - `excluded_keys`: item keys that do not count toward the threshold.
+   *   Typically deploy/poll nodes whose transient 500s/429s are expected
+   *   to repeat without being a symptom of the dev agent being stuck.
+   *
+   * Halt emits a `<slug>_HALT.md` artifact and terminates the loop with
+   * reason "halted". Recoverable via `npm run pipeline:resume <slug>`
+   * (after which the operator must also unblock/reset the stuck node).
+   */
+  halt_on_identical: z.object({
+    enabled: z.boolean().default(false),
+    threshold: z.number().int().positive().default(3),
+    excluded_keys: z.array(z.string()).default([]),
+  }).optional(),
   /** Triage profiles — keyed by profile name. Nodes reference profiles via the `triage` field.
    *  Each profile declares RAG packs, LLM fallback, routing domains, and reroute budgets. */
   triage: z.record(z.string(), TriageProfileSchema).default({}),

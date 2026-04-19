@@ -99,6 +99,37 @@ export function resolveNodeBudgetPolicy(
 }
 
 // ---------------------------------------------------------------------------
+// Workflow-level halt-on-identical policy
+// ---------------------------------------------------------------------------
+
+/** Resolved workflow-level halt-on-identical configuration. */
+export interface WorkflowHaltPolicy {
+  readonly enabled: boolean;
+  readonly threshold: number;
+  readonly excludedKeys: ReadonlyArray<string>;
+}
+
+/**
+ * Resolve the workflow-level `halt_on_identical` block, applied across the
+ * entire run (feature-scoped) rather than per node. Returns `undefined`
+ * when the workflow has no block configured — callers should treat this
+ * as "disabled, no behaviour change".
+ */
+export function resolveWorkflowHaltPolicy(
+  apmContext: ApmCompiledOutput,
+  workflowName: string,
+): WorkflowHaltPolicy | undefined {
+  const wf = apmContext.workflows?.[workflowName];
+  const cfg = (wf as { halt_on_identical?: { enabled?: boolean; threshold?: number; excluded_keys?: ReadonlyArray<string> } } | undefined)?.halt_on_identical;
+  if (!cfg) return undefined;
+  return {
+    enabled: cfg.enabled ?? false,
+    threshold: cfg.threshold ?? 3,
+    excludedKeys: cfg.excluded_keys ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // DAG traversal
 // ---------------------------------------------------------------------------
 

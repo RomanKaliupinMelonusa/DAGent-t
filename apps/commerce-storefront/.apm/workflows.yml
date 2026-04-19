@@ -92,6 +92,19 @@ storefront:
     - "organization not found"
     - "slas client not found"
 
+  # ── Feature-scoped halt on repeated identical error ────────────────
+  # Stops the feature run when the same `errorSignature` recurs across any
+  # combination of nodes. Catches the "same error rotating through different
+  # nodes forever" loop that per-item budgets cannot detect. Opt-in; disable
+  # by removing this block or setting `enabled: false`.
+  halt_on_identical:
+    enabled: true
+    threshold: 3
+    excluded_keys:
+      - push-app
+      - poll-app-ci
+      - publish-pr
+
   # ── Triage Profiles ─────────────────────────────────────────────────
   triage:
     storefront:

@@ -84,6 +84,14 @@ export interface FailResult {
   state: TransitionState;
   failCount: number;
   halted: boolean;
+  /** True when halt was triggered by `haltOnIdenticalThreshold` (feature-scoped)
+   *  rather than by `maxFailures` or the per-item `haltOnIdentical`. */
+  haltedByThreshold?: boolean;
+  /** When `haltedByThreshold`, the number of errorLog entries sharing the
+   *  failing signature (inclusive of the new failure). */
+  thresholdMatchCount?: number;
+  /** The computed error signature of the new failure entry. */
+  errorSignature?: string | null;
 }
 
 export interface FailItemOptions {
@@ -95,6 +103,21 @@ export interface FailItemOptions {
    * Honours `circuit_breaker.halt_on_identical` from workflows.yml.
    */
   readonly haltOnIdentical?: boolean;
+  /**
+   * Feature-scoped halt: if N or more `errorLog` entries (across ALL item
+   * keys in the run) share the same `errorSignature` as the incoming
+   * failure, halt immediately. Honours workflow-level
+   * `halt_on_identical.threshold` from workflows.yml. When unset, no
+   * threshold check is performed. Counts entries inclusive of the new
+   * failure.
+   */
+  readonly haltOnIdenticalThreshold?: number;
+  /**
+   * Item keys exempted from the `haltOnIdenticalThreshold` check.
+   * Typically deploy/poll/environment nodes whose transient failures are
+   * expected to repeat without being a symptom of the dev agent being stuck.
+   */
+  readonly haltOnIdenticalExcludedKeys?: readonly string[];
 }
 
 /**
@@ -114,6 +137,8 @@ export function failItem(
     : maxFailuresOrOptions;
   const maxFailures = opts.maxFailures ?? 10;
   const haltOnIdentical = opts.haltOnIdentical ?? false;
+  const haltThreshold = opts.haltOnIdenticalThreshold;
+  const haltExcludedKeys = opts.haltOnIdenticalExcludedKeys ?? [];
 
   const item = state.items.find((i) => i.key === itemKey);
   if (!item) {
@@ -136,8 +161,8 @@ export function failItem(
     errorSignature: newSignature,
   };
 
-  // Halt-on-identical: if the most recent prior entry for this item has a
-  // matching signature, short-circuit the budget and halt immediately.
+  // Halt-on-identical (legacy, per-item): if the most recent prior entry for
+  // this item has a matching signature, short-circuit the budget and halt.
   let identicalHalt = false;
   if (haltOnIdentical && newSignature) {
     const priorForItem = [...state.errorLog].reverse().find((e) => e.itemKey === itemKey);
@@ -149,10 +174,33 @@ export function failItem(
   const newErrorLog = [...state.errorLog, newEntry];
   const failCount = newErrorLog.filter((e) => e.itemKey === itemKey).length;
 
+  // Halt-on-identical-threshold (feature-scoped): count how many entries in
+  // the full errorLog (across all item keys) share this signature. When the
+  // count reaches the threshold and the failing key is not excluded, halt.
+  // This catches the "same error rotating through different nodes" loop that
+  // per-item checks miss.
+  let thresholdHalt = false;
+  let thresholdMatchCount = 0;
+  if (
+    haltThreshold !== undefined &&
+    haltThreshold > 0 &&
+    newSignature &&
+    !haltExcludedKeys.includes(itemKey)
+  ) {
+    thresholdMatchCount = newErrorLog.filter((e) => e.errorSignature === newSignature).length;
+    if (thresholdMatchCount >= haltThreshold) {
+      thresholdHalt = true;
+    }
+  }
+
   return {
     state: { ...state, items: newItems, errorLog: newErrorLog },
     failCount,
-    halted: identicalHalt || failCount >= maxFailures,
+    halted: identicalHalt || thresholdHalt || failCount >= maxFailures,
+    ...(thresholdHalt
+      ? { haltedByThreshold: true as const, thresholdMatchCount }
+      : {}),
+    errorSignature: newSignature,
   };
 }
 

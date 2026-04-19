@@ -27,6 +27,7 @@ import type { PipelineState } from "../types.js";
 import { readStateOrThrow } from "../adapters/file-state/io.js";
 import { computeErrorSignature } from "./error-fingerprint.js";
 import { getHeadSha } from "../session/dag-utils.js";
+import { buildPriorAttemptsBlock } from "./historian.js";
 
 // ---------------------------------------------------------------------------
 // Retry context (in-memory attempt > 1)
@@ -181,8 +182,7 @@ export function buildDownstreamFailureContext(
   slug?: string,
   /** Whether this node receives downstream failure context (from resolveCircuitBreaker). */
   allowsRevertBypass?: boolean,
-): string {
-  if (!allowsRevertBypass) return "";
+): string {  if (!allowsRevertBypass) return "";
 
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed",
@@ -221,6 +221,127 @@ export function buildDownstreamFailureContext(
   const identicalErrorWarning = buildIdenticalErrorWarning(downstreamFailures, slug);
 
   return `\n\n## Redevelopment Context (CRITICAL)\nThe following post-deploy verification steps failed. Fix the root cause in your code:\n${diagnosisSection}\n${failureDetails}\n\nFocus on the errors above — they describe exactly what broke in production.${scopeGuidance}${identicalErrorWarning}`;
+}
+
+// ---------------------------------------------------------------------------
+// Raw-mode downstream failure context
+// ---------------------------------------------------------------------------
+
+/**
+ * Byte cap for inlining raw failure output in a redevelopment prompt.
+ * When exceeded, the head + tail are inlined and the full output is
+ * written to `in-progress/<slug>_LAST_FAILURE.txt` for reference.
+ */
+const RAW_INLINE_CAP = 12 * 1024;
+const RAW_HEAD_BYTES = 4 * 1024;
+const RAW_TAIL_BYTES = 4 * 1024;
+
+/** Strip ANSI color / control sequences. */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, "").replace(/\x1B\][^\x07]*\x07/g, "");
+}
+
+/**
+ * Raw-mode replacement for `buildDownstreamFailureContext`. Produces a
+ * dev-agent prompt block composed of:
+ *   1. Prior-attempts block (historian) — factual per-cycle history.
+ *   2. Most recent raw failure output, ANSI-stripped.
+ *   3. Head+tail truncation + file pointer when over `RAW_INLINE_CAP`.
+ *
+ * Unlike the legacy path, this builder does NOT:
+ *   - call the LLM or read `lastTriageRecord.reason` (the historian conveys
+ *     the same decision trail without the condensation).
+ *   - inject the "IDENTICAL ERROR DETECTED" warning — the kernel's
+ *     `halt_on_identical.threshold` handles that deterministically.
+ *   - truncate the error with "[N chars omitted]" in the middle — critical
+ *     Playwright context often lives at both the head and the tail.
+ *
+ * Returns empty string if no downstream failure exists.
+ */
+export function buildDownstreamFailureContextRaw(
+  itemKey: string,
+  pipelineSummaries: readonly ItemSummary[],
+  slug?: string,
+  allowsRevertBypass?: boolean,
+): string {
+  if (!allowsRevertBypass) return "";
+
+  const downstreamFailures = pipelineSummaries.filter(
+    (s) => s.outcome !== "completed",
+  ).filter((s) => s.key !== itemKey);
+  if (downstreamFailures.length === 0) return "";
+
+  const latest = downstreamFailures[downstreamFailures.length - 1];
+  const rawError = stripAnsi(latest.errorMessage ?? "(no error message captured)");
+
+  // Read errorLog from state for the historian (best-effort).
+  let errorLog: Array<{ timestamp: string; itemKey: string; message: string; errorSignature?: string | null }> = [];
+  if (slug) {
+    try {
+      const state = readStateOrThrow(slug);
+      errorLog = state.errorLog ?? [];
+    } catch { /* noop */ }
+  }
+  const historyBlock = buildPriorAttemptsBlock(errorLog);
+
+  // Build the "Most recent failure output" section with overflow handling.
+  let failureSection: string;
+  if (rawError.length <= RAW_INLINE_CAP) {
+    failureSection = [
+      "## Most recent failure output",
+      "",
+      "```",
+      rawError,
+      "```",
+    ].join("\n");
+  } else {
+    const head = rawError.slice(0, RAW_HEAD_BYTES);
+    const tail = rawError.slice(-RAW_TAIL_BYTES);
+    let fileNote = "";
+    if (slug) {
+      try {
+        const appRoot = process.env.APP_ROOT || "";
+        const stateDir = path.join(appRoot, "in-progress");
+        fs.mkdirSync(stateDir, { recursive: true });
+        const fullPath = path.join(stateDir, `${slug}_LAST_FAILURE.txt`);
+        fs.writeFileSync(fullPath, rawError, "utf-8");
+        fileNote = `\nFull output: \`${path.relative(process.cwd(), fullPath)}\` (${rawError.length} bytes)`;
+      } catch { /* noop */ }
+    }
+    failureSection = [
+      "## Most recent failure output",
+      `*(truncated — head+tail shown; middle ${rawError.length - RAW_HEAD_BYTES - RAW_TAIL_BYTES} bytes omitted${fileNote ? "" : ""})*${fileNote}`,
+      "",
+      "### Head",
+      "```",
+      head,
+      "```",
+      "",
+      "### Tail",
+      "```",
+      tail,
+      "```",
+    ].join("\n");
+  }
+
+  const parts: string[] = [];
+  parts.push("\n\n## Redevelopment Context (CRITICAL)");
+  parts.push("");
+  parts.push(
+    `A downstream step (\`${latest.key}\`) failed and you are being re-invoked to fix the root cause.`,
+  );
+  parts.push("");
+  if (historyBlock) {
+    parts.push(historyBlock);
+  }
+  parts.push(failureSection);
+  parts.push("");
+  parts.push(
+    "**Approach:** read the raw output above, form a hypothesis, then apply a *different* fix than any shown in the prior-attempts section. Do not re-run investigative commands the previous cycles have already exhausted.",
+  );
+
+  return parts.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +497,10 @@ export function composeTriageContext(opts: {
   ciWorkflowFilePatterns?: string[];
   ciScopeWarning?: string;
   rejectionContext?: string;
+  /** When true, use the raw historian-based redevelopment context instead of
+   *  the legacy LLM-condensed diagnosis + identical-error warning path.
+   *  Wired from `config.context.raw_mode` in `.apm/apm.yml`. */
+  rawMode?: boolean;
 }): string {
   const parts: string[] = [];
 
@@ -387,14 +512,21 @@ export function composeTriageContext(opts: {
   }
 
   // 2. Downstream failure context (redevelopment)
-  const dsCtx = buildDownstreamFailureContext(
-    opts.itemKey,
-    opts.pipelineSummaries,
-    opts.ciWorkflowFilePatterns,
-    opts.ciScopeWarning,
-    opts.slug,
-    opts.allowsRevertBypass,
-  );
+  const dsCtx = opts.rawMode
+    ? buildDownstreamFailureContextRaw(
+      opts.itemKey,
+      opts.pipelineSummaries,
+      opts.slug,
+      opts.allowsRevertBypass,
+    )
+    : buildDownstreamFailureContext(
+      opts.itemKey,
+      opts.pipelineSummaries,
+      opts.ciWorkflowFilePatterns,
+      opts.ciScopeWarning,
+      opts.slug,
+      opts.allowsRevertBypass,
+    );
   if (dsCtx) parts.push(dsCtx);
 
   // 3. Revert warning

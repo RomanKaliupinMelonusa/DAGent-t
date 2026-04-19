@@ -59,6 +59,15 @@ export interface FailItemCommand {
    * from workflows.yml, resolved by the dispatcher via `NodeBudgetPolicy`.
    */
   readonly haltOnIdentical?: boolean;
+  /**
+   * Feature-scoped halt threshold: when N or more errorLog entries share the
+   * same signature, halt immediately. Honours workflow-level
+   * `halt_on_identical.threshold`. Resolved by the dispatcher from the
+   * compiled APM context; undefined ⇒ check disabled.
+   */
+  readonly haltOnIdenticalThreshold?: number;
+  /** Item keys excluded from the threshold check. */
+  readonly haltOnIdenticalExcludedKeys?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------

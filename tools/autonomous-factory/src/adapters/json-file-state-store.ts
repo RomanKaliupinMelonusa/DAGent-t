@@ -346,6 +346,21 @@ export class JsonFileStateStore implements StateStore {
     return initStateImpl(slug, workflowName, contextJsonPath);
   }
 
+  async writeHaltArtifact(slug: string, content: string): Promise<void> {
+    // Best-effort write — halt signal lives in the kernel / telemetry, the
+    // file is just an operator-facing pointer. Swallow failures to avoid
+    // masking the halt reason itself.
+    try {
+      const { writeFile, mkdir } = await import("node:fs/promises");
+      const { IN_PROGRESS } = await import("./file-state/io.js");
+      const { join } = await import("node:path");
+      await mkdir(IN_PROGRESS, { recursive: true });
+      await writeFile(join(IN_PROGRESS, `${slug}_HALT.md`), content, "utf-8");
+    } catch {
+      // non-fatal
+    }
+  }
+
   // ── Admin operations (Phase 3: prefer `runAdminCommand` in kernel/admin.ts) ─
   // These instance methods remain as convenient adapter-internal shortcuts,
   // but the canonical entry point for CLI admin verbs is now
