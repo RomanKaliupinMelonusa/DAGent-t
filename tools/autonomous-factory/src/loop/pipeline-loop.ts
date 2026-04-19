@@ -45,6 +45,26 @@ import {
   evaluateHardening,
   type HardeningState,
 } from "../domain/progress-tracker.js";
+import { DEFAULT_TRANSIENT_BACKOFF_MS } from "../session/transient-poll.js";
+
+// ---------------------------------------------------------------------------
+// Retry backoff
+// ---------------------------------------------------------------------------
+
+/** Cap on per-attempt backoff; a single hung item should never wedge the loop
+ *  for longer than 5 minutes even at high attempt counts. */
+const MAX_RETRY_BACKOFF_MS = 5 * 60_000;
+
+/**
+ * Compute exponential backoff for a failing item based on its attempt count.
+ * Formula: `min(baseMs * 2^(attempt - 1), MAX_RETRY_BACKOFF_MS)`.
+ * Returns 0 for the first attempt (no delay before first retry).
+ */
+function computeRetryBackoffMs(attempt: number, baseMs: number): number {
+  if (attempt <= 1) return 0;
+  const exp = Math.min(attempt - 1, 10); // clamp exponent to avoid overflow
+  return Math.min(baseMs * 2 ** exp, MAX_RETRY_BACKOFF_MS);
+}
 
 // ---------------------------------------------------------------------------
 // Loop configuration
@@ -257,6 +277,39 @@ export async function runPipelineLoop(
 
       // Step 8: Execute effects
       await executeEffects(allEffects, effectPorts);
+
+      // Step 8.5: Retry backoff — when items failed this batch, sleep
+      // `min(base * 2^(attempt-1), 5min)` before the next iteration so
+      // transient failures aren't hammered 10x in 2 seconds. The base is
+      // `config.transient_retry.backoff_ms` (default 30 s). Only applies
+      // when items failed but the pipeline hasn't halted.
+      if (!haltFromKernel) {
+        const runAfter = kernel.runSnapshot();
+        const dagAfter = kernel.dagSnapshot();
+        const failedItemKeys = batchResult.commands
+          .filter((c) => c.type === "fail-item")
+          .map((c) => (c as { itemKey: string }).itemKey);
+        const stillFailed = failedItemKeys.filter((key) => {
+          const item = dagAfter.items.find((i) => i.key === key);
+          return item?.status === "failed";
+        });
+        if (stillFailed.length > 0) {
+          const baseMs = config.apmContext.config?.transient_retry?.backoff_ms ?? DEFAULT_TRANSIENT_BACKOFF_MS;
+          const maxAttempt = Math.max(
+            ...stillFailed.map((k) => runAfter.attemptCounts[k] ?? 1),
+          );
+          const backoffMs = computeRetryBackoffMs(maxAttempt, baseMs);
+          if (backoffMs > 0) {
+            logger.event("retry.backoff", null, {
+              batch_number: batchNumber,
+              failed_items: stillFailed,
+              attempt: maxAttempt,
+              backoff_ms: backoffMs,
+            });
+            await new Promise((r) => setTimeout(r, backoffMs));
+          }
+        }
+      }
 
       // Step 8a: Phase 4 — operational hardening checks.
       // (a) Progress tracking for max_idle_minutes.

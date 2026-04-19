@@ -44,6 +44,8 @@ export type EventKind =
   | "git.push"
   // Breaker
   | "breaker.fire"
+  // Retry backoff (loop-level exponential sleep between failed batches)
+  | "retry.backoff"
   // Lifecycle hooks
   | "hook.pre.start"
   | "hook.pre.end"

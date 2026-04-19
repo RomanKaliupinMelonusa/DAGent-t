@@ -150,35 +150,14 @@ nodes:
     script_type: local-exec
     command: "npx playwright test e2e/${featureSlug}.spec.ts --workers=1 --max-failures=3"
     auto_skip_if_no_changes_in: [storefront, e2e]
-    pre: |
-      # Kill stale processes from previous runs (idempotent)
-      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
-      pkill -f 'chromium|chrome' 2>/dev/null || true
-      sleep 2
-      # Start dev server (nohup keeps it alive after this shell exits)
-      nohup npm start > /tmp/smoke-server.log 2>&1 &
-      echo $! > /tmp/smoke-server.pid
-      disown
-      echo "Pre: waiting for dev server (PID $(cat /tmp/smoke-server.pid))..."
-      for i in $(seq 1 24); do
-        sleep 5
-        if curl -sf -o /dev/null http://localhost:3000/category/newarrivals 2>/dev/null; then
-          echo "Pre: PLP returned HTTP 200 — SSR is healthy"
-          exit 0
-        fi
-      done
-      echo "Pre: PLP failed to return HTTP 200 after 120s — SSR is broken"
-      echo "Server log tail:" && tail -40 /tmp/smoke-server.log 2>/dev/null
-      # Clean up the server we started (only on failure)
-      kill "$(cat /tmp/smoke-server.pid)" 2>/dev/null || true
-      exit 1
-    post: |
-      # Kill the dev server started by pre-hook (PID file + pattern match)
-      kill "$(cat /tmp/smoke-server.pid 2>/dev/null)" 2>/dev/null || true
-      rm -f /tmp/smoke-server.pid
-      pkill -f 'pwa-kit-dev|node.*ssr|webpack' 2>/dev/null || true
-      pkill -f 'chromium|chrome' 2>/dev/null || true
-      sleep 2
+    # Hooks are externalized into bash files so they never parse under dash
+    # (the Debian default /bin/sh) and have a stable location that can be
+    # diagnosed manually: `bash .apm/hooks/e2e-runner-pre.sh`.
+    pre: "bash .apm/hooks/e2e-runner-pre.sh"
+    post: "bash .apm/hooks/e2e-runner-post.sh"
+    # Dev server boot polls up to 120 s; give the hook 5 minutes headroom
+    # (default 30 s would kill the hook before it could succeed).
+    timeout_minutes: 10
     circuit_breaker:
       halt_on_identical: true
 

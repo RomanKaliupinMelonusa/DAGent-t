@@ -10,6 +10,12 @@ import type { NodeResult, DagCommand } from "../../handlers/types.js";
 import type { Command } from "../../kernel/commands.js";
 import { wrapDagCommands } from "../../kernel/commands.js";
 
+/** Fail-command policy resolved from the node's circuit_breaker config. */
+export interface FailPolicy {
+  readonly maxFailures?: number;
+  readonly haltOnIdentical?: boolean;
+}
+
 /**
  * Translate a handler's NodeResult into an ordered list of kernel Commands.
  *
@@ -24,6 +30,7 @@ import { wrapDagCommands } from "../../kernel/commands.js";
 export function translateResult(
   itemKey: string,
   result: NodeResult,
+  failPolicy?: FailPolicy,
 ): Command[] {
   const commands: Command[] = [];
 
@@ -35,6 +42,8 @@ export function translateResult(
       type: "fail-item",
       itemKey,
       message: result.errorMessage ?? "Unknown failure",
+      ...(failPolicy?.maxFailures !== undefined ? { maxFailures: failPolicy.maxFailures } : {}),
+      ...(failPolicy?.haltOnIdentical ? { haltOnIdentical: true } : {}),
     });
   }
 

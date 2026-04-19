@@ -147,7 +147,7 @@ export class PipelineKernel {
       case "complete-item":
         return this.processComplete(cmd.itemKey, effects);
       case "fail-item":
-        return this.processFail(cmd.itemKey, cmd.message, cmd.maxFailures, effects);
+        return this.processFail(cmd.itemKey, cmd.message, cmd.maxFailures, effects, cmd.haltOnIdentical);
       case "record-attempt":
         return this.processRecordAttempt(cmd.itemKey, effects);
       case "record-summary":
@@ -188,13 +188,14 @@ export class PipelineKernel {
     message: string,
     maxFailures: number | undefined,
     effects: Effect[],
+    haltOnIdentical?: boolean,
   ): ProcessResult {
     const asTransition = this.dagState as unknown as TransitionState;
     const { state, failCount, halted } = this.rules.fail(
       asTransition,
       itemKey,
       message,
-      maxFailures,
+      { maxFailures, haltOnIdentical },
     );
     this.dagState = {
       ...this.dagState,

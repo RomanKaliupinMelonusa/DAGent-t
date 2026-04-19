@@ -13,7 +13,8 @@ import { composeMiddleware } from "../../handlers/middleware.js";
 import { autoSkipMiddleware } from "../../handlers/middlewares/auto-skip.js";
 import { lifecycleHooksMiddleware } from "../../handlers/middlewares/lifecycle-hooks.js";
 import type { Command } from "../../kernel/commands.js";
-import { translateResult } from "./result-translator.js";
+import { translateResult, type FailPolicy } from "./result-translator.js";
+import { resolveNodeBudgetPolicy, getWorkflowNode } from "../../session/dag-utils.js";
 
 /** Default middleware chain applied to every handler invocation when the
  *  caller does not supply one. Mirrors ENGINE_DEFAULT_MIDDLEWARE_NAMES in
@@ -67,7 +68,7 @@ export async function dispatchItem(
     };
   }
 
-  commands.push(...translateResult(ctx.itemKey, result));
+  commands.push(...translateResult(ctx.itemKey, result, resolveFailPolicy(ctx)));
 
   return {
     commands,
@@ -77,3 +78,20 @@ export async function dispatchItem(
   };
 }
 
+/**
+ * Resolve the per-node fail-command policy from the compiled APM context.
+ * Threads `circuit_breaker.max_item_failures` and `halt_on_identical` into
+ * the kernel's fail-item command so pipeline halting honours workflow config
+ * instead of the hardcoded `maxFailures=10` in `domain/transitions.ts`.
+ */
+function resolveFailPolicy(ctx: NodeContext): FailPolicy | undefined {
+  const workflowName = ctx.pipelineState.workflowName;
+  if (!workflowName) return undefined;
+  const node = getWorkflowNode(ctx.apmContext, workflowName, ctx.itemKey);
+  if (!node) return undefined;
+  const policy = resolveNodeBudgetPolicy(node, ctx.apmContext);
+  return {
+    maxFailures: policy.maxItemFailures,
+    haltOnIdentical: policy.haltOnIdentical,
+  };
+}

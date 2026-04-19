@@ -84,6 +84,17 @@ export interface FailResult {
   halted: boolean;
 }
 
+export interface FailItemOptions {
+  /** Maximum total failures for this item before halting (default 10). */
+  readonly maxFailures?: number;
+  /**
+   * When true, halt the pipeline on attempt 2 if the most recent prior
+   * errorLog entry for this item has an identical errorSignature.
+   * Honours `circuit_breaker.halt_on_identical` from workflows.yml.
+   */
+  readonly haltOnIdentical?: boolean;
+}
+
 /**
  * Record a failure for a pipeline item.
  * Returns the updated state, the cumulative fail count, and whether the
@@ -93,9 +104,15 @@ export function failItem(
   state: TransitionState,
   itemKey: string,
   message: string,
-  maxFailures: number = 10,
+  maxFailuresOrOptions: number | FailItemOptions = 10,
   signatureFn: (msg: string) => string = computeErrorSignature,
 ): FailResult {
+  const opts: FailItemOptions = typeof maxFailuresOrOptions === "number"
+    ? { maxFailures: maxFailuresOrOptions }
+    : maxFailuresOrOptions;
+  const maxFailures = opts.maxFailures ?? 10;
+  const haltOnIdentical = opts.haltOnIdentical ?? false;
+
   const item = state.items.find((i) => i.key === itemKey);
   if (!item) {
     throw new Error(
@@ -109,19 +126,31 @@ export function failItem(
       : i,
   );
 
+  const newSignature = message ? signatureFn(message) : null;
   const newEntry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     itemKey,
     message: message || "Unknown failure",
-    errorSignature: message ? signatureFn(message) : null,
+    errorSignature: newSignature,
   };
+
+  // Halt-on-identical: if the most recent prior entry for this item has a
+  // matching signature, short-circuit the budget and halt immediately.
+  let identicalHalt = false;
+  if (haltOnIdentical && newSignature) {
+    const priorForItem = [...state.errorLog].reverse().find((e) => e.itemKey === itemKey);
+    if (priorForItem && priorForItem.errorSignature === newSignature) {
+      identicalHalt = true;
+    }
+  }
+
   const newErrorLog = [...state.errorLog, newEntry];
   const failCount = newErrorLog.filter((e) => e.itemKey === itemKey).length;
 
   return {
     state: { ...state, items: newItems, errorLog: newErrorLog },
     failCount,
-    halted: failCount >= maxFailures,
+    halted: identicalHalt || failCount >= maxFailures,
   };
 }
 
