@@ -6,6 +6,7 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import {
+    Box,
     Modal,
     ModalBody,
     ModalCloseButton,
@@ -19,6 +20,36 @@ import ProductView from '@salesforce/retail-react-app/app/components/product-vie
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
 import {useIntl} from 'react-intl'
 import {WarningIcon} from '@chakra-ui/icons'
+
+/**
+ * Lightweight ErrorBoundary to isolate ProductView render crashes
+ * inside the modal portal — prevents route-level AppErrorBoundary
+ * from replacing the entire page with a crash screen.
+ */
+class QuickViewErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props)
+        this.state = {hasError: false}
+    }
+
+    static getDerivedStateFromError() {
+        return {hasError: true}
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <Center py={10} flexDirection="column" data-testid="quick-view-error">
+                    <WarningIcon boxSize={8} color="orange.400" mb={3} />
+                    <Text fontSize="lg" fontWeight="semibold">
+                        Unable to load product details.
+                    </Text>
+                </Center>
+            )
+        }
+        return this.props.children
+    }
+}
 
 /**
  * QuickViewModal — renders a Chakra modal that fetches full product
@@ -80,12 +111,14 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             </Text>
                         </Center>
                     ) : (
-                        <ProductView
-                            product={fetchedProduct}
-                            isProductLoading={isFetching}
-                            showFullLink={true}
-                            imageSize="sm"
-                        />
+                        <QuickViewErrorBoundary>
+                            <ProductView
+                                product={fetchedProduct}
+                                isProductLoading={isFetching}
+                                showFullLink={true}
+                                imageSize="sm"
+                            />
+                        </QuickViewErrorBoundary>
                     )}
                 </ModalBody>
             </ModalContent>
