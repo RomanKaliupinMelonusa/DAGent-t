@@ -95,6 +95,56 @@ describe("failItem", () => {
     assert.ok(result.state.errorLog[0].errorSignature);
     assert.equal(result.state.errorLog[0].errorSignature!.length, 16);
   });
+
+  it("halts on identical signature when haltOnIdentical is set", () => {
+    // First failure is allowed; the prior entry plus this one share a
+    // signature, so attempt 2 must halt immediately — bypassing maxFailures.
+    const state = makeState([makeItem("A")], {
+      errorLog: [{
+        timestamp: new Date().toISOString(),
+        itemKey: "A",
+        message: "Pre-hook failed (exit 1)",
+        errorSignature: null,
+      }],
+    });
+    // Seed a matching signature on the prior entry.
+    const priorSig = "abc123def4567890";
+    state.errorLog[0] = { ...state.errorLog[0], errorSignature: priorSig };
+    const result = failItem(
+      state,
+      "A",
+      "whatever",
+      { haltOnIdentical: true },
+      () => priorSig,
+    );
+    assert.equal(result.failCount, 2);
+    assert.equal(result.halted, true);
+  });
+
+  it("does not halt on different signature even with haltOnIdentical", () => {
+    const state = makeState([makeItem("A")], {
+      errorLog: [{
+        timestamp: new Date().toISOString(),
+        itemKey: "A",
+        message: "prior",
+        errorSignature: "aaaaaaaaaaaaaaaa",
+      }],
+    });
+    const result = failItem(
+      state,
+      "A",
+      "new",
+      { haltOnIdentical: true },
+      () => "bbbbbbbbbbbbbbbb",
+    );
+    assert.equal(result.halted, false);
+  });
+
+  it("accepts legacy numeric maxFailures argument", () => {
+    const state = makeState([makeItem("A")]);
+    const result = failItem(state, "A", "x", 3);
+    assert.equal(result.halted, false);
+  });
 });
 
 // ---------------------------------------------------------------------------

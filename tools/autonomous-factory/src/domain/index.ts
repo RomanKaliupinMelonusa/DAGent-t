@@ -43,6 +43,7 @@ export {
   type ErrorLogEntry,
   type CompleteResult,
   type FailResult,
+  type FailItemOptions,
   type ResetResult,
   type ResetScriptsResult,
   type ResumeElevatedResult,

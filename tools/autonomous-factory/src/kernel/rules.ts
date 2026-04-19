@@ -28,6 +28,7 @@ import {
   type TransitionState,
   type CompleteResult,
   type FailResult,
+  type FailItemOptions,
   type ResetResult,
   type SalvageResult,
   type BatchOutcome,
@@ -51,7 +52,7 @@ export interface KernelRules {
   complete(state: TransitionState, itemKey: string): CompleteResult;
 
   /** Record a failure. */
-  fail(state: TransitionState, itemKey: string, message: string, maxFailures?: number): FailResult;
+  fail(state: TransitionState, itemKey: string, message: string, options?: number | FailItemOptions): FailResult;
 
   /** Reset a node + downstream cascade. */
   reset(state: TransitionState, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult;
@@ -136,8 +137,8 @@ export class DefaultKernelRules implements KernelRules {
     return completeItem(state, itemKey);
   }
 
-  fail(state: TransitionState, itemKey: string, message: string, maxFailures?: number): FailResult {
-    return failItem(state, itemKey, message, maxFailures, this.signatureFor(itemKey));
+  fail(state: TransitionState, itemKey: string, message: string, options?: number | FailItemOptions): FailResult {
+    return failItem(state, itemKey, message, options ?? 10, this.signatureFor(itemKey));
   }
 
   reset(state: TransitionState, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult {

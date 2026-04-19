@@ -36,6 +36,18 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
   };
 }
 
+/** Default hook timeout when the node does not declare `timeout_minutes`. */
+const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+
+/** Resolve the hook timeout: honour `node.timeout_minutes` when set so
+ *  long-running lifecycle hooks (e.g. dev-server boot with 120 s polling)
+ *  do not get killed by the 30 s default of `executeHook`. */
+function getHookTimeoutMs(node: { timeout_minutes?: number } | undefined): number {
+  const mins = node?.timeout_minutes;
+  if (typeof mins === "number" && mins > 0) return mins * 60_000;
+  return DEFAULT_HOOK_TIMEOUT_MS;
+}
+
 export const lifecycleHooksMiddleware: NodeMiddleware = {
   name: "lifecycle-hooks",
 
@@ -46,11 +58,12 @@ export const lifecycleHooksMiddleware: NodeMiddleware = {
     if (!preCmd && !postCmd) return next();
 
     const env = buildHookEnv(ctx);
+    const hookTimeoutMs = getHookTimeoutMs(node);
 
     // ── Pre-hook ──────────────────────────────────────────────────────────
     if (preCmd) {
       ctx.logger.event("hook.pre.start", ctx.itemKey, { command: preCmd });
-      const pre = executeHook(preCmd, env, ctx.appRoot);
+      const pre = executeHook(preCmd, env, ctx.appRoot, hookTimeoutMs);
       if (pre && pre.exitCode !== 0) {
         const message = `Pre-hook failed (exit ${pre.exitCode}): ${preCmd}\n${pre.stdout.slice(-2048)}`;
         ctx.logger.event("hook.pre.end", ctx.itemKey, { exit_code: pre.exitCode, failed: true });
@@ -58,6 +71,9 @@ export const lifecycleHooksMiddleware: NodeMiddleware = {
           outcome: "failed",
           errorMessage: message,
           summary: { intents: [`Pre-hook failed for ${ctx.itemKey}`] },
+          // Tag the failure source so the loop/triage path can route
+          // lifecycle-hook failures separately from handler-body failures.
+          signals: { preHookFailure: true },
         };
       }
       ctx.logger.event("hook.pre.end", ctx.itemKey, { exit_code: 0 });
@@ -71,7 +87,7 @@ export const lifecycleHooksMiddleware: NodeMiddleware = {
     // for a healthy run. A failing handler already tells triage what to do.
     if (postCmd && result.outcome === "completed") {
       ctx.logger.event("hook.post.start", ctx.itemKey, { command: postCmd });
-      const post = executeHook(postCmd, env, ctx.appRoot);
+      const post = executeHook(postCmd, env, ctx.appRoot, hookTimeoutMs);
       if (post && post.exitCode !== 0) {
         const message = `Post-hook failed (exit ${post.exitCode}): ${postCmd}\n${post.stdout.slice(-2048)}`;
         ctx.logger.event("hook.post.end", ctx.itemKey, { exit_code: post.exitCode, failed: true });
@@ -79,6 +95,7 @@ export const lifecycleHooksMiddleware: NodeMiddleware = {
           ...result,
           outcome: "failed",
           errorMessage: message,
+          signals: { ...(result.signals ?? {}), postHookFailure: true },
         };
       }
       ctx.logger.event("hook.post.end", ctx.itemKey, { exit_code: 0 });

@@ -52,6 +52,13 @@ export interface FailItemCommand {
   readonly itemKey: string;
   readonly message: string;
   readonly maxFailures?: number;
+  /**
+   * When true and the previous errorLog entry for this item has the same
+   * errorSignature as the incoming failure, halt the pipeline on attempt 2
+   * regardless of `maxFailures`. Honours `circuit_breaker.halt_on_identical`
+   * from workflows.yml, resolved by the dispatcher via `NodeBudgetPolicy`.
+   */
+  readonly haltOnIdentical?: boolean;
 }
 
 // ---------------------------------------------------------------------------
