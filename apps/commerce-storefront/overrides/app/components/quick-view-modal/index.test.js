@@ -263,3 +263,41 @@ test('uses product name from hook data over search hit data', () => {
     // aria-label should prefer the hook-fetched product name
     expect(modal.getAttribute('aria-label')).toContain('Hook Product Name')
 })
+
+// --- ErrorBoundary Tests ---
+
+test('ErrorBoundary catches ProductView render errors and shows fallback', () => {
+    // Suppress React error boundary console.error noise
+    const originalError = console.error
+    console.error = jest.fn()
+
+    // Override the ProductView mock to throw during render
+    const productViewModule = require('@salesforce/retail-react-app/app/components/product-view')
+    const originalDefault = productViewModule.default
+    productViewModule.default = () => {
+        throw new Error('Simulated ProductView crash')
+    }
+
+    useProductViewModal.mockReturnValue({
+        product: {name: 'Crash Product', price: 50},
+        isFetching: false
+    })
+
+    renderWithProviders(
+        <QuickViewModal
+            product={{productId: 'crash-test', productName: 'Crash Product'}}
+            isOpen={true}
+            onClose={jest.fn()}
+        />
+    )
+
+    // The ErrorBoundary should catch the throw and render the fallback
+    expect(screen.getByTestId('quick-view-error')).toBeInTheDocument()
+    expect(screen.getByTestId('quick-view-error').textContent).toContain(
+        'Unable to load product details'
+    )
+
+    // Restore
+    productViewModule.default = originalDefault
+    console.error = originalError
+})
