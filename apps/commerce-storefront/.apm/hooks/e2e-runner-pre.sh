@@ -41,8 +41,22 @@ pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true
 # Playwright leaves headless Chromium behind on crash — stale instances hold
 # SingletonLock on profile dirs under /tmp/.org.chromium.* and can hang the
-# next `playwright test`. Safe to match broadly: no orchestrator uses chrome.
-pkill -f 'chromium|chrome' 2>/dev/null || true
+# next `playwright test`.
+#
+# CRITICAL: do NOT `pkill -f 'chromium|chrome'` — in a devcontainer that
+# regex matches VS Code's remote server helpers (Electron-based extensions,
+# the Playwright VS Code extension, any dev-browser the user has open) and
+# forces a VS Code window reload. Match the Playwright-installed binary
+# path instead, which is deterministic and cannot appear in any VS Code
+# or orchestrator process.
+# Paths look like:
+#   /home/node/.cache/ms-playwright/chromium-<ver>/chrome-linux/chrome
+#   /home/node/.cache/ms-playwright/chromium_headless_shell-<ver>/…/headless_shell
+#   /root/.cache/ms-playwright/chromium-<ver>/chrome-linux/chrome
+pkill -f '\.cache/ms-playwright/.*/(chrome|headless_shell)(\s|$)' 2>/dev/null || true
+# Remove any stale Chromium SingletonLock files so the next launch isn't
+# blocked by a profile held by a now-dead PID.
+rm -rf /tmp/.org.chromium.Chromium.* 2>/dev/null || true
 # Drop any stale PID file that pointed at a now-dead process.
 if [[ -f "$PID_FILE" ]]; then
   OLD_PID="$(cat "$PID_FILE" 2>/dev/null || echo "")"

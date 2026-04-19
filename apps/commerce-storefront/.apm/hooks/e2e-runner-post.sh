@@ -31,6 +31,11 @@ fi
 pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true
 # Playwright browsers — clean up after the test run.
-pkill -f 'chromium|chrome' 2>/dev/null || true
+# CRITICAL: scope to the Playwright binary path only. A broad
+# `pkill -f 'chromium|chrome'` kills VS Code remote-server helpers in the
+# devcontainer and forces a window reload (real incident, 2026-04-19).
+pkill -f '\.cache/ms-playwright/.*/(chrome|headless_shell)(\s|$)' 2>/dev/null || true
+# Remove any stale Chromium profile SingletonLock dirs.
+rm -rf /tmp/.org.chromium.Chromium.* 2>/dev/null || true
 
 exit 0
