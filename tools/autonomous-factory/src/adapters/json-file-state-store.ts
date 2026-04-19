@@ -19,6 +19,8 @@ import type {
   InitResult,
   TriageRecord,
   ExecutionRecord,
+  PendingContextPayload,
+  TriageHandoff,
 } from "../types.js";
 import {
   completeItem as completeItemRule,
@@ -49,6 +51,53 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
     );
   }
   return item;
+}
+
+/**
+ * Render a structured `PendingContextPayload` to a single markdown string.
+ *
+ * Output shape:
+ *   <narrative>
+ *   (blank line)
+ *   ## 🧩 Triage handoff
+ *   - **Failing item:** …
+ *   - **Domain:** …
+ *   - **Reason:** …
+ *   - **Error signature:** …
+ *   - **Prior attempts:** …
+ *   - **Touched files:** …
+ *   ### Error excerpt
+ *   ```
+ *   <errorExcerpt>
+ *   ```
+ *
+ * Exported for unit testing — the adapter is the single rendering point.
+ */
+export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
+  const touched = handoff.touchedFiles && handoff.touchedFiles.length > 0
+    ? handoff.touchedFiles.join(", ")
+    : "(none captured)";
+  const lines: string[] = [
+    "## 🧩 Triage handoff",
+    `- **Failing item:** \`${handoff.failingItem}\``,
+    `- **Domain:** ${handoff.triageDomain}`,
+    `- **Reason:** ${handoff.triageReason}`,
+    `- **Error signature:** \`${handoff.errorSignature}\``,
+    `- **Prior attempts:** ${handoff.priorAttemptCount}`,
+    `- **Touched files:** ${touched}`,
+    "",
+    "### Error excerpt",
+    "```",
+    handoff.errorExcerpt,
+    "```",
+  ];
+  return lines.join("\n");
+}
+
+export function renderPendingContext(payload: PendingContextPayload): string {
+  const narrative = payload.narrative.trimEnd();
+  const handoffMd = renderTriageHandoffMarkdown(payload.handoff);
+  return `${narrative}\n\n${handoffMd}\n`;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,12 +280,17 @@ export class JsonFileStateStore implements StateStore {
     });
   }
 
-  async setPendingContext(slug: string, itemKey: string, context: string): Promise<PipelineState> {
+  async setPendingContext(
+    slug: string,
+    itemKey: string,
+    context: string | PendingContextPayload,
+  ): Promise<PipelineState> {
     if (!slug || !itemKey) throw new Error("setPendingContext requires slug and itemKey");
+    const rendered = typeof context === "string" ? context : renderPendingContext(context);
     return withLock(slug, () => {
       const state = readStateOrThrow(slug);
       const item = findItemOrThrow(state, itemKey);
-      item.pendingContext = context;
+      item.pendingContext = rendered;
       writeState(slug, state);
       return state;
     });

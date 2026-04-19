@@ -23,11 +23,50 @@ import { getAgentConfig, buildTaskPrompt } from "../apm/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
+import { isOrchestratorTimeout } from "../triage/index.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ItemSummary } from "../types.js";
+
+// ---------------------------------------------------------------------------
+// B4 — no-op-dev sanity check (pure helper, exported for tests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inspect whether a reportedly-completed dev agent produced any changes.
+ *
+ * Returns an error message when the agent is considered a no-op (HEAD
+ * unchanged, attribution dirs declared, no prior commit from earlier
+ * cycles). Returns null when the completion is legitimate or the check
+ * is opt-out (empty `attributionDirs`).
+ *
+ * Extracted as a pure helper so the guard is unit-testable without a
+ * full NodeContext harness.
+ */
+export function detectNoOpDev(input: {
+  itemKey: string;
+  attributionDirs: readonly string[];
+  preStepRef: string | undefined;
+  headNow: string;
+  pipelineSummaries: ReadonlyArray<Readonly<ItemSummary>>;
+}): string | null {
+  const { itemKey, attributionDirs, preStepRef, headNow, pipelineSummaries } = input;
+  if (attributionDirs.length === 0) return null;   // opt-out for read-only nodes
+  if (!preStepRef) return null;                     // no baseline → can't compare
+  if (headNow !== preStepRef) return null;          // HEAD moved → legitimate
+  const priorCommitted = pipelineSummaries.some(
+    (s) => s.key === itemKey && (s.filesChanged?.length ?? 0) > 0,
+  );
+  if (priorCommitted) return null;
+  return (
+    `[no-op-dev] Agent reported completion but HEAD is unchanged ` +
+    `(${headNow.slice(0, 7)}) and no prior cycle committed files in ` +
+    `attribution dirs [${attributionDirs.join(", ")}]. ` +
+    `Re-dispatch required with explicit must-commit directive.`
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Workflow node helpers
@@ -164,10 +203,19 @@ const copilotAgentHandler: NodeHandler = {
     });
 
     // ── 6. Classify outcome ─────────────────────────────────────────────────
+    // Tag SDK `session.idle` timeouts with a stable marker so the triage
+    // handler's pre-guard can count them across cycles via `errorLog`
+    // (B2 — session.idle circuit breaker).
+    const idleTagged = sessionError && isOrchestratorTimeout(sessionError)
+      ? (sessionError.startsWith("[session-idle-timeout] ")
+        ? sessionError
+        : `[session-idle-timeout] ${sessionError}`)
+      : sessionError;
+
     if (fatalError) {
       return {
         outcome: telemetry.outcome === "error" ? "error" : "failed",
-        errorMessage: sessionError,
+        errorMessage: idleTagged,
         summary: telemetry,
         signal: "halt",
       };
@@ -176,7 +224,7 @@ const copilotAgentHandler: NodeHandler = {
     if (sessionError) {
       return {
         outcome: telemetry.outcome === "error" ? "error" : "failed",
-        errorMessage: sessionError,
+        errorMessage: idleTagged,
         summary: telemetry,
       };
     }
@@ -200,6 +248,44 @@ const copilotAgentHandler: NodeHandler = {
           ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
         };
       }
+
+      // B4 — no-op-dev sanity check.
+      // A dev agent that reports "completed" but never moved HEAD (and never
+      // committed anything in a prior cycle for this item) is silently idle.
+      // Downstream auto-skip would then falsely trust it, cascading skips
+      // across the pipeline. We fail the item instead so the triage handler
+      // can re-dispatch with an explicit must-commit directive.
+      //
+      // Opt-in via `diff_attribution_dirs` non-empty — read-only nodes
+      // (publish-pr, docs-archived) are unaffected.
+      const attributionDirs = node?.diff_attribution_dirs ?? [];
+      if (attributionDirs.length > 0) {
+        const preStepRef = ctx.handlerData["preStepRef"] as string | undefined;
+        try {
+          const headNow = await ctx.vcs.getHeadSha();
+          const noOpMsg = detectNoOpDev({
+            itemKey,
+            attributionDirs,
+            preStepRef,
+            headNow,
+            pipelineSummaries,
+          });
+          if (noOpMsg) {
+            telemetry.outcome = "failed";
+            telemetry.errorMessage = noOpMsg;
+            ctx.logger.event("item.end", itemKey, {
+              outcome: "failed",
+              source: "no_op_dev_guard",
+            });
+            return {
+              outcome: "failed",
+              errorMessage: noOpMsg,
+              summary: telemetry,
+            };
+          }
+        } catch { /* non-fatal — fall through to normal success */ }
+      }
+
       ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "report_outcome" });
       return { outcome: "completed", summary: telemetry };
     }

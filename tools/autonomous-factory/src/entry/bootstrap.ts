@@ -30,6 +30,7 @@ import {
   checkGitHubLogin,
   checkStateContextDrift,
   buildRoamIndex,
+  runPreflightBaseline,
 } from "../lifecycle/preflight.js";
 import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
 import type { PreviousSummaryTotals } from "../reporting/index.js";
@@ -147,6 +148,11 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
 
   // --- 7. Cloud CLI auth ---
   checkPreflightAuth(repoRoot, appRoot, apmContext);
+
+  // --- 7b. Pre-flight baseline validation (A2) ---
+  // Captures pre-existing route failures on BASE so validateApp can ignore
+  // them later. Non-fatal when the hook is absent or produces no map.
+  runPreflightBaseline(slug, baseBranch, repoRoot, appRoot, apmContext);
 
   // --- 8. Roam index ---
   const roamAvailable = buildRoamIndex(repoRoot);

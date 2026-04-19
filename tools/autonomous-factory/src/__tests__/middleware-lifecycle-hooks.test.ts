@@ -153,6 +153,43 @@ describe("lifecycleHooksMiddleware", () => {
     const { readFileSync } = await import("node:fs");
     assert.equal(readFileSync(marker, "utf8").trim(), "feat-abc");
   });
+
+  it("injects BASELINE_VALIDATION from _FLIGHT_DATA.json when baselineValidation is present (A2)", async () => {
+    const slug = "feat-xyz";
+    const ctx = makeCtx({ appRoot: tmpDir, slug });
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, "in-progress", `${slug}_FLIGHT_DATA.json`),
+      JSON.stringify({ baselineValidation: { "/foo": "fail" } }),
+    );
+    const marker = join(tmpDir, "baseline-env.txt");
+    setNode(ctx, { pre: `echo "$BASELINE_VALIDATION" > ${marker}` });
+    const res = await lifecycleHooksMiddleware.run(ctx, async () => ok());
+    assert.equal(res.outcome, "completed");
+    const { readFileSync } = await import("node:fs");
+    const captured = readFileSync(marker, "utf8").trim();
+    assert.match(captured, /"\/foo"\s*:\s*"fail"/);
+  });
+
+  it("does not set BASELINE_VALIDATION when flight data lacks baselineValidation key (A2)", async () => {
+    const slug = "feat-no-baseline";
+    const ctx = makeCtx({ appRoot: tmpDir, slug });
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, "in-progress", `${slug}_FLIGHT_DATA.json`),
+      JSON.stringify({ somethingElse: true }),
+    );
+    const marker = join(tmpDir, "baseline-env-empty.txt");
+    // Print literal text if the var is unset so we can distinguish "empty"
+    // from "not set". `${BASELINE_VALIDATION-UNSET}` keeps the null case.
+    setNode(ctx, { pre: `echo "\${BASELINE_VALIDATION-UNSET}" > ${marker}` });
+    const res = await lifecycleHooksMiddleware.run(ctx, async () => ok());
+    assert.equal(res.outcome, "completed");
+    const { readFileSync } = await import("node:fs");
+    assert.equal(readFileSync(marker, "utf8").trim(), "UNSET");
+  });
 });
 
 // Silence unused-import lint for helpers reserved for future test expansions.

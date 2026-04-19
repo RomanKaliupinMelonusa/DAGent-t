@@ -120,4 +120,13 @@ describe("isOrchestratorTimeout", () => {
   it("does NOT match partial match — only 'timeout after' without 'session.idle'", () => {
     assert.equal(isOrchestratorTimeout("Timeout after 600000ms waiting for build"), false);
   });
+  it("still matches when prefixed with the session-idle-timeout marker", () => {
+    // B2 — the copilot-agent handler tags matching sessionErrors with the
+    // marker for triage pre-guard counting. The predicate must continue
+    // to match tagged messages so downstream fingerprinting stays stable.
+    assert.equal(
+      isOrchestratorTimeout("[session-idle-timeout] Timeout after 1200000ms waiting for session.idle"),
+      true,
+    );
+  });
 });

@@ -6,7 +6,7 @@
  * an in-memory stub.
  */
 
-import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord } from "../types.js";
+import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord, PendingContextPayload } from "../types.js";
 
 /**
  * Port for all pipeline state read/write operations.
@@ -51,8 +51,10 @@ export interface StateStore {
   /** Set the deployed URL. */
   setUrl(slug: string, url: string): Promise<PipelineState>;
 
-  /** Inject pre-built context into a node for its next attempt. */
-  setPendingContext(slug: string, itemKey: string, context: string): Promise<PipelineState>;
+  /** Inject pre-built context into a node for its next attempt.
+   *  Accepts a plain string (legacy) or a structured `PendingContextPayload`;
+   *  adapters are responsible for rendering the structured form to markdown. */
+  setPendingContext(slug: string, itemKey: string, context: string | PendingContextPayload): Promise<PipelineState>;
 
   /** Persist a triage record for retrospective analysis. */
   setLastTriageRecord(slug: string, record: TriageRecord): Promise<PipelineState>;

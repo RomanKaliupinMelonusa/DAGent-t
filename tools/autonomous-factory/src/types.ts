@@ -194,7 +194,7 @@ export interface TriageRecord {
   error_signature: string;
 
   /** Pre-guard result (set by triage handler, not evaluateTriage). */
-  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup";
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted";
   guard_detail?: string;
 
   /** RAG layer matches (up to 3, ranked by specificity). */
@@ -218,6 +218,43 @@ export interface TriageRecord {
   cascade: string[];
   cycle_count: number;
   domain_retry_count: number;
+}
+
+/**
+ * Structured handoff payload emitted by the triage handler when it reroutes
+ * a failure to a dev agent. Consumed by the adapter that persists
+ * `pendingContext` for the target node. Carries the diagnosis up-front so
+ * the receiving agent does not have to re-discover it from raw logs.
+ *
+ * Backward compat: the pendingContext surface still accepts plain strings;
+ * this is an additive, opt-in upgrade (B1).
+ */
+export interface TriageHandoff {
+  /** The item whose failure triggered this handoff (upstream of route-to). */
+  readonly failingItem: string;
+  /** Trimmed error excerpt (first N lines) — no secrets, deterministic. */
+  readonly errorExcerpt: string;
+  /** Stable fingerprint of the error for cross-cycle identity. */
+  readonly errorSignature: string;
+  /** Classified fault domain. */
+  readonly triageDomain: string;
+  /** Human-readable classification reason. */
+  readonly triageReason: string;
+  /** Number of prior attempts for the failing item. */
+  readonly priorAttemptCount: number;
+  /** Files touched in the failing attempt, if known. */
+  readonly touchedFiles?: readonly string[];
+}
+
+/**
+ * Structured pendingContext payload — narrative + handoff diagnosis.
+ * Accepted anywhere a plain string pendingContext is accepted.
+ */
+export interface PendingContextPayload {
+  /** Pre-composed prose block (existing `composeTriageContext` output). */
+  readonly narrative: string;
+  /** Structured diagnosis rendered as markdown by the adapter. */
+  readonly handoff: TriageHandoff;
 }
 
 /**

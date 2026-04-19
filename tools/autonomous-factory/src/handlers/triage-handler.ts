@@ -25,13 +25,14 @@
 import type { NodeBudgetPolicy } from "../app-types.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
-import type { TriageRecord, TriageResult } from "../types.js";
+import type { TriageRecord, TriageResult, TriageHandoff } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
 import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
+import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -64,6 +65,14 @@ function resolveProfile(ctx: NodeContext): CompiledTriageProfile | undefined {
   return ctx.apmContext.triage_profiles?.[`${ctx.pipelineState.workflowName}.${profileName}`];
 }
 
+/** Trim a raw error trace to at most `maxLines` lines, preserving the head. */
+function truncateError(raw: string, maxLines = 40): string {
+  const lines = raw.split(/\r?\n/);
+  if (lines.length <= maxLines) return raw.trimEnd();
+  const head = lines.slice(0, maxLines).join("\n");
+  return `${head}\n… (${lines.length - maxLines} more lines)`;
+}
+
 /**
  * Build DagCommands for graceful degradation (salvage to Draft PR).
  * Replaces the old `executeSalvage()` helper that called state APIs directly.
@@ -90,6 +99,8 @@ async function buildRerouteCommands(
   triageResult: TriageResult,
   maxReroutes: number,
   routeToPolicy: NodeBudgetPolicy,
+  failingNodeKey: string,
+  rawError: string,
 ): Promise<DagCommand[]> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
@@ -134,7 +145,26 @@ async function buildRerouteCommands(
       rejectionContext: rejectionCtx || undefined,
     });
     if (composed) {
-      commands.push({ type: "set-pending-context", itemKey: routeToKey, context: composed });
+      // B1 — emit structured handoff alongside the narrative so the adapter
+      // appends a typed diagnosis block. The dev agent no longer needs to
+      // re-discover the failure domain from raw logs.
+      const failingSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === failingNodeKey);
+      const priorAttemptCount = (pipeStateForCtx.executionLog ?? [])
+        .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
+      const handoff: TriageHandoff = {
+        failingItem: failingNodeKey,
+        errorExcerpt: truncateError(rawError),
+        errorSignature: triageRecord.error_signature,
+        triageDomain: triageResult.domain,
+        triageReason: triageResult.reason,
+        priorAttemptCount,
+        touchedFiles: failingSummary?.filesChanged ?? [],
+      };
+      commands.push({
+        type: "set-pending-context",
+        itemKey: routeToKey,
+        context: { narrative: composed, handoff },
+      });
     }
   } catch { /* non-fatal — reroute still works without pendingContext */ }
 
@@ -183,6 +213,59 @@ const triageHandler: NodeHandler = {
     // NOTE: Pre-triage guards (timeout, unfixable, dedup, death spiral) have
     // been moved to the kernel's stepTriageGuard dispatch step. If we reach
     // here, all guards have already passed.
+
+    // B2 pre-LLM guard — session.idle circuit breaker.
+    // Count prior `[session-idle-timeout]`-tagged entries in errorLog for the
+    // failing item. At/over the resolved limit, short-circuit classification
+    // and salvage gracefully. Prevents the wedge class where a stuck agent
+    // burns N× session.idle timeouts without ever producing a diff.
+    try {
+      const pipeState = await ctx.stateReader.getStatus(slug);
+      const idleTimeoutLimit = resolveIdleTimeoutLimit(ctx.apmContext, failingNodeKey);
+      const idleCount = (pipeState.errorLog ?? []).filter(
+        (e) => e.itemKey === failingNodeKey && e.message?.includes("[session-idle-timeout]"),
+      ).length;
+      if (idleCount >= idleTimeoutLimit) {
+        const guardReason = `session.idle circuit breaker: ${idleCount}/${idleTimeoutLimit} SDK session timeouts observed for "${failingNodeKey}" — salvaging gracefully`;
+        logger.event("triage.evaluate", failingNodeKey, {
+          domain: "$GUARD",
+          reason: guardReason,
+          source: "fallback",
+          route_to: "$BLOCKED",
+          guard_result: "session_idle_exhausted",
+        });
+        const record: TriageRecord = {
+          failing_item: failingNodeKey,
+          error_signature: errorSig,
+          guard_result: "session_idle_exhausted",
+          guard_detail: `idleCount=${idleCount} limit=${idleTimeoutLimit}`,
+          rag_matches: [],
+          rag_selected: null,
+          llm_invoked: false,
+          domain: "$GUARD",
+          reason: guardReason,
+          source: "fallback",
+          route_to: "$BLOCKED",
+          cascade: [],
+          cycle_count: 0,
+          domain_retry_count: 0,
+        };
+        return {
+          outcome: "completed",
+          summary: { intents: [`triage: session.idle exhausted (${idleCount}/${idleTimeoutLimit}) → degradation`] },
+          signals: { halt: false },
+          commands: buildSalvageCommands(failingNodeKey, rawError, record),
+          handlerOutput: {
+            routeToKey: null,
+            domain: "$GUARD",
+            reason: guardReason,
+            source: "fallback",
+            triageRecord: record,
+            guardResult: "session_idle_exhausted",
+          } satisfies TriageHandlerOutput,
+        };
+      }
+    } catch { /* non-fatal — fall through to classification */ }
 
     // --- 2-layer triage classification (RAG → LLM → fallback) ---
     const triageLlm = ctx.triageLlm;
@@ -396,7 +479,7 @@ const triageHandler: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy);
+    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError);
 
     return {
       outcome: "completed",

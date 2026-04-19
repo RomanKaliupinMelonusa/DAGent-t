@@ -216,7 +216,7 @@ nodes:
       allows_timeout_salvage: true
 
 config:
-  defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000 }
+  defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000, idleTimeoutLimit: 2 }
   # Phase 4 operational hardening.
   policy:
     max_iterations: 500
@@ -228,6 +228,7 @@ config:
     resolveEnvironment: "bash .apm/hooks/resolve-env.sh"
     validateApp: "bash .apm/hooks/validate-app.sh"
     preflightAuth: "bash .apm/hooks/preflight-auth.sh"
+    preflightBaseline: "bash .apm/hooks/validate-app.sh --baseline"
   environment:
     STOREFRONT_URL: "${MRT_STOREFRONT_URL}"
     COMMERCE_CLIENT_ID: "${COMMERCE_CLIENT_ID}"

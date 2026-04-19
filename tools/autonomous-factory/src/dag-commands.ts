@@ -13,7 +13,7 @@
  * New command types can be added here without touching handlers.
  */
 
-import type { TriageRecord } from "./types.js";
+import type { TriageRecord, PendingContextPayload } from "./types.js";
 
 export type DagCommand =
   | ResetNodesCommand
@@ -44,13 +44,17 @@ export interface SalvageDraftCommand {
   readonly reason: string;
 }
 
-/** Inject pre-built prompt context into a node's next attempt. */
+/** Inject pre-built prompt context into a node's next attempt.
+ *  `context` may be a plain string (legacy) or a structured
+ *  `PendingContextPayload` carrying a narrative plus a typed triage
+ *  handoff. Adapters render the payload to a single markdown string
+ *  before persisting. */
 export interface SetPendingContextCommand {
   readonly type: "set-pending-context";
   /** Target node key. */
   readonly itemKey: string;
-  /** Context string to inject. */
-  readonly context: string;
+  /** Context string to inject, or structured triage-handoff payload. */
+  readonly context: string | PendingContextPayload;
 }
 
 /** Persist a triage classification record for retrospective analysis. */

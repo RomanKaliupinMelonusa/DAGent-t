@@ -116,5 +116,9 @@ storefront:
         ssr-hydration:
           description: "SSR hydration mismatch, server-render crash, React hydration errors — route back to dev agent for full-context redevelopment"
           route_to: storefront-dev
+        no-op-dev:
+          description: "Dev agent reported completion without committing any files in its attribution dirs. Re-dispatch with explicit must-commit directive."
+          route_to: storefront-dev
+          retries: 1
         blocked:
           description: "Unfixable without human intervention (permissions, SFCC access)"

@@ -106,6 +106,99 @@ export function checkPreflightAuth(repoRoot: string, appRoot: string, apmContext
 }
 
 /**
+ * Run the pre-flight baseline validation hook (A2).
+ *
+ * Runs once at bootstrap to capture which app routes were already failing
+ * on the BASE branch BEFORE this feature branch's changes. The downstream
+ * `validateApp` hook reads the captured map via the `BASELINE_VALIDATION`
+ * env var and skips routes that were already broken, so pre-existing
+ * environment failures don't block feature PRs.
+ *
+ * The hook must print a single JSON object to stdout mapping route
+ * identifiers to `"pass"` or `"fail"`. Any other output is treated as
+ * "no baseline captured" (non-fatal — the orchestrator continues).
+ *
+ * Results are persisted to `<appRoot>/in-progress/<slug>_FLIGHT_DATA.json`
+ * under the `baselineValidation` key, merging with any existing flight data.
+ */
+export function runPreflightBaseline(
+  slug: string,
+  baseBranch: string | undefined,
+  repoRoot: string,
+  appRoot: string,
+  apmContext: ApmCompiledOutput,
+): Record<string, "pass" | "fail"> | null {
+  const hookCmd = apmContext.config?.hooks?.preflightBaseline;
+  if (!hookCmd) return null;
+  if (!baseBranch) {
+    console.log("  ⊘ No BASE_BRANCH set — skipping baseline validation\n");
+    return null;
+  }
+
+  const env = buildHookEnv(apmContext.config, {
+    APP_ROOT: appRoot,
+    REPO_ROOT: repoRoot,
+    BASE_BRANCH: baseBranch,
+    PREFLIGHT_BASELINE: "1",
+  });
+
+  const result = executeHook(hookCmd, env, appRoot, 60_000);
+  if (!result || result.exitCode !== 0) {
+    console.warn(
+      `  ⚠ Baseline validation hook failed (exit ${result?.exitCode ?? "n/a"}) — ` +
+      `continuing without a baseline map.\n` +
+      `    ${result?.stdout ? `Detail: ${result.stdout}\n` : ""}`,
+    );
+    return null;
+  }
+
+  let parsed: Record<string, "pass" | "fail"> | null = null;
+  try {
+    const maybe = JSON.parse(result.stdout);
+    if (maybe && typeof maybe === "object" && !Array.isArray(maybe)) {
+      const entries = Object.entries(maybe).filter(
+        ([, v]) => v === "pass" || v === "fail",
+      ) as Array<[string, "pass" | "fail"]>;
+      if (entries.length > 0) {
+        parsed = Object.fromEntries(entries);
+      }
+    }
+  } catch { /* not valid JSON — fall through */ }
+
+  if (!parsed) {
+    console.log("  ⊘ Baseline hook produced no usable JSON map — skipping\n");
+    return null;
+  }
+
+  // Persist to _FLIGHT_DATA.json — merge with any existing content.
+  const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+  try {
+    let existing: Record<string, unknown> = {};
+    if (fs.existsSync(flightPath)) {
+      try {
+        existing = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
+      } catch { existing = {}; }
+    }
+    existing["baselineValidation"] = parsed;
+    fs.mkdirSync(path.dirname(flightPath), { recursive: true });
+    fs.writeFileSync(flightPath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    console.warn(`  ⚠ Could not persist baseline map: ${err instanceof Error ? err.message : err}`);
+  }
+
+  const failures = Object.entries(parsed).filter(([, v]) => v === "fail").map(([k]) => k);
+  if (failures.length > 0) {
+    console.log(
+      `  ⚠ Baseline: ${failures.length} pre-existing route failure(s) — ` +
+      `will be ignored by validateApp: ${failures.join(", ")}\n`,
+    );
+  } else {
+    console.log(`  ✔ Baseline clean (${Object.keys(parsed).length} routes)\n`);
+  }
+  return parsed;
+}
+
+/**
  * Check if roam-code is available, and if so, build the semantic graph index.
  * Returns whether roam is available (for use in later re-indexing calls).
  */

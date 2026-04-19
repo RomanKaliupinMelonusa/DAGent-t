@@ -22,15 +22,34 @@
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
 import { executeHook } from "../../lifecycle/hooks.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /** Resolve the workflow node definition for the current item, if any. */
 function getNode(ctx: NodeContext) {
   return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];
 }
 
+/** Read the baseline validation map from _FLIGHT_DATA.json (A2).
+ *  Hooks consume it via the `BASELINE_VALIDATION` env var to skip routes
+ *  that were already failing on the BASE branch. Returns a JSON string
+ *  or empty string when no baseline was captured. */
+function readBaselineValidation(ctx: NodeContext): string {
+  const flightPath = path.join(ctx.appRoot, "in-progress", `${ctx.slug}_FLIGHT_DATA.json`);
+  if (!fs.existsSync(flightPath)) return "";
+  try {
+    const parsed = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
+    const baseline = parsed["baselineValidation"];
+    if (!baseline || typeof baseline !== "object") return "";
+    return JSON.stringify(baseline);
+  } catch {
+    return "";
+  }
+}
+
 /** Env passed to every pre/post hook — merges apm config env + pipeline context. */
 function buildHookEnv(ctx: NodeContext): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     ...ctx.environment,
     SLUG: ctx.slug,
     APP_ROOT: ctx.appRoot,
@@ -38,6 +57,9 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
     BASE_BRANCH: ctx.baseBranch,
     ITEM_KEY: ctx.itemKey,
   };
+  const baseline = readBaselineValidation(ctx);
+  if (baseline) env.BASELINE_VALIDATION = baseline;
+  return env;
 }
 
 /** Default hook timeout when the node does not declare `timeout_minutes`. */

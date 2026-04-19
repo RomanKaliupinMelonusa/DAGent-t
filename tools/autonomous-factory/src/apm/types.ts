@@ -65,6 +65,12 @@ export const ApmToolLimitsSchema = z.object({
    *  At 80%: wrap-up warning injected. At 100%: session disconnects.
    *  Disabled by default (omit or set to undefined). */
   runtimeTokenBudget: z.number().int().positive().optional(),
+
+  /** Max number of SDK `session.idle` timeouts observed for this agent before
+   *  triage short-circuits to graceful salvage (B2 — session.idle circuit
+   *  breaker). Counts prior `[session-idle-timeout]`-prefixed entries in
+   *  `state.errorLog` for the failing item. Default: 2 (agent → defaults → 2). */
+  idleTimeoutLimit: z.number().int().positive().optional(),
 }).optional();
 
 /**
@@ -151,6 +157,15 @@ export const ApmConfigSchema = z.object({
     validateApp: z.string().optional(),
     /** Pre-flight auth check. Exit 0 = authenticated, non-zero = not authenticated. */
     preflightAuth: z.string().optional(),
+    /** Pre-flight baseline validation. Runs once at bootstrap against the BASE
+     *  branch (e.g. current production) to capture which app routes were
+     *  already failing BEFORE this feature branch's changes. Script must
+     *  print a single JSON object to stdout mapping route identifiers to
+     *  `"pass"` or `"fail"`; any other output is treated as "no baseline".
+     *  The orchestrator writes the map to `_FLIGHT_DATA.json.baselineValidation`
+     *  and the downstream `validateApp` hook consumes it via the
+     *  `BASELINE_VALIDATION` env var to ignore pre-existing failures. */
+    preflightBaseline: z.string().optional(),
   }).optional(),
   /** Config-driven commit scope warning injected into dev agents when CI/CD files are involved.
    *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */

@@ -7,7 +7,7 @@
  * Pure types only — zero executable code.
  */
 
-import type { PipelineState, ExecutionRecord, TriageRecord } from "../types.js";
+import type { PipelineState, ExecutionRecord, TriageRecord, PendingContextPayload } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Effect union
@@ -49,8 +49,11 @@ export interface PersistPendingContextEffect {
   readonly type: "persist-pending-context";
   readonly slug: string;
   readonly itemKey: string;
-  /** Prompt context string to inject into the item's next attempt. */
-  readonly context: string;
+  /** Prompt context string to inject into the item's next attempt.
+   *  May be a plain string (legacy) or a structured `PendingContextPayload`
+   *  carrying a narrative plus a typed triage handoff. The adapter is
+   *  responsible for rendering the payload to a single markdown string. */
+  readonly context: string | PendingContextPayload;
 }
 
 /** Persist a triage record for a pipeline item. */
