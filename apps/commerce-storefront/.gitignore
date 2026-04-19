@@ -19,10 +19,11 @@ playwright-report/
 .DS_Store
 Thumbs.db
 
-# Pipeline state (generated)
-*_STATE.json
-*_TRANS.md
-
-# Pipeline telemetry (archived with PR at publish-pr time; ignored during in-progress to avoid churn on per-batch state commits)
-in-progress/*_EVENTS.jsonl
-in-progress/*_FLIGHT_DATA.json
+# Pipeline working directory — every file under in-progress/ is transient
+# telemetry/state. archiveFeatureFiles() moves the keepers to
+# archive/features/<slug>/ at publish-pr time, so they land on the PR from
+# there. Only README.md (folder docs) and *_SPEC.md (human-authored feature
+# input) are tracked.
+in-progress/*
+!in-progress/README.md
+!in-progress/*_SPEC.md
