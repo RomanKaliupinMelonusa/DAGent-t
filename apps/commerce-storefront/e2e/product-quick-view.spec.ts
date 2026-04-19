@@ -1,4 +1,4 @@
-import {test, expect, type Page, type Locator} from '@playwright/test';
+import {test, expect, type Page} from '@playwright/test';
 
 /**
  * E2E tests for the Product Quick View feature.
@@ -64,23 +64,6 @@ async function navigateToPLP(page: Page): Promise<void> {
 
     // Wait for product tiles to render — quick-view-btn proves the override loaded
     await page.getByTestId('quick-view-btn').first().waitFor({state: 'attached', timeout: 30_000});
-}
-
-/**
- * Detect PWA Kit crash page. If present, throws with the stack trace.
- */
-async function assertNoCrashPage(page: Page, actionDescription: string): Promise<void> {
-    const crashHeading = page.getByRole('heading', {name: /this page isn't working/i});
-    const hasCrash = await crashHeading
-        .waitFor({state: 'visible', timeout: 2000})
-        .then(() => true)
-        .catch(() => false);
-    if (hasCrash) {
-        const stack = await page.locator('pre').textContent().catch(() => 'no stack');
-        throw new Error(
-            `PWA Kit crash page detected after "${actionDescription}". Stack: ${stack}`
-        );
-    }
 }
 
 /**
