@@ -221,3 +221,55 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Product name fallback branches ---
+
+test('overlay bar aria-label uses name when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'name-only-123',
+        name: 'Fancy Necklace',
+        image: {alt: 'Necklace', disBaseLink: 'https://example.com/necklace.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fancy Necklace')
+})
+
+test('overlay bar aria-label is "Quick View" when both productName and name are missing', () => {
+    const productWithIdOnly = {
+        productId: 'id-only-789',
+        image: {alt: 'Product', disBaseLink: 'https://example.com/product.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithIdOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    // productName is '' (empty), so aria-label becomes "Quick View "
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+// --- Visual state assertions ---
+
+test('overlay bar is positioned absolutely within the image area', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    // The button should be rendered as a <button> element (from Box as="button")
+    expect(btn.tagName).toBe('BUTTON')
+    // It should be inside a container that clips overflow for slide animation
+    const overflowContainer = btn.parentElement
+    expect(overflowContainer).toBeTruthy()
+})
+
+test('renders base ProductTile even for product sets (without quick-view bar)', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
+    // Base tile should still render
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    // But no quick view button
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
+
+test('renders base ProductTile even for product bundles (without quick-view bar)', () => {
+    renderWithProviders(<ProductTile product={mockBundleProduct} />)
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})

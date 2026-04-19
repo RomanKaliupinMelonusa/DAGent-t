@@ -23,7 +23,7 @@ jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
         default: (props) => {
             return React.createElement(
                 'div',
-                {'data-testid': 'product-view'},
+                {'data-testid': 'product-view', 'data-image-size': props.imageSize || ''},
                 props.product?.name &&
                     React.createElement(
                         'h2',
@@ -243,4 +243,23 @@ test('aria-label falls back to generic text when product name missing', () => {
 
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
+})
+
+// --- imageSize prop forwarding ---
+
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const productView = screen.getByTestId('product-view')
+    expect(productView.getAttribute('data-image-size')).toBe('sm')
+})
+
+// --- Focus management ---
+
+test('focus is inside modal when open', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const modal = screen.getByTestId('quick-view-modal')
+    // Chakra Modal traps focus — the active element should be inside the modal
+    expect(modal.contains(document.activeElement)).toBe(true)
 })
