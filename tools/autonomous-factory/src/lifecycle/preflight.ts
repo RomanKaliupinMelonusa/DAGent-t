@@ -147,13 +147,20 @@ export function buildRoamIndex(repoRoot: string): boolean {
  * workflow nodes. Detects state-context drift caused by APM config changes
  * (e.g. removing/renaming agents or DAG nodes) without re-initializing state.
  *
- * FATAL: throws if the state contains nodes not in the context, or the context
- * contains nodes missing from the state. The user must re-run `pipeline:init`.
+ * Auto-heal behaviour (safe drift): if no item has reached `done`, the state
+ * is regenerated from the current compiled context via `onAutoHeal`. This
+ * handles the common case where the user edits `.apm/apm.yml` between runs
+ * before any agent has made commits.
+ *
+ * FATAL drift: if any item is already `done`, drift is considered unsafe
+ * (existing work would be silently discarded). Throws StateError asking the
+ * user to re-run `pipeline:init` manually.
  */
 export async function checkStateContextDrift(
   slug: string,
   apmContext: ApmCompiledOutput,
   readStateFn: (slug: string) => Promise<PipelineState>,
+  onAutoHeal?: (slug: string, workflowName: string) => Promise<void>,
 ): Promise<void> {
   let state: PipelineState;
   try {
@@ -174,6 +181,21 @@ export async function checkStateContextDrift(
 
   if (inStateOnly.length === 0 && inContextOnly.length === 0) return;
 
+  // Auto-heal: safe when no item has reached "done" (nothing to discard).
+  const hasProgress = state.items.some((i) => i.status === "done");
+  if (!hasProgress && onAutoHeal) {
+    console.log(`\n  🔄 State-context drift detected for "${slug}" — auto-regenerating state (no items done yet):`);
+    if (inStateOnly.length > 0) {
+      console.log(`      removed from config: ${inStateOnly.join(", ")}`);
+    }
+    if (inContextOnly.length > 0) {
+      console.log(`      added to config:    ${inContextOnly.join(", ")}`);
+    }
+    await onAutoHeal(slug, workflowName);
+    console.log(`  ✔ State regenerated from current APM context\n`);
+    return;
+  }
+
   const lines: string[] = [
     `State-context drift detected for "${slug}":`,
   ];
@@ -184,7 +206,8 @@ export async function checkStateContextDrift(
     lines.push(`  Nodes in compiled context but NOT in _STATE.json: ${inContextOnly.join(", ")}`);
   }
   lines.push(
-    `  The APM config (apm.yml / workflows.yml) was modified after pipeline:init.`,
+    `  The APM config (apm.yml / workflows.yml) was modified after pipeline:init,`,
+    `  and at least one item has already reached "done" — auto-heal refuses to discard progress.`,
     `  Fix: re-run pipeline:init to regenerate state from the current config:`,
     `    APP_ROOT=<app-path> npm run pipeline:init -- ${slug} <workflowName>`,
   );

@@ -133,8 +133,17 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // --- 5. Artifact scan ---
   checkInProgressArtifacts(repoRoot, appRoot);
 
-  // --- 6. State-context drift (throws StateError on mismatch) ---
-  await checkStateContextDrift(slug, apmContext, async (s) => readStateOrThrow(s));
+  // --- 6. State-context drift (auto-heals when no items are done; fatal otherwise) ---
+  const { JsonFileStateStore } = await import("../adapters/json-file-state-store.js");
+  const bootstrapStore = new JsonFileStateStore();
+  await checkStateContextDrift(
+    slug,
+    apmContext,
+    async (s) => readStateOrThrow(s),
+    async (s, workflowName) => {
+      await bootstrapStore.initState(s, workflowName);
+    },
+  );
 
   // --- 7. Cloud CLI auth ---
   checkPreflightAuth(repoRoot, appRoot, apmContext);
