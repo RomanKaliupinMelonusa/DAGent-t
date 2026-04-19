@@ -2,6 +2,10 @@
  * Quick View Modal — displays product details in a modal overlay
  * without navigating to the PDP. Reuses the existing ProductView
  * component and useProductViewModal hook from the base template.
+ *
+ * Wrapped in a local ErrorBoundary so that a crash inside ProductView
+ * does NOT propagate to the route-level AppErrorBoundary (which would
+ * destroy the entire PLP page).
  */
 import React from 'react'
 import PropTypes from 'prop-types'
@@ -13,12 +17,58 @@ import {
     ModalOverlay,
     Center,
     Spinner,
-    Text
+    Text,
+    Box
 } from '@salesforce/retail-react-app/app/components/shared/ui'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
 import {useIntl} from 'react-intl'
 import {WarningIcon} from '@chakra-ui/icons'
+
+/**
+ * Lightweight class-based ErrorBoundary scoped to the modal content.
+ * Prevents ProductView render errors from crashing the entire page.
+ */
+class QuickViewErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props)
+        this.state = {hasError: false}
+    }
+
+    static getDerivedStateFromError() {
+        return {hasError: true}
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return this.props.fallback
+        }
+        return this.props.children
+    }
+}
+
+QuickViewErrorBoundary.propTypes = {
+    children: PropTypes.node,
+    fallback: PropTypes.node
+}
+
+/**
+ * Fallback UI displayed when ProductView throws inside the modal.
+ */
+const QuickViewFallback = () => {
+    const intl = useIntl()
+    return (
+        <Center py={10} flexDirection="column" data-testid="quick-view-error">
+            <WarningIcon boxSize={8} color="orange.400" mb={3} />
+            <Text fontSize="lg" fontWeight="semibold">
+                {intl.formatMessage({
+                    defaultMessage: 'Unable to load product details.',
+                    id: 'quick_view_modal.error_boundary_fallback'
+                })}
+            </Text>
+        </Center>
+    )
+}
 
 /**
  * QuickViewModal — renders a Chakra modal that fetches full product
@@ -80,12 +130,14 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             </Text>
                         </Center>
                     ) : (
-                        <ProductView
-                            product={fetchedProduct}
-                            isProductLoading={isFetching}
-                            showFullLink={true}
-                            imageSize="sm"
-                        />
+                        <QuickViewErrorBoundary fallback={<QuickViewFallback />}>
+                            <ProductView
+                                product={fetchedProduct}
+                                isProductLoading={isFetching}
+                                showFullLink={true}
+                                imageSize="sm"
+                            />
+                        </QuickViewErrorBoundary>
                     )}
                 </ModalBody>
             </ModalContent>

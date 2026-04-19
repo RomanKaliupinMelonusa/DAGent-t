@@ -21,6 +21,10 @@ jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     return {
         __esModule: true,
         default: (props) => {
+            // Allow tests to trigger an error via a special prop
+            if (props.product?._triggerError) {
+                throw new Error('ProductView render error')
+            }
             return React.createElement(
                 'div',
                 {'data-testid': 'product-view'},
@@ -197,6 +201,25 @@ test('passes isProductLoading to ProductView when fetching but product exists', 
 
     // Our component shows the spinner when isFetching is true
     expect(screen.getByTestId('quick-view-spinner')).toBeInTheDocument()
+})
+
+// --- ErrorBoundary ---
+
+test('ErrorBoundary catches ProductView crash and shows fallback', () => {
+    // Suppress React error boundary console output during test
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const crashingProduct = {...mockProduct, _triggerError: true}
+    useProductViewModal.mockReturnValue({product: crashingProduct, isFetching: false})
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // ErrorBoundary fallback should render instead of crashing the page
+    const errorElement = screen.getByTestId('quick-view-error')
+    expect(errorElement).toBeInTheDocument()
+    expect(errorElement.textContent).toContain('Unable to load product details')
+    expect(screen.queryByTestId('product-view')).not.toBeInTheDocument()
+
+    consoleSpy.mockRestore()
 })
 
 // --- Accessibility & Focus ---
