@@ -21,6 +21,33 @@ import {useIntl} from 'react-intl'
 import {WarningIcon} from '@chakra-ui/icons'
 
 /**
+ * Local ErrorBoundary — isolates ProductView crashes inside the modal
+ * so they don't destroy the entire PLP (route-level boundary).
+ */
+class QuickViewErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props)
+        this.state = {hasError: false}
+    }
+    static getDerivedStateFromError() {
+        return {hasError: true}
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <Center py={10} flexDirection="column" data-testid="quick-view-error">
+                    <WarningIcon boxSize={8} color="orange.400" mb={3} />
+                    <Text fontSize="lg" fontWeight="semibold">
+                        Unable to load product details.
+                    </Text>
+                </Center>
+            )
+        }
+        return this.props.children
+    }
+}
+
+/**
  * QuickViewModal — renders a Chakra modal that fetches full product
  * data via useProductViewModal and renders ProductView inside it.
  */
@@ -80,12 +107,14 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             </Text>
                         </Center>
                     ) : (
-                        <ProductView
-                            product={fetchedProduct}
-                            isProductLoading={isFetching}
-                            showFullLink={true}
-                            imageSize="sm"
-                        />
+                        <QuickViewErrorBoundary>
+                            <ProductView
+                                product={fetchedProduct}
+                                isProductLoading={isFetching}
+                                showFullLink={true}
+                                imageSize="sm"
+                            />
+                        </QuickViewErrorBoundary>
                     )}
                 </ModalBody>
             </ModalContent>

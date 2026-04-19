@@ -93,11 +93,15 @@ const ProductTile = (props) => {
                         </Box>
                     </Box>
 
-                    <QuickViewModal
-                        product={product}
-                        isOpen={isOpen}
-                        onClose={onClose}
-                    />
+                    {/* Only mount when open — prevents useProductViewModal/useProduct
+                        from firing API calls for every tile during SSR */}
+                    {isOpen && (
+                        <QuickViewModal
+                            product={product}
+                            isOpen={isOpen}
+                            onClose={onClose}
+                        />
+                    )}
                 </>
             )}
         </Box>
