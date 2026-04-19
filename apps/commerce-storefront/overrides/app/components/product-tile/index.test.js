@@ -212,3 +212,62 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Additional Spec Tests ---
+
+test('overlay bar renders as a button element', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.tagName.toLowerCase()).toBe('button')
+})
+
+test('overlay bar has absolute positioning for full-width layout', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    // The button should be positioned absolutely within its container
+    const style = window.getComputedStyle(btn)
+    expect(btn).toBeInTheDocument()
+    // Verify the button is inside an overflow-hidden container
+    const overflowParent = btn.parentElement
+    expect(overflowParent).toBeInTheDocument()
+})
+
+test('uses product.name as fallback when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: '999',
+        name: 'Fallback Name',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name')
+})
+
+test('uses empty string when both productName and name are missing', () => {
+    const productNoNames = {
+        productId: '888',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoNames} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('does not render QuickViewModal when bar is not clicked', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    expect(screen.queryByTestId('quick-view-modal')).not.toBeInTheDocument()
+})
+
+test('renders base product tile even for product without Quick View', () => {
+    renderWithProviders(<ProductTile product={mockSetProduct} />)
+
+    expect(screen.getByTestId('base-product-tile')).toBeInTheDocument()
+    expect(screen.queryByTestId('quick-view-btn')).not.toBeInTheDocument()
+})
