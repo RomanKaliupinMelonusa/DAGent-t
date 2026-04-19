@@ -40,6 +40,10 @@ import type { TriageLlm } from "../ports/triage-llm.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
+import { resolveTriageActivations } from "./triage-activation.js";
+import type { TriageActivation } from "../app-types.js";
+import type { RoutableWorkflow } from "../domain/failure-routing.js";
+import { computeErrorSignature } from "../domain/error-signature.js";
 import {
   snapshotProgress,
   evaluateHardening,
@@ -64,6 +68,12 @@ function computeRetryBackoffMs(attempt: number, baseMs: number): number {
   if (attempt <= 1) return 0;
   const exp = Math.min(attempt - 1, 10); // clamp exponent to avoid overflow
   return Math.min(baseMs * 2 ** exp, MAX_RETRY_BACKOFF_MS);
+}
+
+/** Truncate a string for single-line terminal display. */
+function truncate(s: string, max: number): string {
+  const oneLine = s.replace(/\s+/g, " ").trim();
+  return oneLine.length <= max ? oneLine : oneLine.slice(0, max - 1) + "…";
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +196,15 @@ export async function runPipelineLoop(
   let terminationReason: LoopResult["reason"] = "halted";
   let approvalPendingKeys: string[] | undefined;
 
+  // Pending triage activations are drained at the top of each iteration.
+  // When an item with `on_failure.triage` fails, an activation is enqueued
+  // here so the triage node gets dispatched before the next DAG batch.
+  // Triage nodes are otherwise filtered out of normal scheduling (Step 2).
+  const pendingTriageActivations: TriageActivation[] = [];
+  const routableWorkflow = config.apmContext.workflows?.[config.workflowName] as
+    | RoutableWorkflow
+    | undefined;
+
   try {
     for (let batchNumber = 1; batchNumber <= maxIterations; batchNumber++) {
       // Step 0: DAG-level stall detection (ready_within_hours).
@@ -206,6 +225,73 @@ export async function runPipelineLoop(
               .filter((c) => c.type === "fail-item")
               .map((c) => (c as { itemKey: string }).itemKey),
           });
+        }
+      }
+
+      // Step 0.5: Drain pending triage activations.
+      // When a prior batch flagged items with `on_failure.triage` configured,
+      // dispatch those triage nodes BEFORE consulting the scheduler. The
+      // triage handler emits `reset-nodes` DagCommands which return the
+      // failing target to pending for re-dispatch on the NEXT iteration.
+      // Triage runs in its own mini-batch so its state mutations (reset +
+      // pending-context) are visible to the subsequent getNextBatch().
+      if (pendingTriageActivations.length > 0) {
+        const activations = pendingTriageActivations.splice(0);
+        const dagSnapT = kernel.dagSnapshot();
+        const runSnapT = kernel.runSnapshot();
+        const triagePairs: Array<readonly [NodeHandler, NodeContext, ReadonlyArray<NodeMiddleware>]> = [];
+
+        for (const activation of activations) {
+          const node = lifecycle.getWorkflowNode(activation.triageNodeKey);
+          if (!node) continue;
+          // Treat the triage node as an available item; status is synthetic
+          // because triage nodes never flow through normal scheduling.
+          const item = {
+            key: activation.triageNodeKey,
+            label: activation.triageNodeKey,
+            agent: node.agent ?? null,
+            status: "pending" as const,
+          };
+          const handler = handlerResolver.resolve(item, node);
+          const ctx = buildNodeContext(item, node, dagSnapT, runSnapT, ctxConfig, undefined, undefined, activation);
+          const middlewares = resolveMiddlewareChain(
+            handler.name,
+            config.apmContext.config?.node_middleware,
+            node?.middleware,
+          );
+          triagePairs.push([handler, ctx, middlewares] as const);
+        }
+
+        if (triagePairs.length > 0) {
+          logger.event("triage.dispatch", null, {
+            batch_number: batchNumber,
+            activations: activations.map((a) => ({
+              triage: a.triageNodeKey,
+              failing: a.failingKey,
+            })),
+          });
+          console.log(`\n${"─".repeat(70)}`);
+          console.log(`  ⚑ Triage dispatch — ${activations.length} activation${activations.length === 1 ? "" : "s"}`);
+          for (const a of activations) {
+            console.log(`    · ${a.triageNodeKey} ← ${a.failingKey}`);
+          }
+          console.log(`${"─".repeat(70)}`);
+          const triageResult = await dispatchBatch(triagePairs);
+          const triageEffects: Effect[] = [];
+          let triageHalt = false;
+          for (const cmd of triageResult.commands) {
+            const pr = kernel.process(cmd);
+            triageEffects.push(...pr.effects);
+            if (pr.result.halt) triageHalt = true;
+          }
+          await executeEffects(triageEffects, effectPorts);
+          await lifecycle.commitState(batchNumber);
+          if (triageHalt) {
+            terminationReason = "halted";
+            return { reason: "halted" };
+          }
+          // Fall through to Step 1 — the scheduler will now see the reset
+          // target as pending and dispatch it as part of the next batch.
         }
       }
 
@@ -237,6 +323,19 @@ export async function runPipelineLoop(
         });
       }
 
+      // Operator-facing batch banner on stdout. Telemetry already captures
+      // this in `batch.start` / item.start events, but the terminal stream
+      // is the live signal for humans watching a pipeline run — restore
+      // the phase separator and per-item header lost when console.log
+      // banners were replaced with silent JSONL logging.
+      console.log(`\n${"─".repeat(70)}`);
+      console.log(`  ▸ Batch ${batchNumber} — ${runnableItems.length} item${runnableItems.length === 1 ? "" : "s"}`);
+      for (const it of runnableItems) {
+        const agentLabel = it.agent ? ` (${it.agent})` : "";
+        console.log(`    · ${it.key}${agentLabel}`);
+      }
+      console.log(`${"─".repeat(70)}`);
+
       // Step 3: Pre-batch git sync
       await lifecycle.syncBranch();
 
@@ -260,6 +359,21 @@ export async function runPipelineLoop(
       // Step 5: Dispatch batch
       const batchResult = await dispatchBatch(dispatchPairs);
 
+      // Per-item outcome banner on stdout for operator visibility.
+      for (const { itemKey, result } of batchResult.itemResults) {
+        if (result.summary && (result.summary as { outcome?: string }).outcome === "failed") {
+          const msg = (result.summary as { errorMessage?: string }).errorMessage
+            ?? (result.summary as { error?: string }).error
+            ?? "failed";
+          console.log(`    ✖ ${itemKey} — ${truncate(msg, 120)}`);
+        } else if (result.summary && (result.summary as { outcome?: string }).outcome === "error") {
+          const msg = (result.summary as { errorMessage?: string }).errorMessage ?? "error";
+          console.log(`    ✖ ${itemKey} — ${truncate(msg, 120)}`);
+        } else {
+          console.log(`    ✓ ${itemKey}`);
+        }
+      }
+
       // Step 6: Post-batch state commit
       await lifecycle.commitState(batchNumber);
 
@@ -277,6 +391,32 @@ export async function runPipelineLoop(
 
       // Step 8: Execute effects
       await executeEffects(allEffects, effectPorts);
+
+      // Step 8.4: Enqueue triage activations for newly-failed items whose
+      // workflow node declares `on_failure.triage`. Drained at the top of
+      // the next iteration (Step 0.5) — the triage handler will reset the
+      // routed target so the scheduler picks it up fresh.
+      if (!haltFromKernel && routableWorkflow) {
+        const dagAfterFail = kernel.dagSnapshot();
+        const runAfterFail = kernel.runSnapshot();
+        const activations = resolveTriageActivations(
+          batchResult.commands,
+          dagAfterFail,
+          runAfterFail,
+          routableWorkflow,
+          computeErrorSignature,
+        );
+        if (activations.length > 0) {
+          pendingTriageActivations.push(...activations);
+          logger.event("triage.enqueue", null, {
+            batch_number: batchNumber,
+            activations: activations.map((a) => ({
+              triage: a.triageNodeKey,
+              failing: a.failingKey,
+            })),
+          });
+        }
+      }
 
       // Step 8.5: Retry backoff — when items failed this batch, sleep
       // `min(base * 2^(attempt-1), 5min)` before the next iteration so

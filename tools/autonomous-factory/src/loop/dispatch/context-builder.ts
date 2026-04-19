@@ -10,7 +10,7 @@ import type { NodeContext } from "../../handlers/types.js";
 import type { PipelineState, ItemSummary } from "../../types.js";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "../../apm/types.js";
 import type { RunState } from "../../kernel/types.js";
-import type { AvailableItem } from "../../app-types.js";
+import type { AvailableItem, TriageActivation } from "../../app-types.js";
 import type { PipelineLogger } from "../../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../../ports/version-control.js";
@@ -46,6 +46,10 @@ export interface ContextBuilderConfig {
  * @param config - Immutable pipeline configuration
  * @param previousAttempt - Summary from the most recent failed attempt, if any
  * @param downstreamFailures - Summaries from failed downstream items
+ * @param triageActivation - When dispatching a triage node via activation,
+ *                           carries the failing node's context (key, error,
+ *                           signature, routes, summary) so the triage handler
+ *                           can classify without consulting state.
  */
 export function buildNodeContext(
   item: AvailableItem,
@@ -55,6 +59,7 @@ export function buildNodeContext(
   config: ContextBuilderConfig,
   previousAttempt?: Readonly<ItemSummary>,
   downstreamFailures?: ReadonlyArray<Readonly<ItemSummary>>,
+  triageActivation?: Readonly<TriageActivation>,
 ): NodeContext {
   const attempt = (runState.attemptCounts[item.key] ?? 0) + 1;
   const effectiveAttempts = attempt; // Can be enriched with persisted cycle counts
@@ -96,5 +101,13 @@ export function buildNodeContext(
     shell: config.shell,
     filesystem: config.filesystem,
     copilotSessionRunner: config.copilotSessionRunner,
+    // Failure context — populated when dispatching a triage node via
+    // activation, so the triage handler can classify without re-reading
+    // state. Undefined for regular handlers.
+    failingNodeKey: triageActivation?.failingKey,
+    rawError: triageActivation?.rawError,
+    errorSignature: triageActivation?.errorSignature,
+    failingNodeSummary: triageActivation?.failingNodeSummary,
+    failureRoutes: triageActivation?.failureRoutes,
   };
 }

@@ -101,9 +101,10 @@ describe("lifecycleHooksMiddleware", () => {
     assert.match(res.errorMessage ?? "", /Post-hook failed/);
   });
 
-  it("skips post-hook when handler already failed", async () => {
+  it("runs post-hook when handler failed but preserves original error message", async () => {
     const ctx = makeCtx({ appRoot: tmpDir });
-    // If post ran, this `exit 1` would override errorMessage to "Post-hook failed".
+    // Post-hook runs for cleanup but its non-zero exit must NOT clobber
+    // the handler's original error message — that's the authoritative one.
     setNode(ctx, { post: "exit 1" });
     const res = await lifecycleHooksMiddleware.run(ctx, async () => ({
       outcome: "failed",
@@ -112,6 +113,22 @@ describe("lifecycleHooksMiddleware", () => {
     }));
     assert.equal(res.outcome, "failed");
     assert.equal(res.errorMessage, "handler-error");
+    const events = (ctx as unknown as { __events: Array<{ type: string }> }).__events;
+    const types = events.map((e) => e.type);
+    assert.ok(types.includes("hook.post.start"), "post-hook must run on failure");
+  });
+
+  it("runs post-hook cleanup even when handler failed", async () => {
+    const ctx = makeCtx({ appRoot: tmpDir });
+    const marker = join(tmpDir, "cleanup-ran.txt");
+    setNode(ctx, { post: `touch ${marker}` });
+    await lifecycleHooksMiddleware.run(ctx, async () => ({
+      outcome: "failed",
+      errorMessage: "handler-error",
+      summary: {},
+    }));
+    const { existsSync } = await import("node:fs");
+    assert.equal(existsSync(marker), true);
   });
 
   it("runs both pre and post when both pass (zero exit)", async () => {
