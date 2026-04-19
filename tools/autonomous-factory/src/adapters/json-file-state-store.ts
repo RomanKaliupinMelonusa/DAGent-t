@@ -252,6 +252,40 @@ export class JsonFileStateStore implements StateStore {
     });
   }
 
+  async persistDagSnapshot(slug: string, snapshot: PipelineState): Promise<PipelineState> {
+    if (!slug || !snapshot) throw new Error("persistDagSnapshot requires slug and snapshot");
+    return withLock(slug, () => {
+      const disk = readStateOrThrow(slug);
+      // Merge DAG-shaped fields from the kernel snapshot over the on-disk
+      // state. Per-item side-setter fields (pendingContext, docNote,
+      // handoffArtifact) are preserved from disk so a setPendingContext
+      // write that raced ahead isn't clobbered by the kernel's item list
+      // (which carries only status + error).
+      const diskItemsByKey = new Map(disk.items.map((i) => [i.key, i]));
+      const mergedItems = snapshot.items.map((kernelItem) => {
+        const diskItem = diskItemsByKey.get(kernelItem.key);
+        if (!diskItem) return kernelItem;
+        return {
+          ...diskItem,
+          status: kernelItem.status,
+          error: kernelItem.error,
+        };
+      });
+      // cycleCounters is derived from errorLog by backfillCycleCounters
+      // on subsequent reads — no need to merge it here.
+      const next: PipelineState = {
+        ...disk,
+        items: mergedItems,
+        errorLog: snapshot.errorLog,
+        implementationNotes: snapshot.implementationNotes ?? disk.implementationNotes,
+        deployedUrl: snapshot.deployedUrl ?? disk.deployedUrl,
+        salvageSurvivors: snapshot.salvageSurvivors ?? disk.salvageSurvivors,
+      };
+      writeState(slug, next);
+      return next;
+    });
+  }
+
   async initState(slug: string, workflowName: string, contextJsonPath?: string): Promise<InitResult> {
     return initStateImpl(slug, workflowName, contextJsonPath);
   }

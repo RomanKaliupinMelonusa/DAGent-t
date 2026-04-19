@@ -19,6 +19,14 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f "$PID_FILE"
 fi
 
+# Port-based kill — pwa-kit-dev spawns babel-node via cross-env, and the
+# descendant (not `pwa-kit-dev` itself) is what holds :3000. pkill by name
+# can't see it, so free the port directly.
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 3000/tcp 2>/dev/null || true
+elif command -v lsof >/dev/null 2>&1; then
+  lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+fi
 # Fallback sweep — narrow patterns only.
 pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true

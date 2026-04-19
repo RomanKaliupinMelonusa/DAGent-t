@@ -57,6 +57,20 @@ export interface StateStore {
   /** Persist a triage record for retrospective analysis. */
   setLastTriageRecord(slug: string, record: TriageRecord): Promise<PipelineState>;
 
+  /**
+   * Persist the kernel's in-memory DAG snapshot to disk. Overwrites only
+   * the DAG-shaped fields (`items`, `errorLog`, `cycleCounters`,
+   * `implementationNotes`, `deployedUrl`) from the snapshot — any fields
+   * that only side-setters touch (e.g. `lastTriageRecord`, `executionLog`,
+   * per-item `pendingContext`/`handoffArtifact`/`docNote`) are preserved
+   * from the on-disk state so in-flight writes are not clobbered.
+   *
+   * This is the bridge between the command-sourced kernel (which holds
+   * authoritative state in memory) and the on-disk `_STATE.json` that
+   * downstream tooling / retros / CLI `pipeline:status` reads.
+   */
+  persistDagSnapshot(slug: string, snapshot: PipelineState): Promise<PipelineState>;
+
   /** Initialize pipeline state from APM-compiled context. */
   initState(slug: string, workflowName: string, contextJsonPath?: string): Promise<InitResult>;
 }

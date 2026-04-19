@@ -100,6 +100,7 @@ storefront:
   triage:
     storefront:
       packs: [pwa-kit-storefront]
+      classifier: llm-only
       llm_fallback: true
       max_reroutes: 5
       routing:

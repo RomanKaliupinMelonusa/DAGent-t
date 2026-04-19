@@ -117,4 +117,16 @@ describe("computeErrorSignature with additionalPatterns", () => {
     const b = computeErrorSignature("fail at 2025-12-31T23:59:59Z pid=999", extras);
     assert.equal(a, b);
   });
+
+  it("normalizes POSIX-style 'PID N' tokens (hook output)", () => {
+    const a = computeErrorSignature("Pre: dev server (PID 4185) exited prematurely");
+    const b = computeErrorSignature("Pre: dev server (PID 6079) exited prematurely");
+    assert.equal(a, b);
+  });
+
+  it("normalizes Node.js 'node:N' warning prefixes", () => {
+    const a = computeErrorSignature("(node:4206) [DEP0040] DeprecationWarning: foo");
+    const b = computeErrorSignature("(node:6123) [DEP0040] DeprecationWarning: foo");
+    assert.equal(a, b);
+  });
 });

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-19T04:53:22.855Z",
+  "compiledAt": "2026-04-19T16:36:58.995Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1527,6 +1527,7 @@
             "cicd-root-cause"
           ],
           "llm_fallback": true,
+          "classifier": "llm-only",
           "max_reroutes": 5,
           "routing": {
             "backend": {
@@ -2179,6 +2180,7 @@
             "cicd-root-cause"
           ],
           "llm_fallback": true,
+          "classifier": "llm-only",
           "max_reroutes": 5,
           "routing": {
             "backend": {
@@ -2217,6 +2219,7 @@
   "triage_profiles": {
     "full-stack.full-stack": {
       "llm_fallback": true,
+      "classifier": "llm-only",
       "max_reroutes": 5,
       "routing": {
         "backend": {
@@ -2327,6 +2330,7 @@
     },
     "backend.backend": {
       "llm_fallback": true,
+      "classifier": "llm-only",
       "max_reroutes": 5,
       "routing": {
         "backend": {

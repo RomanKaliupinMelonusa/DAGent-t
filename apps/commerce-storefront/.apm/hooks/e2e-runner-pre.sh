@@ -27,6 +27,15 @@ PID_FILE="/tmp/smoke-server-${SLUG:-storefront}.pid"
 PLP_URL="http://localhost:3000/category/newarrivals"
 
 # ─── 1. Kill stale dev servers + browsers from previous runs ──────────────
+# Port-based kill first — pwa-kit-dev spawns babel-node via cross-env, and the
+# descendant (not `pwa-kit-dev` itself) is what holds :3000. pkill by name
+# can't see it, so free the port directly. This is the root-cause fix for the
+# observed "port 3000 already in use" loop after a failed e2e run.
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 3000/tcp 2>/dev/null || true
+elif command -v lsof >/dev/null 2>&1; then
+  lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+fi
 # Narrow patterns — never match the orchestrator or its workers.
 pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true

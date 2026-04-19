@@ -38,6 +38,10 @@ export const DEFAULT_VOLATILE_PATTERNS: ReadonlyArray<VolatilePattern> = [
   [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>"],
   [/\b\d{13}\b/g, "<EPOCH>"],
   [/\bpid[=:]\d+/gi, "pid=<PID>"],
+  // POSIX-style "PID 4185" (space separator) — common in shell hook output.
+  [/\bPID\s+\d+/g, "PID <PID>"],
+  // Node.js deprecation/warning line prefix "(node:4206)".
+  [/\bnode:\d+/g, "node:<N>"],
   [/:\d{4,5}\b/g, ":<PORT>"],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
   [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],

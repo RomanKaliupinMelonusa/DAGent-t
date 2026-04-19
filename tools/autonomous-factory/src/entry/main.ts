@@ -166,6 +166,12 @@ export async function runWithKernel(
       vcs.syncBranch(baseBranch);
     },
     async commitState(batchNumber: number) {
+      // Flush the kernel's authoritative in-memory DAG snapshot to disk
+      // BEFORE committing to git. Without this, only the initial state is
+      // ever persisted — item statuses, errorLog, and cycleCounters never
+      // reach disk, breaking `pipeline:status`, retros, and the per-domain
+      // retry cap in triage-handler which scans errorLog.
+      await stateStore.persistDagSnapshot(slug, kernel.dagSnapshot());
       const currentBranch = await vcs.getCurrentBranch();
       filesystem.commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
     },

@@ -146,6 +146,7 @@ full-stack:
   triage:
     full-stack:
       packs: [azure-functions-common, deployment-lifecycle, cicd-root-cause]
+      classifier: llm-only
       llm_fallback: true
       max_reroutes: 5
       routing:
@@ -277,6 +278,7 @@ backend:
   triage:
     backend:
       packs: [azure-functions-common, deployment-lifecycle, cicd-root-cause]
+      classifier: llm-only
       llm_fallback: true
       max_reroutes: 5
       routing:
