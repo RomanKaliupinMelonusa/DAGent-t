@@ -212,3 +212,28 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Name Fallback ---
+
+test('overlay bar aria-label falls back to product.name when productName missing', () => {
+    const productWithNameOnly = {
+        productId: 'fallback-1',
+        name: 'Fallback Name',
+        image: {alt: 'Fallback', disBaseLink: 'https://example.com/fallback.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name')
+})
+
+test('overlay bar aria-label uses empty string when no name fields exist', () => {
+    const productNoName = {
+        productId: 'no-name-1',
+        image: {alt: 'No Name', disBaseLink: 'https://example.com/noname.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productNoName} />)
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})

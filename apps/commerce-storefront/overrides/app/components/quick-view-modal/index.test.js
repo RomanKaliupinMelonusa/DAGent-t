@@ -16,6 +16,7 @@ jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () =>
 }))
 
 // Mock ProductView to avoid deep dependency chains
+// Render data attributes so we can assert on prop forwarding
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
     const React = require('react')
     return {
@@ -23,7 +24,12 @@ jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
         default: (props) => {
             return React.createElement(
                 'div',
-                {'data-testid': 'product-view'},
+                {
+                    'data-testid': 'product-view',
+                    'data-image-size': props.imageSize,
+                    'data-show-full-link': String(props.showFullLink),
+                    'data-is-product-loading': String(props.isProductLoading)
+                },
                 props.product?.name &&
                     React.createElement(
                         'h2',
@@ -187,8 +193,15 @@ test('renders Add to Cart button in modal', () => {
 test('passes showFullLink={true} to ProductView', () => {
     renderWithProviders(<QuickViewModal {...defaultProps} />)
 
-    // The stub renders "View Full Details" link only when showFullLink is true
-    expect(screen.getByTestId('full-details-link')).toBeInTheDocument()
+    const productView = screen.getByTestId('product-view')
+    expect(productView.getAttribute('data-show-full-link')).toBe('true')
+})
+
+test('passes imageSize="sm" to ProductView', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const productView = screen.getByTestId('product-view')
+    expect(productView.getAttribute('data-image-size')).toBe('sm')
 })
 
 test('passes isProductLoading to ProductView when fetching but product exists', () => {
@@ -219,4 +232,11 @@ test('aria-label falls back to generic text when product name missing', () => {
 
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
+})
+
+test('error state shows warning icon', () => {
+    useProductViewModal.mockReturnValue({product: null, isFetching: false})
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(screen.getByTestId('warning-icon')).toBeInTheDocument()
 })
