@@ -6,11 +6,17 @@ import {test, expect, type Page, type Locator} from '@playwright/test';
  * Feature: Shoppers can view product details, select variants, and add
  * to cart directly from the PLP without navigating to the PDP.
  *
- * data-testid contract:
- *   - quick-view-btn      : Quick View overlay bar on product tiles
- *   - quick-view-modal    : Modal content container
+ * data-testid contract (from component source):
+ *   - quick-view-btn      : Quick View overlay bar on each product tile
+ *   - quick-view-modal    : Modal content container (ModalContent)
  *   - quick-view-spinner  : Loading spinner while fetching product data
- *   - quick-view-error    : Error/unavailable product state
+ *   - quick-view-error    : Error/unavailable product state in modal
+ *
+ * IMPORTANT — Desktop Hover Behavior:
+ *   On viewports >= 992px (Chakra lg), the Quick View button is hidden
+ *   (opacity: 0, translateY(100%)) and only revealed on hover of the
+ *   parent [role="group"] container via _groupHover. All tests MUST
+ *   hover the tile container before interacting with the button.
  */
 
 // ─── Browser Diagnostics (MANDATORY) ─────────────────────────────────────
@@ -50,53 +56,94 @@ test.afterEach(async ({page}, testInfo) => {
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 /**
- * Navigate to a PLP (Product Listing Page) that shows product tiles.
- * Tries common RefArch category URLs. Falls back to navigating via
- * the homepage nav links.
+ * Navigate to a PLP that renders product tiles with Quick View buttons.
+ *
+ * Waits for quick-view-btn to exist in the DOM (state: 'attached') — NOT
+ * 'visible', because on desktop (>= lg breakpoint) the button starts hidden
+ * and only appears on hover.
  */
 async function navigateToPLP(page: Page): Promise<void> {
-    // Try the standard RefArch "New Arrivals" category
-    await page.goto('/category/newarrivals', {waitUntil: 'domcontentloaded'});
+    const categoryPaths = ['/category/newarrivals', '/category/womens-clothing-tops'];
 
-    // Wait for product tiles to appear — the PLP renders product-tile components
-    // which our override wraps with quick-view-btn buttons.
-    const productTile = page.getByTestId('quick-view-btn').first();
-    const tileVisible = await productTile
-        .waitFor({state: 'visible', timeout: 20_000})
+    for (const path of categoryPaths) {
+        await page.goto(path, {waitUntil: 'domcontentloaded'});
+
+        // Wait for at least one quick-view-btn to exist in the DOM.
+        // On desktop these are hidden (opacity: 0) but present in the DOM tree.
+        const btn = page.getByTestId('quick-view-btn').first();
+        const attached = await btn
+            .waitFor({state: 'attached', timeout: 25_000})
+            .then(() => true)
+            .catch(() => false);
+
+        if (attached) return;
+    }
+
+    // Fallback: use search to guarantee product results
+    await page.goto('/search?q=dress', {waitUntil: 'domcontentloaded'});
+    const searchBtn = page.getByTestId('quick-view-btn').first();
+    const searchAttached = await searchBtn
+        .waitFor({state: 'attached', timeout: 25_000})
         .then(() => true)
         .catch(() => false);
 
-    if (tileVisible) return;
+    if (searchAttached) return;
 
-    // Fallback: try womens-clothing-tops which is a deeper RefArch category
-    await page.goto('/category/womens-clothing-tops', {waitUntil: 'domcontentloaded'});
-    const fallbackTile = page.getByTestId('quick-view-btn').first();
-    const fallbackVisible = await fallbackTile
-        .waitFor({state: 'visible', timeout: 20_000})
-        .then(() => true)
-        .catch(() => false);
-
-    if (fallbackVisible) return;
-
-    // Last resort: navigate to homepage and click first nav link to find a PLP
+    // Last resort: navigate from homepage nav
     await page.goto('/', {waitUntil: 'domcontentloaded'});
     const navLink = page.locator('nav a, [role="navigation"] a').first();
     await navLink.waitFor({state: 'visible', timeout: 15_000});
     await navLink.click();
     await page.waitForLoadState('domcontentloaded');
-
-    // Wait for quick-view buttons to appear on the PLP
     await page
         .getByTestId('quick-view-btn')
         .first()
-        .waitFor({state: 'visible', timeout: 20_000});
+        .waitFor({state: 'attached', timeout: 25_000});
+}
+
+/**
+ * Get the nth product tile container that has a quick-view-btn child.
+ * Uses [role="group"] which the ProductTile override adds as the wrapper.
+ */
+function getTileGroup(page: Page, nth: number = 0): Locator {
+    return page
+        .locator('[role="group"]')
+        .filter({has: page.getByTestId('quick-view-btn')})
+        .nth(nth);
+}
+
+/**
+ * Hover a product tile to reveal the Quick View button, then return
+ * the button locator. On desktop the button is hidden until hover
+ * triggers Chakra's _groupHover CSS transition.
+ */
+async function revealQuickViewButton(
+    page: Page,
+    nth: number = 0
+): Promise<Locator> {
+    const tileGroup = getTileGroup(page, nth);
+    await tileGroup.hover();
+
+    const btn = tileGroup.getByTestId('quick-view-btn');
+    await btn.waitFor({state: 'visible', timeout: 5_000});
+    return btn;
+}
+
+/**
+ * Hover and click the Quick View button on the nth product tile.
+ */
+async function clickQuickView(page: Page, nth: number = 0): Promise<void> {
+    const btn = await revealQuickViewButton(page, nth);
+    await btn.click();
 }
 
 /**
  * Detect the PWA Kit crash page. Returns the stack trace if found, null otherwise.
  */
 async function detectCrashPage(page: Page): Promise<string | null> {
-    const crashHeading = page.getByRole('heading', {name: /this page isn't working/i});
+    const crashHeading = page.getByRole('heading', {
+        name: /this page isn't working/i
+    });
     const hasCrash = await crashHeading
         .waitFor({state: 'visible', timeout: 2000})
         .then(() => true)
@@ -113,17 +160,16 @@ async function detectCrashPage(page: Page): Promise<string | null> {
 
 /**
  * Three-outcome assertion after opening the Quick View modal.
- * Returns which outcome won: 'content' | 'error-state' | 'crash'.
+ * Returns 'content' | 'error-state'. Throws on crash page.
  */
 async function assertQuickViewOutcome(
     page: Page
-): Promise<'content' | 'error-state' | 'crash'> {
-    // Outcome 1: Modal content loaded (spinner gone, modal visible with product content)
+): Promise<'content' | 'error-state'> {
     const content = page.getByTestId('quick-view-modal');
-    // Outcome 2: Error state inside the modal
     const errorState = page.getByTestId('quick-view-error');
-    // Outcome 3: Crash page (entire page replaced)
-    const crashPage = page.getByRole('heading', {name: /this page isn't working/i});
+    const crashPage = page.getByRole('heading', {
+        name: /this page isn't working/i
+    });
 
     const winner = await Promise.race([
         content
@@ -152,13 +198,24 @@ async function assertQuickViewOutcome(
 
 test.describe('Product Quick View', () => {
     test.describe('Quick View Button on PLP', () => {
-        test('product tiles display Quick View buttons', async ({page}) => {
+        test('product tiles contain Quick View buttons in the DOM', async ({page}) => {
             await navigateToPLP(page);
 
-            // Verify Quick View buttons are present on product tiles
+            // Buttons exist in DOM even though they may be hidden on desktop
             const quickViewBtns = page.getByTestId('quick-view-btn');
             const count = await quickViewBtns.count();
             expect(count).toBeGreaterThan(0);
+        });
+
+        test('Quick View button becomes visible on tile hover', async ({page}) => {
+            await navigateToPLP(page);
+
+            // Hover the tile group to trigger _groupHover CSS
+            const btn = await revealQuickViewButton(page);
+
+            // After hover the button should be visible
+            await expect(btn).toBeVisible();
+            await expect(btn).toContainText('Quick View');
         });
 
         test('Quick View button has accessible aria-label with product name', async ({
@@ -166,19 +223,12 @@ test.describe('Product Quick View', () => {
         }) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            const ariaLabel = await firstBtn.getAttribute('aria-label');
+            const btn = await revealQuickViewButton(page);
+            const ariaLabel = await btn.getAttribute('aria-label');
 
             // aria-label should be "Quick View <product name>"
             expect(ariaLabel).toBeTruthy();
-            expect(ariaLabel).toMatch(/^Quick View\s+.+/);
-        });
-
-        test('Quick View button contains "Quick View" text', async ({page}) => {
-            await navigateToPLP(page);
-
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await expect(firstBtn).toContainText('Quick View');
+            expect(ariaLabel!).toMatch(/^Quick View\s+.+/);
         });
     });
 
@@ -186,17 +236,14 @@ test.describe('Product Quick View', () => {
         test('clicking Quick View button opens the modal', async ({page}) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
+            await clickQuickView(page);
 
-            // Three-outcome assertion pattern
             const outcome = await assertQuickViewOutcome(page);
 
-            // Modal should be visible (content or error-state are both valid outcomes)
+            // Modal should be visible (content or error-state are both valid)
             const modal = page.getByTestId('quick-view-modal');
             await expect(modal).toBeVisible();
 
-            // Log which outcome occurred for diagnostic purposes
             console.log(`Quick View modal outcome: ${outcome}`);
         });
 
@@ -205,16 +252,12 @@ test.describe('Product Quick View', () => {
         }) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
+            await clickQuickView(page);
 
-            // The spinner may appear briefly before content loads.
-            // We check that the modal eventually resolves to a final state.
+            // The modal should appear first
             const modal = page.getByTestId('quick-view-modal');
             await modal.waitFor({state: 'visible', timeout: 20_000});
 
-            // After modal is visible, it should eventually show either
-            // product content (spinner gone) or an error state.
             const spinner = page.getByTestId('quick-view-spinner');
             const errorState = page.getByTestId('quick-view-error');
 
@@ -235,22 +278,19 @@ test.describe('Product Quick View', () => {
 
             const urlBefore = page.url();
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
-
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
 
             // URL should remain on the PLP — Quick View must NOT navigate
-            const urlAfter = page.url();
-            expect(urlAfter).toBe(urlBefore);
+            expect(page.url()).toBe(urlBefore);
         });
 
-        test('modal has accessible aria-label', async ({page}) => {
+        test('modal has accessible aria-label containing product info', async ({
+            page
+        }) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
-
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
 
             const modal = page.getByTestId('quick-view-modal');
@@ -258,7 +298,73 @@ test.describe('Product Quick View', () => {
 
             // aria-label should be "Quick view for <product name>"
             expect(ariaLabel).toBeTruthy();
-            expect(ariaLabel).toMatch(/quick view for/i);
+            expect(ariaLabel!).toMatch(/quick view for/i);
+        });
+
+        test('modal displays product details when loaded successfully', async ({
+            page
+        }) => {
+            await navigateToPLP(page);
+
+            await clickQuickView(page);
+            const outcome = await assertQuickViewOutcome(page);
+
+            if (outcome === 'content') {
+                const modal = page.getByTestId('quick-view-modal');
+
+                // ProductView renders an Add to Cart button and product heading.
+                // Use text-based locators since ProductView is a base template
+                // component without our custom data-testid attributes.
+                const hasAddToCart = await modal
+                    .locator('button')
+                    .filter({hasText: /add to cart/i})
+                    .first()
+                    .waitFor({state: 'visible', timeout: 10_000})
+                    .then(() => true)
+                    .catch(() => false);
+
+                const hasHeading = await modal
+                    .locator('h1, h2')
+                    .first()
+                    .isVisible()
+                    .catch(() => false);
+
+                // At minimum we expect product content to be rendered
+                expect(hasAddToCart || hasHeading).toBe(true);
+            } else {
+                // error-state: product may be unavailable — verify error testid
+                await expect(page.getByTestId('quick-view-error')).toBeVisible();
+            }
+        });
+
+        test('modal shows "View Full Details" link to PDP when content loads', async ({
+            page
+        }) => {
+            await navigateToPLP(page);
+
+            await clickQuickView(page);
+            const outcome = await assertQuickViewOutcome(page);
+
+            if (outcome === 'content') {
+                const modal = page.getByTestId('quick-view-modal');
+
+                // ProductView with showFullLink=true renders a link to the PDP
+                const fullDetailsLink = modal
+                    .locator('a')
+                    .filter({hasText: /full details|view full/i})
+                    .first();
+
+                const linkVisible = await fullDetailsLink
+                    .waitFor({state: 'visible', timeout: 10_000})
+                    .then(() => true)
+                    .catch(() => false);
+
+                if (linkVisible) {
+                    const href = await fullDetailsLink.getAttribute('href');
+                    expect(href).toMatch(/\/product\//);
+                }
+            }
+            // If error-state, link won't be present — that's expected
         });
     });
 
@@ -266,48 +372,43 @@ test.describe('Product Quick View', () => {
         test('modal closes when clicking the close button', async ({page}) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
-
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
 
             const modal = page.getByTestId('quick-view-modal');
             await expect(modal).toBeVisible();
 
-            // Chakra Modal renders a close button inside ModalContent
+            // Chakra Modal renders a close button with aria-label="Close"
             const closeBtn = modal.locator('button[aria-label="Close"]');
             await closeBtn.click();
 
-            // Modal should disappear
             await expect(modal).not.toBeVisible({timeout: 5_000});
         });
 
         test('modal closes when pressing Escape key', async ({page}) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
-
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
 
             const modal = page.getByTestId('quick-view-modal');
             await expect(modal).toBeVisible();
 
-            // Press Escape to close
             await page.keyboard.press('Escape');
 
-            // Modal should disappear
             await expect(modal).not.toBeVisible({timeout: 5_000});
         });
 
-        test('PLP remains intact after closing Quick View modal', async ({page}) => {
+        test('PLP remains intact after closing the Quick View modal', async ({
+            page
+        }) => {
             await navigateToPLP(page);
 
             const quickViewBtns = page.getByTestId('quick-view-btn');
             const countBefore = await quickViewBtns.count();
 
             // Open and close the modal
-            await quickViewBtns.first().click();
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
 
             await page.keyboard.press('Escape');
@@ -321,127 +422,76 @@ test.describe('Product Quick View', () => {
         });
     });
 
-    test.describe('Quick View Modal — Product Content', () => {
-        test('modal displays product information when loaded successfully', async ({
+    test.describe('Quick View — Edge Cases', () => {
+        test('can open Quick View on a different (second) product tile', async ({
             page
         }) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
+            const tileCount = await page
+                .locator('[role="group"]')
+                .filter({has: page.getByTestId('quick-view-btn')})
+                .count();
 
-            const outcome = await assertQuickViewOutcome(page);
-
-            if (outcome === 'content') {
-                const modal = page.getByTestId('quick-view-modal');
-
-                // ProductView should render inside the modal with product details.
-                // Check for common product content: heading/name, price, Add to Cart.
-                // These come from the base ProductView component.
-                const hasHeading = await modal
-                    .locator('h1, h2, [data-testid="product-name"]')
-                    .first()
-                    .waitFor({state: 'visible', timeout: 5_000})
-                    .then(() => true)
-                    .catch(() => false);
-
-                const hasPrice = await modal
-                    .locator('[class*="price"], b, .chakra-text')
-                    .first()
-                    .isVisible()
-                    .catch(() => false);
-
-                const hasAddToCart = await modal
-                    .locator('button')
-                    .filter({hasText: /add to cart/i})
-                    .first()
-                    .isVisible()
-                    .catch(() => false);
-
-                // At minimum, the modal should have product content visible
-                // (heading or price or add-to-cart button)
-                const hasProductContent = hasHeading || hasPrice || hasAddToCart;
-                expect(hasProductContent).toBe(true);
-            } else {
-                // error-state outcome — still valid; product may be unavailable
-                const errorEl = page.getByTestId('quick-view-error');
-                await expect(errorEl).toBeVisible();
-            }
-        });
-
-        test('modal shows "View Full Details" link to PDP', async ({page}) => {
-            await navigateToPLP(page);
-
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-            await firstBtn.click();
-
-            const outcome = await assertQuickViewOutcome(page);
-
-            if (outcome === 'content') {
-                const modal = page.getByTestId('quick-view-modal');
-
-                // ProductView with showFullLink=true renders a link to the PDP
-                const fullDetailsLink = modal.locator('a').filter({
-                    hasText: /full details|view full/i
-                });
-                const linkVisible = await fullDetailsLink
-                    .first()
-                    .waitFor({state: 'visible', timeout: 5_000})
-                    .then(() => true)
-                    .catch(() => false);
-
-                // If ProductView renders the link, verify it points to a product page
-                if (linkVisible) {
-                    const href = await fullDetailsLink.first().getAttribute('href');
-                    expect(href).toMatch(/\/product\//);
-                }
-            }
-            // If error-state, the link won't be present — that's expected
-        });
-    });
-
-    test.describe('Quick View — Edge Cases', () => {
-        test('can open Quick View on different product tiles', async ({page}) => {
-            await navigateToPLP(page);
-
-            const quickViewBtns = page.getByTestId('quick-view-btn');
-            const count = await quickViewBtns.count();
-
-            if (count >= 2) {
+            if (tileCount >= 2) {
                 // Open Quick View on the second product tile
-                await quickViewBtns.nth(1).click();
+                await clickQuickView(page, 1);
 
-                const outcome = await assertQuickViewOutcome(page);
+                await assertQuickViewOutcome(page);
                 const modal = page.getByTestId('quick-view-modal');
                 await expect(modal).toBeVisible();
 
-                // Close and verify
+                // Close and verify page is stable
                 await page.keyboard.press('Escape');
                 await expect(modal).not.toBeVisible({timeout: 5_000});
             }
         });
 
-        test('Quick View can be opened again after closing', async ({page}) => {
+        test('Quick View can be reopened after closing', async ({page}) => {
             await navigateToPLP(page);
 
-            const firstBtn = page.getByTestId('quick-view-btn').first();
-
-            // First open
-            await firstBtn.click();
+            // First open-close cycle
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
             await page.keyboard.press('Escape');
             await expect(page.getByTestId('quick-view-modal')).not.toBeVisible({
                 timeout: 5_000
             });
 
-            // Second open — should work the same
-            await firstBtn.click();
+            // Second open — should work identically
+            await clickQuickView(page);
             await assertQuickViewOutcome(page);
             const modal = page.getByTestId('quick-view-modal');
             await expect(modal).toBeVisible();
 
             // Clean up
             await page.keyboard.press('Escape');
+        });
+
+        test('opening Quick View does not trigger crash page', async ({page}) => {
+            await navigateToPLP(page);
+
+            await clickQuickView(page);
+
+            // Explicitly check for crash page
+            const crash = await detectCrashPage(page);
+            if (crash) {
+                throw new Error(
+                    `PWA Kit crash page detected after opening Quick View. Stack: ${crash}`
+                );
+            }
+
+            // Modal or error state should be visible (not a crash)
+            const modal = page.getByTestId('quick-view-modal');
+            const errorState = page.getByTestId('quick-view-error');
+
+            const modalVisible = await modal
+                .waitFor({state: 'visible', timeout: 20_000})
+                .then(() => true)
+                .catch(() => false);
+            const errorVisible = await errorState.isVisible().catch(() => false);
+
+            expect(modalVisible || errorVisible).toBe(true);
         });
     });
 });
