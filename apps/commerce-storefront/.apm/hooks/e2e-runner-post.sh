@@ -22,5 +22,7 @@ fi
 # Fallback sweep — narrow patterns only.
 pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true
+# Playwright browsers — clean up after the test run.
+pkill -f 'chromium|chrome' 2>/dev/null || true
 
 exit 0

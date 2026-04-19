@@ -26,10 +26,14 @@ SERVER_LOG="/tmp/smoke-server-${SLUG:-storefront}.log"
 PID_FILE="/tmp/smoke-server-${SLUG:-storefront}.pid"
 PLP_URL="http://localhost:3000/category/newarrivals"
 
-# ─── 1. Kill stale dev servers from previous runs ─────────────────────────
+# ─── 1. Kill stale dev servers + browsers from previous runs ──────────────
 # Narrow patterns — never match the orchestrator or its workers.
 pkill -f 'pwa-kit-dev' 2>/dev/null || true
 pkill -f 'webpack-dev-server' 2>/dev/null || true
+# Playwright leaves headless Chromium behind on crash — stale instances hold
+# SingletonLock on profile dirs under /tmp/.org.chromium.* and can hang the
+# next `playwright test`. Safe to match broadly: no orchestrator uses chrome.
+pkill -f 'chromium|chrome' 2>/dev/null || true
 # Drop any stale PID file that pointed at a now-dead process.
 if [[ -f "$PID_FILE" ]]; then
   OLD_PID="$(cat "$PID_FILE" 2>/dev/null || echo "")"
