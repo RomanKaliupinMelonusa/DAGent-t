@@ -17,7 +17,7 @@
  *   - routeToKey: string | null  — DAG node to reset (null = graceful degradation)
  *   - domain: string             — classified fault domain
  *   - reason: string             — human-readable reason
- *   - source: "rag" | "llm" | "fallback" — which classification layer matched
+ *   - source: "contract" | "rag" | "llm" | "fallback" — which classification layer matched
  *   - triageRecord: TriageRecord — full record (persisted via set-triage-record command)
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
@@ -50,7 +50,7 @@ export interface TriageHandlerOutput {
   /** Human-readable classification reason. */
   reason: string;
   /** Which classification layer produced the result. */
-  source: "rag" | "llm" | "fallback";
+  source: "contract" | "rag" | "llm" | "fallback";
   /** Full triage record for kernel to persist via setLastTriageRecord(). */
   triageRecord: TriageRecord;
   /** Pre-triage guard outcome — "passed" if guards did not intercept. */

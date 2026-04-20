@@ -46,7 +46,7 @@ describe("classifyStructuredFailure", () => {
     const result = classifyStructuredFailure(payload);
     assert.ok(result);
     assert.equal(result!.domain, BROWSER_RUNTIME_ERROR_DOMAIN);
-    assert.equal(result!.source, "rag");
+    assert.equal(result!.source, "contract");
     assert.match(result!.reason, /shows modal with product content/);
     assert.match(result!.reason, /masterId/);
   });
@@ -73,7 +73,7 @@ describe("classifyRawError — spec-compiler schema violations", () => {
     const r = classifyRawError(msg);
     assert.ok(r);
     assert.equal(r!.domain, SPEC_SCHEMA_VIOLATION_DOMAIN);
-    assert.equal(r!.source, "rag");
+    assert.equal(r!.source, "contract");
     assert.match(r!.reason, /invalid ACCEPTANCE contract/i);
   });
 

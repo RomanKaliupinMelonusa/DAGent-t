@@ -57,6 +57,87 @@ describe("AcceptanceContractSchema", () => {
     });
     assert.equal(r.success, false);
   });
+
+  it("defaults required_dom cardinality to 'one' and step match to 'only'", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      required_dom: [{ testid: "tile", description: "a tile" }],
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "click", testid: "btn" }],
+      }],
+    });
+    assert.equal(parsed.required_dom[0]!.cardinality, "one");
+    const step = parsed.required_flows[0]!.steps[0]! as { match: string; nth?: number };
+    assert.equal(step.match, "only");
+    assert.equal(step.nth, undefined);
+  });
+
+  it("accepts cardinality: many on required_dom", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      required_dom: [{ testid: "qvb", description: "quick-view button", cardinality: "many" }],
+    });
+    assert.equal(parsed.required_dom[0]!.cardinality, "many");
+  });
+
+  it("accepts match: first on a click step", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "click", testid: "qvb", match: "first" }],
+      }],
+    });
+    const step = parsed.required_flows[0]!.steps[0]! as { match: string };
+    assert.equal(step.match, "first");
+  });
+
+  it("accepts match: nth with an nth index", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "assert_visible", testid: "tile", match: "nth", nth: 2 }],
+      }],
+    });
+    const step = parsed.required_flows[0]!.steps[0]! as { match: string; nth: number };
+    assert.equal(step.match, "nth");
+    assert.equal(step.nth, 2);
+  });
+
+  it("rejects match: nth without an nth index", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "click", testid: "qvb", match: "nth" }],
+      }],
+    });
+    assert.equal(r.success, false);
+  });
+
+  it("rejects nth when match is not 'nth'", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "click", testid: "qvb", match: "first", nth: 0 }],
+      }],
+    });
+    assert.equal(r.success, false);
+  });
 });
 
 describe("loadAcceptanceContract", () => {

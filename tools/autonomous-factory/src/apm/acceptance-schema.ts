@@ -20,6 +20,27 @@
 
 import { z } from "zod";
 
+/**
+ * Cardinality hint for `required_dom` entries.
+ *
+ * - `one` (default): the testid is expected to resolve to exactly one
+ *   element. The oracle uses strict-mode `getByTestId(X)` which fails
+ *   loudly if the page renders zero or multiple matches.
+ * - `many`: the testid is rendered once per item in a repeating list
+ *   (product tiles, cart rows, search hits). The oracle asserts the
+ *   first instance is visible via `.first()` and skips the exact-text
+ *   check; `contains_text` substring assertions still apply to that
+ *   first instance.
+ */
+export const CardinalitySchema = z.enum(["one", "many"]);
+
+/**
+ * Locator qualifier on action steps (`click`/`fill`/`assert_visible`/
+ * `assert_text`). Defaults to `only` (strict-mode match). Use `first`
+ * or `nth` to disambiguate when the testid has `cardinality: many`.
+ */
+export const MatchModeSchema = z.enum(["only", "first", "nth"]);
+
 /** One concrete DOM element the feature must expose to users. */
 export const RequiredDomSchema = z.object({
   /** `data-testid` value (preferred) or CSS selector prefixed with `css:`. */
@@ -31,15 +52,47 @@ export const RequiredDomSchema = z.object({
   requires_non_empty_text: z.boolean().default(false),
   /** Optional: a substring the element's text must contain (case-insensitive). */
   contains_text: z.string().optional(),
+  /** Cardinality hint — see {@link CardinalitySchema}. Defaults to `one`. */
+  cardinality: CardinalitySchema.default("one"),
 });
+
+/**
+ * Shared locator qualifier fields for action steps. `nth` must be present
+ * when and only when `match === "nth"`. Zero-based index.
+ */
+const LocatorQualifier = {
+  match: MatchModeSchema.default("only"),
+  nth: z.number().int().nonnegative().optional(),
+} as const;
+
+/** Refine: `match: nth` requires `nth`; other modes forbid it. */
+function refineLocatorQualifier<T extends { match: "only" | "first" | "nth"; nth?: number }>(
+  step: T,
+  ctx: z.RefinementCtx,
+): void {
+  if (step.match === "nth" && step.nth === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["nth"],
+      message: "`nth` is required when `match: nth`",
+    });
+  }
+  if (step.match !== "nth" && step.nth !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["nth"],
+      message: "`nth` is only valid when `match: nth`",
+    });
+  }
+}
 
 /** One scripted user journey the feature must support. */
 export const FlowStepSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("goto"), url: z.string() }),
-  z.object({ action: z.literal("click"), testid: z.string() }),
-  z.object({ action: z.literal("fill"), testid: z.string(), value: z.string() }),
-  z.object({ action: z.literal("assert_visible"), testid: z.string(), timeout_ms: z.number().int().positive().optional() }),
-  z.object({ action: z.literal("assert_text"), testid: z.string(), contains: z.string() }),
+  z.object({ action: z.literal("click"), testid: z.string(), ...LocatorQualifier }).superRefine(refineLocatorQualifier),
+  z.object({ action: z.literal("fill"), testid: z.string(), value: z.string(), ...LocatorQualifier }).superRefine(refineLocatorQualifier),
+  z.object({ action: z.literal("assert_visible"), testid: z.string(), timeout_ms: z.number().int().positive().optional(), ...LocatorQualifier }).superRefine(refineLocatorQualifier),
+  z.object({ action: z.literal("assert_text"), testid: z.string(), contains: z.string(), ...LocatorQualifier }).superRefine(refineLocatorQualifier),
 ]);
 
 export const RequiredFlowSchema = z.object({

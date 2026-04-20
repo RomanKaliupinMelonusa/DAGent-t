@@ -43,11 +43,15 @@ You do **NOT** modify application source code — only test files.
    - One `test()` block per `required_flow` in the acceptance contract. The block's title SHOULD mirror the flow's `name`.
    - Translate each flow's `steps[]` literally:
      - `{ action: goto, url }` → `await page.goto(url, { waitUntil: 'domcontentloaded' })`
-     - `{ action: click, testid }` → `await page.getByTestId(testid).click()`
-     - `{ action: fill, testid, value }` → `await page.getByTestId(testid).fill(value)`
-     - `{ action: assert_visible, testid, timeout_ms? }` → `await expect(page.getByTestId(testid)).toBeVisible({ timeout: timeout_ms ?? 10000 })`
-     - `{ action: assert_text, testid, contains }` → `await expect(page.getByTestId(testid)).toContainText(contains)`
-   - For each `required_dom` entry, add an `expect(...).toBeVisible()` (plus `.toContainText(contains_text)` and a non-empty text check when the entry requires it).
+     - `{ action: click, testid, match?, nth? }` → `await {locator}.click()`
+     - `{ action: fill, testid, value, match?, nth? }` → `await {locator}.fill(value)`
+     - `{ action: assert_visible, testid, timeout_ms?, match?, nth? }` → `await expect({locator}).toBeVisible({ timeout: timeout_ms ?? 10000 })`
+     - `{ action: assert_text, testid, contains, match?, nth? }` → `await expect({locator}).toContainText(contains)`
+   - `{locator}` is derived from `match` (default `only`):
+     - `match: only` (or omitted) → `page.getByTestId(testid)`
+     - `match: first` → `page.getByTestId(testid).first()`
+     - `match: nth` → `page.getByTestId(testid).nth(nth)`
+   - For each `required_dom` entry, add an `expect(...).toBeVisible()`. When the entry declares `cardinality: many`, use `.first()` on the locator; skip the exact-text check (substring `contains_text` still applies to the first instance). When `cardinality: one` (or omitted), use a bare locator and honour `requires_non_empty_text` / `contains_text` as usual.
    - After every flow, assert `expect(consoleErrors).toEqual([])` — non-negotiable (see e2e-guidelines rule 16).
    - Use `page.getByTestId('...')` — **NEVER** CSS/XPath selectors, **NEVER** `or` locator fallbacks.
    - Use explicit locator waits — **NEVER `waitForTimeout()`**, **NEVER `waitForLoadState('networkidle')`**.
@@ -55,7 +59,7 @@ You do **NOT** modify application source code — only test files.
    ```bash
    grep -rn 'networkidle\|waitForTimeout\| or ' e2e/{{featureSlug}}.spec.ts
    ```
-   If this returns results, fix them before proceeding.
+   If this returns results, fix them before proceeding. In addition, for every testid whose `required_dom` entry declares `cardinality: many`, every `getByTestId('<that-id>')` call in the spec file MUST be followed by `.first()` or `.nth(`. A plain `getByTestId('<multi-instance-id>')` without a qualifier WILL trip Playwright strict-mode at runtime and is a commit-blocker.
 6. **Commit:** `bash tools/autonomous-factory/agent-commit.sh all "test(e2e): <description>"`
 
 ## Browser Diagnostics (MANDATORY)

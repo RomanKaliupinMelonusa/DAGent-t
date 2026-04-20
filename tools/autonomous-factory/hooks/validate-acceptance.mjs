@@ -151,19 +151,27 @@ function renderSpec(contract) {
   const flowBlocks = contract.required_flows.map((flow, idx) => {
     const title = `acceptance flow ${idx + 1} — ${escapeSingle(flow.name ?? `flow-${idx}`)}`;
     const steps = (flow.steps ?? []).map((step) => {
+      // Locator qualifier — honours match: "only" | "first" | "nth".
+      // `locatorFor(step)` returns the Playwright chain the step should target.
+      const locatorFor = (s) => {
+        const base = `page.getByTestId('${escapeSingle(s.testid)}')`;
+        if (s.match === "first") return `${base}.first()`;
+        if (s.match === "nth") return `${base}.nth(${Number(s.nth) || 0})`;
+        return base;
+      };
       switch (step?.action) {
         case "goto":
           return `    await page.goto('${escapeSingle(step.url)}', { waitUntil: 'domcontentloaded' });`;
         case "click":
-          return `    await page.getByTestId('${escapeSingle(step.testid)}').click();`;
+          return `    await ${locatorFor(step)}.click();`;
         case "fill":
-          return `    await page.getByTestId('${escapeSingle(step.testid)}').fill('${escapeSingle(step.value ?? "")}');`;
+          return `    await ${locatorFor(step)}.fill('${escapeSingle(step.value ?? "")}');`;
         case "assert_visible": {
           const timeout = Number.isFinite(step.timeout_ms) ? Number(step.timeout_ms) : 10000;
-          return `    await expect(page.getByTestId('${escapeSingle(step.testid)}')).toBeVisible({ timeout: ${timeout} });`;
+          return `    await expect(${locatorFor(step)}).toBeVisible({ timeout: ${timeout} });`;
         }
         case "assert_text":
-          return `    await expect(page.getByTestId('${escapeSingle(step.testid)}')).toContainText('${escapeSingle(step.contains ?? "")}');`;
+          return `    await expect(${locatorFor(step)}).toContainText('${escapeSingle(step.contains ?? "")}');`;
         default:
           return `    // Unknown step action: ${escapeSingle(step?.action ?? "<missing>")}`;
       }
@@ -196,17 +204,27 @@ ${steps}
 ${contract.required_flows.length === 0 ? "    await page.goto('/', { waitUntil: 'domcontentloaded' });\n" : "    // Flows above have already navigated; start from '/' to keep this test independent.\n    await page.goto('/', { waitUntil: 'domcontentloaded' });\n"}
 ${contract.required_dom.map((dom) => {
   const testid = escapeSingle(dom.testid);
+  const many = dom.cardinality === "many";
+  // `cardinality: many` → target the first instance so the assertion
+  // does not trip Playwright strict-mode when the testid repeats per
+  // list item (product tiles, cart rows, etc.).
+  const locator = many
+    ? `page.getByTestId('${testid}').first()`
+    : `page.getByTestId('${testid}')`;
   const lines = [
-    `    await expect(page.getByTestId('${testid}'), 'required_dom: ${testid}').toBeVisible({ timeout: 15000 });`,
+    `    await expect(${locator}, 'required_dom: ${testid}').toBeVisible({ timeout: 15000 });`,
   ];
-  if (dom.requires_non_empty_text) {
+  if (dom.requires_non_empty_text && !many) {
+    // Exact-text requirements are incoherent on repeating lists — each
+    // item has its own text. Skip for `many`; rely on `contains_text`
+    // if a substring check is still desired.
     lines.push(`    {
       const text = (await page.getByTestId('${testid}').textContent()) ?? '';
       if (text.trim().length === 0) throw new Error('required_dom ${testid}: empty text content');
     }`);
   }
   if (typeof dom.contains_text === "string" && dom.contains_text.length > 0) {
-    lines.push(`    await expect(page.getByTestId('${testid}')).toContainText('${escapeSingle(dom.contains_text)}');`);
+    lines.push(`    await expect(${locator}).toContainText('${escapeSingle(dom.contains_text)}');`);
   }
   return lines.join("\n");
 }).join("\n")}

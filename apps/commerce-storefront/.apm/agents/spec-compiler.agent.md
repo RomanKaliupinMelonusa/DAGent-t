@@ -31,15 +31,18 @@ required_dom:                           # []
     description: <what this element is>
     requires_non_empty_text: true       # optional, default false
     contains_text: <substring>          # optional
+    cardinality: one | many             # optional, default "one"
 required_flows:                         # []
   - name: <short-kebab-name>
     description: <one sentence>
     steps:
       - { action: goto, url: "/some/path" }
-      - { action: click, testid: <testid> }
-      - { action: fill, testid: <testid>, value: <string> }
-      - { action: assert_visible, testid: <testid>, timeout_ms: 10000 }
-      - { action: assert_text, testid: <testid>, contains: <substring> }
+      - { action: click, testid: <testid>, match: only | first | nth, nth: <int> }
+      - { action: fill, testid: <testid>, value: <string>, match: only | first | nth, nth: <int> }
+      - { action: assert_visible, testid: <testid>, timeout_ms: 10000, match: only | first | nth, nth: <int> }
+      - { action: assert_text, testid: <testid>, contains: <substring>, match: only | first | nth, nth: <int> }
+      # `match` defaults to "only" (strict single match). `nth` is REQUIRED
+      # when match=nth and FORBIDDEN otherwise. Zero-based index.
 forbidden_console_patterns:             # [] — regex strings
   # Built-in defaults already ban Uncaught {Type,Reference,Range,Syntax}Error
   # and "Cannot read properties of undefined/null". Add feature-specific bans.
@@ -59,13 +62,56 @@ base_template_reuse:                    # [] — components the dev MUST audit
 
 3. **The final step of a happy-path flow MUST be an `assert_visible` or `assert_text` against a feature-specific testid** — never a generic locator (no `#app-main`, no `body`, no `h1`).
 
-4. **Populate `base_template_reuse` for every commerce primitive the feature touches.** The PWA Kit base template (`@salesforce/retail-react-app@9.1.1`) ships `ProductViewModal`, `ProductView`, `useProduct`, `useProductViewModal`, `useAddToCart`, `useBasket`, `<Price>`, etc. If the spec mentions modals, product views, cart actions, price displays, list them here with a rationale of **why** reuse is preferred.
+4. **Multi-instance testids (repeating lists) — MANDATORY disambiguation.** When the spec describes an element that appears on **every item of a repeating list** (product tile, cart row, wishlist entry, search hit, variation swatch), the testid will resolve to many matches at runtime and Playwright's strict-mode locator will fail. You MUST pick ONE of the two strategies below and apply it consistently. You MUST NOT emit a bare `click { testid }` / `assert_visible { testid }` step for such an element — the oracle would trip strict-mode and the feature could never pass.
 
-5. **`forbidden_network_failures` MUST include the SCAPI endpoint that powers the feature.** E.g. a quick-view feature must include `GET /mobify/proxy/api/.*/products/.*`.
+   **Strategy A — collective testid + `match: first`** (preferred when the spec does not single out a specific list item):
 
-6. **Do NOT add `forbidden_console_patterns` that silence noise.** The built-in defaults already ban the Uncaught exceptions users would see. Only add patterns if the spec explicitly calls out a class of error as a failure signal.
+   ```yaml
+   required_dom:
+     - testid: quick-view-btn
+       description: Quick View overlay bar rendered on every PLP product tile
+       cardinality: many          # tells oracle to assert first instance
+       contains_text: Quick View
 
-7. **`feature:` field MUST equal the slug exactly** — `{{featureSlug}}`.
+   required_flows:
+     - name: open-quick-view-modal
+       steps:
+         - { action: goto, url: "/category/newarrivals" }
+         - { action: assert_visible, testid: quick-view-btn, match: first, timeout_ms: 10000 }
+         - { action: click,          testid: quick-view-btn, match: first }
+         - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+   ```
+
+   **Strategy B — per-instance testid suffix** (use when the spec names a specific item, e.g. "click Add to Cart on the highlighted promo product"):
+
+   ```yaml
+   required_dom:
+     - testid: add-to-cart-btn         # parent testid — declared for discoverability
+       description: Add to Cart button rendered on every product tile
+       cardinality: many
+
+   required_flows:
+     - name: add-featured-product
+       steps:
+         - { action: goto, url: "/category/featured" }
+         # The dev agent is required to emit `add-to-cart-btn-{productId}`
+         # on every tile (see data-testid-contract rule 5). Target the
+         # exact known ID here.
+         - { action: click, testid: add-to-cart-btn-25517823M }
+   ```
+
+   Rules:
+   - When a testid appears in `required_dom` with `cardinality: many`, **every** flow step that references that testid MUST carry `match: first` or `match: nth`. Bare references are forbidden.
+   - `cardinality: many` entries MUST NOT declare `requires_non_empty_text: true` — the oracle skips that check for lists (each item has its own text). Use `contains_text` if you still need a substring guarantee on the first instance.
+   - If you cannot decide whether the spec describes one or many instances, prefer Strategy A with `cardinality: many` + `match: first`.
+
+5. **Populate `base_template_reuse` for every commerce primitive the feature touches.** The PWA Kit base template (`@salesforce/retail-react-app@9.1.1`) ships `ProductViewModal`, `ProductView`, `useProduct`, `useProductViewModal`, `useAddToCart`, `useBasket`, `<Price>`, etc. If the spec mentions modals, product views, cart actions, price displays, list them here with a rationale of **why** reuse is preferred.
+
+6. **`forbidden_network_failures` MUST include the SCAPI endpoint that powers the feature.** E.g. a quick-view feature must include `GET /mobify/proxy/api/.*/products/.*`.
+
+7. **Do NOT add `forbidden_console_patterns` that silence noise.** The built-in defaults already ban the Uncaught exceptions users would see. Only add patterns if the spec explicitly calls out a class of error as a failure signal.
+
+8. **`feature:` field MUST equal the slug exactly** — `{{featureSlug}}`.
 
 ## Forbidden Content
 

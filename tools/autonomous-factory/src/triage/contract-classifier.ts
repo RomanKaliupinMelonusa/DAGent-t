@@ -105,7 +105,7 @@ export function classifyStructuredFailure(
     return {
       domain: BROWSER_RUNTIME_ERROR_DOMAIN,
       reason: `Uncaught browser exception in "${firstErr.inTest}": ${firstErr.message.slice(0, 200)}`,
-      source: "rag",
+      source: "contract",
       rag_matches: [],
     };
   }
@@ -130,7 +130,7 @@ export function classifyStructuredFailure(
               `Contract locator '${testid}' declared in ACCEPTANCE.yml never rendered — ` +
               `this is a frontend implementation defect, not a test/SSR/infra issue. ` +
               `Failing test: "${ft.title}".`,
-            source: "rag",
+            source: "contract",
             rag_matches: [],
           };
         }
@@ -174,7 +174,7 @@ export function classifyRawError(rawError: string): TriageResult | null {
     reason:
       `spec-compiler produced an invalid ACCEPTANCE contract. ` +
       `Repair the schema violation and re-emit: ${firstLine.slice(0, 240)}`,
-    source: "rag",
+    source: "contract",
     rag_matches: [],
   };
 }

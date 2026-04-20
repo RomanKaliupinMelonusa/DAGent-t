@@ -174,8 +174,16 @@ export interface TriageResult {
   domain: string;
   /** Human-readable explanation of the classification. */
   reason: string;
-  /** Which layer produced the classification. */
-  source: "rag" | "llm" | "fallback";
+  /** Which layer produced the classification.
+   *  - `contract`: Layer 0 deterministic classifier (structured Playwright
+   *    report + ACCEPTANCE contract, or canonical raw-error regex). No
+   *    RAG, no LLM — the verdict came straight from the failing node's
+   *    own machine-readable artifacts.
+   *  - `rag`: Layer 1 substring match from a triage pack.
+   *  - `llm`: Layer 2 LLM router.
+   *  - `fallback`: No layer classified; triage handler degraded.
+   */
+  source: "contract" | "rag" | "llm" | "fallback";
   /** Top RAG matches (up to 3), regardless of which layer won. */
   rag_matches?: Array<{ snippet: string; domain: string; reason: string; rank: number }>;
   /** LLM response latency in ms (only set when LLM layer was invoked). */
@@ -211,7 +219,7 @@ export interface TriageRecord {
   /** Final classification. */
   domain: string;
   reason: string;
-  source: "rag" | "llm" | "fallback";
+  source: "contract" | "rag" | "llm" | "fallback";
 
   /** Routing decision (set by triage handler after evaluateTriage). */
   route_to: string;

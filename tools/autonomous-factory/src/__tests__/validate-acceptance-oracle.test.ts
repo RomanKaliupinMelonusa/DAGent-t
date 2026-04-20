@@ -89,6 +89,58 @@ describe("validate-acceptance.mjs: renderSpec", () => {
     const spec = oracle.renderSpec({ ...baseContract, required_dom: [] });
     assert.doesNotMatch(spec, /acceptance required DOM/);
   });
+
+  it("emits .first() on action steps declared with match: first", () => {
+    const spec = oracle.renderSpec({
+      ...baseContract,
+      required_dom: [],
+      required_flows: [{
+        name: "multi",
+        steps: [
+          { action: "goto", url: "/plp" },
+          { action: "assert_visible", testid: "qvb", match: "first", timeout_ms: 5000 },
+          { action: "click", testid: "qvb", match: "first" },
+        ],
+      }],
+    });
+    assert.match(spec, /getByTestId\('qvb'\)\.first\(\)\.click\(\)/);
+    assert.match(spec, /expect\(page\.getByTestId\('qvb'\)\.first\(\)\)\.toBeVisible/);
+  });
+
+  it("emits .nth(N) on action steps declared with match: nth", () => {
+    const spec = oracle.renderSpec({
+      ...baseContract,
+      required_dom: [],
+      required_flows: [{
+        name: "nth",
+        steps: [
+          { action: "goto", url: "/plp" },
+          { action: "click", testid: "tile", match: "nth", nth: 2 },
+        ],
+      }],
+    });
+    assert.match(spec, /getByTestId\('tile'\)\.nth\(2\)\.click\(\)/);
+  });
+
+  it("emits .first() in the DOM block when cardinality is 'many' and skips exact-text check", () => {
+    const spec = oracle.renderSpec({
+      ...baseContract,
+      required_dom: [
+        {
+          testid: "qvb",
+          description: "quick-view button (one per tile)",
+          cardinality: "many",
+          requires_non_empty_text: true,
+          contains_text: "Quick View",
+        },
+      ],
+      required_flows: [],
+    });
+    assert.match(spec, /getByTestId\('qvb'\)\.first\(\).*toBeVisible/);
+    assert.match(spec, /getByTestId\('qvb'\)\.first\(\)\)\.toContainText\('Quick View'\)/);
+    // requires_non_empty_text is intentionally skipped for cardinality: many
+    assert.doesNotMatch(spec, /required_dom qvb: empty text content/);
+  });
 });
 
 describe("validate-acceptance.mjs: extractViolations", () => {
