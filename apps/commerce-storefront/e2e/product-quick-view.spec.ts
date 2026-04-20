@@ -321,6 +321,33 @@ test.describe('Product Quick View', () => {
             })
         })
 
+        test('modal can be closed by clicking the overlay backdrop', async ({page}) => {
+            await navigateToPLP(page)
+
+            const btn = await hoverTileAndGetButton(page, 0)
+            await btn.click()
+            await waitForModalContent(page)
+
+            // Chakra ModalOverlay renders behind ModalContent.
+            // Clicking at the viewport edge (outside modal content) triggers onClose.
+            const modal = page.getByTestId('quick-view-modal')
+            const box = await modal.boundingBox()
+            if (box) {
+                // Click 20px to the left of the modal content (on the overlay)
+                const clickX = Math.max(box.x - 20, 5)
+                const clickY = box.y + box.height / 2
+                await page.mouse.click(clickX, clickY)
+            } else {
+                // Fallback: click near the viewport edge
+                await page.mouse.click(5, 5)
+            }
+
+            await expect(page.getByTestId('quick-view-modal')).not.toBeVisible({
+                timeout: ELEMENT_TIMEOUT
+            })
+        })
+
+
         test('PLP content is preserved after closing the modal', async ({page}) => {
             await navigateToPLP(page)
 
@@ -448,6 +475,38 @@ test.describe('Product Quick View', () => {
                     timeout: ELEMENT_TIMEOUT
                 })
             }
+        })
+
+
+        test('Quick View button is visible without hover on mobile viewport', async ({
+            browser
+        }) => {
+            // Create a mobile-sized context (iPhone-like viewport)
+            const context = await browser.newContext({
+                viewport: {width: 375, height: 812}
+            })
+            const page = await context.newPage()
+
+            // Set up diagnostics on this page too
+            page.on('console', (msg) => {
+                if (msg.type() === 'error') consoleErrors.push(msg.text())
+            })
+            page.on('requestfailed', (req) => {
+                failedRequests.push(`${req.method()} ${req.url()} - ${req.failure()?.errorText}`)
+            })
+
+            await page.goto(PLP_URL, {waitUntil: 'domcontentloaded'})
+            await page
+                .getByTestId('quick-view-btn')
+                .first()
+                .waitFor({state: 'attached', timeout: ELEMENT_TIMEOUT})
+
+            // On mobile (below lg breakpoint), the Quick View button should be
+            // visible without any hover interaction (opacity: 1, translateY: 0)
+            const btn = page.getByTestId('quick-view-btn').first()
+            await expect(btn).toBeVisible({timeout: ELEMENT_TIMEOUT})
+
+            await context.close()
         })
 
         test('all Quick View buttons have non-empty aria-labels', async ({page}) => {
