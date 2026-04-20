@@ -155,6 +155,7 @@ export class PipelineKernel {
           cmd.haltOnIdentical,
           cmd.haltOnIdenticalThreshold,
           cmd.haltOnIdenticalExcludedKeys,
+          cmd.errorSignature,
         );
       case "record-attempt":
         return this.processRecordAttempt(cmd.itemKey, effects);
@@ -199,6 +200,7 @@ export class PipelineKernel {
     haltOnIdentical?: boolean,
     haltOnIdenticalThreshold?: number,
     haltOnIdenticalExcludedKeys?: readonly string[],
+    overrideSignature?: string,
   ): ProcessResult {
     const asTransition = this.dagState as unknown as TransitionState;
     const { state, failCount, halted, haltedByThreshold, thresholdMatchCount, errorSignature } = this.rules.fail(
@@ -210,6 +212,7 @@ export class PipelineKernel {
         haltOnIdentical,
         haltOnIdenticalThreshold,
         haltOnIdenticalExcludedKeys,
+        overrideSignature,
       },
     );
     this.dagState = {

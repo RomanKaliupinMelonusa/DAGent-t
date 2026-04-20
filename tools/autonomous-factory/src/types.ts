@@ -244,6 +244,11 @@ export interface TriageHandoff {
   readonly priorAttemptCount: number;
   /** Files touched in the failing attempt, if known. */
   readonly touchedFiles?: readonly string[];
+  /** Optional advisory surfaced alongside the diagnosis — e.g. a
+   *  consecutive-domain warning recommending `agent-branch.sh revert`
+   *  when the last two reroutes stayed in the same domain. Free-form
+   *  markdown; empty/undefined = no advisory. */
+  readonly advisory?: string;
 }
 
 /**

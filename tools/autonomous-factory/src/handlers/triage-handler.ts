@@ -31,10 +31,14 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyStructuredFailure } from "../triage/contract-classifier.js";
 import { prependContractEvidence } from "../triage/contract-evidence.js";
+import { loadAcceptanceContract } from "../apm/acceptance-schema.js";
+import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
 import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
+import { extractPriorAttempts } from "../triage/historian.js";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -73,6 +77,46 @@ function truncateError(raw: string, maxLines = 40): string {
   if (lines.length <= maxLines) return raw.trimEnd();
   const head = lines.slice(0, maxLines).join("\n");
   return `${head}\n… (${lines.length - maxLines} more lines)`;
+}
+
+/** Round-2 R3 — consecutive-domain advisory.
+ *
+ *  When the last two reroute cycles both classified into the current
+ *  domain, the redevelopment cycle is almost certainly looping on the
+ *  same root cause with incrementally mutated symptoms (Round-2 showed
+ *  four identical click-handler misroutes all labelled `ssr-hydration`).
+ *
+ *  Rather than keep burning retries, we surface an advisory string so
+ *  the next dev agent sees the pattern explicitly and can choose a
+ *  `agent-branch.sh revert` clean-slate rebuild. The circuit breaker
+ *  already grants one bypass for revert after ≥3 failures — this
+ *  advisory is the *user-facing* signal that paired with it.
+ *
+ *  Returns `undefined` when the advisory does not apply (fewer than 2
+ *  prior attempts or mixed domains) so the adapter can skip rendering.
+ */
+const DOMAIN_TAG_RE = /\[domain:([^\]]+)\]/;
+function buildConsecutiveDomainAdvisory(
+  errorLog: readonly { itemKey: string; message: string; timestamp: string; errorSignature?: string | null }[],
+  currentDomain: string,
+): string | undefined {
+  const prior = extractPriorAttempts(errorLog);
+  if (prior.length < 2) return undefined;
+  const last = prior[prior.length - 1];
+  const prev = prior[prior.length - 2];
+  const lastDomain = DOMAIN_TAG_RE.exec(last.resetReason)?.[1];
+  const prevDomain = DOMAIN_TAG_RE.exec(prev.resetReason)?.[1];
+  if (!lastDomain || !prevDomain) return undefined;
+  if (lastDomain !== prevDomain || lastDomain !== currentDomain) return undefined;
+  return (
+    `The last two reroute cycles both classified as \`${currentDomain}\` and ` +
+    `this cycle is the **third** in that domain. The pipeline is almost ` +
+    `certainly looping on the same root cause. If your next fix is not ` +
+    `decisively different from the prior two, stop and run ` +
+    `\`bash tools/autonomous-factory/agent-branch.sh revert\` to reset this ` +
+    `feature branch to the base and rebuild from scratch — the circuit ` +
+    `breaker grants one bypass for exactly this case.`
+  );
 }
 
 /**
@@ -163,6 +207,10 @@ async function buildRerouteCommands(
         triageReason: triageResult.reason,
         priorAttemptCount,
         touchedFiles: failingSummary?.filesChanged ?? [],
+        advisory: buildConsecutiveDomainAdvisory(
+          pipeStateForCtx.errorLog ?? [],
+          triageResult.domain,
+        ),
       };
       commands.push({
         type: "set-pending-context",
@@ -290,7 +338,20 @@ const triageHandler: NodeHandler = {
     // artifact) with unambiguous impl-defect signals, skip RAG/LLM and
     // route deterministically. The resolved domain must exist in the
     // failing node's `failureRoutes` map — otherwise we fall through.
-    const contractVerdict = classifyStructuredFailure(ctx.structuredFailure);
+    //
+    // Round-2 R2: load the feature's ACCEPTANCE.yml (best-effort) and pass
+    // it to the classifier so a Playwright timeout on a contract-declared
+    // testid deterministically classifies as `frontend`. Missing/malformed
+    // contract => null, classifier falls back to its uncaught-error rule.
+    let acceptance: AcceptanceContract | null = null;
+    try {
+      acceptance = loadAcceptanceContract(
+        path.join(ctx.appRoot, "in-progress", `${slug}_ACCEPTANCE.yml`),
+      );
+    } catch {
+      acceptance = null;
+    }
+    const contractVerdict = classifyStructuredFailure(ctx.structuredFailure, { acceptance });
     const failureRoutesForContract = ctx.failureRoutes ?? {};
     const triageResult: TriageResult =
       contractVerdict && (contractVerdict.domain in failureRoutesForContract)

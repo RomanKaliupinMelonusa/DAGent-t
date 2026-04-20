@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { parsePlaywrightReport, hasImplDefectSignal } from "../playwright-report.js";
+import { parsePlaywrightReport, hasImplDefectSignal, computeStructuredSignature } from "../playwright-report.js";
 
 function writeTmp(name: string, content: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pwreport-"));
@@ -141,5 +141,118 @@ describe("parsePlaywrightReport", () => {
     assert.equal(parsed!.failedTests.length, 0);
     assert.equal(parsed!.uncaughtErrors.length, 0);
     assert.equal(hasImplDefectSignal(parsed!), false);
+  });
+});
+
+describe("computeStructuredSignature", () => {
+  const cycle1 = {
+    kind: "playwright-json" as const,
+    total: 3,
+    passed: 0,
+    failed: 3,
+    skipped: 0,
+    failedTests: [
+      {
+        title: "quick-view-open-and-load",
+        file: "e2e/product-quick-view.spec.ts",
+        line: 10,
+        error:
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible",
+        stackHead: "    at e2e/product-quick-view.spec.ts:12:30",
+      },
+      {
+        title: "quick-view-modal-shows-product-details",
+        file: "e2e/product-quick-view.spec.ts",
+        line: 20,
+        error:
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible",
+        stackHead: "    at e2e/product-quick-view.spec.ts:22:30",
+      },
+    ],
+    uncaughtErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+  };
+
+  // Same three failures but tests reported in a different order, and error
+  // prose carrying different bundle line:col (simulating build rotation).
+  const cycle3 = {
+    kind: "playwright-json" as const,
+    total: 3,
+    passed: 0,
+    failed: 3,
+    skipped: 0,
+    failedTests: [
+      {
+        title: "quick-view-modal-shows-product-details",
+        file: "e2e/product-quick-view.spec.ts",
+        line: 20,
+        error:
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible\n    at vendor.js:98765:4321",
+        stackHead: "    at e2e/product-quick-view.spec.ts:22:30",
+      },
+      {
+        title: "quick-view-open-and-load",
+        file: "e2e/product-quick-view.spec.ts",
+        line: 10,
+        error:
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible\n    at main.js:11111:222",
+        stackHead: "    at e2e/product-quick-view.spec.ts:12:30",
+      },
+    ],
+    uncaughtErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+  };
+
+  it("returns null for non-playwright payloads", () => {
+    assert.equal(computeStructuredSignature(null), null);
+    assert.equal(computeStructuredSignature({ kind: "other" }), null);
+    assert.equal(computeStructuredSignature("string"), null);
+  });
+
+  it("returns a stable 16-hex signature for a playwright-json failure set", () => {
+    const sig = computeStructuredSignature(cycle1);
+    assert.ok(sig);
+    assert.match(sig!, /^[0-9a-f]{16}$/);
+  });
+
+  it("hashes identically across builds despite rotating bundle line:col and test-order shuffling", () => {
+    const a = computeStructuredSignature(cycle1);
+    const b = computeStructuredSignature(cycle3);
+    assert.equal(a, b, "rotating bundle frames must not change the signature");
+  });
+
+  it("differs when the failing testid locator changes", () => {
+    const diff = {
+      ...cycle1,
+      failedTests: cycle1.failedTests.map((t) => ({
+        ...t,
+        error: t.error.replace("quick-view-modal", "some-other-modal"),
+      })),
+    };
+    assert.notEqual(
+      computeStructuredSignature(cycle1),
+      computeStructuredSignature(diff),
+    );
+  });
+
+  it("differs when the error class changes", () => {
+    const diff = {
+      ...cycle1,
+      failedTests: cycle1.failedTests.map((t) => ({
+        ...t,
+        error: t.error.replace("TimeoutError", "TypeError"),
+      })),
+    };
+    assert.notEqual(
+      computeStructuredSignature(cycle1),
+      computeStructuredSignature(diff),
+    );
+  });
+
+  it("returns null when there are no failures", () => {
+    const green = { ...cycle1, failed: 0, failedTests: [] };
+    assert.equal(computeStructuredSignature(green), null);
   });
 });

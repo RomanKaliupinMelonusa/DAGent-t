@@ -91,6 +91,11 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     handoff.errorExcerpt,
     "```",
   ];
+  if (handoff.advisory && handoff.advisory.trim().length > 0) {
+    // Round-2 R3: consecutive-domain advisory rendered immediately after the
+    // diagnosis block so the dev agent sees it before reading the excerpt.
+    lines.push("", "### ⚠️ Advisory", handoff.advisory.trim());
+  }
   return lines.join("\n");
 }
 

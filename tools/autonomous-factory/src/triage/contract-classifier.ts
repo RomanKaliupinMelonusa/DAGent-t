@@ -16,6 +16,14 @@
  *   - Any `uncaughtErrors[]` → `browser-runtime-error`
  *     (a user-facing JS crash is always an impl defect; it is NEVER a
  *     test-code bug, and re-running the tests cannot fix it).
+ *   - [Round-2 R2] A Playwright timeout on a `getByTestId('<id>')` where
+ *     `<id>` is declared in the feature's ACCEPTANCE.yml required_dom →
+ *     `frontend`. The contract literally named that testid as something
+ *     the user must be able to see; if it never rendered, the feature
+ *     implementation is the defect — not the DOM plumbing, not SSR, not
+ *     the dev server. Prevents the Round-2 misroute where four identical
+ *     click-handler regressions were classified as `ssr-hydration` by
+ *     the LLM router and never reached the component owner.
  *
  * Future rules: network-request failures → `api-integration-error`,
  * visual-regression diffs → `ui-regression`, etc.
@@ -23,9 +31,18 @@
 
 import type { TriageResult } from "../types.js";
 import type { StructuredFailure } from "./playwright-report.js";
+import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 
 /** Domain returned when an uncaught JS error is present in a browser context. */
 export const BROWSER_RUNTIME_ERROR_DOMAIN = "browser-runtime-error";
+
+/** Domain returned when a contract-declared testid failed to render. */
+export const CONTRACT_LOCATOR_MISSING_DOMAIN = "frontend";
+
+/** Optional extras the triage handler may pass to refine classification. */
+export interface ContractClassifierOptions {
+  readonly acceptance?: AcceptanceContract | null;
+}
 
 /** Runtime shape guard — keeps the triage handler decoupled from the
  *  concrete StructuredFailure type at the layer boundary. */
@@ -34,6 +51,34 @@ function isPlaywrightReport(v: unknown): v is StructuredFailure {
     && typeof v === "object"
     && (v as { kind?: unknown }).kind === "playwright-json";
 }
+
+/** Extract the first testid referenced in a Playwright error blob.
+ *
+ *  Matches the forms Playwright actually prints:
+ *    - `getByTestId('quick-view-btn')`
+ *    - `getByTestId("quick-view-btn")`
+ *    - `locator('[data-testid="quick-view-btn"]')`
+ *
+ *  Returns the first match only — the classifier needs one unambiguous
+ *  testid to cross-reference against the contract, not a bag of them.
+ */
+const GET_BY_TESTID_RE = /getByTestId\(\s*['"]([^'"]+)['"]\s*\)/;
+const DATA_TESTID_SEL_RE = /\[data-testid=['"]([^'"]+)['"]\]/;
+
+function extractTestid(errorBlob: string): string | null {
+  const m1 = GET_BY_TESTID_RE.exec(errorBlob);
+  if (m1) return m1[1];
+  const m2 = DATA_TESTID_SEL_RE.exec(errorBlob);
+  if (m2) return m2[1];
+  return null;
+}
+
+/** Heuristic: "did Playwright time out waiting for this locator?"
+ *  Playwright formats its timeout errors with a `TimeoutError:` prefix
+ *  (and `locator.waitFor`, `expect.*.toBeVisible`, etc. all reduce to
+ *  that prefix). We match the prefix rather than the specific call so
+ *  future Playwright versions keep working. */
+const TIMEOUT_RE = /\b(TimeoutError\b|Timeout\s+\d+ms\s+exceeded|waiting for .*(getByTestId|locator))/i;
 
 /**
  * Inspect a structured failure payload and return a deterministic
@@ -44,7 +89,10 @@ function isPlaywrightReport(v: unknown): v is StructuredFailure {
  * acting — when the route is missing, the classifier's verdict is
  * discarded and evaluation continues normally.
  */
-export function classifyStructuredFailure(payload: unknown): TriageResult | null {
+export function classifyStructuredFailure(
+  payload: unknown,
+  opts: ContractClassifierOptions = {},
+): TriageResult | null {
   if (!isPlaywrightReport(payload)) return null;
 
   if (payload.uncaughtErrors.length > 0) {
@@ -55,6 +103,34 @@ export function classifyStructuredFailure(payload: unknown): TriageResult | null
       source: "rag",
       rag_matches: [],
     };
+  }
+
+  // Round-2 R2 — contract-locator timeout.
+  const acceptance = opts.acceptance ?? null;
+  if (acceptance && payload.failedTests.length > 0) {
+    const contractTestids = new Set(
+      (acceptance.required_dom ?? [])
+        .map((d) => d.testid)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    if (contractTestids.size > 0) {
+      for (const ft of payload.failedTests) {
+        const blob = `${ft.error}\n${ft.stackHead}`;
+        if (!TIMEOUT_RE.test(blob)) continue;
+        const testid = extractTestid(blob);
+        if (testid && contractTestids.has(testid)) {
+          return {
+            domain: CONTRACT_LOCATOR_MISSING_DOMAIN,
+            reason:
+              `Contract locator '${testid}' declared in ACCEPTANCE.yml never rendered — ` +
+              `this is a frontend implementation defect, not a test/SSR/infra issue. ` +
+              `Failing test: "${ft.title}".`,
+            source: "rag",
+            rag_matches: [],
+          };
+        }
+      }
+    }
   }
 
   return null;

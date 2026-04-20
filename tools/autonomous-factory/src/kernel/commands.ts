@@ -68,6 +68,14 @@ export interface FailItemCommand {
   readonly haltOnIdenticalThreshold?: number;
   /** Item keys excluded from the threshold check. */
   readonly haltOnIdenticalExcludedKeys?: readonly string[];
+  /**
+   * Pre-computed error signature. When set, `failItem` uses this verbatim
+   * and skips the default string-hashing path. Supplied by handlers that
+   * can derive a structurally-stable fingerprint (e.g. Playwright
+   * `StructuredFailure` → `computeStructuredSignature`), so rotating
+   * prose tokens in the raw message cannot defeat `halt_on_identical`.
+   */
+  readonly errorSignature?: string;
 }
 
 // ---------------------------------------------------------------------------

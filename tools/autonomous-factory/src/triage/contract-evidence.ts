@@ -28,6 +28,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { extractPrimaryCause } from "./playwright-report.js";
 
 /** Upper bound on how much of each artifact we inline into the prompt.
  *  Keeps the total triage-prompt budget predictable. The artifacts are
@@ -99,8 +100,11 @@ export function loadContractEvidence(appRoot: string, slug: string): ContractEvi
 
 /**
  * Prepend the contract-evidence block to a raw error trace. No-op when
- * no artifacts exist — returns the original trace unchanged so downstream
- * behaviour is preserved for features that predate the oracle.
+ * no artifacts exist — except for the Round-2 R4 primary-cause fallback:
+ * when no oracle artifacts are available we still scan the raw trace for
+ * Playwright's failure-header pattern and front-load the single most
+ * relevant `TimeoutError:` / `Error:` lines. That alone is enough to stop
+ * the LLM router from getting lost in a 30 KB ANSI dump.
  */
 export function prependContractEvidence(
   rawError: string,
@@ -108,9 +112,21 @@ export function prependContractEvidence(
   slug: string | undefined,
 ): { trace: string; sources: string[] } {
   const evidence = loadContractEvidence(appRoot ?? "", slug ?? "");
-  if (!evidence.text) return { trace: rawError, sources: [] };
-  return {
-    trace: `${evidence.text}\n### Raw failure output\n${rawError}`,
-    sources: evidence.sources,
-  };
+  if (evidence.text) {
+    return {
+      trace: `${evidence.text}\n### Raw failure output\n${rawError}`,
+      sources: evidence.sources,
+    };
+  }
+  // Round-2 R4 fallback — no oracle artifacts, best-effort primary cause.
+  const primary = extractPrimaryCause(rawError);
+  if (primary) {
+    return {
+      trace:
+        `### Primary failure\n\n\`\`\`\n${primary}\n\`\`\`\n\n` +
+        `### Raw failure output\n${rawError}`,
+      sources: [],
+    };
+  }
+  return { trace: rawError, sources: [] };
 }

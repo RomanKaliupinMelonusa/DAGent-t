@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 
 /** Discriminated `kind` keeps future formats (jest-json, pytest-json) additive. */
 export interface StructuredFailure {
@@ -178,4 +179,107 @@ export function parsePlaywrightReport(reportPath: string): StructuredFailure | n
  */
 export function hasImplDefectSignal(f: StructuredFailure): boolean {
   return f.uncaughtErrors.length > 0;
+}
+
+/**
+ * Round-2 R4 — extract the primary cause from a raw Playwright stdout/stderr blob.
+ *
+ * When the pipeline doesn't have a parsed `StructuredFailure` (e.g. the
+ * `playwright-json` reporter wasn't configured on a node, or the artifact
+ * was missing) the triage layer otherwise receives a 30 KB ANSI-riddled
+ * log in which the real TimeoutError / Error / Expected-line is buried
+ * hundreds of lines deep. The LLM router consistently misclassifies these.
+ *
+ * This scanner walks the raw output looking for Playwright's test-failure
+ * header pattern:
+ *     1) [project] › e2e/feature.spec.ts:123:45 › suite › test title
+ * and captures the first `TimeoutError:` / `Error:` / `Expected:` lines
+ * that follow before the next failure header or the end of the report.
+ * Returns a compact markdown block, or `null` when no failure header
+ * could be located (caller should fall back to untrimmed raw text).
+ *
+ * Exported for unit testing; consumed by `contract-evidence.ts`.
+ */
+const FAILURE_HEADER_RE = /^\s*\d+\)\s+\[[^\]]+\]\s+›\s+(\S+)\s+›\s+(.+)$/;
+const CAUSE_LINE_RE = /^\s*(?:Error|TimeoutError|Expected|Received|Actual):/;
+
+export function extractPrimaryCause(rawError: string): string | null {
+  if (!rawError) return null;
+  const lines = stripAnsi(rawError).split(/\r?\n/);
+  let lastHeader: { idx: number; file: string; title: string } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const m = FAILURE_HEADER_RE.exec(lines[i]);
+    if (m) lastHeader = { idx: i, file: m[1], title: m[2].trim() };
+  }
+  if (!lastHeader) return null;
+
+  // Scan up to ~60 lines after the header for the cause lines.
+  const end = Math.min(lastHeader.idx + 60, lines.length);
+  const causeLines: string[] = [];
+  for (let i = lastHeader.idx + 1; i < end; i++) {
+    const ln = lines[i];
+    if (FAILURE_HEADER_RE.test(ln)) break;
+    if (CAUSE_LINE_RE.test(ln)) {
+      causeLines.push(ln.trim());
+      if (causeLines.length >= 6) break;
+    }
+  }
+  if (causeLines.length === 0) return null;
+
+  return [
+    `Failing test: \`${lastHeader.file}\` › ${lastHeader.title}`,
+    ...causeLines.map((l) => `  ${l}`),
+  ].join("\n");
+}
+
+/**
+ * Round-2 R3 (replacement) — compute an error signature from the STRUCTURED
+ * failure shape, not from raw stdout.
+ *
+ * Motivation: when a Playwright handler produces a `StructuredFailure`, its
+ * free-form log is dominated by tens of kilobytes of React warning console
+ * dumps whose component stacks rotate between builds (e.g. PWA Kit's
+ * `vendor.js:L:C` / `main.js:L:C` frames). Hashing that prose makes the
+ * signature unstable across builds even when the real failure — a
+ * `TimeoutError: locator.waitFor: waiting for getByTestId('quick-view-modal')`
+ * — is identical.
+ *
+ * The structured hash is built from fields that are stable by construction:
+ *   - each failing test's first error-line class (`TimeoutError`, `Error`, …),
+ *   - each failing test's title,
+ *   - each failing test's first `getByTestId('…')` locator (the contract surface),
+ *   - the count of `uncaughtErrors` (not their texts — those carry line:col too).
+ *
+ * Returns `null` when the input is not a playwright-json StructuredFailure or
+ * carries no failing tests — callers then fall back to the raw-string hash.
+ */
+const ERROR_CLASS_RE = /^\s*(TimeoutError|TypeError|ReferenceError|RangeError|SyntaxError|Error|AssertionError)\b/;
+const GET_BY_TESTID_SIG_RE = /getByTestId\(\s*['"]([^'"]+)['"]\s*\)/;
+
+export function computeStructuredSignature(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  if ((payload as { kind?: unknown }).kind !== "playwright-json") return null;
+  const f = payload as StructuredFailure;
+  if (f.failedTests.length === 0 && f.uncaughtErrors.length === 0) return null;
+
+  // Canonicalise each failing test into a stable tuple.
+  const testTuples = f.failedTests
+    .map((t) => {
+      const firstErrLine = (t.error || "").split(/\r?\n/)[0] ?? "";
+      const cls = ERROR_CLASS_RE.exec(firstErrLine)?.[1] ?? "Error";
+      const locator = GET_BY_TESTID_SIG_RE.exec(t.error)?.[1]
+        ?? GET_BY_TESTID_SIG_RE.exec(t.stackHead)?.[1]
+        ?? "";
+      return `${cls}|${t.title}|${locator}`;
+    })
+    // Deterministic ordering — tests may be reported in different orders
+    // between runs when workers shuffle.
+    .sort();
+
+  // Uncaught errors: count only. Their message text carries line:col noise
+  // and is correlated 1:1 with how many tests crashed.
+  const uncaughtCount = f.uncaughtErrors.length;
+
+  const canonical = `pw|tests=${testTuples.join(";")}|uncaught=${uncaughtCount}`;
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }

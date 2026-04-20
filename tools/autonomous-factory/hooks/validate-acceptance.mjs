@@ -36,6 +36,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -122,7 +123,12 @@ async function loadContract() {
       ? parsed.forbidden_network_failures
       : [],
   };
-  return contract;
+  // Round-2 R1: sha256 over the raw contract bytes is the idempotency key.
+  // If the contract did not change between e2e failures, there is no reason
+  // to re-synthesize + re-run the oracle spec — the previous verdict is still
+  // authoritative and writing it again would just churn artifacts.
+  const acceptanceHash = crypto.createHash("sha256").update(raw).digest("hex");
+  return { contract, acceptanceHash };
 }
 
 // ---------------------------------------------------------------------------
@@ -302,23 +308,49 @@ function extractViolations(reportPath) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  let contract;
+  let loaded;
   try {
-    contract = await loadContract();
+    loaded = await loadContract();
   } catch (err) {
     writeOutcome({ outcome: "fail", reason: "contract-parse-error", message: err.message, violations: [] });
     console.error(`validate-acceptance: ${err.message}`);
     process.exit(1);
   }
 
-  if (!contract) {
+  if (!loaded) {
     writeOutcome({ outcome: "skipped", reason: "no-acceptance-contract", violations: [] });
     console.log(`validate-acceptance: no ${ACCEPTANCE_PATH} — skipping (feature predates spec-compiler).`);
     return 0;
   }
 
+  const { contract, acceptanceHash } = loaded;
+
+  // Round-2 R1: idempotency. The oracle now runs on every `e2e-runner.post`
+  // — including failed e2e runs — so back-to-back invocations with an
+  // unchanged contract must be a no-op. Re-using the prior verdict also
+  // preserves stable error signatures for `halt_on_identical` detection.
+  if (fs.existsSync(VALIDATION_PATH)) {
+    try {
+      const prior = JSON.parse(fs.readFileSync(VALIDATION_PATH, "utf-8"));
+      if (
+        prior
+        && typeof prior === "object"
+        && prior.acceptanceHash === acceptanceHash
+        && (prior.outcome === "pass" || prior.outcome === "fail")
+      ) {
+        console.log(
+          `validate-acceptance: idempotent skip — contract unchanged since last run ` +
+            `(hash=${acceptanceHash.slice(0, 12)}, outcome=${prior.outcome}).`,
+        );
+        return prior.outcome === "pass" ? 0 : 1;
+      }
+    } catch {
+      // Malformed prior verdict — fall through and re-run the oracle.
+    }
+  }
+
   if (contract.required_flows.length === 0 && contract.required_dom.length === 0) {
-    writeOutcome({ outcome: "fail", reason: "contract-empty", violations: [
+    writeOutcome({ outcome: "fail", reason: "contract-empty", acceptanceHash, violations: [
       { title: "contract-shape", file: ACCEPTANCE_PATH, status: "invalid", message: "Acceptance contract must declare at least one required_flow or required_dom entry." },
     ]});
     console.error("validate-acceptance: acceptance contract declares no flows and no DOM — rejecting.");
@@ -335,6 +367,7 @@ async function main() {
         outcome: "fail",
         reason: "playwright-spawn-error",
         message: String(error),
+        acceptanceHash,
         violations: [],
       });
       console.error(`validate-acceptance: failed to spawn Playwright: ${error}`);
@@ -346,6 +379,7 @@ async function main() {
     writeOutcome({
       outcome,
       playwrightExit: status,
+      acceptanceHash,
       violations,
       flows: contract.required_flows.map((f) => f.name),
       dom: contract.required_dom.map((d) => d.testid),

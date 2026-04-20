@@ -203,7 +203,15 @@ nodes:
     # (the Debian default /bin/sh) and have a stable location that can be
     # diagnosed manually: `bash .apm/hooks/e2e-runner-pre.sh`.
     pre: "bash .apm/hooks/e2e-runner-pre.sh"
-    post: "bash .apm/hooks/e2e-runner-post.sh"
+    # Round-2 fix R1: the acceptance oracle must run on EVERY e2e failure,
+    # not only after a successful deploy. It was previously chained on
+    # `poll-app-ci.post` which is downstream of the failure gate and thus
+    # never reached when e2e-runner fails (the common case). Running it
+    # here populates `<slug>_VALIDATION.json` so triage/contract-evidence
+    # can front-load the real verdict instead of the raw ANSI log.
+    # The trailing `|| true` is critical: the oracle augments artifacts —
+    # it must never mask the underlying e2e failure that triggered it.
+    post: "bash .apm/hooks/e2e-runner-post.sh && (node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs \"${APP_ROOT}\" \"${SLUG}\" || true)"
     # Dev server boot polls up to 120 s; give the hook 5 minutes headroom
     # (default 30 s would kill the hook before it could succeed).
     timeout_minutes: 10
@@ -274,11 +282,11 @@ nodes:
     timeout_minutes: 15
     script_type: poll
     ci_workflow_key: app
-    # Post-deploy oracle: validate-app.sh covers HTTP reachability; the
-    # acceptance oracle replays the feature's compiled contract against the
-    # live URL. The acceptance oracle is shipped with the orchestrator so
-    # agents cannot tamper with it mid-cycle.
-    post: "bash .apm/hooks/validate-app.sh && node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs"
+    # Post-deploy reachability check. The acceptance oracle moved to
+    # `e2e-runner.post` in Round-2 R1 — running it here again would be
+    # redundant once e2e has already passed (same contract, same URL
+    # target against localhost:3000 via the Managed Runtime preview).
+    post: "bash .apm/hooks/validate-app.sh"
     captures_head_sha: true
     circuit_breaker:
       halt_on_identical: true

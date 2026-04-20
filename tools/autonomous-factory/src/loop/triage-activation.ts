@@ -24,6 +24,7 @@ import {
   resolveFailureTarget,
   resolveFailureRoutes,
 } from "../domain/failure-routing.js";
+import { computeStructuredSignature } from "../triage/playwright-report.js";
 
 /**
  * Derive triage activations from batch commands + post-batch DAG state.
@@ -62,7 +63,6 @@ export function resolveTriageActivations(
 
     const failureRoutes = resolveFailureRoutes(workflow, failingKey);
     const rawError = cmd.message || "Unknown failure";
-    const errorSignature = computeSignature(rawError);
     const failingNodeSummary = findLastSummary(runState.pipelineSummaries, failingKey);
 
     // When the failing handler emitted a parsed structured-failure shape
@@ -73,6 +73,13 @@ export function resolveTriageActivations(
       bag && typeof bag === "object" && "structuredFailure" in bag
         ? (bag as { structuredFailure?: unknown }).structuredFailure
         : undefined;
+
+    // Prefer a structured signature (stable across builds) over hashing the
+    // raw error prose. This mirrors the kernel-side override in
+    // `result-translator.ts` so the activation's `errorSignature` matches
+    // what's recorded in `errorLog`.
+    const structuredSig = structuredFailure ? computeStructuredSignature(structuredFailure) : null;
+    const errorSignature = structuredSig ?? computeSignature(rawError);
 
     byFailingKey.set(failingKey, {
       triageNodeKey,

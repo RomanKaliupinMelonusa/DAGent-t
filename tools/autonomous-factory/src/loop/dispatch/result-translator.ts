@@ -9,6 +9,7 @@
 import type { NodeResult, DagCommand } from "../../handlers/types.js";
 import type { Command } from "../../kernel/commands.js";
 import { wrapDagCommands } from "../../kernel/commands.js";
+import { computeStructuredSignature } from "../../triage/playwright-report.js";
 
 /** Fail-command policy resolved from the node's circuit_breaker config. */
 export interface FailPolicy {
@@ -42,6 +43,14 @@ export function translateResult(
   if (result.outcome === "completed") {
     commands.push({ type: "complete-item", itemKey });
   } else {
+    // Round-2 R3 (replacement): when the handler emitted a parsed
+    // `StructuredFailure`, derive a signature from its stable fields
+    // (testid locators, error class, test titles) rather than hashing the
+    // raw stdout. Raw stdout is dominated by React-warning console dumps
+    // whose component-stack line:col rotates between builds, which was
+    // defeating `halt_on_identical` even for identical failures.
+    const structuredFailure = result.handlerOutput?.structuredFailure;
+    const structuredSig = structuredFailure ? computeStructuredSignature(structuredFailure) : null;
     commands.push({
       type: "fail-item",
       itemKey,
@@ -54,6 +63,7 @@ export function translateResult(
       ...(failPolicy?.haltOnIdenticalExcludedKeys && failPolicy.haltOnIdenticalExcludedKeys.length > 0
         ? { haltOnIdenticalExcludedKeys: failPolicy.haltOnIdenticalExcludedKeys }
         : {}),
+      ...(structuredSig ? { errorSignature: structuredSig } : {}),
     });
   }
 

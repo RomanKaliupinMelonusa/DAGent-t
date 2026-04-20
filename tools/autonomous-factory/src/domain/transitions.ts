@@ -118,6 +118,14 @@ export interface FailItemOptions {
    * expected to repeat without being a symptom of the dev agent being stuck.
    */
   readonly haltOnIdenticalExcludedKeys?: readonly string[];
+  /**
+   * Pre-computed signature supplied by the caller. When set, `failItem`
+   * uses this verbatim and skips `signatureFn(message)`. Handlers that
+   * can produce a structurally-stable fingerprint (e.g. from a parsed
+   * Playwright `StructuredFailure`) use this to prevent rotating tokens
+   * in the raw message from defeating `halt_on_identical`.
+   */
+  readonly overrideSignature?: string;
 }
 
 /**
@@ -154,19 +162,23 @@ export function failItem(
   );
 
   const newSignature = message ? signatureFn(message) : null;
+  // When the caller supplies a structurally-stable signature (e.g. derived
+  // from a parsed `StructuredFailure`), use it verbatim. This bypasses the
+  // volatile-pattern regex path for handlers that can produce a better hash.
+  const effectiveSignature = opts.overrideSignature ?? newSignature;
   const newEntry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     itemKey,
     message: message || "Unknown failure",
-    errorSignature: newSignature,
+    errorSignature: effectiveSignature,
   };
 
   // Halt-on-identical (legacy, per-item): if the most recent prior entry for
   // this item has a matching signature, short-circuit the budget and halt.
   let identicalHalt = false;
-  if (haltOnIdentical && newSignature) {
+  if (haltOnIdentical && effectiveSignature) {
     const priorForItem = [...state.errorLog].reverse().find((e) => e.itemKey === itemKey);
-    if (priorForItem && priorForItem.errorSignature === newSignature) {
+    if (priorForItem && priorForItem.errorSignature === effectiveSignature) {
       identicalHalt = true;
     }
   }
@@ -184,10 +196,10 @@ export function failItem(
   if (
     haltThreshold !== undefined &&
     haltThreshold > 0 &&
-    newSignature &&
+    effectiveSignature &&
     !haltExcludedKeys.includes(itemKey)
   ) {
-    thresholdMatchCount = newErrorLog.filter((e) => e.errorSignature === newSignature).length;
+    thresholdMatchCount = newErrorLog.filter((e) => e.errorSignature === effectiveSignature).length;
     if (thresholdMatchCount >= haltThreshold) {
       thresholdHalt = true;
     }
@@ -200,7 +212,7 @@ export function failItem(
     ...(thresholdHalt
       ? { haltedByThreshold: true as const, thresholdMatchCount }
       : {}),
-    errorSignature: newSignature,
+    errorSignature: effectiveSignature,
   };
 }
 
