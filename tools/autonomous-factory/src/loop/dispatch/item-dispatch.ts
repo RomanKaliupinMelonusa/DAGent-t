@@ -13,6 +13,7 @@ import { composeMiddleware } from "../../handlers/middleware.js";
 import { autoSkipMiddleware } from "../../handlers/middlewares/auto-skip.js";
 import { lifecycleHooksMiddleware } from "../../handlers/middlewares/lifecycle-hooks.js";
 import type { Command } from "../../kernel/commands.js";
+import type { ItemSummary } from "../../types.js";
 import { translateResult, type FailPolicy } from "./result-translator.js";
 import { resolveNodeBudgetPolicy, getWorkflowNode, resolveWorkflowHaltPolicy } from "../../session/dag-utils.js";
 
@@ -58,6 +59,9 @@ export async function dispatchItem(
 
   const run = composeMiddleware(middlewares, (innerCtx) => handler.execute(innerCtx));
 
+  const startedAt = new Date().toISOString();
+  const stepStart = Date.now();
+
   let result: NodeResult;
   try {
     result = await run(ctx);
@@ -72,12 +76,80 @@ export async function dispatchItem(
 
   commands.push(...translateResult(ctx.itemKey, result, resolveFailPolicy(ctx)));
 
+  // Emit `record-summary` so `runState.pipelineSummaries` is populated for
+  // downstream consumers (triage context builder, change manifest,
+  // flight-data reports, no-op-dev guard). `result.summary` is a
+  // `Partial<ItemSummary>` — synthesize the required scalar fields here
+  // and let handler-supplied fields override. Runs for every item type
+  // (agent, local-exec, poll, triage) so the pipelineSummaries invariant
+  // no longer silently breaks when non-agent handlers fail.
+  commands.push({
+    type: "record-summary",
+    summary: materializeItemSummary(ctx, result, startedAt, stepStart),
+  });
+
   return {
     commands,
     signal: result.signal,
     signals: result.signals,
     summary: result.summary,
   };
+}
+
+/**
+ * Build a full `ItemSummary` from the handler result and dispatch context.
+ * Handlers that populate `result.summary` (e.g. `copilot-agent`) override
+ * the synthesized defaults; handlers that return `summary: {}` still get
+ * a well-formed record so downstream context builders can filter on
+ * `outcome`, `key`, and `errorMessage`.
+ */
+function materializeItemSummary(
+  ctx: NodeContext,
+  result: NodeResult,
+  startedAt: string,
+  stepStart: number,
+): ItemSummary {
+  const finishedAt = new Date().toISOString();
+  const durationMs = Date.now() - stepStart;
+  const outcome: ItemSummary["outcome"] =
+    result.outcome === "completed" ? "completed"
+      : result.outcome === "failed" ? "failed"
+      : "error";
+  const workflowName = ctx.pipelineState.workflowName;
+  const node = workflowName
+    ? getWorkflowNode(ctx.apmContext, workflowName, ctx.itemKey)
+    : undefined;
+  const base: ItemSummary = {
+    key: ctx.itemKey,
+    label: (node as { label?: string } | undefined)?.label ?? ctx.itemKey,
+    agent: (node as { agent?: string } | undefined)?.agent ?? ctx.itemKey,
+    attempt: ctx.attempt,
+    startedAt,
+    finishedAt,
+    durationMs,
+    outcome,
+    intents: [],
+    messages: [],
+    filesRead: [],
+    filesChanged: [],
+    shellCommands: [],
+    toolCounts: {},
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
+  };
+  // Handler-supplied fields win, but never clobber the resolved outcome,
+  // key, or attempt — those are dispatch-authoritative.
+  return {
+    ...base,
+    ...result.summary,
+    key: base.key,
+    attempt: base.attempt,
+    outcome,
+    errorMessage: result.errorMessage ?? result.summary?.errorMessage,
+  } as ItemSummary;
 }
 
 /**

@@ -74,4 +74,29 @@ describe("composeTriageContext rawMode=true", () => {
     assert.match(out, /Redevelopment Context/);
     assert.ok(!/Most recent failure output/.test(out), "legacy mode should not emit raw section header");
   });
+
+  it("renders raw failure block from failureFallback when pipelineSummaries is empty", () => {
+    // Fallback path: the handler always threads the activation's rawError
+    // through `failureFallback` so the redevelopment block still renders
+    // even when `pipelineSummaries` happens to be empty (e.g. tests, or
+    // self-activated triage firing before any downstream record exists).
+    const out = composeTriageContext({
+      slug: "non-existent-slug-xyz",
+      itemKey: "storefront-dev",
+      attempt: 1,
+      effectiveAttempts: 1,
+      pipelineSummaries: [],
+      allowsRevertBypass: true,
+      rawMode: true,
+      failureFallback: {
+        failingItemKey: "e2e-runner",
+        rawError: "Error: getServerSnapshot should be cached to avoid infinite loop",
+      },
+    });
+
+    assert.match(out, /Redevelopment Context/);
+    assert.match(out, /Most recent failure output/);
+    assert.match(out, /getServerSnapshot/);
+    assert.match(out, /`e2e-runner`/);
+  });
 });

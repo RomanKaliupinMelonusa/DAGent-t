@@ -105,6 +105,22 @@ storefront:
       - poll-app-ci
       - publish-pr
 
+  # ── Error-signature fingerprinter: Playwright volatile tokens ──────
+  # Stripped in addition to the built-in stack-agnostic defaults before
+  # hashing. Prevents rotating run totals, progress counters, durations,
+  # and per-run test-result paths from producing a different signature
+  # every cycle (which would defeat halt_on_identical).
+  error_signature:
+    volatile_patterns:
+      - { pattern: '\d+ passed(?:, \d+ failed)?(?:, \d+ total)?', replacement: "<PW_TOTALS>" }
+      - { pattern: 'Running \d+ tests? using \d+ workers?',      replacement: "<PW_RUN>" }
+      - { pattern: '\[\d+/\d+\]',                                 replacement: "<PW_PROGRESS>" }
+      - { pattern: '\(\d+(?:\.\d+)?\s*(?:ms|m|s)\)',              replacement: "<DUR>" }
+      - { pattern: 'Timeout \d+ms exceeded',                      replacement: "Timeout <MS>ms exceeded" }
+      - { pattern: 'test-results/[^\s)"''`]+',                    replacement: "<TEST_RESULT>" }
+      - { pattern: 'attachment #\d+',                             replacement: "attachment #<N>" }
+      - { pattern: '\d+ did not run',                             replacement: "<PW_NOTRUN>" }
+
   # ── Triage Profiles ─────────────────────────────────────────────────
   triage:
     storefront:

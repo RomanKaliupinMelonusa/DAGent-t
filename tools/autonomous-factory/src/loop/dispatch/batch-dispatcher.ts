@@ -64,6 +64,35 @@ export async function dispatchBatch(
         itemKey: ctx.itemKey,
         message: `Dispatch crash: ${err.message}`,
       });
+      // Mirror the `record-summary` emission from `dispatchItem` so the
+      // crash path also populates `runState.pipelineSummaries`. Without
+      // this, a handler-level crash would leave no record for downstream
+      // triage context and reports.
+      const nowIso = new Date().toISOString();
+      commands.push({
+        type: "record-summary",
+        summary: {
+          key: ctx.itemKey,
+          label: ctx.itemKey,
+          agent: ctx.itemKey,
+          attempt: ctx.attempt,
+          startedAt: nowIso,
+          finishedAt: nowIso,
+          durationMs: 0,
+          outcome: "error",
+          errorMessage: `Dispatch crash: ${err.message}`,
+          intents: [],
+          messages: [],
+          filesRead: [],
+          filesChanged: [],
+          shellCommands: [],
+          toolCounts: {},
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      });
     } else {
       commands.push(...settlement.value.commands);
       itemResults.push({

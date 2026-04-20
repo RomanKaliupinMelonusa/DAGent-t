@@ -56,8 +56,8 @@ describe("dispatchBatch", () => {
     ];
     const result = await dispatchBatch(pairs);
 
-    // Each item: record-attempt + complete-item = 2 commands each
-    assert.equal(result.commands.length, 4);
+    // Each item: record-attempt + complete-item + record-summary = 3 commands each
+    assert.equal(result.commands.length, 6);
     assert.equal(result.errors.length, 0);
     assert.equal(result.itemResults.length, 2);
   });

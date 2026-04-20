@@ -264,16 +264,32 @@ export function buildDownstreamFailureContextRaw(
   pipelineSummaries: readonly ItemSummary[],
   slug?: string,
   allowsRevertBypass?: boolean,
+  /** Direct failure source when `pipelineSummaries` is empty. Used when the
+   *  triage node fires before any downstream failure record has been
+   *  materialized (e.g. self-activation), or when a caller supplies the
+   *  activation payload directly without going through the run state. */
+  failureFallback?: { failingItemKey: string; rawError: string },
 ): string {
   if (!allowsRevertBypass) return "";
 
   const downstreamFailures = pipelineSummaries.filter(
     (s) => s.outcome !== "completed",
   ).filter((s) => s.key !== itemKey);
-  if (downstreamFailures.length === 0) return "";
 
-  const latest = downstreamFailures[downstreamFailures.length - 1];
-  const rawError = stripAnsi(latest.errorMessage ?? "(no error message captured)");
+  // Resolve failure source: prefer pipelineSummaries when populated, else fall
+  // back to the triage activation payload threaded through by the handler.
+  let latestKey: string;
+  let rawError: string;
+  if (downstreamFailures.length > 0) {
+    const latest = downstreamFailures[downstreamFailures.length - 1];
+    latestKey = latest.key;
+    rawError = stripAnsi(latest.errorMessage ?? "(no error message captured)");
+  } else if (failureFallback) {
+    latestKey = failureFallback.failingItemKey;
+    rawError = stripAnsi(failureFallback.rawError || "(no error message captured)");
+  } else {
+    return "";
+  }
 
   // Read errorLog from state for the historian (best-effort).
   let errorLog: Array<{ timestamp: string; itemKey: string; message: string; errorSignature?: string | null }> = [];
@@ -329,7 +345,7 @@ export function buildDownstreamFailureContextRaw(
   parts.push("\n\n## Redevelopment Context (CRITICAL)");
   parts.push("");
   parts.push(
-    `A downstream step (\`${latest.key}\`) failed and you are being re-invoked to fix the root cause.`,
+    `A downstream step (\`${latestKey}\`) failed and you are being re-invoked to fix the root cause.`,
   );
   parts.push("");
   if (historyBlock) {
@@ -501,6 +517,10 @@ export function composeTriageContext(opts: {
    *  the legacy LLM-condensed diagnosis + identical-error warning path.
    *  Wired from `config.context.raw_mode` in `.apm/apm.yml`. */
   rawMode?: boolean;
+  /** Direct failure source for raw-mode when `pipelineSummaries` is empty.
+   *  Populated by the triage handler from the activation payload so the
+   *  redevelopment block renders even when no `ItemSummary` records exist. */
+  failureFallback?: { failingItemKey: string; rawError: string };
 }): string {
   const parts: string[] = [];
 
@@ -518,6 +538,7 @@ export function composeTriageContext(opts: {
       opts.pipelineSummaries,
       opts.slug,
       opts.allowsRevertBypass,
+      opts.failureFallback,
     )
     : buildDownstreamFailureContext(
       opts.itemKey,

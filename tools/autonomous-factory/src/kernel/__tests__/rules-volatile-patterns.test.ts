@@ -117,4 +117,54 @@ describe("DefaultKernelRules — volatile patterns injection", () => {
       rules.computeErrorSignature("saw tok-xyz"),
     );
   });
+
+  it("commerce-storefront Playwright patterns collapse rotating e2e output", () => {
+    // Mirrors the patterns declared in
+    // `apps/commerce-storefront/.apm/workflows.yml` → storefront.error_signature.
+    // Two real-shape Playwright failure blobs that differ only in volatile
+    // tokens should produce IDENTICAL signatures so `halt_on_identical` fires.
+    const workflowPatterns = compileVolatilePatterns([
+      { pattern: "\\d+ passed(?:, \\d+ failed)?(?:, \\d+ total)?", replacement: "<PW_TOTALS>" },
+      { pattern: "Running \\d+ tests? using \\d+ workers?", replacement: "<PW_RUN>" },
+      { pattern: "\\[\\d+/\\d+\\]", replacement: "<PW_PROGRESS>" },
+      { pattern: "\\(\\d+(?:\\.\\d+)?\\s*(?:ms|m|s)\\)", replacement: "<DUR>" },
+      { pattern: "Timeout \\d+ms exceeded", replacement: "Timeout <MS>ms exceeded" },
+      { pattern: "test-results/[^\\s)\"'`]+", replacement: "<TEST_RESULT>" },
+      { pattern: "attachment #\\d+", replacement: "attachment #<N>" },
+      { pattern: "\\d+ did not run", replacement: "<PW_NOTRUN>" },
+    ]);
+    const rules = new DefaultKernelRules({ workflowPatterns });
+
+    const cycle1 = [
+      "Running 14 tests using 4 workers",
+      "  [1/14] product-quick-view.spec.ts:12",
+      "  [4/14] product-quick-view.spec.ts:33",
+      "  1) product-quick-view.spec.ts:12 › quick view opens (59.6s)",
+      "     Error: getServerSnapshot should be cached to avoid infinite loop",
+      "     Timeout 20000ms exceeded.",
+      "     attachment #1: screenshot",
+      "     test-results/product-quick-view-Product-e5210-view-opens/trace.zip",
+      "  3 passed, 3 failed, 6 total",
+      "  8 did not run",
+    ].join("\n");
+
+    const cycle2 = [
+      "Running 14 tests using 2 workers",
+      "  [3/14] product-quick-view.spec.ts:12",
+      "  [9/14] product-quick-view.spec.ts:33",
+      "  1) product-quick-view.spec.ts:12 › quick view opens (1.6m)",
+      "     Error: getServerSnapshot should be cached to avoid infinite loop",
+      "     Timeout 20000ms exceeded.",
+      "     attachment #4: screenshot",
+      "     test-results/product-quick-view-Product-a9931-view-opens/trace.zip",
+      "  2 passed, 4 failed, 6 total",
+      "  6 did not run",
+    ].join("\n");
+
+    assert.equal(
+      rules.computeErrorSignature(cycle1),
+      rules.computeErrorSignature(cycle2),
+      "Playwright volatile tokens must collapse to one signature",
+    );
+  });
 });

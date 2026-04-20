@@ -144,6 +144,7 @@ async function buildRerouteCommands(
       ciScopeWarning: ctx.apmContext.config?.ci_scope_warning as string | undefined,
       rejectionContext: rejectionCtx || undefined,
       rawMode: ctx.apmContext.config?.context?.raw_mode === true,
+      failureFallback: { failingItemKey: failingNodeKey, rawError },
     });
     if (composed) {
       // B1 — emit structured handoff alongside the narrative so the adapter
