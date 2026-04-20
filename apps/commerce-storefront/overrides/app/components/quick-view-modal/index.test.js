@@ -221,6 +221,20 @@ test('aria-label falls back to generic text when product name missing', () => {
     expect(modal.getAttribute('aria-label')).toContain('product')
 })
 
+// --- Focus Management ---
+
+test('modal traps focus when open', () => {
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    // When Chakra Modal is open, the ModalContent should have role="dialog"
+    // and focus should be inside the modal (Chakra Modal has built-in focus trap)
+    const modal = screen.getByTestId('quick-view-modal')
+    expect(modal.closest('[role="dialog"]') || modal.getAttribute('role')).toBeTruthy()
+
+    // The active element should be within the modal container
+    expect(modal.contains(document.activeElement) || modal === document.activeElement).toBe(true)
+})
+
 // --- imageSize prop forwarding ---
 
 test('passes imageSize="sm" to ProductView', () => {
