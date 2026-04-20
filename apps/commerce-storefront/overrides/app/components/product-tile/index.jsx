@@ -93,11 +93,16 @@ const ProductTile = (props) => {
                         </Box>
                     </Box>
 
-                    <QuickViewModal
-                        product={product}
-                        isOpen={isOpen}
-                        onClose={onClose}
-                    />
+                    {/* Only mount modal after client-side click — prevents
+                        useProductViewModal hooks from firing during SSR for
+                        every tile on the page (25 tiles = 25 API calls). */}
+                    {isOpen && (
+                        <QuickViewModal
+                            product={product}
+                            isOpen={isOpen}
+                            onClose={onClose}
+                        />
+                    )}
                 </>
             )}
         </Box>
