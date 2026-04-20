@@ -212,3 +212,47 @@ test('container has role="group" for hover pseudo', () => {
     const groupContainer = btn.closest('[role="group"]')
     expect(groupContainer).toBeInTheDocument()
 })
+
+// --- Additional branch coverage ---
+
+test('overlay bar aria-label uses name field when productName is missing', () => {
+    const productWithNameOnly = {
+        productId: 'name-only-001',
+        name: 'Fallback Name Product',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNameOnly} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View Fallback Name Product')
+})
+
+test('overlay bar aria-label is empty string when no name fields exist', () => {
+    const productWithNoName = {
+        productId: 'no-name-001',
+        image: {alt: 'test', disBaseLink: 'https://example.com/test.jpg'},
+        imageGroups: []
+    }
+    renderWithProviders(<ProductTile product={productWithNoName} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    expect(btn.getAttribute('aria-label')).toBe('Quick View ')
+})
+
+test('bar is positioned absolutely with full width', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    const btn = screen.getByTestId('quick-view-btn')
+    // The button has position: absolute, bottom: 0, left: 0, right: 0 via Chakra
+    expect(btn).toHaveStyle({position: 'absolute'})
+})
+
+test('renders base product tile inside the wrapper', () => {
+    renderWithProviders(<ProductTile product={mockStandardProduct} />)
+
+    const baseTile = screen.getByTestId('base-product-tile')
+    const groupWrapper = baseTile.closest('[role="group"]')
+    expect(groupWrapper).toBeInTheDocument()
+    expect(groupWrapper).toContainElement(baseTile)
+})

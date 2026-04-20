@@ -220,3 +220,49 @@ test('aria-label falls back to generic text when product name missing', () => {
     const modal = screen.getByTestId('quick-view-modal')
     expect(modal.getAttribute('aria-label')).toContain('product')
 })
+
+// --- imageSize prop forwarding ---
+
+test('passes imageSize="sm" to ProductView', () => {
+    // The ProductView mock renders whatever we give it — verify via spying
+    const ProductViewMock = require('@salesforce/retail-react-app/app/components/product-view').default
+    const spy = jest.fn(ProductViewMock)
+    jest.spyOn(
+        require('@salesforce/retail-react-app/app/components/product-view'),
+        'default'
+    ).mockImplementation(spy)
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({imageSize: 'sm'}),
+        expect.anything()
+    )
+
+    // Restore
+    jest.restoreAllMocks()
+})
+
+// --- Error Boundary ---
+
+test('error boundary renders fallback when ProductView throws', () => {
+    // Make ProductView throw during render
+    jest.spyOn(
+        require('@salesforce/retail-react-app/app/components/product-view'),
+        'default'
+    ).mockImplementation(() => {
+        throw new Error('Render explosion')
+    })
+
+    // Suppress console.error from error boundary
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderWithProviders(<QuickViewModal {...defaultProps} />)
+
+    const errorElement = screen.getByTestId('quick-view-error')
+    expect(errorElement).toBeInTheDocument()
+    expect(errorElement.textContent).toContain('Unable to load product details')
+
+    consoleSpy.mockRestore()
+    jest.restoreAllMocks()
+})
