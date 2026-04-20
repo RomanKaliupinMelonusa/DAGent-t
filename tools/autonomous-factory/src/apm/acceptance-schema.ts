@@ -1,0 +1,147 @@
+/**
+ * apm/acceptance-schema.ts — Machine-checkable acceptance contract for a feature.
+ *
+ * Produced by the `spec-compiler` agent at feature-init from the
+ * human-readable `_SPEC.md`, and written to
+ * `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`.
+ *
+ * Consumed by:
+ *   - `storefront-dev` — injected into the prompt alongside the spec.
+ *   - `e2e-author` (Phase A.4) — the blind SDET reads this in place of impl.
+ *   - `validate-acceptance.mjs` (Phase B.1) — runs a Playwright smoke
+ *     materialized from the required DOM + flows.
+ *   - `qa-adversary` (Phase B.2) — adversarial probes.
+ *   - `docs-archived` (Phase D.3) — summary discipline.
+ *
+ * The schema is intentionally minimal. Every field maps to something a
+ * browser can check or a reviewer can scan. Anything that requires LLM
+ * judgement to verify is deliberately excluded.
+ */
+
+import { z } from "zod";
+
+/** One concrete DOM element the feature must expose to users. */
+export const RequiredDomSchema = z.object({
+  /** `data-testid` value (preferred) or CSS selector prefixed with `css:`. */
+  testid: z.string().min(1),
+  /** Human-friendly name — used in failure messages and report summaries. */
+  description: z.string().min(1),
+  /** When true, the element must contain non-empty text content to pass.
+   *  Guards against empty/loading placeholders masquerading as a pass. */
+  requires_non_empty_text: z.boolean().default(false),
+  /** Optional: a substring the element's text must contain (case-insensitive). */
+  contains_text: z.string().optional(),
+});
+
+/** One scripted user journey the feature must support. */
+export const FlowStepSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("goto"), url: z.string() }),
+  z.object({ action: z.literal("click"), testid: z.string() }),
+  z.object({ action: z.literal("fill"), testid: z.string(), value: z.string() }),
+  z.object({ action: z.literal("assert_visible"), testid: z.string(), timeout_ms: z.number().int().positive().optional() }),
+  z.object({ action: z.literal("assert_text"), testid: z.string(), contains: z.string() }),
+]);
+
+export const RequiredFlowSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  steps: z.array(FlowStepSchema).min(1),
+});
+
+export const AcceptanceContractSchema = z.object({
+  /** Feature slug — must match the pipeline `<slug>`. Prevents copy-paste errors. */
+  feature: z.string().min(1),
+  /** Human-readable summary — one or two sentences, shown to reviewers. */
+  summary: z.string().min(1),
+  /** Every element on this list must be reachable at runtime. */
+  required_dom: z.array(RequiredDomSchema).default([]),
+  /** Every flow must pass end-to-end in `validate-acceptance.mjs`. */
+  required_flows: z.array(RequiredFlowSchema).default([]),
+  /** Regular expressions that MUST NOT match any browser console.error
+   *  captured during `validate-acceptance.mjs`. Defaults to the built-in
+   *  allowlist if omitted. */
+  forbidden_console_patterns: z.array(z.string()).default([
+    // TypeError / ReferenceError are almost never legitimate in prod.
+    "Uncaught\\s+(TypeError|ReferenceError|RangeError|SyntaxError)",
+    "Cannot read propert(y|ies) of (undefined|null)",
+  ]),
+  /** Regular expressions for URLs whose network failure would be a feature
+   *  defect (e.g. SCAPI product detail). Expressed as `METHOD URL_REGEX`. */
+  forbidden_network_failures: z.array(z.string()).default([]),
+  /** Base-template symbols the dev agent MUST audit for reuse before
+   *  introducing a wrapper. Not enforced at runtime — this list becomes
+   *  context for the dev prompt and a review checklist. */
+  base_template_reuse: z.array(z.object({
+    symbol: z.string().min(1),
+    package: z.string().min(1),
+    rationale: z.string().min(1),
+  })).default([]),
+});
+
+export type AcceptanceContract = z.infer<typeof AcceptanceContractSchema>;
+export type RequiredDom = z.infer<typeof RequiredDomSchema>;
+export type RequiredFlow = z.infer<typeof RequiredFlowSchema>;
+export type FlowStep = z.infer<typeof FlowStepSchema>;
+
+// ---------------------------------------------------------------------------
+// Loader — parse + validate from disk.
+// ---------------------------------------------------------------------------
+
+import fs from "node:fs";
+import { createHash } from "node:crypto";
+import yaml from "js-yaml";
+
+export class AcceptanceParseError extends Error {
+  constructor(message: string, public readonly path: string) {
+    super(`[acceptance:${path}] ${message}`);
+    this.name = "AcceptanceParseError";
+  }
+}
+
+/**
+ * Load and validate an ACCEPTANCE.yml from disk. Throws
+ * `AcceptanceParseError` with a file-tagged message on any problem —
+ * callers that want to tolerate missing contracts should catch and inspect.
+ */
+export function loadAcceptanceContract(absPath: string): AcceptanceContract {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(absPath, "utf-8");
+  } catch (err) {
+    throw new AcceptanceParseError(
+      `file not readable: ${(err as Error).message}`,
+      absPath,
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(raw);
+  } catch (err) {
+    throw new AcceptanceParseError(
+      `YAML parse error: ${(err as Error).message}`,
+      absPath,
+    );
+  }
+  const result = AcceptanceContractSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+      .join("; ");
+    throw new AcceptanceParseError(`schema violation: ${issues}`, absPath);
+  }
+  return result.data;
+}
+
+/**
+ * Deterministic fingerprint of an acceptance contract — used by the
+ * acceptance-immutable middleware (Phase A.2) to detect mid-cycle edits.
+ *
+ * The hash is computed over the normalized JSON form of the parsed
+ * contract, NOT the raw YAML, so whitespace/comment changes don't
+ * invalidate it.
+ */
+export function hashAcceptanceContract(contract: AcceptanceContract): string {
+  // Stable stringify — sort keys recursively.
+  const stable = JSON.stringify(contract, Object.keys(contract).sort());
+  return createHash("sha256").update(stable).digest("hex");
+}

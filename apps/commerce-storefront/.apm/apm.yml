@@ -4,6 +4,21 @@ description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless Reac
 tokenBudget: 10000
 
 agents:
+  spec-compiler:
+    # Narrow-scope agent: reads SPEC.md, writes ACCEPTANCE.yml. No impl access.
+    # Low token budget — this is an extraction job, not a coding job.
+    instructions: [always]
+    promptFile: spec-compiler.agent.md
+    mcp: []
+    skills: []
+    toolLimits: { soft: 30, hard: 45 }
+    security:
+      # Write ACCEPTANCE.yml only. `in-progress/` is the shared pipeline
+      # scratch dir; the spec-compiler must not touch feature code.
+      allowedWritePaths: ["(^|/)in-progress/.*_ACCEPTANCE\\.yml$"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
+    tools:
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent]
   storefront-dev:
     instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: storefront-dev.agent.md
@@ -48,11 +63,49 @@ agents:
     toolLimits: { soft: 50, hard: 70 }
     security:
       allowedWritePaths: ["(^|/)e2e/", "\\.spec\\."]
+      # SDET blind-to-impl guard (Phase A.4). The test author works from the
+      # spec + acceptance contract + existing tests + base-template docs
+      # ONLY. Reads of feature source (overrides/, config/, app/) are
+      # denied so tests cannot be reverse-engineered to match a buggy impl.
+      # Patterns are tested against app-relative paths by checkRbac.
+      allowedReadPaths:
+        - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY)\\."
+        - "^e2e/"
+        - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
+        # Allow reading base-template documentation (read-only learning).
+        - "^node_modules/@salesforce/retail-react-app/.*\\.(md|mdx)$"
+        # Allow reading package.json for test framework discovery.
+        - "(^|/)package\\.json$"
+        - "^tsconfig"
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
+  qa-adversary:
+    # Phase B.2 — Runs after e2e-runner, before create-draft-pr. Attempts
+    # to falsify the feature against the acceptance contract using
+    # adversarial probes. Same blind-to-impl stance as e2e-author, but
+    # it EXECUTES tests and reports violations as JSON.
+    instructions: [always]
+    promptFile: qa-adversary.agent.md
+    # No roam-code MCP — must not index implementation source; oracle is
+    # acceptance contract + live DOM only.
+    mcp: []
+    skills: []
+    toolLimits: { soft: 50, hard: 70 }
+    security:
+      allowedWritePaths:
+        - "(^|/)in-progress/.*_QA-REPORT\\.json$"
+        - "(^|/)e2e/_qa_.*\\.spec\\.ts$"
+      allowedReadPaths:
+        - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY|VALIDATION)\\."
+        - "^e2e/"
+        - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
+        - "(^|/)package\\.json$"
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
+    tools:
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent]
   code-cleanup:
     instructions: [always, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: code-cleanup.agent.md
@@ -95,6 +148,15 @@ agents:
 # Nodes define WHAT to execute; workflows define HOW to connect them.
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
+  spec-compiler:
+    type: agent
+    category: dev
+    agent: "@spec-compiler"
+    timeout_minutes: 10
+    # Pipeline scope — this is a pre-feature artifact, not feature code.
+    commit_scope: pipeline
+    diff_attribution_dirs: []
+
   storefront-dev:
     type: agent
     category: dev
@@ -145,8 +207,30 @@ nodes:
     # Dev server boot polls up to 120 s; give the hook 5 minutes headroom
     # (default 30 s would kill the hook before it could succeed).
     timeout_minutes: 10
+    # Structured-failure extractor — local-exec sets PLAYWRIGHT_JSON_OUTPUT_NAME
+    # to this path, parses the JSON reporter on failure, and exposes the
+    # parsed shape on handlerOutput.structuredFailure. Triage prefers
+    # structured payloads over raw stdout for classification.
+    structured_failure:
+      format: playwright-json
+      path: "in-progress/${featureSlug}_PW-REPORT.json"
     circuit_breaker:
       halt_on_identical: true
+
+  qa-adversary:
+    # Phase B.2 — Adversarial QA pass. Runs after e2e-runner (which
+    # tore the dev server down), so it re-uses the same pre/post hooks
+    # to bring the server back up for its own probe suite. Writes a
+    # QA-REPORT.json that Phase C triage consumes as structured evidence.
+    type: agent
+    category: test
+    agent: "@qa-adversary"
+    timeout_minutes: 15
+    auto_skip_if_no_changes_in: [storefront, e2e]
+    pre: "bash .apm/hooks/e2e-runner-pre.sh"
+    post: "bash .apm/hooks/e2e-runner-post.sh"
+    commit_scope: pipeline
+    diff_attribution_dirs: []
 
   code-cleanup:
     type: agent
@@ -190,7 +274,11 @@ nodes:
     timeout_minutes: 15
     script_type: poll
     ci_workflow_key: app
-    post: "bash .apm/hooks/validate-app.sh"
+    # Post-deploy oracle: validate-app.sh covers HTTP reachability; the
+    # acceptance oracle replays the feature's compiled contract against the
+    # live URL. The acceptance oracle is shipped with the orchestrator so
+    # agents cannot tamper with it mid-cycle.
+    post: "bash .apm/hooks/validate-app.sh && node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs"
     captures_head_sha: true
     circuit_breaker:
       halt_on_identical: true

@@ -156,6 +156,10 @@ export interface NodeContext {
   /** Route map from the failing node's on_failure.routes (on_failure only).
    *  Keys are fault domains, values are DAG node keys (or null for graceful degradation). */
   readonly failureRoutes?: Readonly<Record<string, string | null>>;
+  /** Parsed structured failure artifact, when the failing handler produced one
+   *  (e.g. Playwright JSON reporter). Forwarded from `TriageActivation`.
+   *  Kept as `unknown` at this layer — triage narrows on consumption. */
+  readonly structuredFailure?: unknown;
 }
 
 // ---------------------------------------------------------------------------

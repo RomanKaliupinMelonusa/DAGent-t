@@ -81,3 +81,35 @@
     // Outcome 1 or 2 are both valid — test logic decides which is expected
     ```
     An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode.
+
+## Anti-Tautology Rules (MANDATORY — tests that cannot fail are forbidden)
+
+A test that passes for both the happy path and the error state is **worse than no test at all** — it ships a false green light. The following patterns are banned.
+
+13. **Test titles MUST NOT contain ` or ` as a disjunction between a happy and failure outcome.**
+    - ❌ `'shows modal with product content or error state'`
+    - ❌ `'renders product details or crash page'`
+    - ✅ `'shows modal with product content'` (separate test: `'shows graceful error when product API fails'`)
+
+    Rationale: a title with " or " almost always signals an assertion that accepts either outcome, which means the test cannot distinguish a working feature from a broken one.
+
+14. **Each acceptance criterion needs its own positive test.** One test per `required_flow`. Do not fold "happy path" and "error fallback" into a single assertion.
+
+15. **Forbidden tautological assertion shapes** (apply even when title is clean):
+    - ❌ `expect(A.or(B)).toBeVisible()` where A = success element and B = error element.
+    - ❌ `await Promise.race([content.waitFor(), errorState.waitFor()])` **without** subsequently asserting that `winner === 'content'` in a happy-path test. The three-outcome pattern (rule #12) is for **diagnostic** purposes — after racing, a happy-path test must still assert the success branch won.
+    - ❌ `await page.locator('body, html, #root').isVisible()` as the only assertion.
+    - ❌ Any assertion whose locator matches elements on every page of the site (navigation, footer, title).
+
+16. **Every happy-path test MUST assert a feature-specific, non-trivial element** — typically a `data-testid` added for the feature under test. If the feature introduces `data-testid="quick-view-modal"`, the happy-path test must assert that **exact** testid is visible with **product-specific content** (e.g. a non-empty price or product name inside the modal).
+
+17. **Console-error budget.** At the end of every feature test, assert `expect(consoleErrors).toEqual([])` (or an explicit, feature-scoped allowlist). The existing `beforeEach/afterEach` logging is diagnostic — it does not fail the test. You MUST add an explicit assertion on `consoleErrors` in the test body, or the test tolerates uncaught exceptions that real users would see as broken.
+
+18. **Self-review gate for anti-tautology.** Before committing:
+    ```bash
+    # Fail the run if any test title disjoins success and failure.
+    grep -nE "^\s*test\((['\"]).*\b(or|and)\b.*(error|crash|fail|broken)" e2e/ && exit 1 || true
+    # Fail the run if any happy-path test omits a console-error assertion.
+    grep -nL "consoleErrors" e2e/*.spec.ts
+    ```
+    If the first command prints any line, rewrite the test title and split the assertions. If the second command lists any feature spec file, add a `consoleErrors` assertion to every happy-path test in that file.

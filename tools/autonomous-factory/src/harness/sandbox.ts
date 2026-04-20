@@ -10,6 +10,13 @@ import type { ApmCompiledOutput } from "../apm/types.js";
 
 export interface AgentSandbox {
   allowedWritePaths: RegExp[];
+  /**
+   * Compiled read-path patterns. `undefined` (or absent) ⇒ no read
+   * enforcement (the overwhelmingly common case; keeps existing agents
+   * unaffected). An array ⇒ enforcement on; any path not matching at
+   * least one regex is denied. See Phase A.4 (SDET blindness).
+   */
+  allowedReadPaths?: RegExp[];
   blockedCommandRegexes: RegExp[];
   safeMcpPrefixes: Set<string>;
   allowedCoreTools: Set<string>;
@@ -40,6 +47,12 @@ export function resolveAgentSandbox(
   const allowedWritePaths = hasSecurityProfile
     ? (securityCfg.allowedWritePaths ?? []).map((p: string) => new RegExp(p))
     : [/^.*/];  // No security profile = allow all writes (migration mode)
+  // Read-path enforcement is opt-in per agent. When the security block is
+  // present but `allowedReadPaths` is omitted, we leave reads unconstrained
+  // — keeps migration simple.
+  const allowedReadPaths = hasSecurityProfile && Array.isArray(securityCfg.allowedReadPaths)
+    ? securityCfg.allowedReadPaths.map((p: string) => new RegExp(p))
+    : undefined;
   const blockedCommandRegexes = hasSecurityProfile
     ? (securityCfg.blockedCommandRegexes ?? []).map((p: string) => new RegExp(p))
     : [];  // No blocked commands in migration mode
@@ -56,6 +69,7 @@ export function resolveAgentSandbox(
 
   return {
     allowedWritePaths,
+    allowedReadPaths,
     blockedCommandRegexes,
     safeMcpPrefixes,
     allowedCoreTools,

@@ -158,6 +158,11 @@ export interface TriageActivation {
   failureRoutes: Record<string, string | null>;
   /** Summary snapshot of the failing node's last attempt. */
   failingNodeSummary: ItemSummary;
+  /** Parsed structured failure shape, when the failing handler produced one
+   *  (e.g. Playwright JSON reporter). Triage prefers this over `rawError`
+   *  for classification. `unknown` keeps the kernel/loop layer agnostic to
+   *  the triage package's concrete types; triage casts on consumption. */
+  structuredFailure?: unknown;
 }
 
 // ---------------------------------------------------------------------------

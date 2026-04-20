@@ -112,12 +112,42 @@ export function checkRbac(
   safeMcpPrefixes: Set<string>,
   appRoot: string,
   hookCwd?: string,
+  /**
+   * Read-scope enforcement. `undefined` (default) ⇒ no read check; any
+   * array (including empty) ⇒ reads denied unless they match one of these
+   * regexes (tested against the app-relative path). Used for Phase A.4
+   * SDET blindness: the e2e-author can read the spec + acceptance + tests
+   * but not the implementation.
+   */
+  allowedReadPaths?: RegExp[],
 ): string | null {
   // Fail-closed write classification: any tool NOT in the safe-read set,
   // not a shell tool, and not from a safe MCP prefix is treated as a write tool.
   const isShellTool = toolName === "bash" || toolName === "write_bash" || toolName === "shell";
   const isMcpNonFs = [...safeMcpPrefixes].some((p) => toolName.startsWith(p));
   const isWriteTool = !SAFE_READ_TOOLS.has(toolName) && !isShellTool && !isMcpNonFs;
+
+  // --- Read-path RBAC (opt-in, via allowedReadPaths) ---
+  // Applies to known file-read tools. `report_intent` / `report_outcome`
+  // are exempt (they have no file argument). Grep/list tools are exempt
+  // because their target is a directory root, not a single file — enforcing
+  // on them would break legitimate scanning. Enforcement is on *file*
+  // reads: read_file, file_read, view.
+  if (allowedReadPaths !== undefined && (toolName === "read_file" || toolName === "file_read" || toolName === "view")) {
+    const rawPath = extractFilePath(toolArgs);
+    if (rawPath) {
+      const relPath = toRepoRelative(rawPath, repoRoot);
+      const appRelPath = toAppRelative(relPath, appRoot, repoRoot);
+      const isAllowed = allowedReadPaths.some((re) => re.test(appRelPath));
+      if (!isAllowed) {
+        return (
+          `ERROR: Read Access Denied. Your security profile forbids reading '${appRelPath}'. ` +
+          `This agent's read scope is restricted to enforce blind-to-impl testing. ` +
+          `Work from the spec and acceptance contract instead.`
+        );
+      }
+    }
+  }
 
   // --- File write RBAC ---
   if (isWriteTool) {

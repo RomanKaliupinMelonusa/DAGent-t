@@ -24,9 +24,23 @@ storefront:
   default_triage: triage-storefront
 
   nodes:
+    # ── Acceptance contract compilation ───────────────────────────────
+    # Runs first. Produces the machine-checkable ACCEPTANCE.yml that
+    # storefront-dev, e2e-author, validate-acceptance (Phase B), and
+    # qa-adversary (Phase B.2) all score against. Separating contract
+    # authoring from implementation prevents the dev agent from rewriting
+    # its own acceptance criteria during redevelopment cycles.
+    spec-compiler:
+      depends_on: []
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Spec-compiler cannot fix itself — blocked means human review.
+          blocked: null
+
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
-      depends_on: []
+      depends_on: [spec-compiler]
 
     storefront-unit-test:
       depends_on: [storefront-dev]
@@ -51,15 +65,37 @@ storefront:
           test-code: e2e-author
           test-code-from-dev: storefront-dev
           ssr-hydration: storefront-dev
+          # Contract-violation pre-classifier — uncaught browser runtime
+          # errors captured by the Playwright JSON reporter route here
+          # deterministically (no RAG, no LLM).
+          browser-runtime-error: storefront-dev
+          environment: "$SELF"
+          blocked: null
+
+    # ── Adversarial QA pass (Phase B.2) ───────────────────────────────
+    # Attempts to falsify the feature against the acceptance contract.
+    # Writes `<slug>_QA-REPORT.json`; any violation fails this node and
+    # routes back to storefront-dev for redevelopment.
+    qa-adversary:
+      depends_on: [e2e-runner]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # QA-discovered acceptance violations always route back to dev.
+          frontend: storefront-dev
+          browser-runtime-error: storefront-dev
+          ssr-hydration: storefront-dev
+          # The QA probes themselves can be wrong (e.g. impossible flow).
+          test-code: qa-adversary
           environment: "$SELF"
           blocked: null
 
     create-draft-pr:
-      depends_on: [storefront-unit-test, e2e-author]
+      depends_on: [storefront-unit-test, e2e-author, qa-adversary]
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
-      depends_on: [e2e-runner, create-draft-pr]
+      depends_on: [e2e-runner, qa-adversary, create-draft-pr]
 
     docs-archived:
       depends_on: [code-cleanup]

@@ -130,4 +130,47 @@ describe("resolveTriageActivations", () => {
     assert.equal(out.length, 1);
     assert.equal(out[0].rawError, "second");
   });
+
+  it("forwards handlerOutputs[failingKey].structuredFailure onto the activation", () => {
+    const workflow: RoutableWorkflow = {
+      nodes: {
+        "e2e-runner": { on_failure: { triage: "t" } },
+        "t": { type: "triage" },
+      },
+    };
+    const structured = {
+      kind: "playwright-json" as const,
+      total: 1, passed: 0, failed: 1, skipped: 0,
+      failedTests: [],
+      uncaughtErrors: [{ message: "TypeError: x", inTest: "t1" }],
+      consoleErrors: [],
+      failedRequests: [],
+    };
+    const commands: Command[] = [{ type: "fail-item", itemKey: "e2e-runner", message: "boom" }];
+    const dag = makeDag([{ key: "e2e-runner", status: "failed" }]);
+    const runState: RunState = {
+      pipelineSummaries: [],
+      attemptCounts: {},
+      preStepRefs: {},
+      forceRunChangesDetected: {},
+      handlerOutputs: { "e2e-runner": { structuredFailure: structured } },
+    } as unknown as RunState;
+    const out = resolveTriageActivations(commands, dag, runState, workflow, sig);
+    assert.equal(out.length, 1);
+    assert.deepEqual(out[0].structuredFailure, structured);
+  });
+
+  it("omits structuredFailure when not present on handlerOutputs", () => {
+    const workflow: RoutableWorkflow = {
+      nodes: {
+        "a": { on_failure: { triage: "t" } },
+        "t": { type: "triage" },
+      },
+    };
+    const commands: Command[] = [{ type: "fail-item", itemKey: "a", message: "x" }];
+    const dag = makeDag([{ key: "a", status: "failed" }]);
+    const out = resolveTriageActivations(commands, dag, makeRun(), workflow, sig);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].structuredFailure, undefined);
+  });
 });

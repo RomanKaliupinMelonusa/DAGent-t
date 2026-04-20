@@ -109,5 +109,6 @@ export function buildNodeContext(
     errorSignature: triageActivation?.errorSignature,
     failingNodeSummary: triageActivation?.failingNodeSummary,
     failureRoutes: triageActivation?.failureRoutes,
+    structuredFailure: triageActivation?.structuredFailure,
   };
 }

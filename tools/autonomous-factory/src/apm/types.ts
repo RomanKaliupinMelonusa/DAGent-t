@@ -87,11 +87,17 @@ export const ApmAgentToolsSchema = z.object({
 /**
  * Per-agent security profile for config-driven path sandboxing.
  * `allowedWritePaths` — regex strings for allowed file write paths (app-relative). Empty array = read-only.
+ * `allowedReadPaths` — regex strings for allowed file read paths (app-relative).
+ *   Omit (undefined) to allow all reads. When defined (including empty array),
+ *   reads are enforced: only paths matching at least one regex are permitted.
+ *   This is the SDET blind-to-impl guard (see Phase A.4 oracle-hardening).
  * `blockedCommandRegexes` — regex strings matching shell commands to block (e.g. cloud CLI).
  */
 export const ApmAgentSecuritySchema = z.object({
   allowedWritePaths: z.array(z.string()).optional()
     .describe("Regex strings for allowed file write paths (app-relative). Empty array = read-only."),
+  allowedReadPaths: z.array(z.string()).optional()
+    .describe("Regex strings for allowed file read paths (app-relative). Omit to allow all reads. When set, reads outside this list are denied."),
   blockedCommandRegexes: z.array(z.string()).optional()
     .describe("Regex strings matching shell commands to block (e.g. cloud CLI)."),
 }).optional();
@@ -548,6 +554,19 @@ const nodeBodyFields = {
       flags: z.string().optional(),
       replacement: z.string(),
     })).default([]),
+  }).optional(),
+  /** Declarative structured-failure extractor for script nodes. When set and
+   *  the handler body fails, the local-exec handler reads the named artifact,
+   *  parses it with the named format, and emits the parsed shape on
+   *  `handlerOutput.structuredFailure`. The triage handler prefers the
+   *  structured payload over raw stdout/stderr for classification.
+   *
+   *  `path` supports `${featureSlug}` interpolation and is resolved relative
+   *  to `appRoot`. Missing/unparseable files are non-fatal — the handler
+   *  falls back to raw output. */
+  structured_failure: z.object({
+    format: z.enum(["playwright-json"]),
+    path: z.string(),
   }).optional(),
 } as const;
 

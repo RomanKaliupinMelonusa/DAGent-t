@@ -1,0 +1,140 @@
+/**
+ * Tests for tools/autonomous-factory/hooks/validate-acceptance.mjs.
+ *
+ * We cannot actually spawn Playwright in unit tests, so these tests exercise
+ * the pure helpers (`renderSpec`, `extractViolations`, escapers) and the
+ * contract-free fallback paths of `main` via tmp dirs.
+ */
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — .mjs has no .d.ts companion; this is a test-only import.
+import * as oracle from "../../hooks/validate-acceptance.mjs";
+
+describe("validate-acceptance.mjs: escapers", () => {
+  it("escapeSingle handles quotes and backslashes", () => {
+    assert.equal(oracle.escapeSingle("a'b"), "a\\'b");
+    assert.equal(oracle.escapeSingle("c\\d"), "c\\\\d");
+  });
+  it("escapeRegexForLiteral escapes both", () => {
+    assert.equal(oracle.escapeRegexForLiteral("\\d+"), "\\\\d+");
+  });
+});
+
+describe("validate-acceptance.mjs: renderSpec", () => {
+  const baseContract = {
+    feature: "pqv",
+    summary: "product quick view",
+    required_dom: [
+      { testid: "pqv-modal", requires_non_empty_text: true, contains_text: "Add" },
+    ],
+    required_flows: [
+      {
+        name: "open modal",
+        steps: [
+          { action: "goto", url: "/product/abc" },
+          { action: "click", testid: "quick-view-button" },
+          { action: "assert_visible", testid: "pqv-modal", timeout_ms: 5000 },
+          { action: "assert_text", testid: "pqv-title", contains: "Shoe" },
+          { action: "fill", testid: "qty-input", value: "2" },
+        ],
+      },
+    ],
+    forbidden_console_patterns: ["Uncaught TypeError"],
+    forbidden_network_failures: ["POST /api/basket"],
+  };
+
+  it("emits a Playwright spec containing every required step", () => {
+    const spec = oracle.renderSpec(baseContract);
+    assert.match(spec, /import \{ test, expect \} from '@playwright\/test'/);
+    assert.match(spec, /getByTestId\('quick-view-button'\)\.click/);
+    assert.match(spec, /getByTestId\('qty-input'\)\.fill\('2'\)/);
+    assert.match(spec, /getByTestId\('pqv-modal'\)\).toBeVisible\(\{ timeout: 5000 \}\)/);
+    assert.match(spec, /toContainText\('Shoe'\)/);
+    assert.match(spec, /\/product\/abc/);
+  });
+
+  it("includes forbidden console + network assertions", () => {
+    const spec = oracle.renderSpec(baseContract);
+    assert.match(spec, /Uncaught TypeError/);
+    assert.match(spec, /POST \/api\/basket/);
+    assert.match(spec, /page\.on\('console'/);
+    assert.match(spec, /page\.on\('pageerror'/);
+    assert.match(spec, /requestfailed/);
+  });
+
+  it("escapes dangerous characters in testids and values", () => {
+    const spec = oracle.renderSpec({
+      ...baseContract,
+      required_flows: [{
+        name: "tricky",
+        steps: [{ action: "fill", testid: "name", value: "O'Brien" }],
+      }],
+      required_dom: [],
+    });
+    assert.match(spec, /fill\('O\\'Brien'\)/);
+  });
+
+  it("emits the required_dom block when dom assertions are declared", () => {
+    const spec = oracle.renderSpec(baseContract);
+    assert.match(spec, /acceptance required DOM/);
+    assert.match(spec, /empty text content/);
+  });
+
+  it("omits the required_dom block when dom is empty", () => {
+    const spec = oracle.renderSpec({ ...baseContract, required_dom: [] });
+    assert.doesNotMatch(spec, /acceptance required DOM/);
+  });
+});
+
+describe("validate-acceptance.mjs: extractViolations", () => {
+  it("returns null when the reporter file is missing", () => {
+    assert.equal(oracle.extractViolations(path.join(os.tmpdir(), "does-not-exist.json")), null);
+  });
+
+  it("returns empty violations on an all-pass report", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "oracle-"));
+    const rpt = path.join(tmp, "r.json");
+    fs.writeFileSync(rpt, JSON.stringify({
+      suites: [{
+        specs: [{
+          title: "flow",
+          file: "spec.ts",
+          tests: [{ results: [{ status: "passed", errors: [] }] }],
+        }],
+      }],
+    }));
+    const res = oracle.extractViolations(rpt);
+    assert.deepEqual(res.violations, []);
+  });
+
+  it("collects failures with messages", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "oracle-"));
+    const rpt = path.join(tmp, "r.json");
+    fs.writeFileSync(rpt, JSON.stringify({
+      suites: [{
+        suites: [{
+          specs: [{
+            title: "flow A",
+            file: "acc.spec.ts",
+            tests: [{
+              results: [{
+                status: "failed",
+                errors: [{ message: "Forbidden console pattern observed: Uncaught TypeError: x" }],
+              }],
+            }],
+          }],
+        }],
+      }],
+    }));
+    const res = oracle.extractViolations(rpt);
+    assert.equal(res.violations.length, 1);
+    assert.equal(res.violations[0].title, "flow A");
+    assert.equal(res.violations[0].status, "failed");
+    assert.match(res.violations[0].message, /Uncaught TypeError/);
+  });
+});

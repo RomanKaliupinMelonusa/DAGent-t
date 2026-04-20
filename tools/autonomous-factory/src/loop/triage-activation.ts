@@ -65,6 +65,15 @@ export function resolveTriageActivations(
     const errorSignature = computeSignature(rawError);
     const failingNodeSummary = findLastSummary(runState.pipelineSummaries, failingKey);
 
+    // When the failing handler emitted a parsed structured-failure shape
+    // (e.g. local-exec parsed Playwright JSON), forward it so the triage
+    // handler can prefer it over the raw error string.
+    const bag = runState.handlerOutputs[failingKey];
+    const structuredFailure =
+      bag && typeof bag === "object" && "structuredFailure" in bag
+        ? (bag as { structuredFailure?: unknown }).structuredFailure
+        : undefined;
+
     byFailingKey.set(failingKey, {
       triageNodeKey,
       failingKey,
@@ -72,6 +81,7 @@ export function resolveTriageActivations(
       errorSignature,
       failureRoutes,
       failingNodeSummary,
+      ...(structuredFailure !== undefined ? { structuredFailure } : {}),
     });
   }
 

@@ -33,9 +33,20 @@ export function buildAgentContext(ctx: NodeContext): {
   const upstreamArtifacts = collectUpstreamArtifacts(ctx.pipelineState);
   const hasArtifacts = Object.keys(upstreamArtifacts).length > 0;
 
+  // Expose the acceptance contract path when the workflow has a
+  // `spec-compiler` node — i.e. when the contract exists (or is expected to
+  // exist) for this feature run. Consumers that need the contract's contents
+  // should read the file themselves; this is path-only plumbing.
+  const workflow = apmContext.workflows?.[ctx.pipelineState.workflowName];
+  const hasSpecCompiler = !!workflow?.nodes?.["spec-compiler"];
+  const acceptancePath = hasSpecCompiler
+    ? path.join(appRoot, "in-progress", `${slug}_ACCEPTANCE.yml`)
+    : undefined;
+
   const agentContext: AgentContext = {
     featureSlug: slug,
     specPath: path.join(appRoot, "in-progress", `${slug}_SPEC.md`),
+    ...(acceptancePath ? { acceptancePath } : {}),
     deployedUrl: ctx.pipelineState.deployedUrl,
     workflowName: ctx.pipelineState.workflowName,
     repoRoot,

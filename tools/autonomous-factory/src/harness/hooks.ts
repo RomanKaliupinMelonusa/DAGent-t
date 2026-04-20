@@ -33,7 +33,7 @@ export function buildSessionHooks(
   onDenial?: (toolName: string) => void,
   limits: ResolvedHarnessLimits = defaultHarnessLimits(),
 ): SessionHooks {
-  const { allowedCoreTools, allowedMcpTools, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
+  const { allowedCoreTools, allowedMcpTools, allowedWritePaths, allowedReadPaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
   const lineLimit = limits.fileReadLineLimit;
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
@@ -56,7 +56,7 @@ export function buildSessionHooks(
     }
 
     // --- RBAC interceptor (runs before shell bouncers) ---
-    const rbacDenial = checkRbac(input.toolName, input.toolArgs, repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot, input.cwd);
+    const rbacDenial = checkRbac(input.toolName, input.toolArgs, repoRoot, allowedWritePaths, blockedCommandRegexes, safeMcpPrefixes, appRoot, input.cwd, allowedReadPaths);
     if (rbacDenial) {
       onDenial?.(input.toolName);
       return {

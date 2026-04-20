@@ -18,6 +18,12 @@ import type { ApmCompiledOutput, ApmMcpConfig } from "./types.js";
 export interface AgentContext {
   featureSlug: string;
   specPath: string;
+  /** Path to the machine-checkable acceptance contract produced by the
+   *  `spec-compiler` agent. Present on every feature run that uses a
+   *  workflow with a `spec-compiler` node; absent otherwise. Consumers
+   *  should read this BEFORE `specPath` — it is the source of truth for
+   *  "what does done mean". */
+  acceptancePath?: string;
   deployedUrl: string | null;
   workflowName: string;
   repoRoot: string;
@@ -203,6 +209,7 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     // Spread all AgentContext fields
     featureSlug: ctx.featureSlug,
     specPath: ctx.specPath,
+    acceptancePath: ctx.acceptancePath ?? "",
     workflowName: ctx.workflowName,
     repoRoot: ctx.repoRoot,
     appRoot: ctx.appRoot,

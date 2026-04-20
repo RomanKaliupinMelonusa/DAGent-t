@@ -14,6 +14,8 @@
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ShellExecError } from "../ports/shell.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
+import { parsePlaywrightReport, type StructuredFailure } from "../triage/playwright-report.js";
+import path from "node:path";
 // Script output condensation lives in the `result-processor` middleware —
 // handlers return raw output and the middleware chain sanitizes on failure.
 
@@ -50,7 +52,7 @@ const localExecHandler: NodeHandler = {
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
     // Build env with kernel-provided context variables for hook scripts
-    const execEnv = {
+    const execEnv: Record<string, string | undefined> = {
       ...process.env,
       ...environment,
       SLUG: slug,
@@ -58,6 +60,22 @@ const localExecHandler: NodeHandler = {
       REPO_ROOT: repoRoot,
       BASE_BRANCH: baseBranch,
     };
+
+    // Structured-failure extractor — when declared on the node, resolve the
+    // artifact path now (with ${featureSlug} interpolation) and, for the
+    // playwright-json format, expose PLAYWRIGHT_JSON_OUTPUT_NAME so the
+    // json reporter writes to the canonical location.
+    const structuredFailureCfg = node?.structured_failure;
+    let structuredArtifactAbsPath: string | null = null;
+    if (structuredFailureCfg) {
+      const interpolated = structuredFailureCfg.path.replace(/\$\{featureSlug\}/g, slug);
+      structuredArtifactAbsPath = path.isAbsolute(interpolated)
+        ? interpolated
+        : path.join(appRoot, interpolated);
+      if (structuredFailureCfg.format === "playwright-json") {
+        execEnv.PLAYWRIGHT_JSON_OUTPUT_NAME = structuredArtifactAbsPath;
+      }
+    }
 
     // --- Pre-hook / Post-hook ---
     // node.pre and node.post are executed by the `lifecycle-hooks` middleware
@@ -112,12 +130,25 @@ const localExecHandler: NodeHandler = {
 
       ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `exit code ${exitCode}` });
 
+      // Best-effort structured-failure extraction. A missing or malformed
+      // artifact yields `null`; triage falls back to the raw scriptOutput.
+      let structuredFailure: StructuredFailure | null = null;
+      if (structuredFailureCfg && structuredArtifactAbsPath) {
+        if (structuredFailureCfg.format === "playwright-json") {
+          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath);
+        }
+      }
+
       // errorMessage is left unset — the `result-processor` middleware
       // sanitizes scriptOutput into a bounded triage message.
       return {
         outcome: "failed",
         summary: { intents: ["Native script execution — failed"] },
-        handlerOutput: { scriptOutput: output, exitCode },
+        handlerOutput: {
+          scriptOutput: output,
+          exitCode,
+          ...(structuredFailure ? { structuredFailure } : {}),
+        },
       };
     }
   },

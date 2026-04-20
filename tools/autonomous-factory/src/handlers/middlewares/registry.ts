@@ -15,6 +15,7 @@ import { autoSkipMiddleware } from "./auto-skip.js";
 import { lifecycleHooksMiddleware } from "./lifecycle-hooks.js";
 import { resultProcessorMiddleware } from "./result-processor.js";
 import { metricsMiddleware } from "./metrics.js";
+import { acceptanceIntegrityMiddleware } from "./acceptance-integrity.js";
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -25,6 +26,7 @@ const BUILT_IN_MIDDLEWARES: Record<string, NodeMiddleware> = {
   [lifecycleHooksMiddleware.name]: lifecycleHooksMiddleware,
   [resultProcessorMiddleware.name]: resultProcessorMiddleware,
   [metricsMiddleware.name]: metricsMiddleware,
+  [acceptanceIntegrityMiddleware.name]: acceptanceIntegrityMiddleware,
 };
 
 const USER_MIDDLEWARES: Record<string, NodeMiddleware> = {};
@@ -72,6 +74,7 @@ function getMiddleware(name: string): NodeMiddleware {
 /** The engine's fallback chain when apm.yml does not set `config.node_middleware.default`. */
 export const ENGINE_DEFAULT_MIDDLEWARE_NAMES: ReadonlyArray<string> = [
   "auto-skip",
+  "acceptance-integrity",
   "lifecycle-hooks",
   "result-processor",
 ];

@@ -29,6 +29,8 @@ import type { TriageRecord, TriageResult, TriageHandoff } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
+import { classifyStructuredFailure } from "../triage/contract-classifier.js";
+import { prependContractEvidence } from "../triage/contract-evidence.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
 import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
@@ -271,9 +273,31 @@ const triageHandler: NodeHandler = {
 
     // --- 2-layer triage classification (RAG → LLM → fallback) ---
     const triageLlm = ctx.triageLlm;
-    const triageResult: TriageResult = await evaluateTriage(
-      rawError, profile, triageLlm, slug, ctx.appRoot, logger,
-    );
+    // D3 — prepend contract evidence (ACCEPTANCE oracle + QA-REPORT) when
+    // the artifacts exist. Both RAG and LLM layers then see the structured
+    // verdict first, instead of a 30 KB ANSI Playwright blob. No-op when
+    // no oracle artifacts are present (pre-Phase-B features).
+    const { trace: enrichedError, sources: evidenceSources } =
+      prependContractEvidence(rawError, ctx.appRoot, slug);
+    if (evidenceSources.length > 0) {
+      logger.event("triage.evaluate", failingNodeKey, {
+        source: "contract-evidence",
+        artifacts: evidenceSources,
+      });
+    }
+    // Layer 0 — structured-failure contract classifier. When the failing
+    // handler produced a parsed Playwright report (or future structured
+    // artifact) with unambiguous impl-defect signals, skip RAG/LLM and
+    // route deterministically. The resolved domain must exist in the
+    // failing node's `failureRoutes` map — otherwise we fall through.
+    const contractVerdict = classifyStructuredFailure(ctx.structuredFailure);
+    const failureRoutesForContract = ctx.failureRoutes ?? {};
+    const triageResult: TriageResult =
+      contractVerdict && (contractVerdict.domain in failureRoutesForContract)
+        ? contractVerdict
+        : await evaluateTriage(
+            enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
+          );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---
     // Fallback: profile.routing[domain].route_to (backward compat)
