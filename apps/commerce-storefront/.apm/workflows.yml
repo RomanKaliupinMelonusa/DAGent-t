@@ -32,10 +32,25 @@ storefront:
     # its own acceptance criteria during redevelopment cycles.
     spec-compiler:
       depends_on: []
+      # Bounded self-repair loop for schema violations. The
+      # acceptance-integrity middleware produces canonical errors like
+      # `[acceptance:…] schema violation: required_flows.N.steps: …` which
+      # the L0 classifier matches (classifyRawError → schema-violation).
+      # The failing ACCEPTANCE.yml is left on disk so the agent can patch
+      # the specific field rather than regenerate. halt_on_identical stops
+      # the ping-pong when the agent can't fix itself; max_item_failures
+      # caps the total attempts.
+      circuit_breaker:
+        max_item_failures: 3
+        halt_on_identical: true
       on_failure:
         triage: triage-storefront
         routes:
-          # Spec-compiler cannot fix itself — blocked means human review.
+          # Route structurally-invalid ACCEPTANCE.yml back to spec-compiler
+          # itself for a repair pass. Bounded by circuit_breaker above.
+          schema-violation: spec-compiler
+          # Any other classification for a spec-compiler failure is
+          # unrecoverable — blocked means human review + salvage.
           blocked: null
 
     # ── Development ────────────────────────────────────────────────────

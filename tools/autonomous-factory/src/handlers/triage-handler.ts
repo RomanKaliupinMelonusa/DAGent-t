@@ -29,7 +29,7 @@ import type { TriageRecord, TriageResult, TriageHandoff } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
-import { classifyStructuredFailure } from "../triage/contract-classifier.js";
+import { classifyStructuredFailure, classifyRawError } from "../triage/contract-classifier.js";
 import { prependContractEvidence } from "../triage/contract-evidence.js";
 import { loadAcceptanceContract } from "../apm/acceptance-schema.js";
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
@@ -353,9 +353,16 @@ const triageHandler: NodeHandler = {
     }
     const contractVerdict = classifyStructuredFailure(ctx.structuredFailure, { acceptance });
     const failureRoutesForContract = ctx.failureRoutes ?? {};
+    // Fall-through classifier for raw-string failures (no StructuredFailure).
+    // Currently matches `spec-compiler` schema-violation messages — route
+    // `schema-violation: spec-compiler` on the node triggers self-repair.
+    const rawVerdict = contractVerdict
+      ? null
+      : classifyRawError(rawError);
+    const preLlmVerdict = contractVerdict ?? rawVerdict;
     const triageResult: TriageResult =
-      contractVerdict && (contractVerdict.domain in failureRoutesForContract)
-        ? contractVerdict
+      preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
+        ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
           );

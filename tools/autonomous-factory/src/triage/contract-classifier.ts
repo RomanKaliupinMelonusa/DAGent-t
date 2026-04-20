@@ -39,6 +39,11 @@ export const BROWSER_RUNTIME_ERROR_DOMAIN = "browser-runtime-error";
 /** Domain returned when a contract-declared testid failed to render. */
 export const CONTRACT_LOCATOR_MISSING_DOMAIN = "frontend";
 
+/** Domain returned when `spec-compiler` produced an invalid acceptance
+ *  contract (YAML parse error, schema violation, missing file). Intended
+ *  to route back to `spec-compiler` itself for a repair attempt. */
+export const SPEC_SCHEMA_VIOLATION_DOMAIN = "schema-violation";
+
 /** Optional extras the triage handler may pass to refine classification. */
 export interface ContractClassifierOptions {
   readonly acceptance?: AcceptanceContract | null;
@@ -134,4 +139,42 @@ export function classifyStructuredFailure(
   }
 
   return null;
+}
+
+/**
+ * Round-2 follow-up — classify a raw error STRING (no StructuredFailure).
+ *
+ * Motivation: when `spec-compiler` emits an invalid ACCEPTANCE.yml, the
+ * `acceptance-integrity` middleware fails the node with a canonical
+ * message like:
+ *   "spec-compiler produced an invalid acceptance contract at <path>:
+ *    [acceptance:<path>] schema violation: required_flows.4.steps: …"
+ * These messages are structurally stable (produced by our own code, not
+ * by an LLM or an external tool) and carry enough detail for the agent
+ * to self-repair on the next attempt. Routing them deterministically to
+ * `schema-violation` — and, via `on_failure.routes`, back to
+ * `spec-compiler` itself — replaces the current "one bad field ⇒ whole
+ * feature salvages to Draft PR" behaviour with a bounded repair loop
+ * (`halt_on_identical` stops the ping-pong if the agent can't fix it).
+ *
+ * Matches only these canonical shapes — narrow on purpose so that the
+ * rule never fires on e2e-runner output that happens to mention `.yml`.
+ */
+const SPEC_ACCEPTANCE_ERROR_RE =
+  /(produced an invalid acceptance contract at |reported success but did not produce .*_ACCEPTANCE\.yml|\[acceptance:[^\]]+\]\s*(schema violation|YAML parse error|file not readable))/;
+
+export function classifyRawError(rawError: string): TriageResult | null {
+  if (!rawError) return null;
+  if (!SPEC_ACCEPTANCE_ERROR_RE.test(rawError)) return null;
+  // Keep the reason short — the full error is already in the handoff
+  // context via composeTriageContext + failureFallback.rawError.
+  const firstLine = rawError.split(/\r?\n/, 1)[0] ?? rawError;
+  return {
+    domain: SPEC_SCHEMA_VIOLATION_DOMAIN,
+    reason:
+      `spec-compiler produced an invalid ACCEPTANCE contract. ` +
+      `Repair the schema violation and re-emit: ${firstLine.slice(0, 240)}`,
+    source: "rag",
+    rag_matches: [],
+  };
 }
