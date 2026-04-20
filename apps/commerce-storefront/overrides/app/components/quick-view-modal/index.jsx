@@ -48,6 +48,10 @@ class QuickViewErrorBoundary extends React.Component {
     }
 }
 
+QuickViewErrorBoundary.propTypes = {
+    children: PropTypes.node.isRequired
+}
+
 /**
  * QuickViewModal — renders a Chakra modal that fetches full product
  * data via useProductViewModal and renders ProductView inside it.
@@ -101,8 +105,7 @@ const QuickViewModal = ({product, isOpen, onClose}) => {
                             <WarningIcon boxSize={8} color="orange.400" mb={3} />
                             <Text fontSize="lg" fontWeight="semibold">
                                 {intl.formatMessage({
-                                    defaultMessage:
-                                        'This product is no longer available',
+                                    defaultMessage: 'This product is no longer available',
                                     id: 'quick_view_modal.product_unavailable'
                                 })}
                             </Text>

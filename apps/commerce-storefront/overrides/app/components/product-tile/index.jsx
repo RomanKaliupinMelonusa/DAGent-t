@@ -97,11 +97,7 @@ const ProductTile = (props) => {
                         useProductViewModal hooks from firing during SSR for
                         every tile on the page (25 tiles = 25 API calls). */}
                     {isOpen && (
-                        <QuickViewModal
-                            product={product}
-                            isOpen={isOpen}
-                            onClose={onClose}
-                        />
+                        <QuickViewModal product={product} isOpen={isOpen} onClose={onClose} />
                     )}
                 </>
             )}
