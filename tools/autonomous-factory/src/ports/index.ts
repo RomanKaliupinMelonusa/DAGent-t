@@ -14,6 +14,10 @@ export type { FeatureFilesystem } from "./feature-filesystem.js";
 export type { CognitiveBreaker, CognitiveBreakerFactory } from "./cognitive-breaker.js";
 export type { TriageLlm, TriageLlmRequest } from "./triage-llm.js";
 export type {
+  TriageArtifactLoader,
+  ContractEvidenceResult,
+} from "./triage-artifact-loader.js";
+export type {
   Shell,
   ShellExecOptions,
   ShellExecResult,

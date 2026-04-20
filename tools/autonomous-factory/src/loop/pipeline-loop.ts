@@ -37,6 +37,7 @@ import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
+import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
@@ -106,6 +107,7 @@ export interface PipelineLoopConfig {
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
   readonly triageLlm?: TriageLlm;
+  readonly triageArtifacts?: TriageArtifactLoader;
   readonly lifecycle: LoopLifecycle;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
@@ -155,6 +157,7 @@ export async function runPipelineLoop(
     logger: config.logger,
     client: config.client,
     triageLlm: config.triageLlm,
+    triageArtifacts: config.triageArtifacts,
     vcs: config.vcs,
     stateReader: config.stateReader,
     shell: config.shell,

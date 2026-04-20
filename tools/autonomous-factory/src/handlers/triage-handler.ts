@@ -25,21 +25,18 @@
 import type { NodeBudgetPolicy } from "../app-types.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
-import type { TriageRecord, TriageResult, TriageHandoff } from "../types.js";
+import type { TriageRecord, TriageResult } from "../types.js";
 import { RESET_OPS } from "../types.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyStructuredFailure, classifyRawError } from "../triage/contract-classifier.js";
-import { prependContractEvidence } from "../triage/contract-evidence.js";
-import { toHandoffEvidence } from "../triage/handoff-evidence.js";
-import { loadAcceptanceContract } from "../apm/acceptance-schema.js";
+import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.js";
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
-import { buildTriageRejectionContext, composeTriageContext } from "../triage/context-builder.js";
-import { computeEffectiveDevAttempts } from "../triage/context-builder.js";
+import { composeTriageContext } from "../triage/context-builder.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
-import { extractPriorAttempts } from "../triage/historian.js";
-import path from "node:path";
+import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
+import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -70,54 +67,6 @@ function resolveProfile(ctx: NodeContext): CompiledTriageProfile | undefined {
   const profileName = node?.triage_profile;
   if (!profileName) return undefined;
   return ctx.apmContext.triage_profiles?.[`${ctx.pipelineState.workflowName}.${profileName}`];
-}
-
-/** Trim a raw error trace to at most `maxLines` lines, preserving the head. */
-function truncateError(raw: string, maxLines = 40): string {
-  const lines = raw.split(/\r?\n/);
-  if (lines.length <= maxLines) return raw.trimEnd();
-  const head = lines.slice(0, maxLines).join("\n");
-  return `${head}\n… (${lines.length - maxLines} more lines)`;
-}
-
-/** Round-2 R3 — consecutive-domain advisory.
- *
- *  When the last two reroute cycles both classified into the current
- *  domain, the redevelopment cycle is almost certainly looping on the
- *  same root cause with incrementally mutated symptoms (Round-2 showed
- *  four identical click-handler misroutes all labelled `ssr-hydration`).
- *
- *  Rather than keep burning retries, we surface an advisory string so
- *  the next dev agent sees the pattern explicitly and can choose a
- *  `agent-branch.sh revert` clean-slate rebuild. The circuit breaker
- *  already grants one bypass for revert after ≥3 failures — this
- *  advisory is the *user-facing* signal that paired with it.
- *
- *  Returns `undefined` when the advisory does not apply (fewer than 2
- *  prior attempts or mixed domains) so the adapter can skip rendering.
- */
-const DOMAIN_TAG_RE = /\[domain:([^\]]+)\]/;
-function buildConsecutiveDomainAdvisory(
-  errorLog: readonly { itemKey: string; message: string; timestamp: string; errorSignature?: string | null }[],
-  currentDomain: string,
-): string | undefined {
-  const prior = extractPriorAttempts(errorLog);
-  if (prior.length < 2) return undefined;
-  const last = prior[prior.length - 1];
-  const prev = prior[prior.length - 2];
-  const lastDomain = DOMAIN_TAG_RE.exec(last.resetReason)?.[1];
-  const prevDomain = DOMAIN_TAG_RE.exec(prev.resetReason)?.[1];
-  if (!lastDomain || !prevDomain) return undefined;
-  if (lastDomain !== prevDomain || lastDomain !== currentDomain) return undefined;
-  return (
-    `The last two reroute cycles both classified as \`${currentDomain}\` and ` +
-    `this cycle is the **third** in that domain. The pipeline is almost ` +
-    `certainly looping on the same root cause. If your next fix is not ` +
-    `decisively different from the prior two, stop and run ` +
-    `\`bash tools/autonomous-factory/agent-branch.sh revert\` to reset this ` +
-    `feature branch to the base and rebuild from scratch — the circuit ` +
-    `breaker grants one bypass for exactly this case.`
-  );
 }
 
 /**
@@ -156,7 +105,7 @@ async function buildRerouteCommands(
   commands.push({ type: "set-triage-record", record: triageRecord });
 
   // 2. Reset target node + all downstream dependents
-  const taggedReason = `[domain:${triageResult.domain}] [source:${triageResult.source}] ${triageResult.reason}`;
+  const taggedReason = `${formatDomainTag(triageResult.domain)} [source:${triageResult.source}] ${triageResult.reason}`;
   commands.push({
     type: "reset-nodes",
     seedKey: routeToKey,
@@ -173,11 +122,13 @@ async function buildRerouteCommands(
     const targetAttempt = targetExecLog.length > 0
       ? Math.max(...targetExecLog.map((r: { attempt: number }) => r.attempt)) + 1
       : 1;
-    const targetEffective = await computeEffectiveDevAttempts(
+    const artifacts: TriageArtifactLoader =
+      ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
+    const targetEffective = await artifacts.computeEffectiveDevAttempts(
       routeToKey, targetAttempt, slug, routeToPolicy.allowsRevertBypass,
     );
     const lastSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === routeToKey);
-    const rejectionCtx = await buildTriageRejectionContext(slug);
+    const rejectionCtx = await artifacts.loadRejectionContext(slug);
     const composed = composeTriageContext({
       slug,
       itemKey: routeToKey,
@@ -197,23 +148,18 @@ async function buildRerouteCommands(
       // B1 — emit structured handoff alongside the narrative so the adapter
       // appends a typed diagnosis block. The dev agent no longer needs to
       // re-discover the failure domain from raw logs.
-      const failingSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === failingNodeKey);
       const priorAttemptCount = (pipeStateForCtx.executionLog ?? [])
         .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
-      const handoff: TriageHandoff = {
-        failingItem: failingNodeKey,
-        errorExcerpt: truncateError(rawError),
-        errorSignature: triageRecord.error_signature,
-        triageDomain: triageResult.domain,
-        triageReason: triageResult.reason,
+      const handoff = buildTriageHandoff({
+        failingNodeKey,
+        rawError,
+        triageRecord,
+        triageResult,
         priorAttemptCount,
-        touchedFiles: failingSummary?.filesChanged ?? [],
-        advisory: buildConsecutiveDomainAdvisory(
-          pipeStateForCtx.errorLog ?? [],
-          triageResult.domain,
-        ),
-        evidence: toHandoffEvidence(ctx.structuredFailure),
-      };
+        pipelineSummaries: ctx.pipelineSummaries,
+        errorLog: pipeStateForCtx.errorLog ?? [],
+        structuredFailure: ctx.structuredFailure,
+      });
       commands.push({
         type: "set-pending-context",
         itemKey: routeToKey,
@@ -327,8 +273,10 @@ const triageHandler: NodeHandler = {
     // the artifacts exist. Both RAG and LLM layers then see the structured
     // verdict first, instead of a 30 KB ANSI Playwright blob. No-op when
     // no oracle artifacts are present (pre-Phase-B features).
+    const artifacts: TriageArtifactLoader =
+      ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
     const { trace: enrichedError, sources: evidenceSources } =
-      prependContractEvidence(rawError, ctx.appRoot, slug);
+      artifacts.loadContractEvidence(slug, rawError);
     if (evidenceSources.length > 0) {
       logger.event("triage.evaluate", failingNodeKey, {
         source: "contract-evidence",
@@ -347,9 +295,7 @@ const triageHandler: NodeHandler = {
     // contract => null, classifier falls back to its uncaught-error rule.
     let acceptance: AcceptanceContract | null = null;
     try {
-      acceptance = loadAcceptanceContract(
-        path.join(ctx.appRoot, "in-progress", `${slug}_ACCEPTANCE.yml`),
-      );
+      acceptance = artifacts.loadAcceptance(slug);
     } catch {
       acceptance = null;
     }
