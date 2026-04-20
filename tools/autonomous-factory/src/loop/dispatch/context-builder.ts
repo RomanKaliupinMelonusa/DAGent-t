@@ -20,6 +20,7 @@ import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../../ports/triage-artifact-loader.js";
+import type { BaselineLoader } from "../../ports/baseline-loader.js";
 
 export interface ContextBuilderConfig {
   readonly slug: string;
@@ -31,6 +32,7 @@ export interface ContextBuilderConfig {
   readonly client?: CopilotClient;
   readonly triageLlm?: TriageLlm;
   readonly triageArtifacts?: TriageArtifactLoader;
+  readonly baselineLoader?: BaselineLoader;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
   readonly shell: Shell;
@@ -98,6 +100,7 @@ export function buildNodeContext(
     client: config.client,
     triageLlm: config.triageLlm,
     triageArtifacts: config.triageArtifacts,
+    baselineLoader: config.baselineLoader,
     logger: config.logger,
     vcs: config.vcs,
     stateReader: config.stateReader,

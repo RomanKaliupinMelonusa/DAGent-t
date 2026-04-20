@@ -32,6 +32,7 @@ import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
 import { CopilotTriageLlm } from "../adapters/copilot-triage-llm.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
+import { FileBaselineLoader } from "../adapters/file-baseline-loader.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "../handlers/registry.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
@@ -131,6 +132,7 @@ export async function runWithKernel(
   const telemetry = new JsonlTelemetry(logger);
   const triageLlm = new CopilotTriageLlm(client);
   const triageArtifacts = new FileTriageArtifactLoader({ appRoot });
+  const baselineLoader = new FileBaselineLoader({ appRoot });
   const effectPorts = { stateStore, telemetry };
 
   // Load initial DAG state from the persisted _STATE.json
@@ -202,6 +204,7 @@ export async function runWithKernel(
     client,
     triageLlm,
     triageArtifacts,
+    baselineLoader,
     lifecycle,
     vcs,
     stateReader: stateStore,

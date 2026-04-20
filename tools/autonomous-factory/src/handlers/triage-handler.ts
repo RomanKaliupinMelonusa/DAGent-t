@@ -37,6 +37,7 @@ import { composeTriageContext } from "../triage/context-builder.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
+import { filterNoise } from "../triage/baseline-filter.js";
 
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -299,7 +300,25 @@ const triageHandler: NodeHandler = {
     } catch {
       acceptance = null;
     }
-    const contractVerdict = classifyStructuredFailure(ctx.structuredFailure, { acceptance });
+    // Baseline noise filter — when `baseline-analyzer` captured a
+    // pre-feature console/network/uncaught baseline for the target pages,
+    // subtract those known-noise signals from the structured failure BEFORE
+    // classification. This prevents the impl-defect classifier from
+    // tripping on unrelated platform/legacy errors that exist regardless
+    // of the feature under test. Best-effort — a missing or malformed
+    // baseline is an identity no-op (filterNoise handles the null case).
+    let filteredStructuredFailure: unknown = ctx.structuredFailure;
+    try {
+      const baseline = ctx.baselineLoader?.loadBaseline(slug) ?? null;
+      filteredStructuredFailure = filterNoise(ctx.structuredFailure, baseline);
+      if (baseline && filteredStructuredFailure !== ctx.structuredFailure) {
+        logger.event("triage.evaluate", failingNodeKey, {
+          source: "baseline-filter",
+          baseline_feature: baseline.feature,
+        });
+      }
+    } catch { /* non-fatal — fall through with original payload */ }
+    const contractVerdict = classifyStructuredFailure(filteredStructuredFailure, { acceptance });
     const failureRoutesForContract = ctx.failureRoutes ?? {};
     // Fall-through classifier for raw-string failures (no StructuredFailure).
     // Currently matches `spec-compiler` schema-violation messages — route

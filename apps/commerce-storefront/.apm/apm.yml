@@ -19,6 +19,34 @@ agents:
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent]
+  baseline-analyzer:
+    # Phase-A sibling of spec-compiler. Runs right after acceptance
+    # compilation to capture a pre-feature baseline of console /
+    # network / uncaught errors on the pages and modals the feature
+    # targets. Output is advisory: triage subtracts the baseline from
+    # structured Playwright failures so platform noise never
+    # misclassifies as an impl-defect.
+    #
+    # Uses the existing Playwright MCP server (same pattern as
+    # e2e-author / qa-adversary). No roam-code — baseline capture is
+    # orthogonal to code indexing.
+    instructions: [always]
+    promptFile: baseline-analyzer.agent.md
+    mcp: [playwright]
+    skills: []
+    toolLimits: { soft: 45, hard: 65 }
+    security:
+      # Write exactly one advisory artifact. No code, no specs, no tests.
+      allowedWritePaths: ["(^|/)in-progress/.*_BASELINE\\.json$"]
+      allowedReadPaths:
+        - "^in-progress/.*_(SPEC|ACCEPTANCE)\\."
+        - "(^|/)package\\.json$"
+        - "^tsconfig"
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
+    tools:
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent]
+      mcp:
+        playwright: "*"
   storefront-dev:
     instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: storefront-dev.agent.md
@@ -156,6 +184,31 @@ nodes:
     # Pipeline scope — this is a pre-feature artifact, not feature code.
     commit_scope: pipeline
     diff_attribution_dirs: []
+
+  baseline-analyzer:
+    # Pre-feature page baseline. Runs a live browser against the target
+    # pages (PLP, PDP, modals, etc.) named in the spec/acceptance and
+    # captures the console / network / uncaught errors that are present
+    # BEFORE any feature code is written. Result is consumed by the
+    # triage handler as a noise filter so unrelated platform errors
+    # never misclassify as feature defects.
+    #
+    # Graceful by design — a failed baseline must not block the pipeline
+    # (see workflows.yml on_failure: blocked → null).
+    type: agent
+    category: dev
+    agent: "@baseline-analyzer"
+    timeout_minutes: 10
+    # Bring up the local dev server (same pattern as e2e-runner). The
+    # post-hook tears it down so the next node starts from a clean slate.
+    pre: "bash .apm/hooks/baseline-analyzer-pre.sh"
+    post: "bash .apm/hooks/baseline-analyzer-post.sh"
+    # Pipeline-scope artifact — does not modify feature code.
+    commit_scope: pipeline
+    diff_attribution_dirs: []
+    circuit_breaker:
+      max_item_failures: 2
+      halt_on_identical: true
 
   storefront-dev:
     type: agent

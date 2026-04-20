@@ -53,9 +53,29 @@ storefront:
           # unrecoverable — blocked means human review + salvage.
           blocked: null
 
+    # ── Pre-feature baseline ──────────────────────────────────────────
+    # Captures console/network/uncaught errors on the pages and modals
+    # the feature will touch, BEFORE any code is written. The triage
+    # engine consumes the resulting `_BASELINE.json` as a noise filter
+    # so pre-existing platform errors never misclassify as feature
+    # defects. Advisory: failure never blocks the pipeline.
+    baseline-analyzer:
+      depends_on: [spec-compiler]
+      circuit_breaker:
+        max_item_failures: 2
+        halt_on_identical: true
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Transient dev-server / Playwright MCP glitches — retry once.
+          environment: "$SELF"
+          # Anything else: degrade gracefully. Downstream nodes proceed
+          # without a baseline — triage.filterNoise becomes a no-op.
+          blocked: null
+
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
-      depends_on: [spec-compiler]
+      depends_on: [spec-compiler, baseline-analyzer]
 
     storefront-unit-test:
       depends_on: [storefront-dev]

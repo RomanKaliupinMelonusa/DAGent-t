@@ -28,6 +28,7 @@ import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
+import type { BaselineLoader } from "../ports/baseline-loader.js";
 import type { DagCommand } from "../dag-commands.js";
 
 // Re-export for backwards compatibility — the authoritative types live in
@@ -118,6 +119,13 @@ export interface NodeContext {
    * pure classifier + command builder.
    */
   readonly triageArtifacts?: TriageArtifactLoader;
+  /**
+   * Baseline loader port. Optional, advisory — supplies a pre-feature
+   * page-error baseline (console / network / uncaught) that the triage
+   * handler uses to subtract platform noise from structured failures
+   * before classification. Undefined when no baseline source is wired.
+   */
+  readonly baselineLoader?: BaselineLoader;
   /** Pipeline event logger — single entry point for all telemetry. */
   readonly logger: PipelineLogger;
   /**
