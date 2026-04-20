@@ -96,6 +96,19 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     // diagnosis block so the dev agent sees it before reading the excerpt.
     lines.push("", "### ⚠️ Advisory", handoff.advisory.trim());
   }
+  if (handoff.evidence && handoff.evidence.length > 0) {
+    // Level-1 evidence: absolute paths to screenshots / traces / videos
+    // the failing Playwright run produced. The dev agent can open the
+    // images directly via its file-read tool; trace zips are meant for
+    // `npx playwright show-trace <path>`.
+    lines.push("", "### 📎 Evidence");
+    for (const entry of handoff.evidence) {
+      lines.push(`- **${entry.testTitle}**`);
+      for (const att of entry.attachments) {
+        lines.push(`  - \`${att.path}\` (${att.name}, ${att.contentType})`);
+      }
+    }
+  }
   return lines.join("\n");
 }
 

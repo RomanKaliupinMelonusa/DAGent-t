@@ -135,7 +135,7 @@ const localExecHandler: NodeHandler = {
       let structuredFailure: StructuredFailure | null = null;
       if (structuredFailureCfg && structuredArtifactAbsPath) {
         if (structuredFailureCfg.format === "playwright-json") {
-          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath);
+          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath, { appRoot, slug });
         }
       }
 

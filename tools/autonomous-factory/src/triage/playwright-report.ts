@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs";
+import path from "node:path";
 import { createHash } from "node:crypto";
 
 /** Discriminated `kind` keeps future formats (jest-json, pytest-json) additive. */
@@ -34,6 +35,15 @@ export interface StructuredFailure {
     readonly error: string;
     /** First few lines of the stack trace, ANSI-stripped. */
     readonly stackHead: string;
+    /** Level-1 evidence — on-disk screenshots, traces, videos copied to
+     *  a feature-scoped directory so they survive Playwright's wipe of
+     *  `test-results/` between runs. Empty when no binary attachments
+     *  were present, or when the copy options were not supplied. */
+    readonly attachments?: ReadonlyArray<{
+      readonly name: string;
+      readonly path: string;
+      readonly contentType: string;
+    }>;
   }>;
   /** Uncaught runtime exceptions captured from browser contexts — the
    *  signal we care most about, because these classify as `impl-defect`. */
@@ -87,10 +97,90 @@ function decodeAttachment(att: PwAttachment): string | null {
 }
 
 /**
+ * Level-1 evidence — deterministic redaction guard. Screenshots taken on
+ * account/checkout/login pages can embed customer PII; we skip copying
+ * those to the evidence dir. Hardcoded for Level 1 — promote to APM
+ * config only when a real app needs a different rule.
+ */
+const REDACT_TITLE_RE = /account|checkout|login|auth|password|credit|card/i;
+
+function shouldRedactEvidence(title: string, file: string): boolean {
+  return REDACT_TITLE_RE.test(title) || REDACT_TITLE_RE.test(file);
+}
+
+/**
+ * Level-1 evidence — classify a Playwright attachment as a binary
+ * artifact worth copying (screenshot, video, trace zip). Text-only
+ * attachments (console-errors, failed-requests, …) are handled by the
+ * existing `decodeAttachment` path and never land in the evidence dir.
+ */
+function isBinaryEvidence(att: PwAttachment): boolean {
+  if (!att.path) return false;
+  const ct = att.contentType ?? "";
+  if (ct.startsWith("image/") || ct.startsWith("video/")) return true;
+  if (ct === "application/zip") return true;
+  // Named-attachment fallback: Playwright emits `trace` / `screenshot` /
+  // `video` names even when contentType is missing in older versions.
+  const name = att.name ?? "";
+  return name === "trace" || name === "screenshot" || name === "video";
+}
+
+/**
+ * Level-1 evidence — copy an on-disk attachment into the feature's
+ * evidence directory. Returns the copied absolute path, or `null` when
+ * the source is missing / unreadable / suspected path-traversal.
+ * Filenames are deterministic (`<testIdx>-<name>.<ext>`) so re-runs
+ * overwrite rather than accumulate.
+ */
+function copyEvidence(
+  att: PwAttachment,
+  evidenceDir: string,
+  testIdx: number,
+): string | null {
+  if (!att.path) return null;
+  // Path-traversal guard: only copy when the source file actually exists
+  // and is readable. We do not constrain the source to a particular
+  // ancestor — Playwright writes to `test-results/` which may live
+  // outside the app root (e.g. via a custom `outputDir`).
+  let src: string;
+  try {
+    src = fs.realpathSync(att.path);
+  } catch {
+    return null;
+  }
+  const ext = path.extname(src) || (att.contentType === "application/zip" ? ".zip" : "");
+  const safeName = (att.name ?? "attachment").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const destName = `${testIdx}-${safeName}${ext}`;
+  const dest = path.join(evidenceDir, destName);
+  try {
+    fs.mkdirSync(evidenceDir, { recursive: true });
+    fs.copyFileSync(src, dest);
+    return dest;
+  } catch {
+    return null;
+  }
+}
+
+/** Options for `parsePlaywrightReport`. */
+export interface ParsePlaywrightReportOptions {
+  /** Absolute path to the app root (containing `in-progress/`). When
+   *  supplied together with `slug`, binary attachments are copied to
+   *  `<appRoot>/in-progress/<slug>_evidence/` and surfaced on each
+   *  failedTest's `attachments[]`. When omitted, evidence harvesting
+   *  is skipped silently — parsing still succeeds. */
+  readonly appRoot?: string;
+  /** Feature slug — combined with `appRoot` to locate the evidence dir. */
+  readonly slug?: string;
+}
+
+/**
  * Parse a Playwright JSON reporter artifact. Returns `null` on any error
  * (missing file, invalid JSON, shape surprise).
  */
-export function parsePlaywrightReport(reportPath: string): StructuredFailure | null {
+export function parsePlaywrightReport(
+  reportPath: string,
+  opts: ParsePlaywrightReportOptions = {},
+): StructuredFailure | null {
   let raw: string;
   try {
     raw = fs.readFileSync(reportPath, "utf-8");
@@ -110,10 +200,17 @@ export function parsePlaywrightReport(reportPath: string): StructuredFailure | n
   const skipped = stats.skipped ?? 0;
   const total = passed + failed + skipped + (stats.flaky ?? 0);
 
-  const failedTests: StructuredFailure["failedTests"][number][] = [];
+  const failedTests: Array<StructuredFailure["failedTests"][number] & { attachments: Array<{ name: string; path: string; contentType: string }> }> = [];
   const uncaughtErrors: StructuredFailure["uncaughtErrors"][number][] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
+
+  const evidenceDir =
+    opts.appRoot && opts.slug
+      ? path.join(opts.appRoot, "in-progress", `${opts.slug}_evidence`)
+      : null;
+
+  let failedIdx = 0;
 
   for (const { spec, file } of walkSpecs(data.suites)) {
     const title = spec.title ?? "<untitled>";
@@ -129,11 +226,27 @@ export function parsePlaywrightReport(reportPath: string): StructuredFailure | n
       const errMsg = stripAnsi(firstErr?.message ?? "(no error message)");
       const stackHead = stripAnsi((firstErr?.stack ?? "").split("\n").slice(0, 4).join("\n"));
 
-      failedTests.push({ title, file: relFile, line, error: errMsg, stackHead });
+      const testAttachments: Array<{ name: string; path: string; contentType: string }> = [];
+      const redacted = shouldRedactEvidence(title, relFile);
+      failedTests.push({ title, file: relFile, line, error: errMsg, stackHead, attachments: testAttachments });
 
       // Mine uncaught errors, console errors, failed requests from attachments
-      // and stdout/stderr streams.
+      // and stdout/stderr streams. Binary attachments (screenshot/video/trace)
+      // are copied to the evidence dir when opts.appRoot+slug are supplied.
       for (const att of lastResult.attachments ?? []) {
+        if (isBinaryEvidence(att)) {
+          if (evidenceDir && !redacted) {
+            const copied = copyEvidence(att, evidenceDir, failedIdx);
+            if (copied) {
+              testAttachments.push({
+                name: att.name ?? "attachment",
+                path: copied,
+                contentType: att.contentType ?? "application/octet-stream",
+              });
+            }
+          }
+          continue;
+        }
         const body = decodeAttachment(att);
         if (!body) continue;
         // Convention from e2e-guidelines rule #9: agents may attach
@@ -146,6 +259,8 @@ export function parsePlaywrightReport(reportPath: string): StructuredFailure | n
           uncaughtErrors.push({ message: body.trim(), inTest: title });
         }
       }
+
+      failedIdx++;
 
       const streams = [
         ...(lastResult.stdout ?? []).map((s) => s.text ?? ""),

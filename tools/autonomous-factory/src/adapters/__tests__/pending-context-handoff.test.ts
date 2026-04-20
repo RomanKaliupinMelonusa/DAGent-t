@@ -78,6 +78,40 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
     const md = renderTriageHandoffMarkdown({ ...handoff, touchedFiles: [] });
     assert.match(md, /\*\*Touched files:\*\* \(none captured\)/);
   });
+
+  it("renders the 📎 Evidence section when evidence is present", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      evidence: [
+        {
+          testTitle: "shows quick-view modal",
+          attachments: [
+            {
+              name: "screenshot",
+              path: "/tmp/app/in-progress/feat_evidence/0-screenshot.png",
+              contentType: "image/png",
+            },
+            {
+              name: "trace",
+              path: "/tmp/app/in-progress/feat_evidence/0-trace.zip",
+              contentType: "application/zip",
+            },
+          ],
+        },
+      ],
+    });
+    assert.match(md, /### 📎 Evidence/);
+    assert.match(md, /\*\*shows quick-view modal\*\*/);
+    assert.match(md, /0-screenshot\.png.*image\/png/);
+    assert.match(md, /0-trace\.zip.*application\/zip/);
+  });
+
+  it("omits the 📎 Evidence section when evidence is empty or missing", () => {
+    const noEvidence = renderTriageHandoffMarkdown(handoff);
+    assert.ok(!/### 📎 Evidence/.test(noEvidence));
+    const emptyEvidence = renderTriageHandoffMarkdown({ ...handoff, evidence: [] });
+    assert.ok(!/### 📎 Evidence/.test(emptyEvidence));
+  });
 });
 
 describe("renderPendingContext (B1)", () => {

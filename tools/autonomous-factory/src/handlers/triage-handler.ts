@@ -31,6 +31,7 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyStructuredFailure, classifyRawError } from "../triage/contract-classifier.js";
 import { prependContractEvidence } from "../triage/contract-evidence.js";
+import { toHandoffEvidence } from "../triage/handoff-evidence.js";
 import { loadAcceptanceContract } from "../apm/acceptance-schema.js";
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
@@ -211,6 +212,7 @@ async function buildRerouteCommands(
           pipeStateForCtx.errorLog ?? [],
           triageResult.domain,
         ),
+        evidence: toHandoffEvidence(ctx.structuredFailure),
       };
       commands.push({
         type: "set-pending-context",

@@ -256,3 +256,122 @@ describe("computeStructuredSignature", () => {
     assert.equal(computeStructuredSignature(green), null);
   });
 });
+
+describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
+  function makeReport(attachments: unknown[], title = "shows modal") {
+    return {
+      stats: { expected: 0, unexpected: 1, skipped: 0, flaky: 0 },
+      suites: [
+        {
+          file: "e2e/product-quick-view.spec.ts",
+          specs: [
+            {
+              title,
+              file: "e2e/product-quick-view.spec.ts",
+              line: 10,
+              tests: [
+                {
+                  status: "unexpected",
+                  results: [
+                    {
+                      status: "failed",
+                      errors: [{ message: "TimeoutError: locator.waitFor" }],
+                      attachments,
+                      stdout: [],
+                      stderr: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("copies on-disk screenshot attachments into <slug>_evidence/", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const slug = "product-quick-view";
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "test-failed-1.png");
+    fs.writeFileSync(screenshot, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const report = makeReport([
+      { name: "screenshot", contentType: "image/png", path: screenshot },
+    ]);
+    const p = writeTmp("evidence.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, { appRoot, slug });
+    assert.ok(parsed);
+    const atts = parsed!.failedTests[0].attachments ?? [];
+    assert.equal(atts.length, 1);
+    assert.equal(atts[0].name, "screenshot");
+    assert.equal(atts[0].contentType, "image/png");
+    assert.match(atts[0].path, /product-quick-view_evidence\/0-screenshot\.png$/);
+    assert.ok(fs.existsSync(atts[0].path), "copied evidence file should exist on disk");
+  });
+
+  it("skips binary attachments whose source file is missing", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const report = makeReport([
+      { name: "screenshot", contentType: "image/png", path: "/no/such/path.png" },
+    ]);
+    const p = writeTmp("missing.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, { appRoot, slug: "feat" });
+    assert.ok(parsed);
+    assert.deepEqual(parsed!.failedTests[0].attachments, []);
+  });
+
+  it("redacts evidence from account/checkout/login specs", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "fail.png");
+    fs.writeFileSync(screenshot, "png");
+    const report = makeReport(
+      [{ name: "screenshot", contentType: "image/png", path: screenshot }],
+      "completes checkout flow",
+    );
+    const p = writeTmp("redact.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, { appRoot, slug: "feat" });
+    assert.ok(parsed);
+    assert.deepEqual(parsed!.failedTests[0].attachments, []);
+    assert.equal(
+      fs.existsSync(path.join(appRoot, "in-progress", "feat_evidence")),
+      false,
+      "evidence dir should not be created when everything is redacted",
+    );
+  });
+
+  it("skips evidence harvesting when appRoot/slug options are not supplied", () => {
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "fail.png");
+    fs.writeFileSync(screenshot, "png");
+    const report = makeReport([
+      { name: "screenshot", contentType: "image/png", path: screenshot },
+    ]);
+    const p = writeTmp("no-opts.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p);
+    assert.ok(parsed);
+    assert.deepEqual(parsed!.failedTests[0].attachments, []);
+  });
+
+  it("still decodes text attachments (console-errors) alongside binary evidence", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "fail.png");
+    fs.writeFileSync(screenshot, "png");
+    const report = makeReport([
+      { name: "screenshot", contentType: "image/png", path: screenshot },
+      {
+        name: "console-errors",
+        contentType: "text/plain",
+        body: Buffer.from("hydration mismatch on <div>").toString("base64"),
+      },
+    ]);
+    const p = writeTmp("mixed.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, { appRoot, slug: "feat" });
+    assert.ok(parsed);
+    assert.equal(parsed!.failedTests[0].attachments?.length, 1);
+    assert.ok(parsed!.consoleErrors.some((l) => /hydration mismatch/.test(l)));
+  });
+});

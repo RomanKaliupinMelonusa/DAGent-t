@@ -249,6 +249,20 @@ export interface TriageHandoff {
    *  when the last two reroutes stayed in the same domain. Free-form
    *  markdown; empty/undefined = no advisory. */
   readonly advisory?: string;
+  /** Level-1 screenshot/trace evidence harvested from a Playwright JSON
+   *  reporter artifact. Paths are absolute and point to copies persisted
+   *  under `<appRoot>/in-progress/<slug>_evidence/` so they survive the
+   *  Playwright cleanup of `test-results/` between runs. Omitted when
+   *  the failure is not a Playwright-json failure or no binary
+   *  attachments were present. */
+  readonly evidence?: ReadonlyArray<{
+    readonly testTitle: string;
+    readonly attachments: ReadonlyArray<{
+      readonly name: string;
+      readonly path: string;
+      readonly contentType: string;
+    }>;
+  }>;
 }
 
 /**
