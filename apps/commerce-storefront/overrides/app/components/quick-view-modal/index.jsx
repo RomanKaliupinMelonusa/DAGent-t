@@ -13,8 +13,7 @@ import {
     ModalOverlay,
     Center,
     Spinner,
-    Text,
-    Box
+    Text
 } from '@salesforce/retail-react-app/app/components/shared/ui'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
