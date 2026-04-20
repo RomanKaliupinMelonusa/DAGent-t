@@ -1,0 +1,40 @@
+{
+  "feature": "product-quick-view",
+  "timestamp": "2026-04-20T00:54:20.864Z",
+  "changes": [
+    {
+      "file": "overrides/app/components/product-tile/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Added Quick View overlay bar button to product tiles with conditional modal mounting to prevent SSR API calls"
+    },
+    {
+      "file": "overrides/app/components/product-tile/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "Added unit tests for overlay bar aria-label fallbacks, positioning, and base tile wrapper structure"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Added QuickViewErrorBoundary class component to isolate ProductView render failures inside the modal"
+    },
+    {
+      "file": "overrides/app/components/quick-view-modal/index.test.js",
+      "type": "modified",
+      "category": "test",
+      "description": "Added tests for imageSize prop forwarding and ErrorBoundary fallback when ProductView throws"
+    },
+    {
+      "file": "e2e/product-quick-view.spec.ts",
+      "type": "added",
+      "category": "e2e",
+      "description": "Comprehensive Playwright E2E test suite for Quick View button visibility, accessibility, modal interactions, and navigation"
+    }
+  ],
+  "testing": {
+    "unitTests": { "passed": 16, "failed": 0, "skipped": 0 },
+    "e2eTests": { "passed": 4, "failed": 3, "skipped": 9 }
+  }
+}
