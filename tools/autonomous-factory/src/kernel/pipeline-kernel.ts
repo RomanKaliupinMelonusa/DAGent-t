@@ -383,7 +383,23 @@ export class PipelineKernel {
         return { result: { ok: true }, effects };
       }
 
-      case "set-pending-context":
+      case "set-pending-context": {
+        // Mirror pendingContext into in-memory dagState so that downstream
+        // readers (e.g. auto-skip evaluator via kernel.dagSnapshot()) see it
+        // immediately — not only after the deferred disk effect runs.
+        // The context may be a plain string or a structured PendingContextPayload.
+        // The disk adapter renders payloads to markdown; here we coerce to a
+        // non-empty string so auto-skip checks pass. The authoritative
+        // rendered version is written to disk by the deferred effect and
+        // survives via persistDagSnapshot's merge (disk → merged items).
+        const pcRendered = typeof inner.context === "string"
+          ? inner.context
+          : inner.context.narrative ?? "[pending-context]";
+        const pcItems = this.dagState.items.map((it) =>
+          it.key === inner.itemKey ? { ...it, pendingContext: pcRendered } : it,
+        );
+        this.dagState = { ...this.dagState, items: pcItems } as PipelineState;
+
         effects.push({
           type: "persist-pending-context",
           slug: this.slug,
@@ -391,6 +407,7 @@ export class PipelineKernel {
           context: inner.context,
         });
         return { result: { ok: true }, effects };
+      }
 
       case "set-triage-record":
         effects.push({

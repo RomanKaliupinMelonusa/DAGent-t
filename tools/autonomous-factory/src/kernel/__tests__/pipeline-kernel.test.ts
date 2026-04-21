@@ -358,3 +358,73 @@ describe("PipelineKernel — collectStallCommands", () => {
     assert.match(a!.error ?? "", /^stalled-upstream:/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// set-pending-context mirrors to in-memory state
+// ---------------------------------------------------------------------------
+
+describe("PipelineKernel — set-pending-context in-memory mirror", () => {
+  it("dagSnapshot reflects pendingContext after set-pending-context (string)", () => {
+    const kernel = makeKernel();
+    const cmds = wrapDagCommands([{
+      type: "set-pending-context",
+      itemKey: "A",
+      context: "triage handoff text",
+    }]);
+    const { result } = kernel.process(cmds[0]);
+    assert.equal(result.ok, true);
+    const snap = kernel.dagSnapshot();
+    assert.equal(snap.items.find((i) => i.key === "A")?.pendingContext, "triage handoff text");
+  });
+
+  it("dagSnapshot reflects pendingContext after set-pending-context (payload)", () => {
+    const kernel = makeKernel();
+    const cmds = wrapDagCommands([{
+      type: "set-pending-context",
+      itemKey: "B",
+      context: {
+        narrative: "Redevelopment context for B",
+        handoff: {
+          failingItem: "e2e-runner",
+          triageDomain: "frontend",
+          triageReason: "locator not found",
+          errorSignature: "abc123",
+          errorExcerpt: "timeout waiting for modal",
+          priorAttemptCount: 0,
+          touchedFiles: [],
+        },
+      },
+    }]);
+    const { result } = kernel.process(cmds[0]);
+    assert.equal(result.ok, true);
+    const snap = kernel.dagSnapshot();
+    const pc = snap.items.find((i) => i.key === "B")?.pendingContext;
+    assert.ok(pc, "pendingContext should be non-null");
+    assert.ok(typeof pc === "string", "pendingContext should be a string");
+    assert.ok(pc!.trim().length > 0, "pendingContext should be non-empty");
+    assert.ok(pc!.includes("Redevelopment context for B"), "should contain narrative");
+  });
+
+  it("does not affect other items", () => {
+    const kernel = makeKernel();
+    const cmds = wrapDagCommands([{
+      type: "set-pending-context",
+      itemKey: "A",
+      context: "context for A only",
+    }]);
+    kernel.process(cmds[0]);
+    const snap = kernel.dagSnapshot();
+    assert.equal(snap.items.find((i) => i.key === "B")?.pendingContext, undefined);
+  });
+
+  it("generates persist-pending-context effect", () => {
+    const kernel = makeKernel();
+    const cmds = wrapDagCommands([{
+      type: "set-pending-context",
+      itemKey: "A",
+      context: "test context",
+    }]);
+    const { effects } = kernel.process(cmds[0]);
+    assert.ok(effects.some((e) => e.type === "persist-pending-context"));
+  });
+});

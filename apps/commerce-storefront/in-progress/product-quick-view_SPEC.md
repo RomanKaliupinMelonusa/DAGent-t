@@ -30,14 +30,45 @@ Add a Quick View overlay bar to every PLP product tile that opens a lazy-loaded 
 
 **File:** `apps/commerce-storefront/overrides/app/components/product-tile/index.jsx` (replaces the current 5-line re-export)
 
+#### UI Reference
+
+```
+┌────────────────────────────────┐
+│ [New]                          │  ← Badge (top-left, existing from base)
+│                                │
+│         (product image)        │
+│                                │
+│                                │
+├────────────────────────────────┤
+│ ● Quick View                   │  ← Overlay bar (bottom of image area)
+├────────────────────────────────┤
+│ Jewellery                      │  ← Category / brand (existing from base)
+│ ENGAGEMENT RINGS               │  ← Product name (existing from base)
+│ $99.00                         │  ← Price (existing from base)
+└────────────────────────────────┘
+```
+
+**Overlay bar details:**
+- Sits flush at the **bottom edge of the product image area**, above the text content (category/name/price). It is NOT inside the text area — it overlays the image.
+- Full width of the tile, thin horizontal strip (~40px height).
+- Background: semi-transparent dark (`rgba(0,0,0,0.6)`) or theme-appropriate `blackAlpha.700`.
+- Text: white, small font (`sm`), left-aligned with a leading `●` bullet icon (or `ViewIcon` from Chakra) followed by "Quick View" label.
+- **Desktop (`lg`+):** Hidden by default; slides up (`translateY(100%)` → `translateY(0)`) on tile hover via `_groupHover` / CSS `group-hover` with a `0.2s ease` transition.
+- **Mobile/Tablet (`base`–`md`):** Always visible (no hover on touch devices). `opacity: 1`, `transform: none`.
+- `cursor: pointer` on the bar. Entire bar is clickable (single hit target), not just the text.
+- The bar does NOT shift or push down the text content below. It is absolutely positioned within the image container, overlapping the bottom of the image.
+
+#### Implementation
+
 - Import base `ProductTile`, `useDisclosure`, Chakra primitives from `@salesforce/retail-react-app/app/components/shared/ui`.
 - Lazy-load `QuickViewModal` via `React.lazy()`.
 - Guard: don't render overlay for `product.type.set === true` or `product.type.bundle === true` or missing `productId`.
 - Structure:
   - `<Box data-testid="product-tile-wrapper" position="relative" role="group">`
   - base `<ProductTile {...props} />`
-  - Absolutely positioned overlay matched to the image area (`paddingBottom="100%"`, `overflow="hidden"`), containing a `<Box as="button" data-testid={`quick-view-btn-${product.productId}`}>` — per-instance testid suffix per `data-testid-contract` rule 7.
-  - Responsive `opacity`/`transform` for hover-slide on `lg`, always-on on `base`/`md`.
+  - Image area container: `<Box position="absolute" top="0" left="0" right="0" sx={{ aspectRatio: '1' }} overflow="hidden" pointerEvents="none">` — matches the square product image dimensions without relying on `paddingBottom` hacks.
+  - Inside image container: overlay bar `<Box as="button" data-testid={`quick-view-btn-${product.productId}`} position="absolute" bottom="0" left="0" right="0" h="40px" bg="blackAlpha.700" color="white" display="flex" alignItems="center" px={3} fontSize="sm" pointerEvents="auto" cursor="pointer" transition="all 0.2s ease" transform={{base: 'none', lg: 'translateY(100%)'}} opacity={{base: 1, lg: 0}} _groupHover={{lg: {transform: 'translateY(0)', opacity: 1}}}>` — per-instance testid suffix per `data-testid-contract` rule 7.
+  - Bar content: `<ViewIcon mr={2} /> <Text>Quick View</Text>` (i18n'd label).
   - Button `onClick` calls `e.preventDefault()` + `e.stopPropagation()` + `onOpen()` to avoid navigating to PDP.
   - Renders `{isOpen && <Suspense><QuickViewModal product={product} isOpen onClose={onClose} /></Suspense>}`.
 - Export original `Skeleton` unchanged.
