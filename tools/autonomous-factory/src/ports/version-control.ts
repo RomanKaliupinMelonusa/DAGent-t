@@ -21,6 +21,13 @@ export interface VersionControl {
   /** Get the current HEAD SHA. */
   getHeadSha(): Promise<string>;
 
+  /** Resolve an arbitrary git ref (branch name, tag, or ref expression)
+   *  to its commit SHA. Used by `baseline-analyzer` freshness checks to
+   *  detect when the captured baseline is stale relative to the current
+   *  base branch tip. Returns `null` when the ref cannot be resolved
+   *  (unknown ref, detached state, no git repo). MUST NOT throw. */
+  getRefSha?(ref: string): Promise<string | null>;
+
   /** Get files changed between two refs (or HEAD~1..HEAD). */
   getChangedFiles(fromRef?: string, toRef?: string): Promise<string[]>;
 }

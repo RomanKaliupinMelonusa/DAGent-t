@@ -47,6 +47,23 @@ export class GitShellAdapter implements VersionControl {
     }).trim();
   }
 
+  async getRefSha(ref: string): Promise<string | null> {
+    // Reject obvious injection shapes — ref is passed straight to `git`.
+    // Git refs are alphanumerics plus `/._-` (and `@` / `~` / `^` for rev
+    // expressions). Anything else is rejected silently; the caller treats
+    // `null` as "couldn't resolve", not "error".
+    if (!/^[A-Za-z0-9_./@~^-]+$/.test(ref)) return null;
+    try {
+      return execSync(`git rev-parse --verify ${ref}`, {
+        cwd: this.repoRoot,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   async getChangedFiles(fromRef?: string, toRef?: string): Promise<string[]> {
     const from = fromRef ?? "HEAD~1";
     const to = toRef ?? "HEAD";

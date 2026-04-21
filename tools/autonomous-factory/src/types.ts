@@ -252,6 +252,12 @@ export interface TriageHandoff {
   readonly priorAttemptCount: number;
   /** Files touched in the failing attempt, if known. */
   readonly touchedFiles?: readonly string[];
+  /** Provenance for `touchedFiles`. `"self"` when the files come from the
+   *  failing item's own attempt summary. Otherwise the item key whose
+   *  summary supplied the list (a recent upstream writer such as the dev
+   *  node when the failing item is a non-writing script like `e2e-runner`
+   *  or `push-app`). Omitted when `touchedFiles` is empty. */
+  readonly touchedFilesSource?: string;
   /** Optional advisory surfaced alongside the diagnosis — e.g. a
    *  consecutive-domain warning recommending `agent-branch.sh revert`
    *  when the last two reroutes stayed in the same domain. Free-form
@@ -270,6 +276,11 @@ export interface TriageHandoff {
       readonly path: string;
       readonly contentType: string;
     }>;
+    /** Playwright `error-context.md` — ARIA snapshot of the DOM at the
+     *  failure point. Pre-truncated to keep the handoff compact; the full
+     *  artifact lives under `test-results/…/error-context.md` for deeper
+     *  forensics. Absent when the reporter did not emit this attachment. */
+    readonly errorContext?: string;
   }>;
   /** Browser-side runtime signals captured by the Playwright JSON reporter
    *  (console errors, failed network requests, uncaught exceptions) after
@@ -288,6 +299,15 @@ export interface TriageHandoff {
       readonly message: string;
       readonly inTest: string;
     }>;
+  };
+  /** Per-channel counts of entries subtracted by `filterNoise` against
+   *  the pre-feature baseline. Rendered under the browser-signals block
+   *  as a provenance footer so the dev agent can verify the filter ran.
+   *  All zero / absent when no filtering happened. */
+  readonly baselineDropCounts?: {
+    readonly console: number;
+    readonly network: number;
+    readonly uncaught: number;
   };
 }
 

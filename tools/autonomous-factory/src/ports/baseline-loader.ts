@@ -37,6 +37,15 @@ export interface BaselineEntry {
    * across all three channels, which is the conservative default.
    */
   readonly kind?: "console" | "uncaught" | "network";
+  /**
+   * Optional URL fragment further scoping the match. When present, the
+   * runtime message must *also* contain this substring for the entry
+   * to apply — useful for distinguishing a noisy warning from vendor
+   * code vs the same string appearing in feature code. Substring,
+   * case-sensitive, applied before the volatile-token normaliser.
+   * Backward-compatible: entries without `source_url` behave as before.
+   */
+  readonly source_url?: string;
 }
 
 export interface BaselineProfile {

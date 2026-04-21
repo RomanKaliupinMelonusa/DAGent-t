@@ -31,14 +31,14 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyStructuredFailure, classifyRawError } from "../triage/contract-classifier.js";
 import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.js";
-import type { AcceptanceContract } from "../apm/acceptance-schema.js";
+import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { composeTriageContext } from "../triage/context-builder.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
-import { filterNoise } from "../triage/baseline-filter.js";
-
+import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
+import type { BaselineProfile } from "../ports/baseline-loader.js";
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
 // ---------------------------------------------------------------------------
@@ -102,6 +102,15 @@ async function buildRerouteCommands(
    *  Projected into the dev-agent handoff so console/network/uncaught signals
    *  travel alongside the Playwright assertion excerpt. */
   structuredFailure: unknown,
+  /** Loaded baseline profile (may be null). Passed through to
+   *  `composeTriageContext` so the raw-mode narrative can subtract
+   *  pre-feature platform noise from the inlined failure output. */
+  baseline: BaselineProfile | null,
+  /** Per-channel counts of baseline-filtered signals from the
+   *  `filterNoise` invocation that produced `structuredFailure`. Rendered
+   *  as a provenance footer in the dev-agent handoff so the agent can
+   *  confirm the filter ran. Zero / omitted when no filtering happened. */
+  baselineDropCounts?: { console: number; network: number; uncaught: number },
 ): Promise<DagCommand[]> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
@@ -148,13 +157,23 @@ async function buildRerouteCommands(
       rejectionContext: rejectionCtx || undefined,
       rawMode: ctx.apmContext.config?.context?.raw_mode === true,
       failureFallback: { failingItemKey: failingNodeKey, rawError },
+      baseline,
     });
     if (composed) {
       // B1 — emit structured handoff alongside the narrative so the adapter
       // appends a typed diagnosis block. The dev agent no longer needs to
       // re-discover the failure domain from raw logs.
-      const priorAttemptCount = (pipeStateForCtx.executionLog ?? [])
+      //
+      // `priorAttemptCount` must reflect feature-level effort, not just this
+      // node's exec count. Before C6 this counted only executionLog entries
+      // for the failing node, which reads "0" on the first cycle even when
+      // several redevelopment cycles have already elapsed. We now add the
+      // number of reset-for-reroute cycles so the rendered "Prior attempts"
+      // line tells the truth.
+      const execAttempts = (pipeStateForCtx.executionLog ?? [])
         .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
+      const cycleAttempts = extractPriorAttempts(pipeStateForCtx.errorLog ?? []).length;
+      const priorAttemptCount = execAttempts + cycleAttempts;
       const handoff = buildTriageHandoff({
         failingNodeKey,
         rawError,
@@ -164,6 +183,8 @@ async function buildRerouteCommands(
         pipelineSummaries: ctx.pipelineSummaries,
         errorLog: pipeStateForCtx.errorLog ?? [],
         structuredFailure,
+        routeToKey,
+        baselineDropCounts,
       });
       commands.push({
         type: "set-pending-context",
@@ -312,13 +333,17 @@ const triageHandler: NodeHandler = {
     // of the feature under test. Best-effort — a missing or malformed
     // baseline is an identity no-op (filterNoise handles the null case).
     let filteredStructuredFailure: unknown = ctx.structuredFailure;
+    let baseline: Awaited<ReturnType<NonNullable<typeof ctx.baselineLoader>["loadBaseline"]>> | null = null;
+    let baselineDropCounts: { console: number; network: number; uncaught: number } | undefined;
     try {
-      const baseline = ctx.baselineLoader?.loadBaseline(slug) ?? null;
+      baseline = ctx.baselineLoader?.loadBaseline(slug) ?? null;
       filteredStructuredFailure = filterNoise(ctx.structuredFailure, baseline);
       if (baseline && filteredStructuredFailure !== ctx.structuredFailure) {
+        baselineDropCounts = getLastDropCounts();
         logger.event("triage.evaluate", failingNodeKey, {
           source: "baseline-filter",
           baseline_feature: baseline.feature,
+          drop_counts: baselineDropCounts,
         });
       }
     } catch { /* non-fatal — fall through with original payload */ }
@@ -544,7 +569,7 @@ const triageHandler: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure);
+    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
 
     return {
       outcome: "completed",

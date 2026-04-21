@@ -77,10 +77,17 @@ Entry semantics:
 
 ## Workflow
 
-1. **Read the acceptance contract** at `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml`.
-   From `required_flows[*].steps[*]` collect every `goto` URL and every
-   `click` / `assert_visible` testid that opens a modal/overlay. These
-   are your `targets[]`.
+1. **Use the pre-computed target list** injected under
+   `## Pre-computed capture targets (deterministic)` in your task prompt.
+   The orchestrator extracts every `goto` URL and every modal trigger
+   `click` testid from `required_flows[*].steps[*]` before your session
+   starts. **This list is authoritative**: you MUST NOT drop any entry.
+   Read the acceptance contract at
+   `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml` only to add
+   targets the spec implies but the contract omits (e.g. an overlay the
+   test flows don't trigger but the spec mentions). When no pre-computed
+   list is present (rare — empty `required_flows`), fall back to reading
+   the contract directly.
 2. **Read the spec** at `{{specPath}}` as a sanity check. If the spec
    names a page the acceptance contract omits (e.g. "wishlist"), include
    it as a target with your best-guess URL. Err on the side of more

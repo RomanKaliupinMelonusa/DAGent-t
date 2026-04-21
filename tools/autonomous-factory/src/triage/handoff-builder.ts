@@ -105,6 +105,50 @@ export interface BuildTriageHandoffArgs {
   /** Raw structured-failure payload (e.g. a Playwright `StructuredFailure`).
    *  Projected into `TriageHandoff.evidence` via `toHandoffEvidence`. */
   readonly structuredFailure: unknown;
+  /** The item being re-invoked after the reroute (the "route_to" target).
+   *  Used as the preferred source when the failing item did not itself
+   *  write any files (scripts like `e2e-runner`, `push-app`). Optional —
+   *  when unset the builder still walks `pipelineSummaries` backward for
+   *  any recent writer. */
+  readonly routeToKey?: string;
+  /** Optional per-channel counts of baseline-filtered signals. Surfaced
+   *  as a provenance footer under the Browser signals block so the dev
+   *  agent can confirm the filter ran. Defaults to zero / omitted when
+   *  no filtering happened. */
+  readonly baselineDropCounts?: { readonly console: number; readonly network: number; readonly uncaught: number };
+}
+
+/**
+ * Resolve `touchedFiles` with provenance.
+ *
+ * Priority:
+ *   1. Files written by the failing item itself (source = "self").
+ *   2. Files written by the route-to target's most recent summary
+ *      (source = routeToKey) — this is the typical redevelopment case
+ *      where an E2E script fails and we re-invoke the dev agent that
+ *      last wrote the code.
+ *   3. Files written by the most recent summary in `pipelineSummaries`
+ *      that actually changed files (source = that key).
+ *
+ * Returns `{ files: [], source: undefined }` when nothing was captured.
+ */
+function resolveTouchedFiles(
+  failingKey: string,
+  routeToKey: string | undefined,
+  pipelineSummaries: ReadonlyArray<Readonly<ItemSummary>>,
+): { files: readonly string[]; source?: string } {
+  const reversed = [...pipelineSummaries].reverse();
+  const failing = reversed.find((s) => s.key === failingKey);
+  if (failing && failing.filesChanged.length > 0) {
+    return { files: failing.filesChanged, source: "self" };
+  }
+  if (routeToKey) {
+    const routeTo = reversed.find((s) => s.key === routeToKey);
+    if (routeTo && routeTo.filesChanged.length > 0) {
+      return { files: routeTo.filesChanged, source: routeToKey };
+    }
+  }
+  return { files: [] };
 }
 
 /**
@@ -121,9 +165,15 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     pipelineSummaries,
     errorLog,
     structuredFailure,
+    routeToKey,
+    baselineDropCounts,
   } = args;
 
-  const failingSummary = [...pipelineSummaries].reverse().find((s) => s.key === failingNodeKey);
+  const touched = resolveTouchedFiles(failingNodeKey, routeToKey, pipelineSummaries);
+  const drops = baselineDropCounts &&
+    (baselineDropCounts.console + baselineDropCounts.network + baselineDropCounts.uncaught > 0)
+    ? baselineDropCounts
+    : undefined;
 
   return {
     failingItem: failingNodeKey,
@@ -132,9 +182,11 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     triageDomain: triageResult.domain,
     triageReason: triageResult.reason,
     priorAttemptCount,
-    touchedFiles: failingSummary?.filesChanged ?? [],
+    touchedFiles: touched.files,
+    touchedFilesSource: touched.source,
     advisory: buildConsecutiveDomainAdvisory(errorLog, triageResult.domain),
     evidence: toHandoffEvidence(structuredFailure),
     browserSignals: toBrowserSignals(structuredFailure),
+    baselineDropCounts: drops,
   };
 }

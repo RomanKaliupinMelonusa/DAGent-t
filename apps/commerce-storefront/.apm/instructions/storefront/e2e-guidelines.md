@@ -31,7 +31,25 @@
 
 ## Diagnostics
 
-9. **Capture browser console errors and failed network requests** in `test.afterEach` or in the test body on failure. This evidence is critical for triage when reporting via `report_outcome` (status: "failed").
+9. **Capture browser console errors and failed network requests** by importing
+   `test` and `expect` from `./fixtures` instead of `@playwright/test`.
+   The auto-use `signals` fixture in `e2e/fixtures.ts` wires listeners on
+   every `page` and attaches `console-errors`, `failed-requests`, and
+   `uncaught-error` artifacts to **failed** tests automatically — no
+   per-test `afterEach` wiring required.
+
+   ```ts
+   // ✅ Canonical imports
+   import { test, expect } from './fixtures';
+
+   test('my feature', async ({ page }) => { /* ... */ });
+   ```
+
+   The triage layer parses these attachments deterministically via
+   `tools/autonomous-factory/src/triage/playwright-report.ts` and
+   subtracts the pre-feature `<slug>_BASELINE.json` before the dev agent
+   ever sees them. **Do NOT** roll your own `page.on('console')` handlers
+   — they produce non-standard attachment names the parser won't match.
 
 ## Self-Review Gate (MANDATORY before commit)
 

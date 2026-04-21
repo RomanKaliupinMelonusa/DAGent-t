@@ -28,6 +28,8 @@ import { readStateOrThrow } from "../adapters/file-state/io.js";
 import { computeErrorSignature } from "./error-fingerprint.js";
 import { getHeadSha } from "../session/dag-utils.js";
 import { buildPriorAttemptsBlock } from "./historian.js";
+import { filterNoiseFromText } from "./baseline-filter.js";
+import type { BaselineProfile } from "../ports/baseline-loader.js";
 
 // ---------------------------------------------------------------------------
 // Retry context (in-memory attempt > 1)
@@ -269,6 +271,11 @@ export function buildDownstreamFailureContextRaw(
    *  materialized (e.g. self-activation), or when a caller supplies the
    *  activation payload directly without going through the run state. */
   failureFallback?: { failingItemKey: string; rawError: string },
+  /** Pre-feature baseline profile. When supplied, pre-existing platform
+   *  console/network/uncaught noise is stripped from the inlined raw
+   *  failure output so the dev agent doesn't drown in known warnings.
+   *  Null / undefined → no subtraction. */
+  baseline?: BaselineProfile | null,
 ): string {
   if (!allowsRevertBypass) return "";
 
@@ -291,6 +298,16 @@ export function buildDownstreamFailureContextRaw(
     return "";
   }
 
+  // Phase E2 — subtract baseline noise from the inlined raw stdout so the
+  // dev agent doesn't re-read platform warnings that pre-date the feature.
+  // Counts are surfaced in the truncation note for provenance.
+  let baselineDropped = 0;
+  if (baseline) {
+    const filtered = filterNoiseFromText(rawError, baseline);
+    rawError = filtered.text;
+    baselineDropped = filtered.droppedCount;
+  }
+
   // Read errorLog from state for the historian (best-effort).
   let errorLog: Array<{ timestamp: string; itemKey: string; message: string; errorSignature?: string | null }> = [];
   if (slug) {
@@ -302,10 +319,13 @@ export function buildDownstreamFailureContextRaw(
   const historyBlock = buildPriorAttemptsBlock(errorLog);
 
   // Build the "Most recent failure output" section with overflow handling.
+  const baselineNote = baselineDropped > 0
+    ? `\n*(${baselineDropped} line(s) of pre-feature platform noise subtracted via baseline-analyzer)*`
+    : "";
   let failureSection: string;
   if (rawError.length <= RAW_INLINE_CAP) {
     failureSection = [
-      "## Most recent failure output",
+      "## Most recent failure output" + baselineNote,
       "",
       "```",
       rawError,
@@ -326,7 +346,7 @@ export function buildDownstreamFailureContextRaw(
       } catch { /* noop */ }
     }
     failureSection = [
-      "## Most recent failure output",
+      "## Most recent failure output" + baselineNote,
       `*(truncated — head+tail shown; middle ${rawError.length - RAW_HEAD_BYTES - RAW_TAIL_BYTES} bytes omitted${fileNote ? "" : ""})*${fileNote}`,
       "",
       "### Head",
@@ -521,6 +541,10 @@ export function composeTriageContext(opts: {
    *  Populated by the triage handler from the activation payload so the
    *  redevelopment block renders even when no `ItemSummary` records exist. */
   failureFallback?: { failingItemKey: string; rawError: string };
+  /** Pre-feature baseline profile (from `baseline-analyzer` → `_BASELINE.json`).
+   *  When supplied, raw-mode subtracts known-noise lines from the inlined
+   *  failure output before rendering. Null / undefined → no subtraction. */
+  baseline?: BaselineProfile | null;
 }): string {
   const parts: string[] = [];
 
@@ -539,6 +563,7 @@ export function composeTriageContext(opts: {
       opts.slug,
       opts.allowsRevertBypass,
       opts.failureFallback,
+      opts.baseline,
     )
     : buildDownstreamFailureContext(
       opts.itemKey,

@@ -24,6 +24,9 @@ import { extractDiagnosticTrace } from "../types.js";
 import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
+import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
+import { formatDerivedTargetsMarkdown } from "../triage/derive-baseline-targets.js";
+import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
@@ -159,6 +162,62 @@ const copilotAgentHandler: NodeHandler = {
         injection_types: ["pending_context"],
         context_length: pendingItem.pendingContext.length,
       });
+    }
+
+    // Dispatch-time target derivation for baseline-analyzer — extract
+    // pages + modal triggers from ACCEPTANCE.yml deterministically and
+    // inject as an authoritative list so the agent doesn't have to
+    // re-interpret the YAML and potentially miss targets.
+    if (itemKey === "baseline-analyzer") {
+      const artifacts = ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
+      try {
+        const contract = artifacts.loadAcceptance(slug);
+        if (contract) {
+          const block = formatDerivedTargetsMarkdown(contract);
+          if (block) {
+            taskPrompt += block;
+            ctx.logger.event("handoff.inject", itemKey, {
+              injection_types: ["derived_baseline_targets"],
+              context_length: block.length,
+            });
+          }
+        }
+      } catch { /* non-fatal — agent falls back to its own YAML reading */ }
+    }
+
+    // Dispatch-time baseline advisory — tell the agent up-front which
+    // console/network/uncaught errors pre-date this feature so it doesn't
+    // chase red herrings. Skipped for `baseline-analyzer` itself (the node
+    // that produced the baseline) and when no baseline exists. Advisory
+    // renders as empty when the profile has no entries.
+    if (ctx.baselineLoader && itemKey !== "baseline-analyzer") {
+      const baseline = ctx.baselineLoader.loadBaseline(slug);
+      // Best-effort freshness check — resolve the base-branch sha via the
+      // VCS port when available, so the advisory can warn the agent when
+      // the baseline was captured against an older tree. `null` means the
+      // adapter couldn't resolve it (detached, missing ref, unsupported);
+      // we silently omit the staleness banner in that case.
+      let currentBaseSha: string | undefined;
+      if (baseline?.base_sha && typeof ctx.vcs.getRefSha === "function") {
+        try {
+          const resolved = await ctx.vcs.getRefSha(ctx.baseBranch);
+          if (resolved) currentBaseSha = resolved;
+        } catch { /* noop */ }
+      }
+      const advisory = formatBaselineAdvisory(baseline, slug, currentBaseSha);
+      if (advisory) {
+        taskPrompt += advisory;
+        ctx.logger.event("handoff.inject", itemKey, {
+          injection_types: ["baseline_advisory"],
+          context_length: advisory.length,
+          entry_counts: {
+            console: baseline?.console_errors?.length ?? 0,
+            network: baseline?.network_failures?.length ?? 0,
+            uncaught: baseline?.uncaught_exceptions?.length ?? 0,
+          },
+          stale: currentBaseSha !== undefined && baseline?.base_sha !== undefined && baseline.base_sha !== currentBaseSha,
+        });
+      }
     }
 
     if (node?.generates_change_manifest) {

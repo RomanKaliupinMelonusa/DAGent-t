@@ -44,6 +44,13 @@ export interface StructuredFailure {
       readonly path: string;
       readonly contentType: string;
     }>;
+    /** Playwright's `error-context.md` attachment — an ARIA snapshot of
+     *  the DOM at the moment of failure. This is the highest-signal
+     *  forensic artifact in a Playwright failure (it proves what the
+     *  browser actually rendered at the assertion point). Capped to
+     *  ~4 KB per test when inlined; absent when the attachment was
+     *  missing. Text-only, already stripped of ANSI. */
+    readonly errorContext?: string;
   }>;
   /** Uncaught runtime exceptions captured from browser contexts — the
    *  signal we care most about, because these classify as `impl-defect`. */
@@ -227,7 +234,7 @@ export function parsePlaywrightReport(
   const skipped = stats.skipped ?? 0;
   const total = passed + failed + skipped + (stats.flaky ?? 0);
 
-  const failedTests: Array<StructuredFailure["failedTests"][number] & { attachments: Array<{ name: string; path: string; contentType: string }> }> = [];
+  const failedTests: Array<StructuredFailure["failedTests"][number] & { attachments: Array<{ name: string; path: string; contentType: string }>; errorContext?: string }> = [];
   const uncaughtErrors: StructuredFailure["uncaughtErrors"][number][] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
@@ -262,7 +269,16 @@ export function parsePlaywrightReport(
 
       const testAttachments: Array<{ name: string; path: string; contentType: string }> = [];
       const redacted = shouldRedactEvidence(title, relFile, redactRe);
-      failedTests.push({ title, file: relFile, line, error: errMsg, stackHead, attachments: testAttachments });
+      const failedEntry: {
+        title: string;
+        file: string;
+        line: number | null;
+        error: string;
+        stackHead: string;
+        attachments: Array<{ name: string; path: string; contentType: string }>;
+        errorContext?: string;
+      } = { title, file: relFile, line, error: errMsg, stackHead, attachments: testAttachments };
+      failedTests.push(failedEntry);
 
       // Mine uncaught errors, console errors, failed requests from attachments
       // and stdout/stderr streams. Binary attachments (screenshot/video/trace)
@@ -291,6 +307,16 @@ export function parsePlaywrightReport(
           for (const line of body.split(/\r?\n/).filter(Boolean)) failedRequests.push(line);
         } else if (att.name === "uncaught-error" || att.name === "uncaughtError") {
           uncaughtErrors.push({ message: body.trim(), inTest: title });
+        } else if (
+          // Playwright 1.50+ emits `error-context` as a markdown attachment
+          // containing an ARIA snapshot of the page at the failure point.
+          // Highest-signal forensic artifact — inline it onto the failed
+          // test entry so downstream handoff rendering can surface it.
+          att.name === "error-context" ||
+          (att.contentType === "text/markdown" &&
+            (att.path?.endsWith("error-context.md") ?? false))
+        ) {
+          failedEntry.errorContext = stripAnsi(body);
         }
       }
 

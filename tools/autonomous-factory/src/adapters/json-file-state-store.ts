@@ -73,10 +73,20 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
  *
  * Exported for unit testing — the adapter is the single rendering point.
  */
-export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
+export function renderTriageHandoffMarkdown(
+  handoff: TriageHandoff,
+  options?: { suppressErrorExcerpt?: boolean },
+): string {
   const touched = handoff.touchedFiles && handoff.touchedFiles.length > 0
     ? handoff.touchedFiles.join(", ")
     : "(none captured)";
+  // Provenance hint — who actually wrote these files. When the failing
+  // item is a non-writing script (e2e-runner, push-app), the list comes
+  // from an upstream dev summary and we surface that so the agent knows
+  // where to start reading.
+  const touchedSrc = handoff.touchedFilesSource && handoff.touchedFilesSource !== "self"
+    ? ` _(from upstream \`${handoff.touchedFilesSource}\` attempt)_`
+    : "";
   const lines: string[] = [
     "## 🧩 Triage handoff",
     `- **Failing item:** \`${handoff.failingItem}\``,
@@ -84,14 +94,27 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     `- **Reason:** ${handoff.triageReason}`,
     `- **Error signature:** \`${handoff.errorSignature}\``,
     `- **Prior attempts:** ${handoff.priorAttemptCount}`,
-    `- **Touched files:** ${touched}`,
-    "",
-    "### Failing test step (context)",
-    "*This excerpt shows which assertion/step the E2E was running when it failed — useful for locating the user flow, but it is **not** the root cause. For root-cause diagnosis, read the Browser signals section below.*",
-    "```",
-    handoff.errorExcerpt,
-    "```",
+    `- **Touched files:** ${touched}${touchedSrc}`,
   ];
+  if (options?.suppressErrorExcerpt) {
+    // The narrative channel has already inlined the raw failure output
+    // verbatim — re-rendering the truncated excerpt here would double
+    // the token footprint and push the ARIA snapshot out of the window.
+    // A one-line pointer keeps the diagnosis block self-contained.
+    lines.push(
+      "",
+      "> _Failing assertion excerpt omitted — see **Most recent failure output** above._",
+    );
+  } else {
+    lines.push(
+      "",
+      "### Failing test step (context)",
+      "*This excerpt shows which assertion/step the E2E was running when it failed — useful for locating the user flow, but it is **not** the root cause. For root-cause diagnosis, read the Browser signals section below.*",
+      "```",
+      handoff.errorExcerpt,
+      "```",
+    );
+  }
   if (handoff.advisory && handoff.advisory.trim().length > 0) {
     // Round-2 R3: consecutive-domain advisory rendered immediately after the
     // diagnosis block so the dev agent sees it before reading the excerpt.
@@ -122,6 +145,17 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     }
     if (sections.length > 0) {
       lines.push("", "### 🌐 Browser signals (baseline-filtered)", ...sections);
+      // Provenance footer — tell the dev agent how many pre-feature
+      // signals were subtracted on each channel. Reassures the agent
+      // that the baseline filter ran, and lets them judge whether the
+      // remaining signals are likely feature-attributable.
+      const drops = handoff.baselineDropCounts;
+      if (drops && (drops.console + drops.network + drops.uncaught > 0)) {
+        lines.push(
+          "",
+          `> _Noise filtered: ${drops.console} console / ${drops.network} network / ${drops.uncaught} uncaught matched the pre-feature baseline and were removed._`,
+        );
+      }
     }
   }
   if (handoff.evidence && handoff.evidence.length > 0) {
@@ -136,13 +170,29 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
         lines.push(`  - \`${att.path}\` (${att.name}, ${att.contentType})`);
       }
     }
+    // Playwright `error-context.md` — ARIA snapshot of the DOM at the
+    // failure point. Inlined here because it is the single highest-signal
+    // forensic artifact in a Playwright failure (proves what the browser
+    // actually rendered). Rendered once per failed test that has it.
+    const withCtx = handoff.evidence.filter((e) => typeof e.errorContext === "string" && e.errorContext!.length > 0);
+    if (withCtx.length > 0) {
+      lines.push("", "### 🕸️ DOM state at failure (ARIA snapshot)");
+      for (const entry of withCtx) {
+        lines.push("", `**${entry.testTitle}**`, "", "```markdown", entry.errorContext as string, "```");
+      }
+    }
   }
   return lines.join("\n");
 }
 
 export function renderPendingContext(payload: PendingContextPayload): string {
   const narrative = payload.narrative.trimEnd();
-  const handoffMd = renderTriageHandoffMarkdown(payload.handoff);
+  // Raw-mode narratives already inline the full failure output under the
+  // "## Most recent failure output" heading. The handoff's errorExcerpt is
+  // a strict subset of that payload, so rendering it a second time is
+  // pure token cost. Detect the marker and suppress the duplicate block.
+  const suppressErrorExcerpt = /(^|\n)##\s+Most recent failure output\b/.test(narrative);
+  const handoffMd = renderTriageHandoffMarkdown(payload.handoff, { suppressErrorExcerpt });
   return `${narrative}\n\n${handoffMd}\n`;
 }
 

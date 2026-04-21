@@ -26,17 +26,27 @@ const MAX_UNCAUGHT = 10;
 const MAX_CONSOLE = 15;
 const MAX_NETWORK = 15;
 const MAX_MESSAGE_CHARS = 300;
+/** `error-context.md` cap per failed test — roughly ARIA snapshot of a
+ *  page. Generous enough to include DOM landmarks and a few roles, but
+ *  not so large one flaky test blows the dispatch prompt. */
+const MAX_ERROR_CONTEXT_CHARS = 4_000;
 
 function truncate(s: string): string {
   if (s.length <= MAX_MESSAGE_CHARS) return s;
   return `${s.slice(0, MAX_MESSAGE_CHARS - 1)}\u2026`;
 }
 
+function truncateErrorContext(s: string): string {
+  if (s.length <= MAX_ERROR_CONTEXT_CHARS) return s;
+  return `${s.slice(0, MAX_ERROR_CONTEXT_CHARS - 1)}\u2026`;
+}
+
 function fromPlaywrightJson(f: StructuredFailure): Evidence | undefined {
   const out: Array<Evidence[number]> = [];
   for (const t of f.failedTests) {
     const atts = t.attachments ?? [];
-    if (atts.length === 0) continue;
+    const hasErrorContext = typeof t.errorContext === "string" && t.errorContext.length > 0;
+    if (atts.length === 0 && !hasErrorContext) continue;
     out.push({
       testTitle: t.title,
       attachments: atts.map((a) => ({
@@ -44,6 +54,7 @@ function fromPlaywrightJson(f: StructuredFailure): Evidence | undefined {
         path: a.path,
         contentType: a.contentType,
       })),
+      ...(hasErrorContext ? { errorContext: truncateErrorContext(t.errorContext as string) } : {}),
     });
   }
   return out.length > 0 ? out : undefined;
