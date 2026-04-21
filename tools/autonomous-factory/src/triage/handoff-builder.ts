@@ -15,6 +15,7 @@
 
 import type { ItemSummary, TriageHandoff, TriageRecord } from "../types.js";
 import type { TriageResult } from "../types.js";
+import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { extractPriorAttempts } from "./historian.js";
 import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "./handoff-evidence.js";
 
@@ -116,6 +117,15 @@ export interface BuildTriageHandoffArgs {
    *  agent can confirm the filter ran. Defaults to zero / omitted when
    *  no filtering happened. */
   readonly baselineDropCounts?: { readonly console: number; readonly network: number; readonly uncaught: number };
+  /** Loaded baseline profile (from `baseline-analyzer`'s
+   *  `_BASELINE.json`). When present, `buildTriageHandoff` emits a
+   *  `baselineRef` pointer on the returned handoff so a future debug
+   *  agent can read the catalogue to filter pre-feature noise.
+   *  Null / undefined → no `baselineRef` is emitted. */
+  readonly baseline?: BaselineProfile | null;
+  /** Feature slug — used to construct the `_BASELINE.json` path on
+   *  `baselineRef`. Ignored when `baseline` is absent. */
+  readonly slug?: string;
 }
 
 /**
@@ -167,6 +177,8 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     structuredFailure,
     routeToKey,
     baselineDropCounts,
+    baseline,
+    slug,
   } = args;
 
   const touched = resolveTouchedFiles(failingNodeKey, routeToKey, pipelineSummaries);
@@ -174,6 +186,21 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     (baselineDropCounts.console + baselineDropCounts.network + baselineDropCounts.uncaught > 0)
     ? baselineDropCounts
     : undefined;
+
+  // Baseline pointer — compact metadata only. The full catalogue lives on
+  // disk at the given path so the current dev agent doesn't pay the token
+  // cost, but a future debug agent (Playwright MCP) can open the file to
+  // filter pre-feature console / network / uncaught noise out of whatever
+  // it harvests at runtime.
+  let baselineRef: TriageHandoff["baselineRef"];
+  if (baseline && slug) {
+    baselineRef = {
+      path: `in-progress/${slug}_BASELINE.json`,
+      consolePatternCount: baseline.console_errors?.length ?? 0,
+      networkPatternCount: baseline.network_failures?.length ?? 0,
+      uncaughtPatternCount: baseline.uncaught_exceptions?.length ?? 0,
+    };
+  }
 
   return {
     failingItem: failingNodeKey,
@@ -189,5 +216,6 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     browserSignals: toBrowserSignals(structuredFailure),
     baselineDropCounts: drops,
     failedTests: toFailedTests(structuredFailure),
+    baselineRef,
   };
 }

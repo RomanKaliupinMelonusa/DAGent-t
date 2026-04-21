@@ -60,6 +60,31 @@ agents:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
         roam-code: "*"
+  storefront-debug:
+    # Runtime-defect debugger. Same write scope as storefront-dev, plus the
+    # Playwright MCP for live-browser reproduction against the local dev
+    # server. Only activated when triage reroutes a runtime failure
+    # (frontend / ssr-hydration / browser-runtime-error / test-code-from-dev)
+    # to this node. Sits inline between storefront-dev and
+    # storefront-unit-test; auto-skips on the happy path.
+    instructions: [always, storefront, storefront/debugging.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    promptFile: storefront-debug.agent.md
+    mcp: [roam-code, playwright]
+    skills: [test-storefront-unit, dev-local]
+    toolLimits: { soft: 90, hard: 120 }
+    security:
+      # Same mutation surface as storefront-dev. Unit tests and e2e specs are
+      # owned by the downstream test nodes — debug must not touch them. The
+      # debug agent prompt enforces that contract with explicit forbidden
+      # actions; path guards here prevent accidental writes even if the
+      # prompt is ignored.
+      allowedWritePaths: ["^app/", "^config/", "^worker/", "^translations/", "(^|/)in-progress/.*_DEBUG-NOTES\\.md$"]
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
+    tools:
+      core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
+      mcp:
+        roam-code: "*"
+        playwright: "*"
   storefront-unit-test:
     instructions: [always, storefront/testing-mandate.md, tooling/roam-tool-rules.md]
     promptFile: storefront-unit-test.agent.md
@@ -220,6 +245,28 @@ nodes:
     circuit_breaker:
       allows_revert_bypass: true
       allows_timeout_salvage: true
+
+  storefront-debug:
+    # Runtime-defect debugger. Auto-skips on the happy path via
+    # `auto_skip_unless_triage_reroute`; only performs real work when the
+    # triage handler reroutes a runtime failure onto it and writes
+    # pendingContext. Uses the Playwright MCP against the local dev server,
+    # so the node reuses the e2e-runner pre/post hooks to bring the server
+    # up and tear it down.
+    type: agent
+    category: dev
+    agent: "@storefront-debug"
+    timeout_minutes: 25
+    auto_skip_unless_triage_reroute: true
+    pre: "bash .apm/hooks/e2e-runner-pre.sh"
+    post: "bash .apm/hooks/e2e-runner-post.sh"
+    commit_scope: all
+    diff_attribution_dirs: [storefront]
+    circuit_breaker:
+      allows_revert_bypass: true
+      allows_timeout_salvage: true
+      max_item_failures: 3
+      halt_on_identical: true
 
   storefront-unit-test:
     type: agent

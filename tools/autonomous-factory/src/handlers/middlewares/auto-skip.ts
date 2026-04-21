@@ -30,6 +30,7 @@ export const autoSkipMiddleware: NodeMiddleware = {
       ctx.appRoot,
       ctx.preStepRefs,
       ctx.pipelineState.workflowName,
+      ctx.pipelineState,
     );
 
     if (decision.skip) {

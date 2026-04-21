@@ -77,11 +77,39 @@ storefront:
     storefront-dev:
       depends_on: [spec-compiler, baseline-analyzer]
 
-    storefront-unit-test:
+    # ── Runtime-defect debugger ───────────────────────────────────────
+    # Sits inline between storefront-dev and storefront-unit-test. On the
+    # happy path (no triage reroute) the node auto-skips via
+    # `auto_skip_unless_triage_reroute`. When triage reroutes a runtime
+    # failure (frontend / ssr-hydration / browser-runtime-error /
+    # test-code-from-dev) onto this node, it reproduces the failure via
+    # the Playwright MCP, patches the minimum diff, and lets the DAG
+    # re-run storefront-unit-test → e2e-author → e2e-runner → qa-adversary.
+    storefront-debug:
       depends_on: [storefront-dev]
       on_failure:
         triage: triage-storefront
         routes:
+          # Debug couldn't fix the runtime bug — retry itself (bounded by
+          # circuit_breaker.max_item_failures in apm.yml).
+          frontend: "$SELF"
+          ssr-hydration: "$SELF"
+          browser-runtime-error: "$SELF"
+          test-code-from-dev: "$SELF"
+          # Debug concluded the Playwright spec itself is the defect —
+          # hand off to the SDET.
+          test-code: e2e-author
+          environment: "$SELF"
+          # Unfixable → graceful salvage via the triage handler.
+          blocked: null
+
+    storefront-unit-test:
+      depends_on: [storefront-debug]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Unit-test failures indicate a shallow impl bug that does not
+          # require live-browser investigation — keep routing to dev.
           frontend: storefront-dev
           test-code: storefront-dev
           environment: "$SELF"
@@ -96,30 +124,40 @@ storefront:
       on_failure:
         triage: triage-storefront
         routes:
-          frontend: storefront-dev
+          # Runtime defects visible in a live browser route to the debugger,
+          # not back to the full dev agent. Debug will re-run the Playwright
+          # spec via MCP after patching; the DAG cascade then re-runs
+          # storefront-unit-test → e2e-author → e2e-runner downstream.
+          frontend: storefront-debug
+          # Pure test bugs (bad locator, race condition) remain the SDET's
+          # responsibility.
           test-code: e2e-author
-          test-code-from-dev: storefront-dev
-          ssr-hydration: storefront-dev
+          # Test code the dev agent produced (e.g. a storefront helper that
+          # a spec imports) — debug investigates; if it's genuinely a test
+          # problem debug's own on_failure.test-code reroutes to e2e-author.
+          test-code-from-dev: storefront-debug
+          ssr-hydration: storefront-debug
           # Contract-violation pre-classifier — uncaught browser runtime
           # errors captured by the Playwright JSON reporter route here
           # deterministically (no RAG, no LLM).
-          browser-runtime-error: storefront-dev
+          browser-runtime-error: storefront-debug
           environment: "$SELF"
           blocked: null
 
     # ── Adversarial QA pass (Phase B.2) ───────────────────────────────
     # Attempts to falsify the feature against the acceptance contract.
     # Writes `<slug>_QA-REPORT.json`; any violation fails this node and
-    # routes back to storefront-dev for redevelopment.
+    # routes runtime defects to the debug agent for redevelopment.
     qa-adversary:
       depends_on: [e2e-runner]
       on_failure:
         triage: triage-storefront
         routes:
-          # QA-discovered acceptance violations always route back to dev.
-          frontend: storefront-dev
-          browser-runtime-error: storefront-dev
-          ssr-hydration: storefront-dev
+          # QA-discovered acceptance violations route to the debugger so
+          # it can reproduce the adversarial probe in a live browser.
+          frontend: storefront-debug
+          browser-runtime-error: storefront-debug
+          ssr-hydration: storefront-debug
           # The QA probes themselves can be wrong (e.g. impossible flow).
           test-code: qa-adversary
           environment: "$SELF"
@@ -214,8 +252,8 @@ storefront:
           description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
           retries: 2
         ssr-hydration:
-          description: "SSR hydration mismatch, server-render crash, React hydration errors — route back to dev agent for full-context redevelopment"
-          route_to: storefront-dev
+          description: "SSR hydration mismatch, server-render crash, React hydration errors — route to the live-browser debugger for MCP-driven investigation"
+          route_to: storefront-debug
         no-op-dev:
           description: "Dev agent reported completion without committing any files in its attribution dirs. Re-dispatch with explicit must-commit directive."
           route_to: storefront-dev

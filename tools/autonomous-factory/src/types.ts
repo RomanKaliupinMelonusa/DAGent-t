@@ -326,6 +326,23 @@ export interface TriageHandoff {
      *  excerpt, truncated). */
     readonly error: string;
   }>;
+  /** Pointer to the pre-feature noise catalogue captured by
+   *  `baseline-analyzer` (`in-progress/<slug>_BASELINE.json`). The
+   *  current dev-agent prompt does not filter via this file (the
+   *  compact `failedTests` list replaces raw stdout), but a future
+   *  debug agent with Playwright MCP access will need to consult it
+   *  to tell feature-attributable errors apart from pre-existing
+   *  platform noise. Rendered as a single provenance line in the
+   *  handoff markdown. Omitted when no baseline was captured. */
+  readonly baselineRef?: {
+    /** Workspace-relative path to the baseline JSON file. */
+    readonly path: string;
+    /** Pattern counts per channel — lets the dev/debug agent judge
+     *  how much pre-feature noise is expected before opening the file. */
+    readonly consolePatternCount: number;
+    readonly networkPatternCount: number;
+    readonly uncaughtPatternCount: number;
+  };
 }
 
 /**

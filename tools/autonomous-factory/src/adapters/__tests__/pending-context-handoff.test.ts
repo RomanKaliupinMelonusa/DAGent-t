@@ -159,6 +159,25 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
     assert.match(md, /AssertionError: expected selector/);
     assert.ok(!/### 🧪 Failed tests/.test(md));
   });
+
+  it("renders the baselineRef pointer line with per-channel counts when present", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      baselineRef: {
+        path: "in-progress/product-quick-view_BASELINE.json",
+        consolePatternCount: 6,
+        networkPatternCount: 3,
+        uncaughtPatternCount: 0,
+      },
+    });
+    assert.match(md, /Baseline noise catalogue: `in-progress\/product-quick-view_BASELINE\.json`/);
+    assert.match(md, /6 console \/ 3 network \/ 0 uncaught patterns/);
+  });
+
+  it("omits the baseline pointer line when baselineRef is absent", () => {
+    const md = renderTriageHandoffMarkdown(handoff);
+    assert.ok(!/Baseline noise catalogue/.test(md));
+  });
 });
 
 describe("renderPendingContext (B1)", () => {

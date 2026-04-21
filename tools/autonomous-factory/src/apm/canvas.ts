@@ -232,6 +232,7 @@ export function fromCanvas(canvas: ApmCanvas): {
         requires_data_plane_ready: false,
         auto_skip_if_no_changes_in: [],
         auto_skip_if_no_deletions: false,
+        auto_skip_unless_triage_reroute: false,
         template_flags: [],
         force_run_if_changed: [],
         commit_scope: "all",

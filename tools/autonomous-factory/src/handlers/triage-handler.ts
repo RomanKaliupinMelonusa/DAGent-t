@@ -185,6 +185,8 @@ async function buildRerouteCommands(
         structuredFailure,
         routeToKey,
         baselineDropCounts,
+        baseline,
+        slug,
       });
       commands.push({
         type: "set-pending-context",

@@ -12,6 +12,7 @@
 
 import path from "node:path";
 import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { PipelineState } from "../../types.js";
 import type { SkipResult } from "../types.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../../lifecycle/auto-skip.js";
 import { findUpstreamKeysByCategory } from "../../session/dag-utils.js";
@@ -49,12 +50,32 @@ export function evaluateAutoSkip(
   appRoot: string,
   preStepRefs: Readonly<Record<string, string>>,
   workflowName?: string,
+  pipelineState?: Readonly<PipelineState>,
 ): AutoSkipDecision {
   const wfName = workflowName ?? Object.keys(apmContext.workflows ?? {})[0] ?? "default";
   const node = apmContext.workflows?.[wfName]?.nodes?.[itemKey];
   if (!node) return { skip: null, forceRunChanges: false };
 
   let forceRunChanges = false;
+
+  // ── Triage-reroute gate: skip unless routed in by the triage handler ──
+  // When `auto_skip_unless_triage_reroute` is true, the node is only
+  // meaningful if it was activated via a triage reroute (which writes
+  // pendingContext on the target item before reset). Absent a pending
+  // context, we treat the happy-path visit as a no-op.
+  if (node.auto_skip_unless_triage_reroute) {
+    const item = pipelineState?.items.find((i) => i.key === itemKey);
+    const hasHandoff = !!(item?.pendingContext && item.pendingContext.trim().length > 0);
+    if (!hasHandoff) {
+      console.log(`  ⏭ Auto-skipping ${itemKey} — no triage handoff (auto_skip_unless_triage_reroute)`);
+      return {
+        skip: {
+          reason: "Auto-skipped: no triage reroute handoff for this node (auto_skip_unless_triage_reroute).",
+        },
+        forceRunChanges: false,
+      };
+    }
+  }
 
   const autoSkipRef = getAutoSkipBaseRef(repoRoot, baseBranch, preStepRefs);
   const appRel = path.relative(repoRoot, appRoot);

@@ -140,6 +140,16 @@ export function renderTriageHandoffMarkdown(
       lines.push(`- **${t.title}**${loc} — ${t.error}`);
     }
   }
+  if (handoff.baselineRef) {
+    // Pointer to the pre-feature noise catalogue. Current dev agents can
+    // ignore it; a future debug agent (Playwright MCP) will read the file
+    // to filter runtime signals that pre-date the feature branch.
+    const ref = handoff.baselineRef;
+    lines.push(
+      "",
+      `> _Baseline noise catalogue: \`${ref.path}\` — ${ref.consolePatternCount} console / ${ref.networkPatternCount} network / ${ref.uncaughtPatternCount} uncaught patterns._`,
+    );
+  }
   return lines.join("\n");
 }
 

@@ -451,6 +451,12 @@ const nodeBodyFields = {
   auto_skip_if_no_changes_in: z.array(z.string()).default([]),
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
+  /** When true, auto-skip unless the scheduler reached this node via a triage
+   *  reroute — i.e. `pipelineState.items[itemKey].pendingContext` is populated.
+   *  Use for inline "only-run-when-invoked" nodes like storefront-debug that
+   *  sit between regular DAG nodes on the happy path but only perform real
+   *  work when triage redirects a runtime failure to them. */
+  auto_skip_unless_triage_reroute: z.boolean().default(false),
   /** Handlebars template flags — injected as boolean `true` keys into the template context.
    *  Replaces hardcoded itemKey-derived booleans (e.g. isPostDeploy, isLiveUi). */
   template_flags: z.array(z.string()).default([]),
