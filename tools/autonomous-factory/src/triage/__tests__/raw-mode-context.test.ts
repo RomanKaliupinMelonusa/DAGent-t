@@ -30,7 +30,7 @@ function makeSummary(key: string, outcome: ItemSummary["outcome"], errorMessage?
 }
 
 describe("composeTriageContext rawMode=true", () => {
-  it("omits Automated Diagnosis and IDENTICAL ERROR sections", () => {
+  it("emits the redevelopment intro + approach directive, but no raw stdout block or legacy diagnosis sections", () => {
     const failureText = "Error: getServerSnapshot returned different values\n".repeat(5);
     const summaries: ItemSummary[] = [
       makeSummary("storefront-dev", "completed"),
@@ -47,15 +47,17 @@ describe("composeTriageContext rawMode=true", () => {
       rawMode: true,
     });
 
-    // Must contain raw failure output.
-    assert.match(out, /Most recent failure output/);
-    assert.match(out, /getServerSnapshot/);
     assert.match(out, /Redevelopment Context/);
+    assert.match(out, /Approach:/);
 
-    // Must NOT contain legacy sections that raw-mode replaces.
+    // Raw stdout must no longer be inlined — the compact failed-tests list
+    // rendered by the adapter replaces it.
+    assert.ok(!/Most recent failure output/.test(out), "raw stdout block should be removed");
+    assert.ok(!/getServerSnapshot/.test(out), "failure output should not be inlined");
+
+    // Legacy LLM-condensed sections stay gone.
     assert.ok(!/Automated Diagnosis/.test(out), "raw mode should skip Automated Diagnosis");
     assert.ok(!/IDENTICAL ERROR DETECTED/.test(out), "raw mode should skip IDENTICAL ERROR warning");
-    assert.ok(!/\[\d+ chars omitted\]/.test(out), "raw mode should not use chars-omitted placeholder");
   });
 
   it("legacy mode (rawMode=false) still emits failure context without raw block", () => {
@@ -75,7 +77,7 @@ describe("composeTriageContext rawMode=true", () => {
     assert.ok(!/Most recent failure output/.test(out), "legacy mode should not emit raw section header");
   });
 
-  it("renders raw failure block from failureFallback when pipelineSummaries is empty", () => {
+  it("renders the redevelopment block from failureFallback when pipelineSummaries is empty", () => {
     // Fallback path: the handler always threads the activation's rawError
     // through `failureFallback` so the redevelopment block still renders
     // even when `pipelineSummaries` happens to be empty (e.g. tests, or
@@ -95,8 +97,8 @@ describe("composeTriageContext rawMode=true", () => {
     });
 
     assert.match(out, /Redevelopment Context/);
-    assert.match(out, /Most recent failure output/);
-    assert.match(out, /getServerSnapshot/);
     assert.match(out, /`e2e-runner`/);
+    assert.ok(!/Most recent failure output/.test(out), "raw stdout block should be removed");
+    assert.ok(!/getServerSnapshot/.test(out), "failure output should not be inlined");
   });
 });

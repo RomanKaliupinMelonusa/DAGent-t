@@ -309,6 +309,23 @@ export interface TriageHandoff {
     readonly network: number;
     readonly uncaught: number;
   };
+  /** Compact per-test failure summary projected from a structured failure
+   *  (e.g. Playwright JSON reporter). Only the minimum needed for a dev
+   *  agent to know *which* tests failed and a one-line reason — stack
+   *  traces, attachments, console/network signals, ARIA snapshots are
+   *  intentionally excluded. A future debug agent with Playwright MCP
+   *  access is expected to harvest richer context on demand.
+   *
+   *  Omitted when the failure payload is not a recognised structured
+   *  format or no tests failed. */
+  readonly failedTests?: ReadonlyArray<{
+    readonly title: string;
+    readonly file?: string;
+    readonly line?: number | null;
+    /** Single-line error message (first non-empty line of the failure
+     *  excerpt, truncated). */
+    readonly error: string;
+  }>;
 }
 
 /**

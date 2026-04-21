@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { toHandoffEvidence, toBrowserSignals } from "../handoff-evidence.js";
+import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "../handoff-evidence.js";
 import type { StructuredFailure } from "../playwright-report.js";
 
 describe("toHandoffEvidence", () => {
@@ -125,5 +125,85 @@ describe("toBrowserSignals", () => {
     // 300-char cap: 299 chars + ellipsis = 300.
     assert.equal(sig.uncaughtErrors[0].message.length, 300);
     assert.ok(sig.uncaughtErrors[0].message.endsWith("\u2026"));
+  });
+});
+
+describe("toFailedTests", () => {
+  it("returns undefined for unknown / missing input", () => {
+    assert.equal(toFailedTests(undefined), undefined);
+    assert.equal(toFailedTests(null), undefined);
+    assert.equal(toFailedTests({}), undefined);
+    assert.equal(toFailedTests({ kind: "jest-json" }), undefined);
+  });
+
+  it("returns undefined when there are no failed tests", () => {
+    const structured: StructuredFailure = {
+      kind: "playwright-json",
+      total: 0, passed: 0, failed: 0, skipped: 0,
+      failedTests: [],
+      uncaughtErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+    };
+    assert.equal(toFailedTests(structured), undefined);
+  });
+
+  it("projects a compact title/file:line/first-line-error shape and drops stacks/attachments", () => {
+    const structured: StructuredFailure = {
+      kind: "playwright-json",
+      total: 2, passed: 0, failed: 2, skipped: 0,
+      failedTests: [
+        {
+          title: "open-quick-view-modal",
+          file: "e2e/pqv.spec.ts",
+          line: 92,
+          error: "TimeoutError: locator.waitFor\n  at openQuickViewModal (spec.ts:60:14)",
+          stackHead: "  at openQuickViewModal (spec.ts:60:14)",
+          attachments: [
+            { name: "screenshot", path: "/tmp/0.png", contentType: "image/png" },
+          ],
+        },
+        {
+          title: "pickup-store-search",
+          file: "e2e/pqv.spec.ts",
+          line: 161,
+          error: "TimeoutError: locator.waitFor",
+          stackHead: "",
+        },
+      ],
+      uncaughtErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+    };
+    const list = toFailedTests(structured)!;
+    assert.equal(list.length, 2);
+    assert.equal(list[0].title, "open-quick-view-modal");
+    assert.equal(list[0].file, "e2e/pqv.spec.ts");
+    assert.equal(list[0].line, 92);
+    assert.equal(list[0].error, "TimeoutError: locator.waitFor");
+    // No attachments / stack leak into the compact shape.
+    assert.ok(!("attachments" in (list[0] as object)));
+    assert.ok(!("stackHead" in (list[0] as object)));
+  });
+
+  it("caps the list at 20 entries and truncates long error messages", () => {
+    const structured: StructuredFailure = {
+      kind: "playwright-json",
+      total: 50, passed: 0, failed: 50, skipped: 0,
+      failedTests: Array.from({ length: 50 }, (_, i) => ({
+        title: `t${i}`,
+        file: "e2e/x.spec.ts",
+        line: i,
+        error: "E".repeat(500),
+        stackHead: "",
+      })),
+      uncaughtErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+    };
+    const list = toFailedTests(structured)!;
+    assert.equal(list.length, 20);
+    assert.equal(list[0].error.length, 300);
+    assert.ok(list[0].error.endsWith("\u2026"));
   });
 });

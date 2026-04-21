@@ -66,10 +66,12 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
  *   - **Error signature:** …
  *   - **Prior attempts:** …
  *   - **Touched files:** …
- *   ### Failing test step (context)
- *   ```
- *   <errorExcerpt>
- *   ```
+ *   ### 🧪 Failed tests  (when handoff.failedTests is populated)
+ *   - **<title>** (<file>:<line>) — <error>
+ *
+ * Rich Playwright forensics (browser signals, screenshot/trace evidence,
+ * ARIA DOM snapshots) are intentionally *not* rendered here — they remain
+ * on `TriageHandoff` for a future debug agent (Playwright MCP) to consume.
  *
  * Exported for unit testing — the adapter is the single rendering point.
  */
@@ -96,20 +98,23 @@ export function renderTriageHandoffMarkdown(
     `- **Prior attempts:** ${handoff.priorAttemptCount}`,
     `- **Touched files:** ${touched}${touchedSrc}`,
   ];
-  if (options?.suppressErrorExcerpt) {
-    // The narrative channel has already inlined the raw failure output
-    // verbatim — re-rendering the truncated excerpt here would double
-    // the token footprint and push the ARIA snapshot out of the window.
-    // A one-line pointer keeps the diagnosis block self-contained.
+  // When the handoff carries a compact `failedTests` summary we treat that
+  // as the canonical "what broke" signal and suppress the more verbose
+  // assertion excerpt — the two describe the same event and the list is
+  // cheaper to read. Callers may still force-suppress via options (used
+  // when the narrative inlines the raw failure output itself).
+  const hasFailedTests = Array.isArray(handoff.failedTests) && handoff.failedTests.length > 0;
+  const suppressExcerpt = options?.suppressErrorExcerpt || hasFailedTests;
+  if (suppressExcerpt) {
     lines.push(
       "",
-      "> _Failing assertion excerpt omitted — see **Most recent failure output** above._",
+      "> _Failing assertion excerpt omitted — see the compact failed-tests list below._",
     );
   } else {
     lines.push(
       "",
       "### Failing test step (context)",
-      "*This excerpt shows which assertion/step the E2E was running when it failed — useful for locating the user flow, but it is **not** the root cause. For root-cause diagnosis, read the Browser signals section below.*",
+      "*This excerpt shows which assertion/step was running when the test failed. It identifies the user flow but is **not** the root cause.*",
       "```",
       handoff.errorExcerpt,
       "```",
@@ -120,66 +125,19 @@ export function renderTriageHandoffMarkdown(
     // diagnosis block so the dev agent sees it before reading the excerpt.
     lines.push("", "### ⚠️ Advisory", handoff.advisory.trim());
   }
-  if (handoff.browserSignals) {
-    // Baseline-filtered runtime signals — pre-existing platform errors
-    // captured by `baseline-analyzer` have already been subtracted, so every
-    // entry here is (best-effort) feature-attributable. Uncaught errors lead
-    // because they classify deterministically as impl-defect.
-    const sig = handoff.browserSignals;
-    const sections: string[] = [];
-    if (sig.uncaughtErrors.length > 0) {
-      sections.push("**Uncaught errors** (highest-signal — likely root cause):");
-      for (const e of sig.uncaughtErrors) {
-        sections.push(`- \`${e.message}\` (in *${e.inTest}*)`);
-      }
-    }
-    if (sig.consoleErrors.length > 0) {
-      if (sections.length > 0) sections.push("");
-      sections.push("**Console errors:**");
-      for (const m of sig.consoleErrors) sections.push(`- \`${m}\``);
-    }
-    if (sig.failedRequests.length > 0) {
-      if (sections.length > 0) sections.push("");
-      sections.push("**Failed network requests:**");
-      for (const m of sig.failedRequests) sections.push(`- \`${m}\``);
-    }
-    if (sections.length > 0) {
-      lines.push("", "### 🌐 Browser signals (baseline-filtered)", ...sections);
-      // Provenance footer — tell the dev agent how many pre-feature
-      // signals were subtracted on each channel. Reassures the agent
-      // that the baseline filter ran, and lets them judge whether the
-      // remaining signals are likely feature-attributable.
-      const drops = handoff.baselineDropCounts;
-      if (drops && (drops.console + drops.network + drops.uncaught > 0)) {
-        lines.push(
-          "",
-          `> _Noise filtered: ${drops.console} console / ${drops.network} network / ${drops.uncaught} uncaught matched the pre-feature baseline and were removed._`,
-        );
-      }
-    }
-  }
-  if (handoff.evidence && handoff.evidence.length > 0) {
-    // Level-1 evidence: absolute paths to screenshots / traces / videos
-    // the failing Playwright run produced. The dev agent can open the
-    // images directly via its file-read tool; trace zips are meant for
-    // `npx playwright show-trace <path>`.
-    lines.push("", "### 📎 Evidence");
-    for (const entry of handoff.evidence) {
-      lines.push(`- **${entry.testTitle}**`);
-      for (const att of entry.attachments) {
-        lines.push(`  - \`${att.path}\` (${att.name}, ${att.contentType})`);
-      }
-    }
-    // Playwright `error-context.md` — ARIA snapshot of the DOM at the
-    // failure point. Inlined here because it is the single highest-signal
-    // forensic artifact in a Playwright failure (proves what the browser
-    // actually rendered). Rendered once per failed test that has it.
-    const withCtx = handoff.evidence.filter((e) => typeof e.errorContext === "string" && e.errorContext!.length > 0);
-    if (withCtx.length > 0) {
-      lines.push("", "### 🕸️ DOM state at failure (ARIA snapshot)");
-      for (const entry of withCtx) {
-        lines.push("", `**${entry.testTitle}**`, "", "```markdown", entry.errorContext as string, "```");
-      }
+  if (hasFailedTests) {
+    // Compact "which tests failed" list. This replaces the legacy Browser
+    // signals / Evidence / DOM-snapshot blocks that used to ride along in
+    // the redevelopment prompt. A future debug agent with Playwright MCP
+    // access is expected to harvest deeper context on demand; the data is
+    // still captured on `TriageHandoff.evidence` / `.browserSignals` for
+    // that downstream consumer.
+    lines.push("", "### 🧪 Failed tests");
+    for (const t of handoff.failedTests!) {
+      const loc = t.file
+        ? ` (${t.file}${typeof t.line === "number" ? `:${t.line}` : ""})`
+        : "";
+      lines.push(`- **${t.title}**${loc} — ${t.error}`);
     }
   }
   return lines.join("\n");
@@ -187,10 +145,10 @@ export function renderTriageHandoffMarkdown(
 
 export function renderPendingContext(payload: PendingContextPayload): string {
   const narrative = payload.narrative.trimEnd();
-  // Raw-mode narratives already inline the full failure output under the
-  // "## Most recent failure output" heading. The handoff's errorExcerpt is
-  // a strict subset of that payload, so rendering it a second time is
-  // pure token cost. Detect the marker and suppress the duplicate block.
+  // Narratives that still inline a full "## Most recent failure output"
+  // block force-suppress the excerpt re-render. When the narrative omits
+  // that block (new default), the renderer decides based on whether the
+  // handoff carries a compact `failedTests` list.
   const suppressErrorExcerpt = /(^|\n)##\s+Most recent failure output\b/.test(narrative);
   const handoffMd = renderTriageHandoffMarkdown(payload.handoff, { suppressErrorExcerpt });
   return `${narrative}\n\n${handoffMd}\n`;

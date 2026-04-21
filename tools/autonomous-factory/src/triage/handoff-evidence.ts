@@ -17,6 +17,7 @@ import type { StructuredFailure } from "./playwright-report.js";
 
 type Evidence = NonNullable<TriageHandoff["evidence"]>;
 type BrowserSignals = NonNullable<TriageHandoff["browserSignals"]>;
+type FailedTests = NonNullable<TriageHandoff["failedTests"]>;
 
 // Per-channel caps. Keeps the dev-agent prompt bounded even when a flaky
 // page spams hundreds of console warnings or failed image requests. The
@@ -106,5 +107,54 @@ export function toBrowserSignals(
     return browserSignalsFromPlaywrightJson(structured as StructuredFailure);
   }
   // Future: jest-json, pytest-json, … each add a branch here.
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Compact failed-tests projection — minimal "what broke" summary for the
+// redevelopment dev agent. Excludes stack traces, attachments, DOM snapshots,
+// browser signals. A future debug agent (with Playwright MCP access) is
+// expected to harvest deeper context on demand.
+// ---------------------------------------------------------------------------
+
+/** Max number of failing tests surfaced to the dev agent. Beyond this a
+ *  truncation marker is appended (handled by the renderer). */
+const MAX_FAILED_TESTS = 20;
+
+/** Return the first non-empty line of a multi-line error message. */
+function firstLine(s: string): string {
+  for (const raw of s.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length > 0) return line;
+  }
+  return "";
+}
+
+function failedTestsFromPlaywrightJson(f: StructuredFailure): FailedTests | undefined {
+  const out: Array<FailedTests[number]> = [];
+  for (const t of f.failedTests.slice(0, MAX_FAILED_TESTS)) {
+    out.push({
+      title: t.title,
+      ...(t.file ? { file: t.file } : {}),
+      ...(t.line !== undefined ? { line: t.line } : {}),
+      error: truncate(firstLine(t.error || "") || "(no error message)"),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Project a structured failure into the compact `failedTests` list surfaced
+ * in the triage handoff. Returns `undefined` when the payload is not a
+ * recognised structured failure or no tests failed.
+ */
+export function toFailedTests(
+  structured: unknown,
+): TriageHandoff["failedTests"] {
+  if (!structured || typeof structured !== "object") return undefined;
+  const kind = (structured as { kind?: unknown }).kind;
+  if (kind === "playwright-json") {
+    return failedTestsFromPlaywrightJson(structured as StructuredFailure);
+  }
   return undefined;
 }

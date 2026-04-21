@@ -79,7 +79,7 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
     assert.match(md, /\*\*Touched files:\*\* \(none captured\)/);
   });
 
-  it("renders the 📎 Evidence section when evidence is present", () => {
+  it("does NOT render the 📎 Evidence section even when evidence is present (data kept on handoff for the future debug agent)", () => {
     const md = renderTriageHandoffMarkdown({
       ...handoff,
       evidence: [
@@ -91,74 +91,73 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
               path: "/tmp/app/in-progress/feat_evidence/0-screenshot.png",
               contentType: "image/png",
             },
-            {
-              name: "trace",
-              path: "/tmp/app/in-progress/feat_evidence/0-trace.zip",
-              contentType: "application/zip",
-            },
           ],
         },
       ],
     });
-    assert.match(md, /### 📎 Evidence/);
-    assert.match(md, /\*\*shows widget modal\*\*/);
-    assert.match(md, /0-screenshot\.png.*image\/png/);
-    assert.match(md, /0-trace\.zip.*application\/zip/);
+    assert.ok(!/### 📎 Evidence/.test(md));
+    assert.ok(!/0-screenshot\.png/.test(md));
   });
 
-  it("omits the 📎 Evidence section when evidence is empty or missing", () => {
-    const noEvidence = renderTriageHandoffMarkdown(handoff);
-    assert.ok(!/### 📎 Evidence/.test(noEvidence));
-    const emptyEvidence = renderTriageHandoffMarkdown({ ...handoff, evidence: [] });
-    assert.ok(!/### 📎 Evidence/.test(emptyEvidence));
-  });
-
-  it("reframes the excerpt heading as step context, not root cause", () => {
-    const md = renderTriageHandoffMarkdown(handoff);
-    assert.match(md, /### Failing test step \(context\)/);
-    assert.match(md, /not\*\* the root cause/);
-    // Old heading must be gone.
-    assert.ok(!/### Error excerpt/.test(md));
-  });
-
-  it("renders the 🌐 Browser signals section with all three channels", () => {
+  it("does NOT render the 🌐 Browser signals section even when browserSignals is present", () => {
     const md = renderTriageHandoffMarkdown({
       ...handoff,
       browserSignals: {
-        uncaughtErrors: [
-          { message: "TypeError: x is undefined", inTest: "quick view" },
-        ],
+        uncaughtErrors: [{ message: "TypeError: x is undefined", inTest: "quick view" }],
         consoleErrors: ["error: hydration mismatch"],
         failedRequests: ["GET /api/product -> 500"],
       },
     });
-    assert.match(md, /### 🌐 Browser signals \(baseline-filtered\)/);
-    assert.match(md, /\*\*Uncaught errors\*\*/);
-    assert.match(md, /TypeError: x is undefined.*in \*quick view\*/);
-    assert.match(md, /\*\*Console errors:\*\*/);
-    assert.match(md, /hydration mismatch/);
-    assert.match(md, /\*\*Failed network requests:\*\*/);
-    assert.match(md, /\/api\/product -> 500/);
+    assert.ok(!/### 🌐 Browser signals/.test(md));
+    assert.ok(!/TypeError: x is undefined/.test(md));
+    assert.ok(!/hydration mismatch/.test(md));
+    assert.ok(!/\/api\/product -> 500/.test(md));
   });
 
-  it("renders only non-empty browser-signal subsections", () => {
+  it("does NOT render the 🕸️ DOM state (ARIA) snapshot block", () => {
     const md = renderTriageHandoffMarkdown({
       ...handoff,
-      browserSignals: {
-        uncaughtErrors: [],
-        consoleErrors: ["only console"],
-        failedRequests: [],
-      },
+      evidence: [
+        {
+          testTitle: "shows widget modal",
+          attachments: [],
+          errorContext: "# Page snapshot\n- banner",
+        },
+      ],
     });
-    assert.match(md, /### 🌐 Browser signals/);
-    assert.match(md, /\*\*Console errors:\*\*/);
-    assert.ok(!/\*\*Uncaught errors\*\*/.test(md));
-    assert.ok(!/\*\*Failed network requests:\*\*/.test(md));
+    assert.ok(!/### 🕸️ DOM state at failure/.test(md));
+    assert.ok(!/Page snapshot/.test(md));
   });
 
-  it("omits the 🌐 Browser signals section when browserSignals is missing", () => {
+  it("does NOT render the baseline-drops provenance footer", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      baselineDropCounts: { console: 3, network: 2, uncaught: 1 },
+    });
+    assert.ok(!/Noise filtered/.test(md));
+  });
+
+  it("renders the 🧪 Failed tests block when failedTests is populated, and suppresses the assertion excerpt", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      failedTests: [
+        { title: "open-quick-view-modal", file: "e2e/pqv.spec.ts", line: 92, error: "TimeoutError: locator.waitFor" },
+        { title: "pickup-store-search", file: "e2e/pqv.spec.ts", line: 161, error: "TimeoutError: locator.waitFor" },
+      ],
+    });
+    assert.match(md, /### 🧪 Failed tests/);
+    assert.match(md, /\*\*open-quick-view-modal\*\* \(e2e\/pqv\.spec\.ts:92\) — TimeoutError/);
+    assert.match(md, /\*\*pickup-store-search\*\* \(e2e\/pqv\.spec\.ts:161\)/);
+    // Excerpt re-render must be suppressed.
+    assert.ok(!/### Failing test step \(context\)/.test(md));
+    assert.match(md, /Failing assertion excerpt omitted/);
+  });
+
+  it("falls back to rendering the excerpt when no failedTests are provided", () => {
     const md = renderTriageHandoffMarkdown(handoff);
-    assert.ok(!/### 🌐 Browser signals/.test(md));
+    assert.match(md, /### Failing test step \(context\)/);
+    assert.match(md, /AssertionError: expected selector/);
+    assert.ok(!/### 🧪 Failed tests/.test(md));
   });
 });
 

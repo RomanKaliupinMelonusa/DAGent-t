@@ -28,7 +28,6 @@ import { readStateOrThrow } from "../adapters/file-state/io.js";
 import { computeErrorSignature } from "./error-fingerprint.js";
 import { getHeadSha } from "../session/dag-utils.js";
 import { buildPriorAttemptsBlock } from "./historian.js";
-import { filterNoiseFromText } from "./baseline-filter.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 
 // ---------------------------------------------------------------------------
@@ -230,34 +229,25 @@ export function buildDownstreamFailureContext(
 // ---------------------------------------------------------------------------
 
 /**
- * Byte cap for inlining raw failure output in a redevelopment prompt.
- * When exceeded, the head + tail are inlined and the full output is
- * written to `in-progress/<slug>_LAST_FAILURE.txt` for reference.
- */
-const RAW_INLINE_CAP = 12 * 1024;
-const RAW_HEAD_BYTES = 4 * 1024;
-const RAW_TAIL_BYTES = 4 * 1024;
-
-/** Strip ANSI color / control sequences. */
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, "").replace(/\x1B\][^\x07]*\x07/g, "");
-}
-
-/**
  * Raw-mode replacement for `buildDownstreamFailureContext`. Produces a
- * dev-agent prompt block composed of:
- *   1. Prior-attempts block (historian) — factual per-cycle history.
- *   2. Most recent raw failure output, ANSI-stripped.
- *   3. Head+tail truncation + file pointer when over `RAW_INLINE_CAP`.
+ * compact dev-agent prompt block composed of:
+ *   1. A one-line "a downstream step failed" intro.
+ *   2. Prior-attempts block (historian) — factual per-cycle history.
+ *   3. "Approach:" directive.
+ *
+ * The failure output itself is **not** inlined here. The structured handoff
+ * rendered by the adapter carries a compact `failedTests` list (and, for the
+ * future debug agent, the full browser signals / DOM snapshot data remains
+ * on `TriageHandoff`). This keeps the redevelopment prompt small and lets
+ * the downstream debug agent fetch richer forensics via Playwright MCP on
+ * demand.
  *
  * Unlike the legacy path, this builder does NOT:
  *   - call the LLM or read `lastTriageRecord.reason` (the historian conveys
  *     the same decision trail without the condensation).
  *   - inject the "IDENTICAL ERROR DETECTED" warning — the kernel's
  *     `halt_on_identical.threshold` handles that deterministically.
- *   - truncate the error with "[N chars omitted]" in the middle — critical
- *     Playwright context often lives at both the head and the tail.
+ *   - inline the raw stdout / stderr of the failing step.
  *
  * Returns empty string if no downstream failure exists.
  */
@@ -271,11 +261,11 @@ export function buildDownstreamFailureContextRaw(
    *  materialized (e.g. self-activation), or when a caller supplies the
    *  activation payload directly without going through the run state. */
   failureFallback?: { failingItemKey: string; rawError: string },
-  /** Pre-feature baseline profile. When supplied, pre-existing platform
-   *  console/network/uncaught noise is stripped from the inlined raw
-   *  failure output so the dev agent doesn't drown in known warnings.
-   *  Null / undefined → no subtraction. */
-  baseline?: BaselineProfile | null,
+  /** @deprecated Pre-feature baseline profile. No longer used — raw stdout
+   *  is no longer inlined, so there is nothing to filter. Retained in the
+   *  signature to avoid churning call sites during the triage-payload slim.
+   *  Remove once the downstream debug agent ships. */
+  _baseline?: BaselineProfile | null,
 ): string {
   if (!allowsRevertBypass) return "";
 
@@ -286,26 +276,12 @@ export function buildDownstreamFailureContextRaw(
   // Resolve failure source: prefer pipelineSummaries when populated, else fall
   // back to the triage activation payload threaded through by the handler.
   let latestKey: string;
-  let rawError: string;
   if (downstreamFailures.length > 0) {
-    const latest = downstreamFailures[downstreamFailures.length - 1];
-    latestKey = latest.key;
-    rawError = stripAnsi(latest.errorMessage ?? "(no error message captured)");
+    latestKey = downstreamFailures[downstreamFailures.length - 1].key;
   } else if (failureFallback) {
     latestKey = failureFallback.failingItemKey;
-    rawError = stripAnsi(failureFallback.rawError || "(no error message captured)");
   } else {
     return "";
-  }
-
-  // Phase E2 — subtract baseline noise from the inlined raw stdout so the
-  // dev agent doesn't re-read platform warnings that pre-date the feature.
-  // Counts are surfaced in the truncation note for provenance.
-  let baselineDropped = 0;
-  if (baseline) {
-    const filtered = filterNoiseFromText(rawError, baseline);
-    rawError = filtered.text;
-    baselineDropped = filtered.droppedCount;
   }
 
   // Read errorLog from state for the historian (best-effort).
@@ -318,63 +294,18 @@ export function buildDownstreamFailureContextRaw(
   }
   const historyBlock = buildPriorAttemptsBlock(errorLog);
 
-  // Build the "Most recent failure output" section with overflow handling.
-  const baselineNote = baselineDropped > 0
-    ? `\n*(${baselineDropped} line(s) of pre-feature platform noise subtracted via baseline-analyzer)*`
-    : "";
-  let failureSection: string;
-  if (rawError.length <= RAW_INLINE_CAP) {
-    failureSection = [
-      "## Most recent failure output" + baselineNote,
-      "",
-      "```",
-      rawError,
-      "```",
-    ].join("\n");
-  } else {
-    const head = rawError.slice(0, RAW_HEAD_BYTES);
-    const tail = rawError.slice(-RAW_TAIL_BYTES);
-    let fileNote = "";
-    if (slug) {
-      try {
-        const appRoot = process.env.APP_ROOT || "";
-        const stateDir = path.join(appRoot, "in-progress");
-        fs.mkdirSync(stateDir, { recursive: true });
-        const fullPath = path.join(stateDir, `${slug}_LAST_FAILURE.txt`);
-        fs.writeFileSync(fullPath, rawError, "utf-8");
-        fileNote = `\nFull output: \`${path.relative(process.cwd(), fullPath)}\` (${rawError.length} bytes)`;
-      } catch { /* noop */ }
-    }
-    failureSection = [
-      "## Most recent failure output" + baselineNote,
-      `*(truncated — head+tail shown; middle ${rawError.length - RAW_HEAD_BYTES - RAW_TAIL_BYTES} bytes omitted${fileNote ? "" : ""})*${fileNote}`,
-      "",
-      "### Head",
-      "```",
-      head,
-      "```",
-      "",
-      "### Tail",
-      "```",
-      tail,
-      "```",
-    ].join("\n");
-  }
-
   const parts: string[] = [];
   parts.push("\n\n## Redevelopment Context (CRITICAL)");
   parts.push("");
   parts.push(
-    `A downstream step (\`${latestKey}\`) failed and you are being re-invoked to fix the root cause.`,
+    `A downstream step (\`${latestKey}\`) failed and you are being re-invoked to fix the root cause. The failing tests and diagnosis are summarised in the **Triage handoff** block below.`,
   );
   parts.push("");
   if (historyBlock) {
     parts.push(historyBlock);
   }
-  parts.push(failureSection);
-  parts.push("");
   parts.push(
-    "**Approach:** read the raw output above, form a hypothesis, then apply a *different* fix than any shown in the prior-attempts section. Do not re-run investigative commands the previous cycles have already exhausted.",
+    "**Approach:** read the diagnosis and failing-tests list in the Triage handoff below, form a hypothesis, then apply a *different* fix than any shown in the prior-attempts section. Do not re-run investigative commands the previous cycles have already exhausted.",
   );
 
   return parts.join("\n");
