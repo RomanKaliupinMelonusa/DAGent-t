@@ -528,15 +528,23 @@ function main(): void {
     process.exit(1);
   }
 
-  // Resolve app root — try both sample-app and commerce-storefront
+  // Resolve app root — enumerate apps/* at runtime and pick the first
+  // directory that carries either an in-progress or archived event stream
+  // for this slug. Keeps the CLI framework-agnostic — adding a new app
+  // under `apps/` does not require editing this file.
   if (!appRoot) {
     const repoRoot = process.cwd().includes("autonomous-factory")
       ? path.resolve(process.cwd(), "../..")
       : process.cwd();
-    const candidates = [
-      path.join(repoRoot, "apps/sample-app"),
-      path.join(repoRoot, "apps/commerce-storefront"),
-    ];
+    const appsDir = path.join(repoRoot, "apps");
+    let candidates: string[] = [];
+    try {
+      candidates = fs.readdirSync(appsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => path.join(appsDir, e.name));
+    } catch {
+      candidates = [];
+    }
     for (const c of candidates) {
       const evPath = path.join(c, "in-progress", `${slug}_EVENTS.jsonl`);
       const archivePath = path.join(c, "archive", "features", slug, `${slug}_EVENTS.jsonl`);

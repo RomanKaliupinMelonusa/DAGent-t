@@ -145,7 +145,7 @@ export async function runWithKernel(
   // Instantiate kernel
   // Compile volatile-token patterns from APM config (workflow + per-node)
   // and inject into the rules so fail/reset compute stable signatures that
-  // normalize framework-specific tokens (SFCC session IDs, test UUIDs, etc).
+  // normalize framework-specific tokens (session IDs, test UUIDs, etc).
   const workflowPatterns = compileVolatilePatterns(
     config.apmContext.config?.error_signature?.volatile_patterns,
   );

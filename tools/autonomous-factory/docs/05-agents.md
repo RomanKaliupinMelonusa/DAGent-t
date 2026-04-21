@@ -219,7 +219,7 @@ sequenceDiagram
     participant PS as pipeline-state
     participant SDET as @sdet-expert
 
-    SD->>PS: pipeline:handoff-artifact slug storefront-dev<br/>'{"affectedRoutes":["/plp","/pdp"],<br/>"newTestIds":["quick-view-btn","modal-overlay"]}'
+    SD->>PS: pipeline:handoff-artifact slug storefront-dev<br/>'{"affectedRoutes":["/list","/detail"],<br/>"newTestIds":["widget-open-button","widget-modal"]}'
     PS->>PS: Validate JSON, store in<br/>item.handoffArtifact
 
     Note over PS,SDET: Watchdog reads handoffArtifact<br/>when building SDET prompt

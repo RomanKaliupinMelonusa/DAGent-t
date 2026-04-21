@@ -9,7 +9,7 @@
  *
  * Policy:
  *   - `DEFAULT_VOLATILE_PATTERNS` is the built-in, stack-agnostic baseline.
- *   - Framework-specific patterns (SFCC session IDs, Playwright test UUIDs,
+ *   - Framework-specific patterns (session tokens, Playwright test UUIDs,
  *     cloud-provider resource ARNs, etc.) belong in config — declared per
  *     workflow and/or per node — and are merged on top of the baseline.
  *

@@ -109,7 +109,7 @@ describe("buildConsecutiveDomainAdvisory", () => {
 describe("buildTriageHandoff (Phase A)", () => {
   const baseArgs = {
     failingNodeKey: "e2e-runner",
-    rawError: "TimeoutError: locator.waitFor — getByTestId('quick-view-modal')",
+    rawError: "TimeoutError: locator.waitFor — getByTestId('widget-modal')",
     triageRecord: { error_signature: "abc12345" },
     triageResult: { domain: "frontend", reason: "contract locator missing" },
     priorAttemptCount: 2,
@@ -119,7 +119,7 @@ describe("buildTriageHandoff (Phase A)", () => {
         label: "E2E",
         agent: "e2e-runner",
         status: "failed",
-        filesChanged: ["apps/app/e2e/quick-view.spec.ts"],
+        filesChanged: ["apps/app/e2e/widget.spec.ts"],
       } as unknown as ItemSummary,
     ],
     errorLog: [],
@@ -133,7 +133,7 @@ describe("buildTriageHandoff (Phase A)", () => {
     assert.equal(h.triageDomain, "frontend");
     assert.equal(h.triageReason, "contract locator missing");
     assert.equal(h.priorAttemptCount, 2);
-    assert.deepEqual(h.touchedFiles, ["apps/app/e2e/quick-view.spec.ts"]);
+    assert.deepEqual(h.touchedFiles, ["apps/app/e2e/widget.spec.ts"]);
     assert.match(h.errorExcerpt, /TimeoutError/);
     assert.equal(h.advisory, undefined);
     assert.equal(h.evidence, undefined);
@@ -157,8 +157,8 @@ describe("buildTriageHandoff (Phase A)", () => {
       total: 1, passed: 0, failed: 1, skipped: 0,
       failedTests: [
         {
-          title: "shows quick-view",
-          file: "e2e/quick-view.spec.ts",
+          title: "shows widget",
+          file: "e2e/widget.spec.ts",
           line: 10,
           error: "TimeoutError",
           stackHead: "",
@@ -174,7 +174,7 @@ describe("buildTriageHandoff (Phase A)", () => {
     const h = buildTriageHandoff({ ...baseArgs, structuredFailure: structured });
     assert.ok(h.evidence);
     assert.equal(h.evidence!.length, 1);
-    assert.equal(h.evidence![0].testTitle, "shows quick-view");
+    assert.equal(h.evidence![0].testTitle, "shows widget");
   });
 
   it("falls back to empty touchedFiles when no summary matches", () => {

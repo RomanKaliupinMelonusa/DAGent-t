@@ -46,7 +46,7 @@ export function translateResult(
     // Round-2 R3 (replacement): when the handler emitted a parsed
     // `StructuredFailure`, derive a signature from its stable fields
     // (testid locators, error class, test titles) rather than hashing the
-    // raw stdout. Raw stdout is dominated by React-warning console dumps
+    // raw stdout. Raw stdout is often dominated by framework console dumps
     // whose component-stack line:col rotates between builds, which was
     // defeating `halt_on_identical` even for identical failures.
     const structuredFailure = result.handlerOutput?.structuredFailure;

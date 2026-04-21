@@ -27,19 +27,19 @@ describe("validate-acceptance.mjs: escapers", () => {
 
 describe("validate-acceptance.mjs: renderSpec", () => {
   const baseContract = {
-    feature: "pqv",
-    summary: "product quick view",
+    feature: "widget",
+    summary: "widget modal",
     required_dom: [
-      { testid: "pqv-modal", requires_non_empty_text: true, contains_text: "Add" },
+      { testid: "widget-modal", requires_non_empty_text: true, contains_text: "Add" },
     ],
     required_flows: [
       {
         name: "open modal",
         steps: [
-          { action: "goto", url: "/product/abc" },
-          { action: "click", testid: "quick-view-button" },
-          { action: "assert_visible", testid: "pqv-modal", timeout_ms: 5000 },
-          { action: "assert_text", testid: "pqv-title", contains: "Shoe" },
+          { action: "goto", url: "/items/abc" },
+          { action: "click", testid: "widget-button" },
+          { action: "assert_visible", testid: "widget-modal", timeout_ms: 5000 },
+          { action: "assert_text", testid: "widget-title", contains: "Shoe" },
           { action: "fill", testid: "qty-input", value: "2" },
         ],
       },
@@ -51,11 +51,11 @@ describe("validate-acceptance.mjs: renderSpec", () => {
   it("emits a Playwright spec containing every required step", () => {
     const spec = oracle.renderSpec(baseContract);
     assert.match(spec, /import \{ test, expect \} from '@playwright\/test'/);
-    assert.match(spec, /getByTestId\('quick-view-button'\)\.click/);
+    assert.match(spec, /getByTestId\('widget-button'\)\.click/);
     assert.match(spec, /getByTestId\('qty-input'\)\.fill\('2'\)/);
-    assert.match(spec, /getByTestId\('pqv-modal'\)\).toBeVisible\(\{ timeout: 5000 \}\)/);
+    assert.match(spec, /getByTestId\('widget-modal'\)\).toBeVisible\(\{ timeout: 5000 \}\)/);
     assert.match(spec, /toContainText\('Shoe'\)/);
-    assert.match(spec, /\/product\/abc/);
+    assert.match(spec, /\/items\/abc/);
   });
 
   it("includes forbidden console + network assertions", () => {
@@ -127,8 +127,8 @@ describe("validate-acceptance.mjs: renderSpec", () => {
       ...baseContract,
       required_dom: [
         {
-          testid: "qvb",
-          description: "quick-view button (one per tile)",
+          testid: "wb",
+          description: "widget button (one per list item)",
           cardinality: "many",
           requires_non_empty_text: true,
           contains_text: "Quick View",
@@ -136,8 +136,8 @@ describe("validate-acceptance.mjs: renderSpec", () => {
       ],
       required_flows: [],
     });
-    assert.match(spec, /getByTestId\('qvb'\)\.first\(\).*toBeVisible/);
-    assert.match(spec, /getByTestId\('qvb'\)\.first\(\)\)\.toContainText\('Quick View'\)/);
+    assert.match(spec, /getByTestId\('wb'\)\.first\(\).*toBeVisible/);
+    assert.match(spec, /getByTestId\('wb'\)\.first\(\)\)\.toContainText\('Quick View'\)/);
     // requires_non_empty_text is intentionally skipped for cardinality: many
     assert.doesNotMatch(spec, /required_dom qvb: empty text content/);
   });

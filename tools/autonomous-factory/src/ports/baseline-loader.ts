@@ -30,7 +30,7 @@ export interface BaselineEntry {
    * normalized (ANSI-stripped, fingerprinted) payload.
    */
   readonly pattern: string;
-  /** Logical source page label (e.g. "PLP", "Quick View modal"). */
+  /** Logical source page label (e.g. "HomePage", "CheckoutModal"). */
   readonly source_page?: string;
   /**
    * Kind of signal this entry matches. When absent the filter matches

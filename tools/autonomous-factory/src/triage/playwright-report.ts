@@ -97,15 +97,37 @@ function decodeAttachment(att: PwAttachment): string | null {
 }
 
 /**
- * Level-1 evidence — deterministic redaction guard. Screenshots taken on
- * account/checkout/login pages can embed customer PII; we skip copying
- * those to the evidence dir. Hardcoded for Level 1 — promote to APM
- * config only when a real app needs a different rule.
+ * Level-1 evidence — deterministic redaction guard. Screenshots can embed
+ * sensitive user data (account / checkout / login / auth flows in a
+ * commerce app, banking views, medical records, …). We skip copying those
+ * binaries into the evidence dir.
+ *
+ * The pattern list is app-configurable via `config.evidence.redact_patterns`
+ * in `.apm/apm.yml`. When nothing is declared, the built-in default below
+ * is used — it targets commerce-style PII which is the dominant case for
+ * this pipeline's initial users. Apps with a different sensitivity model
+ * (e.g. non-commerce) should override the list; set it to `[]` to disable
+ * redaction entirely.
  */
-const REDACT_TITLE_RE = /account|checkout|login|auth|password|credit|card/i;
+const DEFAULT_REDACT_PATTERNS: ReadonlyArray<string> = [
+  "account", "checkout", "login", "auth", "password", "credit", "card",
+];
 
-function shouldRedactEvidence(title: string, file: string): boolean {
-  return REDACT_TITLE_RE.test(title) || REDACT_TITLE_RE.test(file);
+/** Compile an array of regex sources into a single case-insensitive
+ *  alternation. Invalid sources throw — caller (APM compiler) validates
+ *  early. Returns `null` when the list is empty (redaction disabled). */
+function compileRedactRegex(patterns: ReadonlyArray<string>): RegExp | null {
+  if (patterns.length === 0) return null;
+  // Wrap each source in a non-capturing group so top-level `|` in a user
+  // pattern doesn't spill across entries.
+  return new RegExp(patterns.map((p) => `(?:${p})`).join("|"), "i");
+}
+
+const DEFAULT_REDACT_RE = compileRedactRegex(DEFAULT_REDACT_PATTERNS);
+
+function shouldRedactEvidence(title: string, file: string, re: RegExp | null): boolean {
+  if (!re) return false;
+  return re.test(title) || re.test(file);
 }
 
 /**
@@ -171,6 +193,11 @@ export interface ParsePlaywrightReportOptions {
   readonly appRoot?: string;
   /** Feature slug — combined with `appRoot` to locate the evidence dir. */
   readonly slug?: string;
+  /** Optional override of the PII redaction regex sources (see
+   *  `DEFAULT_REDACT_PATTERNS`). Plumbed from `config.evidence.redact_patterns`
+   *  in the APM manifest. `undefined` keeps the default list; `[]` disables
+   *  redaction entirely (all binary evidence copied). */
+  readonly redactPatterns?: ReadonlyArray<string>;
 }
 
 /**
@@ -210,6 +237,13 @@ export function parsePlaywrightReport(
       ? path.join(opts.appRoot, "in-progress", `${opts.slug}_evidence`)
       : null;
 
+  // Compile the effective redaction regex once — either user-supplied or
+  // the built-in commerce-PII default. An empty user array disables the
+  // guard (redactRe === null → nothing is redacted).
+  const redactRe = opts.redactPatterns === undefined
+    ? DEFAULT_REDACT_RE
+    : compileRedactRegex(opts.redactPatterns);
+
   let failedIdx = 0;
 
   for (const { spec, file } of walkSpecs(data.suites)) {
@@ -227,7 +261,7 @@ export function parsePlaywrightReport(
       const stackHead = stripAnsi((firstErr?.stack ?? "").split("\n").slice(0, 4).join("\n"));
 
       const testAttachments: Array<{ name: string; path: string; contentType: string }> = [];
-      const redacted = shouldRedactEvidence(title, relFile);
+      const redacted = shouldRedactEvidence(title, relFile, redactRe);
       failedTests.push({ title, file: relFile, line, error: errMsg, stackHead, attachments: testAttachments });
 
       // Mine uncaught errors, console errors, failed requests from attachments
@@ -352,11 +386,11 @@ export function extractPrimaryCause(rawError: string): string | null {
  * failure shape, not from raw stdout.
  *
  * Motivation: when a Playwright handler produces a `StructuredFailure`, its
- * free-form log is dominated by tens of kilobytes of React warning console
- * dumps whose component stacks rotate between builds (e.g. PWA Kit's
- * `vendor.js:L:C` / `main.js:L:C` frames). Hashing that prose makes the
- * signature unstable across builds even when the real failure — a
- * `TimeoutError: locator.waitFor: waiting for getByTestId('quick-view-modal')`
+ * free-form log is dominated by tens of kilobytes of framework console
+ * warnings whose component stacks rotate between builds (e.g. bundler output
+ * frames like `vendor.js:L:C` / `main.js:L:C`). Hashing that prose makes
+ * the signature unstable across builds even when the real failure — e.g.
+ * `TimeoutError: locator.waitFor: waiting for getByTestId('some-widget')`
  * — is identical.
  *
  * The structured hash is built from fields that are stable by construction:

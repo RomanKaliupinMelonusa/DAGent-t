@@ -60,9 +60,9 @@ function isPlaywrightReport(v: unknown): v is StructuredFailure {
 /** Extract the first testid referenced in a Playwright error blob.
  *
  *  Matches the forms Playwright actually prints:
- *    - `getByTestId('quick-view-btn')`
- *    - `getByTestId("quick-view-btn")`
- *    - `locator('[data-testid="quick-view-btn"]')`
+ *    - `getByTestId('some-widget')`
+ *    - `getByTestId("some-widget")`
+ *    - `locator('[data-testid="some-widget"]')`
  *
  *  Returns the first match only — the classifier needs one unambiguous
  *  testid to cross-reference against the contract, not a bag of them.

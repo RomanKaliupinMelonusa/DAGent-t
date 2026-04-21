@@ -33,11 +33,11 @@ describe("parsePlaywrightReport", () => {
       stats: { expected: 2, unexpected: 1, skipped: 0, flaky: 0 },
       suites: [
         {
-          file: "e2e/product-quick-view.spec.ts",
+          file: "e2e/widget-feature.spec.ts",
           specs: [
             {
-              title: "shows modal with product content",
-              file: "e2e/product-quick-view.spec.ts",
+              title: "shows modal with widget content",
+              file: "e2e/widget-feature.spec.ts",
               line: 42,
               tests: [
                 {
@@ -47,9 +47,9 @@ describe("parsePlaywrightReport", () => {
                       status: "failed",
                       errors: [
                         {
-                          message: "TypeError: Cannot read properties of undefined (reading 'masterId')",
+                          message: "TypeError: Cannot read properties of undefined (reading 'itemId')",
                           stack:
-                            "TypeError: Cannot read properties of undefined (reading 'masterId')\n    at ProductView (overrides/app/components/product-view/index.jsx:42:18)\n    at renderWithHooks (react-dom.js:1)\n    at mountIndeterminate (react-dom.js:2)",
+                            "TypeError: Cannot read properties of undefined (reading 'itemId')\n    at WidgetView (src/components/widget-view/index.jsx:42:18)\n    at renderWithHooks (react-dom.js:1)\n    at mountIndeterminate (react-dom.js:2)",
                         },
                       ],
                       attachments: [],
@@ -72,10 +72,10 @@ describe("parsePlaywrightReport", () => {
     assert.equal(parsed!.passed, 2);
     assert.equal(parsed!.failed, 1);
     assert.equal(parsed!.failedTests.length, 1);
-    assert.equal(parsed!.failedTests[0].title, "shows modal with product content");
+    assert.equal(parsed!.failedTests[0].title, "shows modal with widget content");
     assert.equal(parsed!.failedTests[0].line, 42);
-    assert.match(parsed!.failedTests[0].error, /masterId/);
-    assert.match(parsed!.failedTests[0].stackHead, /ProductView/);
+    assert.match(parsed!.failedTests[0].error, /itemId/);
+    assert.match(parsed!.failedTests[0].stackHead, /WidgetView/);
   });
 
   it("extracts uncaught browser errors from stdout/stderr streams", () => {
@@ -153,20 +153,20 @@ describe("computeStructuredSignature", () => {
     skipped: 0,
     failedTests: [
       {
-        title: "quick-view-open-and-load",
-        file: "e2e/product-quick-view.spec.ts",
+        title: "widget-open-and-load",
+        file: "e2e/widget-feature.spec.ts",
         line: 10,
         error:
-          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible",
-        stackHead: "    at e2e/product-quick-view.spec.ts:12:30",
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('widget-modal') to be visible",
+        stackHead: "    at e2e/widget-feature.spec.ts:12:30",
       },
       {
-        title: "quick-view-modal-shows-product-details",
-        file: "e2e/product-quick-view.spec.ts",
+        title: "widget-modal-shows-details",
+        file: "e2e/widget-feature.spec.ts",
         line: 20,
         error:
-          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible",
-        stackHead: "    at e2e/product-quick-view.spec.ts:22:30",
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('widget-modal') to be visible",
+        stackHead: "    at e2e/widget-feature.spec.ts:22:30",
       },
     ],
     uncaughtErrors: [],
@@ -184,20 +184,20 @@ describe("computeStructuredSignature", () => {
     skipped: 0,
     failedTests: [
       {
-        title: "quick-view-modal-shows-product-details",
-        file: "e2e/product-quick-view.spec.ts",
+        title: "widget-modal-shows-details",
+        file: "e2e/widget-feature.spec.ts",
         line: 20,
         error:
-          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible\n    at vendor.js:98765:4321",
-        stackHead: "    at e2e/product-quick-view.spec.ts:22:30",
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('widget-modal') to be visible\n    at vendor.js:98765:4321",
+        stackHead: "    at e2e/widget-feature.spec.ts:22:30",
       },
       {
-        title: "quick-view-open-and-load",
-        file: "e2e/product-quick-view.spec.ts",
+        title: "widget-open-and-load",
+        file: "e2e/widget-feature.spec.ts",
         line: 10,
         error:
-          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('quick-view-modal') to be visible\n    at main.js:11111:222",
-        stackHead: "    at e2e/product-quick-view.spec.ts:12:30",
+          "TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n    waiting for getByTestId('widget-modal') to be visible\n    at main.js:11111:222",
+        stackHead: "    at e2e/widget-feature.spec.ts:12:30",
       },
     ],
     uncaughtErrors: [],
@@ -228,7 +228,7 @@ describe("computeStructuredSignature", () => {
       ...cycle1,
       failedTests: cycle1.failedTests.map((t) => ({
         ...t,
-        error: t.error.replace("quick-view-modal", "some-other-modal"),
+        error: t.error.replace("widget-modal", "some-other-modal"),
       })),
     };
     assert.notEqual(
@@ -263,11 +263,11 @@ describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
       stats: { expected: 0, unexpected: 1, skipped: 0, flaky: 0 },
       suites: [
         {
-          file: "e2e/product-quick-view.spec.ts",
+          file: "e2e/widget-feature.spec.ts",
           specs: [
             {
               title,
-              file: "e2e/product-quick-view.spec.ts",
+              file: "e2e/widget-feature.spec.ts",
               line: 10,
               tests: [
                 {
@@ -292,7 +292,7 @@ describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
 
   it("copies on-disk screenshot attachments into <slug>_evidence/", () => {
     const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
-    const slug = "product-quick-view";
+    const slug = "widget-feature";
     const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
     const screenshot = path.join(srcDir, "test-failed-1.png");
     fs.writeFileSync(screenshot, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -307,7 +307,7 @@ describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
     assert.equal(atts.length, 1);
     assert.equal(atts[0].name, "screenshot");
     assert.equal(atts[0].contentType, "image/png");
-    assert.match(atts[0].path, /product-quick-view_evidence\/0-screenshot\.png$/);
+    assert.match(atts[0].path, /widget-feature_evidence\/0-screenshot\.png$/);
     assert.ok(fs.existsSync(atts[0].path), "copied evidence file should exist on disk");
   });
 
@@ -373,5 +373,47 @@ describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
     assert.ok(parsed);
     assert.equal(parsed!.failedTests[0].attachments?.length, 1);
     assert.ok(parsed!.consoleErrors.some((l) => /hydration mismatch/.test(l)));
+  });
+
+  it("uses custom redactPatterns when supplied (overrides the commerce default)", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "fail.png");
+    fs.writeFileSync(screenshot, "png");
+
+    // Title contains "checkout" (default-redacted) but NOT "patientrecord".
+    // With a custom pattern list, only patientrecord should redact.
+    const report = makeReport(
+      [{ name: "screenshot", contentType: "image/png", path: screenshot }],
+      "completes checkout flow",
+    );
+    const p = writeTmp("custom-redact.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, {
+      appRoot,
+      slug: "feat",
+      redactPatterns: ["patientrecord", "ssn"],
+    });
+    assert.ok(parsed);
+    // checkout is not in the custom list → evidence should be copied.
+    assert.equal(parsed!.failedTests[0].attachments?.length, 1);
+  });
+
+  it("disables redaction when redactPatterns is an empty array", () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pw-app-"));
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-src-"));
+    const screenshot = path.join(srcDir, "fail.png");
+    fs.writeFileSync(screenshot, "png");
+    const report = makeReport(
+      [{ name: "screenshot", contentType: "image/png", path: screenshot }],
+      "completes checkout flow",
+    );
+    const p = writeTmp("no-redact.json", JSON.stringify(report));
+    const parsed = parsePlaywrightReport(p, {
+      appRoot,
+      slug: "feat",
+      redactPatterns: [],
+    });
+    assert.ok(parsed);
+    assert.equal(parsed!.failedTests[0].attachments?.length, 1);
   });
 });

@@ -344,7 +344,7 @@ export const ApmConfigSchema = z.object({
   /** Declarative volatile-token patterns for the error-signature fingerprinter.
    *  The built-in stack-agnostic patterns (timestamps, PIDs, ports, UUIDs, hex hashes,
    *  paths, line:col, …) are always applied; entries here are appended and used to
-   *  strip framework-specific tokens (e.g. SFCC session IDs, test UUIDs, cloud ARNs)
+   *  strip framework-specific tokens (e.g. session IDs, test UUIDs, cloud ARNs)
    *  before hashing. Per-node `error_signature.volatile_patterns` overrides/extend
    *  this workflow-level list (additive). */
   error_signature: z.object({
@@ -356,6 +356,20 @@ export const ApmConfigSchema = z.object({
       flags: z.string().optional(),
       replacement: z.string(),
     })).default([]),
+  }).optional(),
+
+  /** Evidence-harvesting configuration for Playwright test failures.
+   *  Controls which test titles / files are skipped when copying binary
+   *  attachments (screenshots, videos, trace zips) into the per-feature
+   *  `_evidence/` directory — e.g. to avoid capturing customer PII from
+   *  account / checkout / login screens. */
+  evidence: z.object({
+    /** Case-insensitive regex sources. A failing test whose title OR file
+     *  path matches ANY pattern will have its binary evidence suppressed.
+     *  Invalid regex is rejected at compile time. When omitted, a
+     *  conservative commerce-flavored default list is applied. Set to an
+     *  empty array to disable redaction entirely. */
+    redact_patterns: z.array(z.string()).optional(),
   }).optional(),
 });
 

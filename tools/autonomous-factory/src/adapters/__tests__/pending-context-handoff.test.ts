@@ -59,7 +59,7 @@ const handoff: TriageHandoff = {
   triageDomain: "test-code",
   triageReason: "Locator does not match the updated DOM",
   priorAttemptCount: 2,
-  touchedFiles: ["apps/storefront/e2e/quick-view.spec.ts"],
+  touchedFiles: ["apps/example/e2e/widget.spec.ts"],
 };
 
 describe("renderTriageHandoffMarkdown (B1)", () => {
@@ -70,7 +70,7 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
     assert.match(md, /\*\*Domain:\*\* test-code/);
     assert.match(md, /\*\*Error signature:\*\* `abc12345`/);
     assert.match(md, /\*\*Prior attempts:\*\* 2/);
-    assert.match(md, /apps\/storefront\/e2e\/quick-view\.spec\.ts/);
+    assert.match(md, /apps\/example\/e2e\/widget\.spec\.ts/);
     assert.match(md, /AssertionError: expected selector/);
   });
 
@@ -84,7 +84,7 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
       ...handoff,
       evidence: [
         {
-          testTitle: "shows quick-view modal",
+          testTitle: "shows widget modal",
           attachments: [
             {
               name: "screenshot",
@@ -101,7 +101,7 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
       ],
     });
     assert.match(md, /### 📎 Evidence/);
-    assert.match(md, /\*\*shows quick-view modal\*\*/);
+    assert.match(md, /\*\*shows widget modal\*\*/);
     assert.match(md, /0-screenshot\.png.*image\/png/);
     assert.match(md, /0-trace\.zip.*application\/zip/);
   });

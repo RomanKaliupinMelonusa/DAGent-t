@@ -88,7 +88,7 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
           type: "string",
           description:
             "OPTIONAL. Deployed URL to record against the feature. Only " +
-            "meaningful for deploy nodes (frontend/backend/storefront).",
+            "meaningful for deploy nodes (frontend/backend).",
         },
         projectNote: {
           type: "string",

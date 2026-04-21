@@ -146,7 +146,7 @@ describe("filterNoise", () => {
     const payload: StructuredFailure = {
       ...BASE,
       consoleErrors: [
-        "2026-04-20T10:15:32.123Z [WARN] Slow render in /home/node/src/components/ProductTile.jsx",
+        "2026-04-20T10:15:32.123Z [WARN] Slow render in /home/node/src/components/ListItem.jsx",
       ],
     };
     // Pattern captured at baseline time carried a different timestamp and
@@ -155,7 +155,7 @@ describe("filterNoise", () => {
     const baseline: BaselineProfile = {
       feature: "pqv",
       console_errors: [
-        { pattern: "2025-11-01T00:00:00.000Z [WARN] Slow render in /opt/app/src/components/ProductTile.jsx" },
+        { pattern: "2025-11-01T00:00:00.000Z [WARN] Slow render in /opt/app/src/components/ListItem.jsx" },
       ],
     };
     const out = filterNoise(payload, baseline) as StructuredFailure;
@@ -188,7 +188,7 @@ describe("filterNoise", () => {
       ...BASE,
       uncaughtErrors: [
         {
-          message: "TypeError: Cannot read properties of undefined (reading 'masterId') at ProductTile.jsx:42:17",
+          message: "TypeError: Cannot read properties of undefined (reading 'itemId') at ListItem.jsx:42:17",
           inTest: "renders tile",
         },
       ],
@@ -198,7 +198,7 @@ describe("filterNoise", () => {
     const baseline: BaselineProfile = {
       feature: "pqv",
       uncaught_exceptions: [
-        { pattern: "Cannot read properties of undefined (reading 'masterId')", kind: "uncaught" },
+        { pattern: "Cannot read properties of undefined (reading 'itemId')", kind: "uncaught" },
       ],
     };
     const out = filterNoise(payload, baseline) as StructuredFailure;

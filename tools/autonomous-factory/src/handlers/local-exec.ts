@@ -135,7 +135,12 @@ const localExecHandler: NodeHandler = {
       let structuredFailure: StructuredFailure | null = null;
       if (structuredFailureCfg && structuredArtifactAbsPath) {
         if (structuredFailureCfg.format === "playwright-json") {
-          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath, { appRoot, slug });
+          const redactPatterns = apmContext.config?.evidence?.redact_patterns;
+          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath, {
+            appRoot,
+            slug,
+            ...(redactPatterns !== undefined ? { redactPatterns } : {}),
+          });
         }
       }
 

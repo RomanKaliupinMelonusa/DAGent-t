@@ -23,8 +23,8 @@ describe("toHandoffEvidence", () => {
       total: 1, passed: 0, failed: 1, skipped: 0,
       failedTests: [
         {
-          title: "shows quick-view",
-          file: "e2e/quick-view.spec.ts",
+          title: "shows widget",
+          file: "e2e/widget.spec.ts",
           line: 10,
           error: "TimeoutError: locator.waitFor",
           stackHead: "",
@@ -40,7 +40,7 @@ describe("toHandoffEvidence", () => {
     const evidence = toHandoffEvidence(structured);
     assert.ok(evidence);
     assert.equal(evidence!.length, 1);
-    assert.equal(evidence![0].testTitle, "shows quick-view");
+    assert.equal(evidence![0].testTitle, "shows widget");
     assert.equal(evidence![0].attachments[0].path, "/tmp/feat_evidence/0-screenshot.png");
   });
 

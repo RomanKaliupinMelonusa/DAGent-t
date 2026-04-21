@@ -118,9 +118,9 @@ describe("DefaultKernelRules — volatile patterns injection", () => {
     );
   });
 
-  it("commerce-storefront Playwright patterns collapse rotating e2e output", () => {
-    // Mirrors the patterns declared in
-    // `apps/commerce-storefront/.apm/workflows.yml` → storefront.error_signature.
+  it("app-declared Playwright volatile patterns collapse rotating e2e output", () => {
+    // Mirrors the patterns a Playwright-based app would declare in
+    // `.apm/workflows.yml` under error_signature.volatile_patterns.
     // Two real-shape Playwright failure blobs that differ only in volatile
     // tokens should produce IDENTICAL signatures so `halt_on_identical` fires.
     const workflowPatterns = compileVolatilePatterns([
@@ -137,26 +137,26 @@ describe("DefaultKernelRules — volatile patterns injection", () => {
 
     const cycle1 = [
       "Running 14 tests using 4 workers",
-      "  [1/14] product-quick-view.spec.ts:12",
-      "  [4/14] product-quick-view.spec.ts:33",
-      "  1) product-quick-view.spec.ts:12 › quick view opens (59.6s)",
+      "  [1/14] widget-feature.spec.ts:12",
+      "  [4/14] widget-feature.spec.ts:33",
+      "  1) widget-feature.spec.ts:12 › widget opens (59.6s)",
       "     Error: getServerSnapshot should be cached to avoid infinite loop",
       "     Timeout 20000ms exceeded.",
       "     attachment #1: screenshot",
-      "     test-results/product-quick-view-Product-e5210-view-opens/trace.zip",
+      "     test-results/widget-feature-Widget-e5210-opens/trace.zip",
       "  3 passed, 3 failed, 6 total",
       "  8 did not run",
     ].join("\n");
 
     const cycle2 = [
       "Running 14 tests using 2 workers",
-      "  [3/14] product-quick-view.spec.ts:12",
-      "  [9/14] product-quick-view.spec.ts:33",
-      "  1) product-quick-view.spec.ts:12 › quick view opens (1.6m)",
+      "  [3/14] widget-feature.spec.ts:12",
+      "  [9/14] widget-feature.spec.ts:33",
+      "  1) widget-feature.spec.ts:12 › widget opens (1.6m)",
       "     Error: getServerSnapshot should be cached to avoid infinite loop",
       "     Timeout 20000ms exceeded.",
       "     attachment #4: screenshot",
-      "     test-results/product-quick-view-Product-a9931-view-opens/trace.zip",
+      "     test-results/widget-feature-Widget-a9931-opens/trace.zip",
       "  2 passed, 4 failed, 6 total",
       "  6 did not run",
     ].join("\n");

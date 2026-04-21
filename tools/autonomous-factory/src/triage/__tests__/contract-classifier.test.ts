@@ -38,8 +38,8 @@ describe("classifyStructuredFailure", () => {
       ...BASE,
       uncaughtErrors: [
         {
-          message: "TypeError: Cannot read properties of undefined (reading 'masterId')",
-          inTest: "shows modal with product content",
+          message: "TypeError: Cannot read properties of undefined (reading 'itemId')",
+          inTest: "shows modal with widget content",
         },
       ],
     };
@@ -47,8 +47,8 @@ describe("classifyStructuredFailure", () => {
     assert.ok(result);
     assert.equal(result!.domain, BROWSER_RUNTIME_ERROR_DOMAIN);
     assert.equal(result!.source, "contract");
-    assert.match(result!.reason, /shows modal with product content/);
-    assert.match(result!.reason, /masterId/);
+    assert.match(result!.reason, /shows modal with widget content/);
+    assert.match(result!.reason, /itemId/);
   });
 
   it("truncates very long uncaught error messages in the reason", () => {
@@ -99,11 +99,11 @@ describe("classifyRawError — spec-compiler schema violations", () => {
     const msg =
       `TimeoutError: locator.waitFor: Timeout 5000ms exceeded.\n` +
       `  at some/path/file.yml:12:5\n` +
-      `  waiting for getByTestId('quick-view-modal') to be visible`;
+      `  waiting for getByTestId('widget-modal') to be visible`;
     assert.equal(classifyRawError(msg), null);
   });
 
-  it("does NOT match unrelated storefront-dev errors", () => {
+  it("does NOT match unrelated dev-node errors", () => {
     assert.equal(classifyRawError("ReferenceError: foo is not defined"), null);
     assert.equal(classifyRawError(""), null);
     assert.equal(classifyRawError("session.idle timeout"), null);

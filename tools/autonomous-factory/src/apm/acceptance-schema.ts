@@ -6,7 +6,7 @@
  * `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`.
  *
  * Consumed by:
- *   - `storefront-dev` — injected into the prompt alongside the spec.
+ *   - The dev agent — injected into the prompt alongside the spec.
  *   - `e2e-author` (Phase A.4) — the blind SDET reads this in place of impl.
  *   - `validate-acceptance.mjs` (Phase B.1) — runs a Playwright smoke
  *     materialized from the required DOM + flows.
@@ -27,7 +27,7 @@ import { z } from "zod";
  *   element. The oracle uses strict-mode `getByTestId(X)` which fails
  *   loudly if the page renders zero or multiple matches.
  * - `many`: the testid is rendered once per item in a repeating list
- *   (product tiles, cart rows, search hits). The oracle asserts the
+ *   (e.g. list rows, search hits, card grids). The oracle asserts the
  *   first instance is visible via `.first()` and skips the exact-text
  *   check; `contains_text` substring assertions still apply to that
  *   first instance.
@@ -119,7 +119,7 @@ export const AcceptanceContractSchema = z.object({
     "Cannot read propert(y|ies) of (undefined|null)",
   ]),
   /** Regular expressions for URLs whose network failure would be a feature
-   *  defect (e.g. SCAPI product detail). Expressed as `METHOD URL_REGEX`. */
+   *  defect (e.g. an API detail endpoint). Expressed as `METHOD URL_REGEX`. */
   forbidden_network_failures: z.array(z.string()).default([]),
   /** Base-template symbols the dev agent MUST audit for reuse before
    *  introducing a wrapper. Not enforced at runtime — this list becomes

@@ -79,7 +79,7 @@ describe("AcceptanceContractSchema", () => {
     const parsed = AcceptanceContractSchema.parse({
       feature: "demo",
       summary: "x",
-      required_dom: [{ testid: "qvb", description: "quick-view button", cardinality: "many" }],
+      required_dom: [{ testid: "wb", description: "widget button", cardinality: "many" }],
     });
     assert.equal(parsed.required_dom[0]!.cardinality, "many");
   });
@@ -143,28 +143,28 @@ describe("AcceptanceContractSchema", () => {
 describe("loadAcceptanceContract", () => {
   it("parses a well-formed YAML file", () => {
     const p = tmpFile("ACC.yml", `
-feature: quick-view
-summary: A quick-view modal.
+feature: widget
+summary: A widget modal.
 required_dom:
-  - testid: product-name-modal
-    description: Name of the product shown in the modal
+  - testid: item-name-modal
+    description: Name of the item shown in the modal
     requires_non_empty_text: true
 required_flows:
   - name: open-modal
     description: Click tile opens modal
     steps:
       - { action: goto, url: "/" }
-      - { action: click, testid: quick-view-tile-button }
-      - { action: assert_visible, testid: product-name-modal, timeout_ms: 10000 }
+      - { action: click, testid: widget-tile-button }
+      - { action: assert_visible, testid: item-name-modal, timeout_ms: 10000 }
 forbidden_network_failures:
-  - "GET /mobify/proxy/api/.*/products/.*"
+  - "GET /api/.*/items/.*"
 base_template_reuse:
-  - symbol: ProductViewModal
-    package: "@salesforce/retail-react-app"
+  - symbol: WidgetModal
+    package: "@example/ui-kit"
     rationale: Ships the modal UX out of the box.
 `);
     const c = loadAcceptanceContract(p);
-    assert.equal(c.feature, "quick-view");
+    assert.equal(c.feature, "widget");
     assert.equal(c.required_dom.length, 1);
     assert.equal(c.required_flows[0]!.steps.length, 3);
     assert.equal(c.base_template_reuse.length, 1);

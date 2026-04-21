@@ -10,9 +10,9 @@
  *
  * Prior to D3, triage only saw the raw stdout/stderr of the failing script,
  * which forced the LLM classifier to re-derive contract violations from
- * ANSI-laden Playwright logs. That's how product-quick-view shipped: the
- * oracle said "uncaught TypeError on masterId", but triage saw a 30 KB
- * console dump and classified the failure as `test-code`.
+ * ANSI-laden Playwright logs. Typical miss: the oracle reports an uncaught
+ * TypeError against a contract-named testid, but triage sees a 30 KB
+ * framework console dump and misclassifies the failure as `test-code`.
  *
  * This module loads whichever contract-evidence artifacts exist for the
  * current feature and renders a compact markdown block that is prepended
