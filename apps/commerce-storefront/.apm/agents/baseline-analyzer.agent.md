@@ -35,7 +35,7 @@ Shape (all fields REQUIRED unless marked optional):
   "base_sha": "<optional: result of `git rev-parse HEAD`>",
   "targets": [
     { "name": "PLP",                "url": "/category/newarrivals", "kind": "page"  },
-    { "name": "Quick View modal",   "trigger_testid": "quick-view-btn", "kind": "modal" }
+    { "name": "Feature modal",     "trigger_testid": "feature-action-btn", "kind": "modal" }
   ],
   "console_errors":      [ { "pattern": "Cannot read properties of undefined (reading 'id')", "source_page": "PLP", "count": 3 } ],
   "network_failures":    [ { "pattern": "GET /mobify/proxy/api/.*/recommendations", "source_page": "PLP", "count": 1 } ],

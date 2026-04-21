@@ -48,7 +48,7 @@ PWA Kit runs the same React source code in two contexts:
    // ✅ Correct — modal component only mounts after client-side click
    {isOpen && (
      <Suspense fallback={<Spinner />}>
-       <QuickViewModal product={product} onClose={onClose} />
+       <FeatureModal product={product} onClose={onClose} />
      </Suspense>
    )}
 

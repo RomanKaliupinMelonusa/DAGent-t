@@ -68,18 +68,18 @@ base_template_reuse:                    # [] — components the dev MUST audit
 
    ```yaml
    required_dom:
-     - testid: quick-view-btn
-       description: Quick View overlay bar rendered on every PLP product tile
+     - testid: feature-action-btn
+       description: Action button rendered on every PLP product tile
        cardinality: many          # tells oracle to assert first instance
-       contains_text: Quick View
+       contains_text: View Details
 
    required_flows:
-     - name: open-quick-view-modal
+     - name: open-feature-modal
        steps:
          - { action: goto, url: "/category/newarrivals" }
-         - { action: assert_visible, testid: quick-view-btn, match: first, timeout_ms: 10000 }
-         - { action: click,          testid: quick-view-btn, match: first }
-         - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+         - { action: assert_visible, testid: feature-action-btn, match: first, timeout_ms: 10000 }
+         - { action: click,          testid: feature-action-btn, match: first }
+         - { action: assert_visible, testid: feature-modal, timeout_ms: 10000 }
    ```
 
    **Strategy B — per-instance testid suffix** (use when the spec names a specific item, e.g. "click Add to Cart on the highlighted promo product"):
@@ -107,7 +107,7 @@ base_template_reuse:                    # [] — components the dev MUST audit
 
 5. **Populate `base_template_reuse` for every commerce primitive the feature touches.** The PWA Kit base template (`@salesforce/retail-react-app@9.1.1`) ships `ProductViewModal`, `ProductView`, `useProduct`, `useProductViewModal`, `useAddToCart`, `useBasket`, `<Price>`, etc. If the spec mentions modals, product views, cart actions, price displays, list them here with a rationale of **why** reuse is preferred.
 
-6. **`forbidden_network_failures` MUST include the SCAPI endpoint that powers the feature.** E.g. a quick-view feature must include `GET /mobify/proxy/api/.*/products/.*`.
+6. **`forbidden_network_failures` MUST include the SCAPI endpoint that powers the feature.** E.g. a product-detail feature must include `GET /mobify/proxy/api/.*/products/.*`.
 
 7. **Do NOT add `forbidden_console_patterns` that silence noise.** The built-in defaults already ban the Uncaught exceptions users would see. Only add patterns if the spec explicitly calls out a class of error as a failure signal.
 

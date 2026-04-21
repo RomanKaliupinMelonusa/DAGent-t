@@ -14,7 +14,7 @@ The SDET agent relies **entirely** on these attributes to author E2E tests using
    <button data-testid="add-to-cart-btn">Add to Cart</button>
    <input data-testid="search-input" />
    <div data-testid="product-tile">...</div>
-   <dialog data-testid="quick-view-modal">...</dialog>
+   <dialog data-testid="feature-modal">...</dialog>
    ```
 5. **Never use dynamic or index-based test IDs** unless unavoidable. Prefer stable identifiers:
    ```jsx
@@ -25,7 +25,7 @@ The SDET agent relies **entirely** on these attributes to author E2E tests using
    ```
 6. **List items** should include a stable identifier suffix (e.g., product ID, SKU).
 
-7. **Collective testids in repeating lists — contract-gated.** Interactive elements inside a `.map(...)` (one per tile/row/hit) MUST use a per-instance testid suffix — `quick-view-btn-${productId}`, `add-to-cart-btn-${productId}`, `remove-item-btn-${lineItemId}`. A bare collective testid on every instance trips Playwright strict-mode and is forbidden **unless** the acceptance contract declares it with `cardinality: many`; in that case the bare form is permitted (the E2E author targets `.first()` / `.nth()`).
+7. **Collective testids in repeating lists — contract-gated.** Interactive elements inside a `.map(...)` (one per tile/row/hit) MUST use a per-instance testid suffix — `action-btn-${productId}`, `add-to-cart-btn-${productId}`, `remove-item-btn-${lineItemId}`. A bare collective testid on every instance trips Playwright strict-mode and is forbidden **unless** the acceptance contract declares it with `cardinality: many`; in that case the bare form is permitted (the E2E author targets `.first()` / `.nth()`).
 
    Before implementing, read `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml`. For every `required_dom` entry you render, confirm `cardinality` matches the DOM shape. If the contract says `cardinality: one` but the element sits inside a list render, either suffix the testid per instance, or call `report_outcome({ status: "failed", message: "Acceptance contract mismatch: <testid> declared cardinality:one but appears in repeating list" })` so spec-compiler can repair the contract.
 
@@ -42,7 +42,7 @@ For example, the PLP page passes `data-testid={`sf-product-tile-${product.id}`}`
    // ✅ Correct — testid on your wrapper, unaffected by parent props
    <Box data-testid="product-tile" position="relative">
      <OriginalProductTile {...props} />
-     <QuickViewOverlay />
+     <OverlayContent />
    </Box>
 
    // ❌ WRONG — parent's data-testid="sf-product-tile-123" overwrites yours

@@ -64,16 +64,16 @@ The SDK's `AppErrorBoundary` wraps routes, not portals — an unhandled throw in
 ```jsx
 import { ErrorBoundary } from 'react-error-boundary';
 
-function QuickViewFallback({ error }) {
+function ModalFallback({ error }) {
   return (
-    <Box data-testid="quick-view-error" p={4}>
-      <Text>Unable to load product details.</Text>
+    <Box data-testid="feature-modal-error" p={4}>
+      <Text>Unable to load details.</Text>
     </Box>
   );
 }
 
 // Inside your modal:
-<ErrorBoundary FallbackComponent={QuickViewFallback}>
+<ErrorBoundary FallbackComponent={ModalFallback}>
   <ProductView product={product} />
 </ErrorBoundary>
 ```

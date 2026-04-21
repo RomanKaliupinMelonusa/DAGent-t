@@ -162,7 +162,7 @@ describe("getDirectoryPrefixes", () => {
     assert.deepStrictEqual(result.storefront, ["apps/commerce-storefront/"]);
     assert.deepStrictEqual(result.e2e, ["apps/commerce-storefront/e2e/"]);
     // Verify the storefront prefix actually matches real override paths
-    const overridePath = "apps/commerce-storefront/overrides/app/components/quick-view-modal/index.jsx";
+    const overridePath = "apps/commerce-storefront/overrides/app/components/product-tile/index.jsx";
     assert.ok(overridePath.startsWith(result.storefront[0]), "storefront prefix must match override paths");
   });
 

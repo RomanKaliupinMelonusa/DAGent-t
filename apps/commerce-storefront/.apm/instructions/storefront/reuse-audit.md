@@ -10,7 +10,7 @@ Common retail patterns that almost always have a base-template export:
 
 | If you are about to write... | First grep for... |
 |---|---|
-| `ProductQuickView`, `QuickViewModal`, any modal over a product | `ProductViewModal`, `ProductView`, `useProduct` |
+| Any modal over a product detail | `ProductViewModal`, `ProductView`, `useProduct` |
 | `AddToCart`, `CartAction`, any add-to-cart UX | `useAddToCart`, `useBasket` |
 | `PriceDisplay`, `FormattedPrice` | existing `<Price>` component |
 | `useProduct*` hook | `useProduct`, `useProductViewModal` |

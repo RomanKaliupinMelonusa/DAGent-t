@@ -62,7 +62,7 @@
 12. **After opening a modal or drawer that fetches API data**, assert exactly one of three outcomes:
     ```ts
     // Outcome 1: Content loaded successfully
-    const content = page.locator('[data-testid="quick-view-modal"]');
+    const content = page.locator('[data-testid="feature-modal"]');
     // Outcome 2: Graceful error state inside the modal
     const errorState = page.locator('[data-testid*="-error"]');
     // Outcome 3: Crash page (entire page replaced)
@@ -101,7 +101,7 @@ A test that passes for both the happy path and the error state is **worse than n
     - ❌ `await page.locator('body, html, #root').isVisible()` as the only assertion.
     - ❌ Any assertion whose locator matches elements on every page of the site (navigation, footer, title).
 
-16. **Every happy-path test MUST assert a feature-specific, non-trivial element** — typically a `data-testid` added for the feature under test. If the feature introduces `data-testid="quick-view-modal"`, the happy-path test must assert that **exact** testid is visible with **product-specific content** (e.g. a non-empty price or product name inside the modal).
+16. **Every happy-path test MUST assert a feature-specific, non-trivial element** — typically a `data-testid` added for the feature under test. If the feature introduces `data-testid="feature-modal"`, the happy-path test must assert that **exact** testid is visible with **feature-specific content** (e.g. a non-empty heading or detail text inside the modal).
 
 17. **Console-error budget.** At the end of every feature test, assert `expect(consoleErrors).toEqual([])` (or an explicit, feature-scoped allowlist). The existing `beforeEach/afterEach` logging is diagnostic — it does not fail the test. You MUST add an explicit assertion on `consoleErrors` in the test body, or the test tolerates uncaught exceptions that real users would see as broken.
 
