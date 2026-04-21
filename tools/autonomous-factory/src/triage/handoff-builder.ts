@@ -16,7 +16,7 @@
 import type { ItemSummary, TriageHandoff, TriageRecord } from "../types.js";
 import type { TriageResult } from "../types.js";
 import { extractPriorAttempts } from "./historian.js";
-import { toHandoffEvidence } from "./handoff-evidence.js";
+import { toHandoffEvidence, toBrowserSignals } from "./handoff-evidence.js";
 
 // ---------------------------------------------------------------------------
 // Domain-tag format — single source of truth shared with triage-handler's
@@ -135,5 +135,6 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     touchedFiles: failingSummary?.filesChanged ?? [],
     advisory: buildConsecutiveDomainAdvisory(errorLog, triageResult.domain),
     evidence: toHandoffEvidence(structuredFailure),
+    browserSignals: toBrowserSignals(structuredFailure),
   };
 }

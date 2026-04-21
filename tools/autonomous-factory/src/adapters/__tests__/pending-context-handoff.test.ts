@@ -112,6 +112,54 @@ describe("renderTriageHandoffMarkdown (B1)", () => {
     const emptyEvidence = renderTriageHandoffMarkdown({ ...handoff, evidence: [] });
     assert.ok(!/### 📎 Evidence/.test(emptyEvidence));
   });
+
+  it("reframes the excerpt heading as step context, not root cause", () => {
+    const md = renderTriageHandoffMarkdown(handoff);
+    assert.match(md, /### Failing test step \(context\)/);
+    assert.match(md, /not\*\* the root cause/);
+    // Old heading must be gone.
+    assert.ok(!/### Error excerpt/.test(md));
+  });
+
+  it("renders the 🌐 Browser signals section with all three channels", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      browserSignals: {
+        uncaughtErrors: [
+          { message: "TypeError: x is undefined", inTest: "quick view" },
+        ],
+        consoleErrors: ["error: hydration mismatch"],
+        failedRequests: ["GET /api/product -> 500"],
+      },
+    });
+    assert.match(md, /### 🌐 Browser signals \(baseline-filtered\)/);
+    assert.match(md, /\*\*Uncaught errors\*\*/);
+    assert.match(md, /TypeError: x is undefined.*in \*quick view\*/);
+    assert.match(md, /\*\*Console errors:\*\*/);
+    assert.match(md, /hydration mismatch/);
+    assert.match(md, /\*\*Failed network requests:\*\*/);
+    assert.match(md, /\/api\/product -> 500/);
+  });
+
+  it("renders only non-empty browser-signal subsections", () => {
+    const md = renderTriageHandoffMarkdown({
+      ...handoff,
+      browserSignals: {
+        uncaughtErrors: [],
+        consoleErrors: ["only console"],
+        failedRequests: [],
+      },
+    });
+    assert.match(md, /### 🌐 Browser signals/);
+    assert.match(md, /\*\*Console errors:\*\*/);
+    assert.ok(!/\*\*Uncaught errors\*\*/.test(md));
+    assert.ok(!/\*\*Failed network requests:\*\*/.test(md));
+  });
+
+  it("omits the 🌐 Browser signals section when browserSignals is missing", () => {
+    const md = renderTriageHandoffMarkdown(handoff);
+    assert.ok(!/### 🌐 Browser signals/.test(md));
+  });
 });
 
 describe("renderPendingContext (B1)", () => {

@@ -98,6 +98,10 @@ async function buildRerouteCommands(
   routeToPolicy: NodeBudgetPolicy,
   failingNodeKey: string,
   rawError: string,
+  /** Baseline-filtered structured failure — same payload the classifier saw.
+   *  Projected into the dev-agent handoff so console/network/uncaught signals
+   *  travel alongside the Playwright assertion excerpt. */
+  structuredFailure: unknown,
 ): Promise<DagCommand[]> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
@@ -159,7 +163,7 @@ async function buildRerouteCommands(
         priorAttemptCount,
         pipelineSummaries: ctx.pipelineSummaries,
         errorLog: pipeStateForCtx.errorLog ?? [],
-        structuredFailure: ctx.structuredFailure,
+        structuredFailure,
       });
       commands.push({
         type: "set-pending-context",
@@ -540,7 +544,7 @@ const triageHandler: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError);
+    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure);
 
     return {
       outcome: "completed",

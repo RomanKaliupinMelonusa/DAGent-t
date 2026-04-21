@@ -271,6 +271,24 @@ export interface TriageHandoff {
       readonly contentType: string;
     }>;
   }>;
+  /** Browser-side runtime signals captured by the Playwright JSON reporter
+   *  (console errors, failed network requests, uncaught exceptions) after
+   *  `baseline-analyzer` noise has been subtracted. These are the signals
+   *  the dev agent needs to diagnose root cause \u2014 the `errorExcerpt`
+   *  above only says which assertion failed, not *why*.
+   *
+   *  Caps (applied by `toBrowserSignals`): 10 uncaught / 15 console /
+   *  15 network; each entry truncated to 300 characters. Omitted when the
+   *  payload is not a Playwright-json failure or every channel is empty
+   *  after filtering. */
+  readonly browserSignals?: {
+    readonly consoleErrors: readonly string[];
+    readonly failedRequests: readonly string[];
+    readonly uncaughtErrors: ReadonlyArray<{
+      readonly message: string;
+      readonly inTest: string;
+    }>;
+  };
 }
 
 /**

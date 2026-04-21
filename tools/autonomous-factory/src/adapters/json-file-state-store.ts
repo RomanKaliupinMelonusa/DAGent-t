@@ -66,7 +66,7 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
  *   - **Error signature:** …
  *   - **Prior attempts:** …
  *   - **Touched files:** …
- *   ### Error excerpt
+ *   ### Failing test step (context)
  *   ```
  *   <errorExcerpt>
  *   ```
@@ -86,7 +86,8 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     `- **Prior attempts:** ${handoff.priorAttemptCount}`,
     `- **Touched files:** ${touched}`,
     "",
-    "### Error excerpt",
+    "### Failing test step (context)",
+    "*This excerpt shows which assertion/step the E2E was running when it failed — useful for locating the user flow, but it is **not** the root cause. For root-cause diagnosis, read the Browser signals section below.*",
     "```",
     handoff.errorExcerpt,
     "```",
@@ -95,6 +96,33 @@ export function renderTriageHandoffMarkdown(handoff: TriageHandoff): string {
     // Round-2 R3: consecutive-domain advisory rendered immediately after the
     // diagnosis block so the dev agent sees it before reading the excerpt.
     lines.push("", "### ⚠️ Advisory", handoff.advisory.trim());
+  }
+  if (handoff.browserSignals) {
+    // Baseline-filtered runtime signals — pre-existing platform errors
+    // captured by `baseline-analyzer` have already been subtracted, so every
+    // entry here is (best-effort) feature-attributable. Uncaught errors lead
+    // because they classify deterministically as impl-defect.
+    const sig = handoff.browserSignals;
+    const sections: string[] = [];
+    if (sig.uncaughtErrors.length > 0) {
+      sections.push("**Uncaught errors** (highest-signal — likely root cause):");
+      for (const e of sig.uncaughtErrors) {
+        sections.push(`- \`${e.message}\` (in *${e.inTest}*)`);
+      }
+    }
+    if (sig.consoleErrors.length > 0) {
+      if (sections.length > 0) sections.push("");
+      sections.push("**Console errors:**");
+      for (const m of sig.consoleErrors) sections.push(`- \`${m}\``);
+    }
+    if (sig.failedRequests.length > 0) {
+      if (sections.length > 0) sections.push("");
+      sections.push("**Failed network requests:**");
+      for (const m of sig.failedRequests) sections.push(`- \`${m}\``);
+    }
+    if (sections.length > 0) {
+      lines.push("", "### 🌐 Browser signals (baseline-filtered)", ...sections);
+    }
   }
   if (handoff.evidence && handoff.evidence.length > 0) {
     // Level-1 evidence: absolute paths to screenshots / traces / videos

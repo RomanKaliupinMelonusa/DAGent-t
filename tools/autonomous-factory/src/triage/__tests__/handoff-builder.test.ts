@@ -177,6 +177,29 @@ describe("buildTriageHandoff (Phase A)", () => {
     assert.equal(h.evidence![0].testTitle, "shows widget");
   });
 
+  it("projects browser signals via toBrowserSignals", () => {
+    const structured = {
+      kind: "playwright-json",
+      total: 1, passed: 0, failed: 1, skipped: 0,
+      failedTests: [],
+      uncaughtErrors: [
+        { message: "TypeError: x is undefined", inTest: "shows widget" },
+      ],
+      consoleErrors: ["error: image failed"],
+      failedRequests: ["GET /api/x -> 500"],
+    };
+    const h = buildTriageHandoff({ ...baseArgs, structuredFailure: structured });
+    assert.ok(h.browserSignals);
+    assert.equal(h.browserSignals!.uncaughtErrors.length, 1);
+    assert.equal(h.browserSignals!.consoleErrors.length, 1);
+    assert.equal(h.browserSignals!.failedRequests.length, 1);
+  });
+
+  it("omits browserSignals when structuredFailure is absent", () => {
+    const h = buildTriageHandoff({ ...baseArgs, structuredFailure: null });
+    assert.equal(h.browserSignals, undefined);
+  });
+
   it("falls back to empty touchedFiles when no summary matches", () => {
     const h = buildTriageHandoff({
       ...baseArgs,
