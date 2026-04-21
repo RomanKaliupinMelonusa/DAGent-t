@@ -1,7 +1,7 @@
 name: commerce-storefront
 version: 1.0.0
 description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless React + SCAPI"
-tokenBudget: 10000
+tokenBudget: 13000
 
 agents:
   spec-compiler:
