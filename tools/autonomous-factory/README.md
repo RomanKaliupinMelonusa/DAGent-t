@@ -77,13 +77,14 @@ flowchart TB
     LOOP --> LIFECYCLE
     HANDLERS --> SESSION
 
-    classDef compRoot fill:#1f2937,stroke:#9ca3af,stroke-width:2px,color:#f9fafb
-    classDef drive fill:#7c2d12,stroke:#fb923c,stroke-width:2px,color:#fff7ed
-    classDef dispatch fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fffbeb
-    classDef plugin fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#f0fdf4
-    classDef core fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#eff6ff
-    classDef io fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#faf5ff
-    classDef xcut fill:#374151,stroke:#9ca3af,stroke-width:1px,color:#f3f4f6
+    %% Node styles — vivid fills, dark text
+    classDef compRoot fill:#e0e7ff,stroke:#4338ca,stroke-width:2px,color:#1e1b4b
+    classDef drive fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#431407
+    classDef dispatch fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#451a03
+    classDef plugin fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#052e16
+    classDef core fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#172554
+    classDef io fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#3b0764
+    classDef xcut fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
 
     class ENTRY compRoot
     class LOOP drive
@@ -92,6 +93,15 @@ flowchart TB
     class KERNEL,DOMAIN,APM,TRIAGE core
     class PORTS,ADAPTERS io
     class REPORTING,LIFECYCLE,SESSION,TELEMETRY xcut
+
+    %% Subgraph container tints (matching each layer, lighter)
+    style CR fill:#eef2ff,stroke:#6366f1,stroke-width:1px,color:#1e1b4b
+    style DRIVE fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#431407
+    style DISP fill:#fffbeb,stroke:#d97706,stroke-width:1px,color:#451a03
+    style PLUG fill:#f0fdf4,stroke:#16a34a,stroke-width:1px,color:#052e16
+    style CORE fill:#eff6ff,stroke:#2563eb,stroke-width:1px,color:#172554
+    style IO fill:#faf5ff,stroke:#9333ea,stroke-width:1px,color:#3b0764
+    style XCUT fill:#f9fafb,stroke:#6b7280,stroke-width:1px,color:#111827
 ```
 
 **Dependency direction rules** (enforced by ESLint `no-restricted-imports` in [domain/](src/domain/) and [kernel/](src/kernel/)):
