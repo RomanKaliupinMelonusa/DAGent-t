@@ -76,6 +76,22 @@ flowchart TB
     LOOP --> REPORTING
     LOOP --> LIFECYCLE
     HANDLERS --> SESSION
+
+    classDef compRoot fill:#1f2937,stroke:#9ca3af,stroke-width:2px,color:#f9fafb
+    classDef drive fill:#7c2d12,stroke:#fb923c,stroke-width:2px,color:#fff7ed
+    classDef dispatch fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fffbeb
+    classDef plugin fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#f0fdf4
+    classDef core fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#eff6ff
+    classDef io fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#faf5ff
+    classDef xcut fill:#374151,stroke:#9ca3af,stroke-width:1px,color:#f3f4f6
+
+    class ENTRY compRoot
+    class LOOP drive
+    class DISPATCH dispatch
+    class HANDLERS,HARNESS plugin
+    class KERNEL,DOMAIN,APM,TRIAGE core
+    class PORTS,ADAPTERS io
+    class REPORTING,LIFECYCLE,SESSION,TELEMETRY xcut
 ```
 
 **Dependency direction rules** (enforced by ESLint `no-restricted-imports` in [domain/](src/domain/) and [kernel/](src/kernel/)):
