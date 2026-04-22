@@ -8,7 +8,8 @@
 
   "runArgs": [
     "--shm-size=2gb",
-    "--ipc=host"
+    "--ipc=host",
+    "--memory=16g"
   ],
 
   "mounts": [
