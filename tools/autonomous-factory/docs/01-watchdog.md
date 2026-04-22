@@ -7,7 +7,7 @@
 > Pipeline Kernel (Command/Effect, sole state owner): `tools/autonomous-factory/src/kernel/`
 > Pure domain (DAG math, transitions, scheduling): `tools/autonomous-factory/src/domain/`
 > Ports / adapters: `tools/autonomous-factory/src/ports/` · `tools/autonomous-factory/src/adapters/`
-> Reactive DAG loop + dispatch: `tools/autonomous-factory/src/loop/` · `tools/autonomous-factory/src/dispatch/`
+> Reactive DAG loop + dispatch: `tools/autonomous-factory/src/loop/` · `tools/autonomous-factory/src/loop/dispatch/`
 > Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, barrier, triage-handler)
 > Handler support helpers: `tools/autonomous-factory/src/handlers/support/` (agent-context, agent-limits, agent-post-session)
 > Harness: `tools/autonomous-factory/src/harness/` (RBAC, circuit breaker, tool wiring)
@@ -327,4 +327,4 @@ classDiagram
 
 ---
 
-*← [00 Overview](00-overview.md) · [02 Roam-Code →](02-roam-code.md)*
+*← [Engine README](../README.md) · [02 Roam-Code →](02-roam-code.md)*

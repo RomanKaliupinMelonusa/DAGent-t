@@ -1,7 +1,7 @@
 # APM Context System — Dynamic Rule Engine
 
 > Loads coding rule fragments at startup, assembles per-agent prompts, validates token budgets eagerly.
-> Source: `tools/autonomous-factory/src/apm-compiler.ts` + `apm-context-loader.ts` + `apm-types.ts`
+> Source: `tools/autonomous-factory/src/apm/compiler.ts` + `src/apm/context-loader.ts` + `src/apm/types.ts`
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---

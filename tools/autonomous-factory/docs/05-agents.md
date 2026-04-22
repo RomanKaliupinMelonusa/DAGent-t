@@ -1,7 +1,7 @@
 # Specialist Agents — Catalog & Configuration
 
 > 19 pipeline items across 6 phases (two-wave architecture). 13 LLM-driven agents, 5 deterministic script bypasses, and one human approval gate. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
-> Source: `tools/autonomous-factory/src/agents.ts` (prompt factory) · `tools/autonomous-factory/src/handlers/` (execution handlers)
+> Source: `tools/autonomous-factory/src/apm/agents.ts` (prompt factory) · `tools/autonomous-factory/src/handlers/` (execution handlers)
 
 ---
 

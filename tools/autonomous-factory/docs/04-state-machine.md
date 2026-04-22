@@ -8,7 +8,7 @@
 
 ## Full DAG — 19 Pipeline Items (Two-Wave Architecture)
 
-> This is the **dependency-level** view — which items depend on which and what can run in parallel. For the system-level architecture showing how the orchestrator, MCP servers, and state management connect, see [00-overview.md](00-overview.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
+> This is the **dependency-level** view — which items depend on which and what can run in parallel. For the full engine architecture see [../README.md](../README.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
 
 The pipeline is split into **two waves** separated by a **human approval gate**:
 

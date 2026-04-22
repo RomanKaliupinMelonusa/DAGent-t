@@ -1,7 +1,7 @@
 # Agentic Pipeline Platform — Copilot Instructions
 
 > Lightweight routing file. Always injected into Copilot context.
-> Deep documentation lives in `tools/autonomous-factory/docs/` — reference, don't duplicate.
+> Architecture overview lives in `tools/autonomous-factory/README.md`. Per-layer contributor docs live in `tools/autonomous-factory/src/<layer>/README.md`. Subject deep-dives live in `tools/autonomous-factory/docs/`. Reference, don't duplicate.
 
 ## Project Identity
 
@@ -33,7 +33,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | What | Where |
 |---|---|
 | **Operational hub (config, commands, CI/CD)** | **`.github/AGENTIC-WORKFLOW.md`** |
-| System architecture overview | `tools/autonomous-factory/docs/00-overview.md` |
+| **Engine architecture overview (layers, paradigm, tech debt)** | **`tools/autonomous-factory/README.md`** |
 | Watchdog orchestrator deep-dive | `tools/autonomous-factory/docs/01-watchdog.md` |
 | roam-code integration & tool inventory | `tools/autonomous-factory/docs/02-roam-code.md` |
 | APM context system & rule engine | `tools/autonomous-factory/docs/03-apm-context.md` |
@@ -41,6 +41,15 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Specialist agent catalog | `tools/autonomous-factory/docs/05-agents.md` |
 | Standing features & roadmap | `tools/autonomous-factory/docs/06-roadmap/` |
 | Mental model (SDLC → Agentic) | `tools/autonomous-factory/docs/07-mental-model.md` |
+| Narrative / design essays | `narrative/` |
+| Kernel layer (README) | `tools/autonomous-factory/src/kernel/README.md` |
+| Domain layer (README) | `tools/autonomous-factory/src/domain/README.md` |
+| Ports layer (README) | `tools/autonomous-factory/src/ports/README.md` |
+| Adapters layer (README) | `tools/autonomous-factory/src/adapters/README.md` |
+| Handlers layer (README) | `tools/autonomous-factory/src/handlers/README.md` |
+| APM layer (README) | `tools/autonomous-factory/src/apm/README.md` |
+| Triage layer (README) | `tools/autonomous-factory/src/triage/README.md` |
+| Entry layer (README) | `tools/autonomous-factory/src/entry/README.md` |
 | SDK orchestrator entry point | `tools/autonomous-factory/src/entry/watchdog.ts` |
 | Composition root (kernel + adapters + loop) | `tools/autonomous-factory/src/entry/main.ts` |
 | Bootstrap (preflight + APM compile + config) | `tools/autonomous-factory/src/entry/bootstrap.ts` |
@@ -49,18 +58,18 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
 | Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/` |
-| Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/dispatch/` |
+| Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/loop/dispatch/` |
 | Handler plugins (agent, poll, local-exec, triage, approval, barrier) | `tools/autonomous-factory/src/handlers/` |
 | Copilot-agent support helpers (context, limits, post-session) | `tools/autonomous-factory/src/handlers/support/` |
 | Workflow node helpers (shared, dag-utils) | `tools/autonomous-factory/src/session/` |
-| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
-| Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
+| Agent prompt factory | `tools/autonomous-factory/src/apm/agents.ts` |
 | Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
-| Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
-| Lifecycle hooks execution | `tools/autonomous-factory/src/hooks.ts` |
+| Pre-flight checks | `tools/autonomous-factory/src/lifecycle/preflight.ts` |
+| Lifecycle hooks execution | `tools/autonomous-factory/src/lifecycle/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
-| Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Feature archiving | `tools/autonomous-factory/src/archive.ts` |
+| Git-based auto-skip | `tools/autonomous-factory/src/lifecycle/auto-skip.ts` |
+| Feature archiving | `tools/autonomous-factory/src/lifecycle/archive.ts` |
 | Roam bootstrap script | `tools/autonomous-factory/setup-roam.sh` |
 | Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
 | Sample app DAG definition | `apps/sample-app/.apm/workflows.yml` |
@@ -68,7 +77,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Sample app lifecycle hooks | `apps/sample-app/.apm/hooks/*.sh` |
 | Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
-| APM compiler & context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
+| APM compiler & context loader | `tools/autonomous-factory/src/apm/compiler.ts` · `src/apm/context-loader.ts` |
 | Active feature workspace | `apps/sample-app/in-progress/` |
 | Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
 | Commerce storefront DAG definition | `apps/commerce-storefront/.apm/workflows.yml` |
@@ -106,19 +115,19 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
 | Adapters (state store, git, CI, FS, SDK runner, telemetry) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/pipeline-loop.ts` |
-| Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/dispatch/` |
+| Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/loop/dispatch/` |
 | Handler plugins (agent, push, poll, PR, local-exec, triage) | `tools/autonomous-factory/src/handlers/` |
 | Copilot agent support helpers | `tools/autonomous-factory/src/handlers/support/` |
-| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage.ts` · `src/triage/` |
-| Agent prompt factory | `tools/autonomous-factory/src/agents.ts` |
+| Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
+| Agent prompt factory | `tools/autonomous-factory/src/apm/agents.ts` |
 | Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
-| APM compiler + context loader | `tools/autonomous-factory/src/apm-compiler.ts` · `apm-context-loader.ts` |
-| Pre-flight checks | `tools/autonomous-factory/src/preflight.ts` |
-| Lifecycle hooks | `tools/autonomous-factory/src/hooks.ts` |
+| APM compiler + context loader | `tools/autonomous-factory/src/apm/compiler.ts` · `src/apm/context-loader.ts` |
+| Pre-flight checks | `tools/autonomous-factory/src/lifecycle/preflight.ts` |
+| Lifecycle hooks | `tools/autonomous-factory/src/lifecycle/hooks.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
-| Git-based auto-skip | `tools/autonomous-factory/src/auto-skip.ts` |
-| Feature archiving | `tools/autonomous-factory/src/archive.ts` |
-| State machine API binding | `tools/autonomous-factory/src/state.ts` |
+| Git-based auto-skip | `tools/autonomous-factory/src/lifecycle/auto-skip.ts` |
+| Feature archiving | `tools/autonomous-factory/src/lifecycle/archive.ts` |
+| State machine API binding | `tools/autonomous-factory/src/cli/pipeline-state.ts` |
 | GitHub Actions workflow | `.github/workflows/agentic-feature.yml` |
 
 ### How to Run
