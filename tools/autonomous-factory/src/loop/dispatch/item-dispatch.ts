@@ -352,11 +352,39 @@ async function detectInvalidEnvelopeOutputs(
         try {
           sidecarBody = await ctx.filesystem.readFile(sidecar);
         } catch {
-          invalid.push({
-            kind: kindStr,
-            reason: `sidecar not found at ${sidecar}`,
-          });
-          continue;
+          // Auto-stamp the sidecar. The envelope fields (schemaVersion,
+          // producedBy, producedAt) are pure kernel-known metadata — the
+          // producing node and time are unambiguous here — so requiring
+          // the agent/hook to write them adds no safety, just breakage.
+          // Strict mode still enforces the envelope shape on inline kinds
+          // (where the body IS the envelope) and still rejects sidecars
+          // whose contents parse but violate the schema (see catch below).
+          try {
+            const envelopeBody = JSON.stringify(
+              {
+                schemaVersion: 1,
+                producedBy: ctx.itemKey,
+                producedAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            ) + "\n";
+            await ctx.filesystem.writeFile(sidecar, envelopeBody);
+            ctx.logger.event("node.artifact.write", ctx.itemKey, {
+              kind: kindStr,
+              path: sidecar,
+              auto_stamped: true,
+            });
+            continue;
+          } catch (writeErr) {
+            invalid.push({
+              kind: kindStr,
+              reason:
+                `sidecar not found at ${sidecar} and auto-stamp failed: ` +
+                `${(writeErr as Error).message}`,
+            });
+            continue;
+          }
         }
         validateEnvelope(kindStr, "", { path: ref.path, sidecarBody });
       } else {

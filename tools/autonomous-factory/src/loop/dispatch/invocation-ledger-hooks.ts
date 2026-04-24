@@ -247,7 +247,15 @@ export async function recordInvocationSeal(
   const summaryByItem = new Map<string, Partial<import("../../types.js").ItemSummary>>();
   const handlerByItem = new Map<string, string>();
   for (const r of batchResult.itemResults) {
-    const raw = (r.result.summary as { outcome?: string })?.outcome;
+    // The authoritative outcome is the top-level `NodeResult.outcome`
+    // (see handlers/types.ts). `summary.outcome` is a legacy secondary
+    // source that not every handler populates — reading only from it
+    // caused every handler that didn't duplicate the field into summary
+    // (e.g. triage-handler, local-exec) to seal as "error" in the ledger
+    // even when the top-level outcome was "completed".
+    const top = (r.result as { outcome?: string }).outcome;
+    const summaryRaw = (r.result.summary as { outcome?: string } | undefined)?.outcome;
+    const raw = top ?? summaryRaw;
     if (raw === "completed" || raw === "failed" || raw === "error") {
       outcomeByItem.set(r.itemKey, raw);
     }
