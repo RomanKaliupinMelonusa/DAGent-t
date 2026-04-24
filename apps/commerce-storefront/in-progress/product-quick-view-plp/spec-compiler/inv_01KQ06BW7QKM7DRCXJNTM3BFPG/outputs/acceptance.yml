@@ -1,0 +1,239 @@
+feature: product-quick-view-plp
+summary: >
+  Adds a Quick View modal (desktop) / drawer (mobile) triggered from each PLP product tile,
+  displaying product images, color/size swatches, price, quantity stepper, and Add-to-Cart
+  without navigating to the PDP. Out-of-stock variants render disabled swatches. Ship-to-store
+  UI is explicitly excluded.
+
+required_dom:
+  # ── Tile trigger ──────────────────────────────────────────────
+  - testid: product-tile-quick-view-btn
+    description: >
+      Quick View trigger button rendered on every PLP product tile as an overlay
+      bar at the bottom of the image area. Desktop: revealed on hover/focus.
+      Mobile: always visible. Each button should also carry a per-product testid
+      (product-tile-quick-view-btn-{productId}) for targeted selection.
+    cardinality: many
+    contains_text: Quick View
+
+  # ── Quick View overlay containers ─────────────────────────────
+  - testid: quick-view-modal
+    description: >
+      Chakra Modal root container for the Quick View surface on desktop (md+ breakpoint).
+      Two-column layout: gallery left, details right.
+
+  - testid: quick-view-drawer
+    description: >
+      Chakra Drawer root container for the Quick View surface on mobile (base/sm breakpoint).
+      Full-height bottom placement, single column with sticky header and footer.
+
+  # ── Quick View header / navigation ────────────────────────────
+  - testid: quick-view-back-btn
+    description: >
+      Back/close button in the Quick View overlay header. Closes the overlay and
+      returns focus to the originating tile's Quick View trigger.
+    requires_non_empty_text: true
+
+  - testid: quick-view-view-details-link
+    description: >
+      "View full details" anchor link to the product PDP (/product/{productId}).
+      Opens in the same tab. Does not navigate away within Quick View.
+    requires_non_empty_text: true
+
+  # ── Product information ───────────────────────────────────────
+  - testid: quick-view-product-name
+    description: Product name/title displayed in the Quick View overlay body.
+    requires_non_empty_text: true
+
+  - testid: quick-view-price
+    description: Product price (formatted currency) displayed in the Quick View overlay.
+    requires_non_empty_text: true
+
+  - testid: quick-view-short-description
+    description: Short product description text displayed in the Quick View overlay.
+
+  # ── Gallery ───────────────────────────────────────────────────
+  - testid: quick-view-gallery
+    description: >
+      ImageGallery wrapper containing product images with carousel (next/prev)
+      and thumbnail navigation. Reuses base ImageGallery component.
+
+  # ── Variation swatches ────────────────────────────────────────
+  - testid: quick-view-swatch
+    description: >
+      Variation attribute swatch button (e.g. color, size). Clickable to select
+      a variant. Each swatch may also carry a per-attribute testid
+      (quick-view-swatch-{attrId}-{valueId}) for targeted selection.
+    cardinality: many
+
+  - testid: quick-view-swatch-oos
+    description: >
+      Out-of-stock variation swatch rendered with aria-disabled="true" and
+      strike-through styling. Variant has inventory.stockLevel === 0 or
+      orderable === false. Each OOS swatch may also carry a per-attribute testid
+      (quick-view-swatch-{attrId}-{valueId}-oos).
+    cardinality: many
+
+  # ── Cart actions ──────────────────────────────────────────────
+  - testid: quick-view-add-to-cart-btn
+    description: >
+      Add to Cart button inside the Quick View overlay. Triggers useAddToCart
+      hook to add the selected variant and quantity to the basket.
+    requires_non_empty_text: true
+
+  - testid: quick-view-quantity
+    description: >
+      Quantity stepper control (increment/decrement or input) for selecting
+      the number of items to add to cart from the Quick View overlay.
+
+required_flows:
+  # ── Flow 1: Open Quick View on desktop ────────────────────────
+  - name: open-quick-view-desktop
+    description: >
+      User navigates to a PLP category page, clicks the Quick View trigger on
+      the first product tile, and verifies the modal opens with product details.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-gallery }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn }
+      - { action: assert_visible, testid: quick-view-product-name }
+
+  # ── Flow 2: Open Quick View on mobile ─────────────────────────
+  - name: open-quick-view-mobile
+    description: >
+      Same as open-quick-view-desktop but with a mobile viewport (below md breakpoint).
+      The Quick View surface is a Drawer not a Modal. Requires mobile viewport
+      to be set before the flow begins (e.g. 375x812).
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-drawer, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-gallery }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn }
+      - { action: assert_visible, testid: quick-view-product-name }
+
+  # ── Flow 3: Back button closes overlay ────────────────────────
+  - name: back-closes-overlay
+    description: >
+      User opens Quick View, clicks the Back button, and the overlay closes.
+      Focus returns to the originating tile Quick View trigger button.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-back-btn }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 5000 }
+
+  # ── Flow 4: Swatch selection updates gallery ──────────────────
+  - name: swatch-changes-gallery
+    description: >
+      User opens Quick View and clicks an in-stock color swatch. The gallery
+      image updates to reflect the selected color variant.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-swatch, match: first, timeout_ms: 5000 }
+      - { action: click, testid: quick-view-swatch, match: first }
+      - { action: assert_visible, testid: quick-view-gallery, timeout_ms: 5000 }
+
+  # ── Flow 5: OOS swatch is disabled ───────────────────────────
+  - name: oos-swatch-disabled
+    description: >
+      User opens Quick View on a product with an out-of-stock variant.
+      The OOS swatch renders with aria-disabled true and strike-through styling.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-swatch-oos, match: first, timeout_ms: 10000 }
+
+  # ── Flow 6: Add to cart from Quick View ───────────────────────
+  - name: add-to-cart-from-quick-view
+    description: >
+      User opens Quick View, selects required variation attributes, and clicks
+      Add to Cart. The item is added to the basket.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-swatch, match: first, timeout_ms: 5000 }
+      - { action: click, testid: quick-view-swatch, match: first }
+      - { action: click, testid: quick-view-add-to-cart-btn }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn, timeout_ms: 10000 }
+
+  # ── Flow 7: View full details link present ───────────────────
+  - name: view-full-details-link
+    description: >
+      User opens Quick View and verifies the View full details PDP link is
+      present and contains meaningful text.
+    steps:
+      - { action: goto, url: "/category/womens" }
+      - { action: assert_visible, testid: product-tile-quick-view-btn, match: first, timeout_ms: 15000 }
+      - { action: click, testid: product-tile-quick-view-btn, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-view-details-link, timeout_ms: 5000 }
+
+forbidden_console_patterns:
+  - "Failed to fetch product"
+  - "useProduct.*error"
+
+forbidden_network_failures:
+  - "GET /mobify/proxy/api/.*/products/.*"
+  - "GET /mobify/proxy/api/.*/product-search.*"
+
+base_template_reuse:
+  - symbol: useProductViewModal
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides modal open/close state management for product views. Must be
+      reused as the Quick View provider state foundation rather than
+      hand-rolling equivalent context state.
+
+  - symbol: ProductView
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Renders product name, price, swatches, size selector, quantity, and
+      Add-to-Cart. Quick View body should compose from ProductView partials
+      or the whole component with fulfillment hidden rather than rebuilding
+      the product detail UI from scratch.
+
+  - symbol: ImageGallery
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides image carousel with thumbnails and next/prev navigation. Must
+      be reused for the Quick View gallery rather than creating a custom
+      image viewer.
+
+  - symbol: useProduct
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Fetches product data including images, variants, and inventory via SCAPI.
+      Must be reused to retrieve the product shown in Quick View.
+
+  - symbol: useVariationAttributes
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides variation attribute data (colors, sizes) and swatch rendering
+      helpers including getVariantValueSwatch. Required for rendering interactive
+      swatches in Quick View with inventory-aware disabled state.
+
+  - symbol: useAddToCart
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Handles adding a selected variant plus quantity to the basket via SCAPI.
+      Must be reused for the Quick View Add-to-Cart action.
+
+  - symbol: useBasket
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides basket state for reflecting cart badge updates after adding
+      items from Quick View. Used indirectly through useAddToCart.
