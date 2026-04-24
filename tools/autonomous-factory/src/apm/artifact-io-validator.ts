@@ -25,9 +25,11 @@
 import type { ApmWorkflow, ApmWorkflowNode } from "./types.js";
 import { ApmCompileError } from "./types.js";
 import {
+  getArtifactPolicy,
   getArtifactSchemaVersion,
   isArtifactKind,
   kindSupportsScope,
+  validateArtifactCatalogPolicy,
 } from "./artifact-catalog.js";
 
 /** Build a reverse-reachability set (every transitive ancestor) for a node. */
@@ -72,6 +74,15 @@ export function validateArtifactIO(
   const warnings: ArtifactIOWarning[] = [];
   const nodes = workflow.nodes as Record<string, ApmWorkflowNode>;
 
+  // Session R8 — catalog-level policy audit. Rethrow as an ApmCompileError
+  // so callers see the same failure mode they use for every other compile
+  // problem; ArtifactCatalogPolicyError bubbles out of the pure helper.
+  try {
+    validateArtifactCatalogPolicy();
+  } catch (err) {
+    throw new ApmCompileError((err as Error).message);
+  }
+
   for (const [nodeKey, node] of Object.entries(nodes)) {
     // ── Kind + scope checks ────────────────────────────────────────────────
     const kickoffKinds = node.consumes_kickoff ?? [];
@@ -101,6 +112,19 @@ export function validateArtifactIO(
           `Workflow "${workflowName}" node "${nodeKey}": artifact kind "${kind}" is not valid in the node scope.`,
         );
       }
+      // Session R8 — INTERNAL kinds should not cross declared node
+      // boundaries. Warn, don't fail: an operator may deliberately wire one
+      // up while migrating. See ArtifactPolicy doc in artifact-catalog.ts.
+      if (getArtifactPolicy(kind) === "internal") {
+        warnings.push({
+          node: nodeKey,
+          message:
+            `produces_artifacts declares kind "${kind}" whose policy is "internal". ` +
+            `Internal artifacts are handler/kernel-private and should not appear ` +
+            `on declared DAG edges. Reclassify the kind in artifact-catalog.ts or ` +
+            `remove the declaration.`,
+        });
+      }
     }
 
     const consumed = node.consumes_artifacts ?? [];
@@ -114,6 +138,15 @@ export function validateArtifactIO(
         throw new ApmCompileError(
           `Workflow "${workflowName}" node "${nodeKey}": artifact kind "${edge.kind}" is not valid in the node scope (used in consumes_artifacts.from "${edge.from}").`,
         );
+      }
+      if (getArtifactPolicy(edge.kind) === "internal") {
+        warnings.push({
+          node: nodeKey,
+          message:
+            `consumes_artifacts { from: "${edge.from}", kind: "${edge.kind}" } references an ` +
+            `"internal" policy kind. Internal artifacts are handler/kernel-private and should not ` +
+            `appear on declared DAG edges. Reclassify the kind in artifact-catalog.ts or remove the edge.`,
+        });
       }
     }
 

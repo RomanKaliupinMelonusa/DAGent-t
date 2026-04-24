@@ -335,6 +335,44 @@ storefront:
           retries: 1
         blocked:
           description: "Unfixable without human intervention (permissions, SFCC access)"
+      # 🆁3 proof-of-concept — declarative JSONPath predicate. Narrows
+      # an uncaught browser exception whose message mentions Managed
+      # Runtime / SSR internals to `ssr-hydration` instead of the
+      # generic `browser-runtime-error` domain. Evaluated BEFORE the
+      # built-in uncaughtErrors.nonEmpty rule because profile patterns
+      # are order-preserving and declared patterns are appended after
+      # the built-ins by default — so we opt out of built-ins here to
+      # demonstrate the extensibility contract. Built-ins remain
+      # effective via the raw-regex spec-schema-violation arm, which
+      # we re-declare in `patterns:` to preserve coverage.
+      #
+      # This is a proof point, not a product feature; the `value:`
+      # regex is intentionally conservative and needs tightening once
+      # a real MRT stack-trace corpus is collected.
+      builtin_patterns: false
+      patterns:
+        - match_kind: json-path
+          format: playwright-json
+          path: "$.uncaughtErrors[*].message"
+          op: regex
+          value: "(Managed Runtime|mobify|ssr\\.js|hydrateRoot)"
+          domain: ssr-hydration
+          reason_template: "Uncaught Managed-Runtime/SSR error in \"${inTest}\": ${firstMsg}"
+          capture:
+            firstMsg: "$.uncaughtErrors[0].message"
+            inTest: "$.uncaughtErrors[0].inTest"
+        # Generic browser uncaught — parity with the bundled built-in,
+        # re-declared because `builtin_patterns: false` above drops it.
+        - match_kind: structured-field
+          format: playwright-json
+          when: uncaughtErrors.nonEmpty
+          domain: browser-runtime-error
+          reason_template: 'Uncaught browser exception in "${inTest}": ${errFirstLine}'
+        # spec-compiler schema violations — parity with built-in arm.
+        - match_kind: raw-regex
+          pattern: "(produced an invalid acceptance contract at |reported success but did not produce .*acceptance\\.yml|\\[acceptance:[^\\]]+\\]\\s*(schema violation|YAML parse error|file not readable))"
+          domain: schema-violation
+          reason_template: "spec-compiler produced an invalid ACCEPTANCE contract. Repair the schema violation and re-emit: ${errFirstLine}"
 
   # ── Route Profiles (Session B Item 4) ───────────────────────────────
   # Named, reusable `on_failure.routes` fragments. Nodes inherit via
@@ -342,6 +380,8 @@ storefront:
   # flattens single-level `extends` on each profile and detects cycles.
   # Merge order at node scope: routeProfiles[extends] → default_on_failure
   # → node on_failure (node wins).
+  # Profiles chain max depth: 1 (A extends B; B must not extend). Deeper
+  # chains and cycles fail at compile time with ApmCompileError (🆁4).
   routeProfiles:
     # Shared baseline: transient env glitches retry the failing node;
     # unfixable conditions halt gracefully.

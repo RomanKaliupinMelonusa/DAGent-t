@@ -230,3 +230,168 @@ describe("evaluateProfilePatterns — custom patterns", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// 🆁3 — `json-path` arm
+// ---------------------------------------------------------------------------
+
+describe("evaluateProfilePatterns — json-path arm", () => {
+  it("reaches parity with the uncaughtErrors.nonEmpty built-in", () => {
+    const profile: CompiledTriageProfile = {
+      llm_fallback: false,
+      max_reroutes: 5,
+      routing: { "browser-runtime-error": {} },
+      domains: ["browser-runtime-error"],
+      patterns: [
+        {
+          match_kind: "json-path",
+          format: "playwright-json",
+          path: "$.uncaughtErrors[*].message",
+          op: "nonEmpty",
+          domain: "browser-runtime-error",
+          reason_template: 'Uncaught in "${inTest}": ${firstMsg}',
+          capture: {
+            firstMsg: "$.uncaughtErrors[0].message",
+            inTest: "$.uncaughtErrors[0].inTest",
+          },
+        },
+      ],
+      signatures: [],
+    };
+    const payload: StructuredFailure = {
+      ...BASE,
+      uncaughtErrors: [
+        { message: "TypeError: itemId undefined", inTest: "shows modal" },
+      ],
+    };
+    const r = evaluateProfilePatterns(profile, { structuredFailure: payload });
+    assert.ok(r);
+    assert.equal(r!.domain, "browser-runtime-error");
+    assert.equal(r!.source, "contract");
+    assert.equal(r!.reason, 'Uncaught in "shows modal": TypeError: itemId undefined');
+  });
+
+  it("populates reason_template variables via capture selectors on a regex op", () => {
+    const profile: CompiledTriageProfile = {
+      llm_fallback: false,
+      max_reroutes: 5,
+      routing: { "mrt-runtime": {} },
+      domains: ["mrt-runtime"],
+      patterns: [
+        {
+          match_kind: "json-path",
+          format: "playwright-json",
+          path: "$.uncaughtErrors[*].message",
+          op: "regex",
+          value: "Managed Runtime",
+          domain: "mrt-runtime",
+          reason_template: "MRT error in ${inTest}: ${firstMsg}",
+          capture: {
+            firstMsg: "$.uncaughtErrors[0].message",
+            inTest: "$.uncaughtErrors[0].inTest",
+          },
+        },
+      ],
+      signatures: [],
+    };
+    const payload: StructuredFailure = {
+      ...BASE,
+      uncaughtErrors: [
+        { message: "Managed Runtime: catalog lookup failed", inTest: "PDP renders" },
+      ],
+    };
+    const r = evaluateProfilePatterns(profile, { structuredFailure: payload });
+    assert.ok(r);
+    assert.equal(r!.domain, "mrt-runtime");
+    assert.equal(r!.reason, "MRT error in PDP renders: Managed Runtime: catalog lookup failed");
+  });
+
+  it("first match wins across mixed arms (structured-field before json-path)", () => {
+    // structured-field built-in fires on uncaughtErrors before the
+    // json-path pattern below gets a chance, proving ordering is
+    // preserved regardless of arm.
+    const profile: CompiledTriageProfile = {
+      llm_fallback: false,
+      max_reroutes: 5,
+      routing: { "browser-runtime-error": {}, "mrt-runtime": {} },
+      domains: ["browser-runtime-error", "mrt-runtime"],
+      patterns: [
+        {
+          match_kind: "structured-field",
+          format: "playwright-json",
+          when: "uncaughtErrors.nonEmpty",
+          domain: "browser-runtime-error",
+        },
+        {
+          match_kind: "json-path",
+          format: "playwright-json",
+          path: "$.uncaughtErrors[*].message",
+          op: "nonEmpty",
+          domain: "mrt-runtime",
+        },
+      ],
+      signatures: [],
+    };
+    const payload: StructuredFailure = {
+      ...BASE,
+      uncaughtErrors: [{ message: "boom", inTest: "t" }],
+    };
+    const r = evaluateProfilePatterns(profile, { structuredFailure: payload });
+    assert.ok(r);
+    assert.equal(r!.domain, "browser-runtime-error");
+  });
+
+  it("evaluates json-path profiles with no built-ins (builtin_patterns: false parity)", () => {
+    // Simulates a profile compiled with `builtin_patterns: false` where
+    // all detection is expressed as json-path declaratives. Evaluation
+    // order is still first-match-wins; falls through to null if no
+    // pattern matches.
+    const profile: CompiledTriageProfile = {
+      llm_fallback: false,
+      max_reroutes: 5,
+      routing: { "mrt-runtime": {}, "frontend": {} },
+      domains: ["mrt-runtime", "frontend"],
+      patterns: [
+        {
+          match_kind: "json-path",
+          format: "playwright-json",
+          path: "$.uncaughtErrors[*].message",
+          op: "contains",
+          value: "Managed Runtime",
+          domain: "mrt-runtime",
+        },
+        {
+          match_kind: "json-path",
+          format: "playwright-json",
+          path: "$.failedTests[*].error",
+          op: "regex",
+          value: "Timeout \\d+ms exceeded",
+          domain: "frontend",
+        },
+      ],
+      signatures: [],
+    };
+
+    // Case 1: the second pattern wins because the first does not match.
+    const payloadA: StructuredFailure = {
+      ...BASE,
+      failedTests: [{
+        title: "t",
+        file: "a.spec.ts",
+        line: 1,
+        error: "TimeoutError: locator.waitFor: Timeout 30000ms exceeded",
+        stackHead: "",
+      }],
+    };
+    const rA = evaluateProfilePatterns(profile, { structuredFailure: payloadA });
+    assert.ok(rA);
+    assert.equal(rA!.domain, "frontend");
+
+    // Case 2: no pattern matches → null (triage falls through to RAG/LLM).
+    assert.equal(
+      evaluateProfilePatterns(profile, { structuredFailure: { ...BASE } }),
+      null,
+    );
+  });
+});
+

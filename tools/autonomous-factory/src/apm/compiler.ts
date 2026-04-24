@@ -100,10 +100,15 @@ function editDistance(a: string, b: string): number {
 }
 
 /**
- * Session B (Item 4) — flatten `routeProfiles` so every entry has no
- * remaining `extends` field. Single-level semantics with cycle detection.
- * The output preserves profile keys but emits flat `{ triage?, routes }`
- * objects (no `extends`), ready for node-level merging.
+ * Session B (Item 4) — flatten `routeProfiles` into `{ triage?, routes }`
+ * objects with `extends` removed, ready for node-level merging.
+ *
+ * Inheritance contract (🆁4): depth ≤ 1. A profile may extend another
+ * profile, but the parent MUST NOT itself have `extends`. Chains of length
+ * ≥ 2 (A → B → C) and cycles (including self-cycles A → A) are rejected
+ * with `ApmCompileError` so deeper chains cannot silently drop mid-chain
+ * overrides. Cycle detection is retained as a guard rail even though
+ * depth-1 enforcement makes non-trivial cycles structurally impossible.
  */
 function flattenRouteProfiles(
   raw: Record<string, Record<string, unknown>> | undefined,
@@ -112,32 +117,62 @@ function flattenRouteProfiles(
   const source = raw;
   const out: Record<string, { triage?: string; routes: Record<string, string | null> }> = {};
 
-  function resolve(key: string, stack: string[]): { triage?: string; routes: Record<string, string | null> } {
-    if (out[key]) return out[key];
-    if (stack.includes(key)) {
+  for (const key of Object.keys(source)) {
+    const entry = source[key];
+    const parentKey = typeof entry.extends === "string" ? entry.extends : null;
+
+    if (!parentKey) {
+      out[key] = {
+        triage: entry.triage as string | undefined,
+        routes: { ...((entry.routes ?? {}) as Record<string, string | null>) },
+      };
+      continue;
+    }
+
+    // Cycle guard: self-cycle (A -> A). Non-self cycles are also
+    // impossible under depth-1 (the depth check below fires first),
+    // but we keep the explicit check so future refactors that relax
+    // the depth cap inherit cycle safety.
+    if (parentKey === key) {
       throw new ApmCompileError(
-        `routeProfiles inheritance cycle: ${[...stack, key].join(" → ")}`,
+        `routeProfiles inheritance cycle: ${key} -> ${key}`,
       );
     }
-    const entry = source[key];
-    if (!entry) {
+
+    const parent = source[parentKey];
+    if (!parent) {
       throw new ApmCompileError(
-        `routeProfiles[${stack[stack.length - 1] ?? "?"}].extends references unknown profile "${key}". ` +
+        `routeProfiles[${key}].extends references unknown profile "${parentKey}". ` +
         `Defined profiles: ${Object.keys(source).join(", ") || "(none)"}`,
       );
     }
-    const parentKey = typeof entry.extends === "string" ? entry.extends : null;
-    const parent = parentKey ? resolve(parentKey, [...stack, key]) : { routes: {} as Record<string, string | null> };
+
+    // Depth-1 enforcement: parent must not itself extend another profile.
+    // 2-cycle check (A -> B -> A) runs first so cycle errors win over
+    // the generic depth message when the intent was a cycle.
+    if (typeof parent.extends === "string") {
+      const grand = parent.extends;
+      if (grand === key) {
+        throw new ApmCompileError(
+          `routeProfiles inheritance cycle: ${key} -> ${parentKey} -> ${key}`,
+        );
+      }
+      throw new ApmCompileError(
+        `routeProfiles inheritance exceeds max depth of 1: ` +
+        `${key} -> ${parentKey} -> ${grand}. ` +
+        `Flatten "${parentKey}" (inline its parent's routes) or remove ` +
+        `"${key}.extends" so only one level of inheritance is used.`,
+      );
+    }
+
     const selfRoutes = (entry.routes ?? {}) as Record<string, string | null>;
-    const merged = {
-      triage: (entry.triage as string | undefined) ?? parent.triage,
-      routes: { ...parent.routes, ...selfRoutes },
+    const parentRoutes = (parent.routes ?? {}) as Record<string, string | null>;
+    out[key] = {
+      triage: (entry.triage as string | undefined) ?? (parent.triage as string | undefined),
+      routes: { ...parentRoutes, ...selfRoutes },
     };
-    out[key] = merged;
-    return merged;
   }
 
-  for (const key of Object.keys(source)) resolve(key, []);
   return out;
 }
 

@@ -23,6 +23,7 @@ import type { TriageResult } from "../types.js";
 import type { StructuredFailure } from "./playwright-report.js";
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import type { CompiledTriageProfile, TriagePattern } from "../apm/types.js";
+import { evaluateJsonPathPredicate } from "./jsonpath-predicate.js";
 
 export interface ProfilePatternContext {
   readonly structuredFailure?: unknown;
@@ -133,6 +134,28 @@ function evalRawRegex(
 }
 
 /**
+ * 🆁3 — `json-path` arm. Delegates selector/op/capture mechanics to the
+ * minimal evaluator in `jsonpath-predicate.ts` and renders the reason
+ * template from the captured values. Keeps the pre-computed
+ * `errFirstLine` available as a fallback variable so profile authors
+ * can reuse the same placeholder used by the other arms.
+ */
+function evalJsonPath(
+  pat: Extract<TriagePattern, { match_kind: "json-path" }>,
+  payload: StructuredFailure,
+): TriageResult | null {
+  const verdict = evaluateJsonPathPredicate(payload, pat);
+  if (!verdict) return null;
+  const reason = renderReason(pat.reason_template, verdict.captures);
+  return {
+    domain: pat.domain,
+    reason: reason || `Matched json-path predicate at ${pat.path}`,
+    source: "contract",
+    rag_matches: [],
+  };
+}
+
+/**
  * Run the compiled triage profile's L0 patterns against the failure
  * evidence. Returns the first match's verdict, or null when nothing
  * matched (caller continues with RAG/LLM).
@@ -149,11 +172,19 @@ export function evaluateProfilePatterns(
 
   for (const pat of patterns) {
     if (pat.match_kind === "structured-field") {
+      // Sugar for the two bundled built-in checks (uncaught browser
+      // errors, contract-testid timeouts). @deprecated — prefer
+      // `match_kind: "json-path"` for new predicates (🆁3). The
+      // built-ins keep working until a future cleanup.
       if (!payload) continue;
       const v = evalStructuredField(pat, payload, ctx.acceptance ?? null);
       if (v) return v;
     } else if (pat.match_kind === "raw-regex") {
       const v = evalRawRegex(pat, rawError);
+      if (v) return v;
+    } else if (pat.match_kind === "json-path") {
+      if (!payload) continue;
+      const v = evalJsonPath(pat, payload);
       if (v) return v;
     }
   }

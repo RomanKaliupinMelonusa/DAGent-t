@@ -514,10 +514,13 @@ export const OnFailureSchema = z.object({
 
 /** Session B (Item 4) — reusable, named route profile at the workflow level.
  *  Nodes reference a profile via `on_failure.extends: <profileKey>`. Supports
- *  single-level inheritance (`extends` on another profile) — the compiler
- *  flattens before node merges run, and detects cycles. */
+ *  single-level inheritance only (max depth 1): a profile may extend another
+ *  profile, but that parent MUST NOT itself extend. The APM compiler flattens
+ *  profiles before node merges run and rejects chains of length ≥ 2 and
+ *  cycles (including self-cycles) with `ApmCompileError` (🆁4). */
 export const RouteProfileSchema = z.object({
-  /** Optional parent profile to inherit from. Single-level; the compiler flattens. */
+  /** Optional parent profile to inherit from. Max depth 1 — the parent must
+   *  not itself set `extends`. The compiler flattens and enforces this. */
   extends: z.string().optional(),
   /** Default triage node for consumers of this profile. Node-level `triage` still wins. */
   triage: z.string().optional(),
@@ -907,18 +910,28 @@ export const TriageRouteEntrySchema = z.object({
  *  BEFORE the RAG/LLM layers on every triage call. Replaces the hard-coded
  *  rules that previously lived in `triage/contract-classifier.ts`.
  *
- *  Two match kinds:
+ *  Three match kinds:
  *   - `raw-regex`    — run `pattern` (with optional `flags`) against the
  *                      raw error string (stdout/stderr concatenation).
  *   - `structured-field` — enumerated checks against the parsed
- *                      `StructuredFailure` shape. Extensible without
- *                      breaking existing configs; unknown `when` values
- *                      fail at compile time.
+ *                      `StructuredFailure` shape. @deprecated in favour
+ *                      of `json-path` (same coverage, declarative).
+ *                      Retained for backward compatibility; the two
+ *                      built-in `when:` values remain supported sugar.
+ *   - `json-path`    — 🆁3 declarative predicate: pick a value from the
+ *                      structured payload via a minimal JSONPath subset
+ *                      (`$`, `$.a.b`, `$.a[0].b`, `$.a[*].b`), apply one
+ *                      of {exists, nonEmpty, eq, regex, contains}, and
+ *                      optionally populate `reason_template` variables
+ *                      from a `capture:` map of additional JSONPath
+ *                      selectors. New predicates can be added in YAML
+ *                      without code edits.
  *
  *  `reason_template` supports `${key}` placeholders:
  *   - `${errFirstLine}` — first line of the raw error
  *   - `${testid}`       — contract testid (structured-field only)
  *   - `${inTest}`       — Playwright test title (structured-field only)
+ *   - `json-path` arms populate template variables via `capture:`.
  */
 export const TriagePatternSchema = z.discriminatedUnion("match_kind", [
   z.object({
@@ -937,6 +950,36 @@ export const TriagePatternSchema = z.discriminatedUnion("match_kind", [
     ]),
     domain: z.string(),
     reason_template: z.string().optional(),
+  }),
+  z.object({
+    match_kind: z.literal("json-path"),
+    /** Structured payload shape this pattern targets. Only
+     *  `"playwright-json"` is supported today; broader formats
+     *  (QA-report, MRT-log, etc.) arrive with Session B-pattern-packs. */
+    format: z.literal("playwright-json"),
+    /** JSONPath selector — supported subset: `$`, dot-field navigation,
+     *  numeric indices `[N]`, and wildcard `[*]`. Invalid paths produce
+     *  a non-match at evaluation time (never throw). */
+    path: z.string(),
+    /** Op to apply to the selected values.
+     *  - `exists`   — at least one value was selected (undefined filtered).
+     *  - `nonEmpty` — at least one selected value is non-empty (array/
+     *                 string length > 0, non-null).
+     *  - `eq`       — any selected value deep-equals `value`.
+     *  - `regex`    — `value` parses as RegExp; any selected value
+     *                 (stringified) matches it.
+     *  - `contains` — string substring match or array membership. */
+    op: z.enum(["exists", "nonEmpty", "eq", "regex", "contains"]).default("exists"),
+    /** Comparison operand for `eq`/`regex`/`contains`. Ignored by
+     *  `exists`/`nonEmpty`. */
+    value: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    domain: z.string(),
+    reason_template: z.string().optional(),
+    /** Optional map of template-variable name → JSONPath selector. The
+     *  first selected value (JSON-stringified if non-string) is
+     *  substituted for `${name}` in `reason_template`. Missing selectors
+     *  render as the empty string. */
+    capture: z.record(z.string(), z.string()).optional(),
   }),
 ]);
 

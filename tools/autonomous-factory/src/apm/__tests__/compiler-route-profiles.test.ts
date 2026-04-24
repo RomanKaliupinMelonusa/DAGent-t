@@ -186,6 +186,51 @@ describe("routeProfiles + on_failure.extends merging", () => {
     });
     await assert.rejects(async () => compileApm(root), /routeProfiles inheritance cycle/);
   });
+
+  // 🆁4 — depth-1 guard: a profile may extend another, but the parent must
+  // not itself extend. Without this guard, adding a third link to an existing
+  // chain (e.g. runtime-to-debug → base) would silently drop mid-chain
+  // overrides because node-level merging only walks one hop.
+  it("fails when an extended profile itself has extends (depth ≥ 2)", async () => {
+    const root = writeFixture({
+      routeProfiles: {
+        c: { routes: { environment: "$SELF" } },
+        b: { extends: "c", routes: { frontend: "dev" } },
+        a: { extends: "b", routes: { blocked: null } },
+      },
+    });
+    await assert.rejects(
+      async () => compileApm(root),
+      (err: unknown) => {
+        assert.ok(err instanceof Error, "expected Error");
+        assert.equal(err.name, "ApmCompileError");
+        assert.match(err.message, /max depth of 1/);
+        assert.match(err.message, /a -> b -> c/);
+        return true;
+      },
+    );
+  });
+
+  // 🆁4 — even with depth-1 enforcement the cycle detector must catch a
+  // self-edge without infinite-looping. The check is synchronous so the
+  // promise rejects deterministically; no timeout is needed.
+  it("fails on a self-cycle (A extends A) without looping", async () => {
+    const root = writeFixture({
+      routeProfiles: {
+        a: { extends: "a", routes: {} },
+      },
+    });
+    await assert.rejects(
+      async () => compileApm(root),
+      (err: unknown) => {
+        assert.ok(err instanceof Error, "expected Error");
+        assert.equal(err.name, "ApmCompileError");
+        assert.match(err.message, /inheritance cycle/);
+        assert.match(err.message, /a -> a/);
+        return true;
+      },
+    );
+  });
 });
 
 describe("triage profile domain validation", () => {

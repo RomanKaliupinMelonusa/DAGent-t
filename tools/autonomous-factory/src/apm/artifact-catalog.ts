@@ -48,6 +48,30 @@ export type ArtifactScope = "kickoff" | "node";
  */
 export type EnvelopeStrategy = "inline" | "sidecar";
 
+/**
+ * Body-schema coverage policy. Every artifact kind falls in exactly one of
+ * three buckets — the explicit resting policy for when strict body-schema
+ * validation is required, when an envelope alone is sufficient, and when an
+ * artifact is handler-private and must not cross declared node boundaries.
+ *
+ *   - `strict`        — body schema required. Producer + consumer bound by
+ *                       a typed contract. The compiler rejects any STRICT
+ *                       kind that lacks a `schema` entry.
+ *   - `envelope-only` — envelope (`schemaVersion`/`producedBy`/`producedAt`)
+ *                       is enforced by the bus, but the body is free-form
+ *                       prose or opaque JSON. Upgrade to STRICT when a
+ *                       concrete cross-node contract emerges.
+ *   - `internal`      — handler- or kernel-private. No contract across
+ *                       node boundaries. Declaring an INTERNAL kind in a
+ *                       workflow's `produces_artifacts` / `consumes_artifacts`
+ *                       is a soft warning: internals shouldn't participate
+ *                       in the typed DAG edge set.
+ *
+ * Classification is intentional design documentation — it states *why* a
+ * kind lacks a schema today and whether that's a resting state or a TODO.
+ */
+export type ArtifactPolicy = "strict" | "envelope-only" | "internal";
+
 export interface ArtifactKindDef {
   /** Stable machine name (snake-case, lowercase, hyphen-separated). */
   readonly id: string;
@@ -59,12 +83,18 @@ export interface ArtifactKindDef {
   /** Short human-readable description, rendered into agent prompts so the
    *  LLM knows what each input/output means without further prompting. */
   readonly description: string;
-  /** Optional strict payload schema. When set, the artifact bus validates
-   *  writes and the input-materializer validates reads — an invalid payload
-   *  throws `ArtifactValidationError`. Only the highest-value structured
-   *  kinds opt in today (Track B1 of the NodeIO plan); prose kinds and
-   *  handler-internal kinds stay schema-free until a concrete pain point
-   *  demands enforcement. */
+  /** Body-schema coverage policy. See {@link ArtifactPolicy} for the three
+   *  buckets (strict / envelope-only / internal). Required — every kind
+   *  must declare its resting policy so the design intent is explicit in
+   *  the one place it belongs. The compiler enforces that any kind marked
+   *  `"strict"` carries a `schema`; any kind marked `"internal"` that
+   *  appears on a workflow edge emits a warning. */
+  readonly policy: ArtifactPolicy;
+  /** Optional strict payload schema. Present on every `"strict"` kind; may
+   *  also appear on envelope-only / internal kinds that happen to carry
+   *  structural validation (e.g. markdown front-matter envelope schemas).
+   *  When set, the artifact bus validates writes and the input-materializer
+   *  validates reads — an invalid payload throws `ArtifactValidationError`. */
   readonly schema?: z.ZodType<unknown>;
   /** Current wire-format version of the payload. Structured kinds carry an
    *  optional `schemaVersion` field inside the payload itself (validated by
@@ -399,6 +429,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["kickoff"],
     description:
       "Human-authored feature specification that kicks off the pipeline. Narrative + acceptance bullets.",
+    policy: "envelope-only",
     // Human-authored — envelope lives in <path>.meta.json so we don't force
     // the author to write YAML front-matter.
     envelope: "sidecar",
@@ -409,6 +440,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Machine-readable acceptance contract emitted by the spec-compiler. The single source of truth for pass/fail evaluation downstream.",
+    policy: "strict",
     schema: AcceptanceContractSchema,
     schemaVersion: 1,
     // YAML consumed by a bash oracle (validate-acceptance.mjs) — keep the
@@ -421,6 +453,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Static baseline (component graph, routes, testid map) emitted by the baseline-analyzer. Helps dev agents avoid breaking existing contracts.",
+    policy: "envelope-only",
     envelope: "inline",
   },
   {
@@ -429,6 +462,9 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Free-form diagnostic notes written by a debug agent. May be consumed by a successor debug or dev invocation as re-entrance context.",
+    // Envelope-only: the schema attached here validates the front-matter
+    // envelope alone; the markdown body is intentionally free-form prose.
+    policy: "envelope-only",
     schema: DebugNotesArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -439,6 +475,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Acceptance oracle verdict (pass/fail per acceptance clause). Emitted by a validation node against the acceptance contract.",
+    policy: "strict",
     schema: ValidationArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -449,6 +486,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "QA adversary report — enumerated edge cases + pass/fail. Consumed by triage for structured evidence.",
+    policy: "strict",
     schema: QaReportArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -459,6 +497,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Playwright JSON reporter output from a live-ui or e2e run. Canonical structured failure source for the live-ui triage domain.",
+    policy: "envelope-only",
     // External producer (Playwright) owns this shape — keep envelope sidecar
     // so we don't mutate the reporter output.
     envelope: "sidecar",
@@ -469,6 +508,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Playwright stdout+stderr capture (markdown-fenced). Written by `frontend-unit-test` and `live-ui` after each Playwright invocation; consumed by `pr-creator` and triage when the JSON reporter output is insufficient.",
+    policy: "envelope-only",
     envelope: "sidecar",
   },
   {
@@ -477,6 +517,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Per-step doc-notes + handoff artifacts. Produced before docs-archived and archived alongside the feature.",
+    policy: "envelope-only",
     envelope: "inline",
   },
   {
@@ -485,6 +526,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Human-readable escalation artifact emitted when the kernel halts the pipeline (e.g. repeated identical failures). Resume pointer, not functional state.",
+    policy: "envelope-only",
     envelope: "inline",
   },
   {
@@ -493,6 +535,9 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Human-readable per-feature rollup. Merged across invocations by the reporting layer; not an agent input.",
+    // Envelope-only: the schema attached here validates the front-matter
+    // envelope alone; the markdown body is free-form prose.
+    policy: "envelope-only",
     schema: SummaryArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -503,6 +548,9 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Structured counterpart of the summary artifact — data for flight-data and retrospectives.",
+    // Internal: reporting-layer sidecar; consumed only by flight-data and
+    // retrospective tooling, never a declared node-to-node edge.
+    policy: "internal",
     envelope: "inline",
   },
   {
@@ -511,6 +559,8 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Real-time flight-data dashboard snapshot consumed by preflight and the viz layer.",
+    // Internal: engine-managed dashboard snapshot; preflight + viz only.
+    policy: "internal",
     envelope: "inline",
   },
   {
@@ -519,6 +569,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Raw captured stdout/stderr for a script node. Primary evidence for the runner triage domain.",
+    policy: "envelope-only",
     envelope: "sidecar",
   },
   {
@@ -527,6 +578,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Append-only log of LLM-router triage decisions that did not match any RAG pack. One record per LLM classification.",
+    policy: "envelope-only",
     envelope: "sidecar",
   },
   {
@@ -535,6 +587,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Structured handoff emitted by a triage node when it reroutes a failure. Carries the diagnosis (failingItem, triageDomain, triageReason, errorExcerpt, errorSignature) plus optional evidence (Playwright attachments, browser signals, failed tests, baseline ref, advisory). Consumed by the rerouted dev/debug node via `consumes_reroute`.",
+    policy: "strict",
     schema: TriageHandoffArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -545,6 +598,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Structured deployment record emitted by a deploy node. Replaces the legacy `report_outcome.deployedUrl` field; downstream live-ui / smoke-test nodes read the `url` field as their canonical target.",
+    policy: "strict",
     schema: DeploymentUrlArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -555,6 +609,8 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Declared parameter bundle — either the scoped inputs handed to an invocation (params.in.json) or the typed handoff it emitted to downstream nodes (params.out.json).",
+    // Internal: kernel-managed handoff envelope; body shape varies per node.
+    policy: "internal",
     // Kernel-managed — body shape varies per node; keep envelope sidecar so
     // the payload is free of engine-injected keys.
     envelope: "sidecar",
@@ -565,6 +621,8 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Invocation metadata (trigger, parent_invocation_id, cycle_index, outcome, timestamps). Sealed when the invocation terminates.",
+    // Internal: kernel-sealed invocation bookkeeping.
+    policy: "internal",
     envelope: "sidecar",
   },
   {
@@ -573,6 +631,10 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Uniform per-invocation rollup synthesized by the kernel at seal time. Counters, durations, files touched, tokens (null for non-LLM handlers), exit code, error signature. The canonical structured evidence for triage regardless of handler type.",
+    // Internal: kernel-synthesized at seal time; consumed by triage directly
+    // — never a declared `produces_artifacts`/`consumes_artifacts` edge. The
+    // schema exists to pin the in-memory shape, not to serve as a DAG contract.
+    policy: "internal",
     schema: NodeReportArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -583,6 +645,7 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Producer's self-report of which acceptance flows are live vs gated vs partial. Consumed by qa-adversary so adversarial probes skip flows the dev agent admitted are non-live (e.g. shipped behind a feature flag).",
+    policy: "strict",
     schema: ImplementationStatusArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
@@ -632,6 +695,54 @@ export function kindSupportsScope(kind: ArtifactKind, scope: ArtifactScope): boo
  */
 export function getArtifactSchemaVersion(kind: ArtifactKind): number | undefined {
   return getArtifactKind(kind).schemaVersion;
+}
+
+/** Body-schema coverage policy for a kind. See {@link ArtifactPolicy}. */
+export function getArtifactPolicy(kind: ArtifactKind): ArtifactPolicy {
+  return getArtifactKind(kind).policy;
+}
+
+// ---------------------------------------------------------------------------
+// Policy lint (Session R8) — catalog-level coverage audit
+// ---------------------------------------------------------------------------
+
+/**
+ * Raised when the catalog itself violates body-schema policy — currently:
+ * any kind marked `policy: "strict"` must carry a `schema` entry. Thrown
+ * from {@link validateArtifactCatalogPolicy}; the compiler invokes that
+ * validator on every run so a miscategorized registry entry fails at
+ * compile time rather than surprising a consumer at runtime.
+ */
+export class ArtifactCatalogPolicyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtifactCatalogPolicyError";
+  }
+}
+
+/**
+ * Assert body-schema policy invariants over an artifact-kind registry.
+ *
+ * Accepts an explicit `defs` array so tests can construct synthetic
+ * registries; defaults to the live built-in registry for production use.
+ *
+ * Rule: every `policy: "strict"` kind must declare a `schema`. Violations
+ * throw `ArtifactCatalogPolicyError` naming every offending kind (so fixing
+ * a batch doesn't require multiple compile passes to surface them all).
+ */
+export function validateArtifactCatalogPolicy(
+  defs: ReadonlyArray<ArtifactKindDef> = REGISTRY,
+): void {
+  const missing = defs
+    .filter((d) => d.policy === "strict" && !d.schema)
+    .map((d) => d.id);
+  if (missing.length > 0) {
+    throw new ArtifactCatalogPolicyError(
+      `Artifact catalog policy violation: kinds marked \`policy: "strict"\` must declare a \`schema\`. ` +
+      `Missing schema for: ${missing.join(", ")}. ` +
+      `Either author the schema in src/apm/artifact-catalog.ts or reclassify the kind as "envelope-only" / "internal".`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
