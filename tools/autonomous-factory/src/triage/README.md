@@ -15,11 +15,12 @@ Triage is the "brain" of self-healing. It turns a random stack trace into a rout
 | [index.ts](index.ts) | Public entry point `evaluateTriage(errorTrace, profile, triageLlm, slug?, appRoot?, logger?, repoRoot?)`. Resolves classifier strategy (`rag+llm`, `rag-only`, `llm-only`, or a custom sandboxed path) and runs the pipeline. Re-exports `computeErrorSignature`, `normalizeError`, `isOrchestratorTimeout`. |
 | [retriever.ts](retriever.ts) | **Layer 1 — RAG**: deterministic substring match against pre-compiled triage-pack signatures. Ranks by specificity (longest-match wins). $0, <1ms. |
 | [llm-router.ts](llm-router.ts) | **Layer 2 — LLM**: classification via the `TriageLlm` port. Called only when RAG misses. Strict enum enforcement. ~$0.01, ~2s. Novel classifications persist to `_NOVEL_TRIAGE.jsonl` for humans to generalise. |
-| [contract-classifier.ts](contract-classifier.ts) | Pattern-based classifier for contract violations (schema mismatches, API shape drift). |
+| [contract-classifier.ts](contract-classifier.ts) | **Declarative L0 pre-classifier.** Exports `evaluateProfilePatterns(profile, ctx)` — iterates `profile.patterns` (structured-field first, raw-regex second; first match wins) and returns a verdict before the RAG/LLM layers run. The patterns themselves live in the triage profile (YAML) and the built-ins bundled in [builtin-patterns.ts](builtin-patterns.ts). Zero hard-coded domains. |
+| [builtin-patterns.ts](builtin-patterns.ts) | Three declarative L0 patterns shipped with the engine: uncaught browser errors → `browser-runtime-error`, Playwright locator timeouts on contract testids → `frontend`, and `spec-compiler` schema violations → `schema-violation`. Auto-merged into every triage profile unless `builtin_patterns: false`. Silently filtered when the built-in's domain is not in the profile's routing. |
 | [contract-evidence.ts](contract-evidence.ts) | Builds structured evidence describing a contract-violation failure. |
 | [custom-classifier.ts](custom-classifier.ts) | Loads sandboxed user-supplied classifier modules referenced via `./path/to/classifier.ts` in triage profiles. Path-validated. |
 | [error-fingerprint.ts](error-fingerprint.ts) | `computeErrorSignature` + `normalizeError` — strips volatile tokens (timestamps, SHAs, line numbers, run IDs) before hashing, so the identical-error circuit breaker compares semantically-equivalent errors. |
-| [context-builder.ts](context-builder.ts) | Builds the full markdown handoff payload injected into retrying dev-agent prompts. Includes `computeEffectiveDevAttempts` (merges in-memory + persisted redev cycles). |
+| [context-builder.ts](context-builder.ts) | Builds rejection-context blocks (triage / phase / infra-rollback) and the lineage block consumed by `file-triage-artifact-loader`. Also exports `computeEffectiveDevAttempts` (merges in-memory + persisted redev cycles). The legacy markdown handoff composition was removed in the Unified Node I/O migration — the structural payload now flows entirely through the `triage-handoff` JSON artifact. |
 | [handoff-builder.ts](handoff-builder.ts) | Structured handoff artifact persisted alongside the pipeline state for the next agent session. |
 | [handoff-evidence.ts](handoff-evidence.ts) | Evidence-selection helpers — picks the most relevant snippets (error trace, stack, Playwright step, last assistant message) to include. |
 | [playwright-report.ts](playwright-report.ts) | Parses `_PW-REPORT.json` to extract failed test names, step details, screenshots. |
@@ -39,7 +40,7 @@ const routeTo = profile.routing[result.domain].route_to;   // array of node keys
 // → dispatch emits reset-nodes command for routeTo
 ```
 
-Triage evidence (for agent prompt injection) is built separately via `buildHandoffContext(…)` in `context-builder.ts`.
+Triage handoff evidence is structured by `handoff-builder.ts` (`buildTriageHandoff`) and emitted as a declared `triage-handoff` artifact at `outputs/triage-handoff.json` by the triage handler. The rerouted dev node declares `consumes_reroute: [triage-handoff]`; the dispatcher copies the JSON into the next invocation's `inputs/triage-handoff.json` — the agent reads from disk. No prose injection, no `pendingContext` string.
 
 ## Invariants & contracts
 
@@ -60,8 +61,45 @@ Triage evidence (for agent prompt injection) is built separately via `buildHando
 **Add a new fault domain** (e.g. `data-migration`):
 
 1. Declare the domain in `.apm/apm.yml` under the triage profile's `domains` + `routing` blocks.
+   The compiler validates that every key in `routing:` is listed in `domains:` (or derives the
+   set from `routing` when `domains:` is omitted).
 2. The schema in [apm/types.ts](../apm/types.ts) accepts arbitrary domain strings — no engine change required.
 3. Optionally seed triage-pack signatures mapping error patterns to the new domain.
+4. Every node `on_failure.routes` key is compile-time validated against the profile's domain
+   set. A typo like `front-end` produces an `ApmCompileError` with a nearest-neighbor
+   suggestion (`Did you mean "frontend"?`) instead of silently routing to `null`.
+
+**Add a declarative L0 pattern** (skip RAG for a known deterministic failure shape):
+
+1. Under your triage profile in `.apm/workflows.yml`, add a `patterns:` entry:
+   ```yaml
+   patterns:
+     - match_kind: raw-regex
+       pattern: "Cannot POST /api/products"
+       domain: backend
+     - match_kind: structured-field
+       when: { failedTest: { timeout-on-contract-testid: true } }
+       domain: frontend
+   ```
+2. The pattern's `domain` must be in `routing:` or `domains:`, otherwise compile fails.
+3. To opt out of shipped built-ins: set `builtin_patterns: false` on the profile.
+
+**Reuse `on_failure.routes` across many nodes** (named profiles + inheritance):
+
+1. Declare a `routeProfiles:` block next to `triage:` in the workflow:
+   ```yaml
+   routeProfiles:
+     base:
+       routes: { environment: "$SELF", blocked: null }
+     runtime-to-debug:
+       extends: base
+       routes:
+         frontend: storefront-debug
+         browser-runtime-error: storefront-debug
+   ```
+2. On a node: `on_failure: { triage: triage-storefront, extends: runtime-to-debug, routes: { test-code: e2e-author } }`.
+3. Merge precedence (lowest → highest): `routeProfiles[extends]` chain → `default_on_failure` → node `on_failure.routes`.
+4. Inheritance cycles and unknown `extends` targets fail at compile time.
 
 **Add a custom classifier** (business-specific logic):
 
@@ -78,7 +116,7 @@ Triage evidence (for agent prompt injection) is built separately via `buildHando
 
 - **RAG is substring-match, not semantic.** "Cannot read property 'id' of undefined" and "Cannot read properties of undefined (reading 'id')" are different substrings. Add both to the triage pack or rely on the LLM layer.
 - **LLM fallback costs add up.** Every novel error triggers an LLM call. The `_NOVEL_TRIAGE.jsonl` file is the flywheel — review it, promote recurring errors to the RAG pack.
-- **`computeEffectiveDevAttempts` is sneaky.** It merges persisted cycles from `_STATE.json`'s errorLog with the in-memory counter. After an orchestrator restart the in-memory count resets but the effective count does not.
+- **`computeEffectiveDevAttempts` is sneaky.** It merges persisted cycles from `_state.json`'s `errorLog` with the in-memory counter. After an orchestrator restart the in-memory count resets but the effective count does not.
 - **Baseline filtering can mask real regressions.** If a test was failing before your change *and* after, baseline filter silences it. Review `_VALIDATION_REPORT.json` if you suspect a test that "didn't fail" actually did.
 - **Playwright report parsing is brittle.** `_PW-REPORT.json` schema differs across Playwright versions; [playwright-report.ts](playwright-report.ts) tolerates missing fields but may lose detail on very old/new versions.
 
@@ -87,4 +125,4 @@ Triage evidence (for agent prompt injection) is built separately via `buildHando
 - Invoked by → [src/handlers/triage-handler.ts](../handlers/README.md)
 - Depends on → `TriageLlm` port, `TriageArtifactLoader` port, `BaselineLoader` port (all in [src/ports/](../ports/README.md))
 - Uses pure helpers from → [src/domain/](../domain/README.md) (`computeErrorSignature`, `volatile-patterns`, `failure-routing`)
-- Output feeds → context injection in [src/handlers/copilot-agent.ts](../handlers/README.md) on retried dev sessions
+- Output feeds → `outputs/triage-handoff.json` artifact, materialized into the rerouted dev node's `inputs/triage-handoff.json` by [src/loop/dispatch/invocation-builder.ts](../loop/dispatch/invocation-builder.ts)

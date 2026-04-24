@@ -162,20 +162,20 @@ describe("extractShellWrittenFiles", () => {
 
   // --- Edge cases ---
 
-  it("includes _STATE.json in extraction (allow-list handles enforcement)", () => {
+  it("includes /_state.json in extraction (allow-list handles enforcement)", () => {
     const files = extractShellWrittenFiles(
-      "echo '{}' > apps/sample-app/in-progress/slug_STATE.json",
+      "echo '{}' > apps/sample-app/in-progress/slug/_state.json",
       REPO_ROOT,
     );
-    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug_STATE.json"]);
+    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug/_state.json"]);
   });
 
-  it("includes _TRANS.md in extraction (allow-list handles enforcement)", () => {
+  it("includes /_trans.md in extraction (allow-list handles enforcement)", () => {
     const files = extractShellWrittenFiles(
-      "echo 'log' >> apps/sample-app/in-progress/slug_TRANS.md",
+      "echo 'log' >> apps/sample-app/in-progress/slug/_trans.md",
       REPO_ROOT,
     );
-    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug_TRANS.md"]);
+    assert.deepStrictEqual(files, ["apps/sample-app/in-progress/slug/_trans.md"]);
   });
 
   it("handles empty command", () => {

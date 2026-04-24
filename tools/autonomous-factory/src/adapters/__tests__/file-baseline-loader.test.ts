@@ -29,8 +29,9 @@ describe("FileBaselineLoader", () => {
   });
 
   it("returns null when the baseline file is malformed JSON", () => {
+    fs.mkdirSync(path.join(tmpRoot, "in-progress", "bad-feature/_kickoff"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpRoot, "in-progress", "bad-feature_BASELINE.json"),
+      path.join(tmpRoot, "in-progress", "bad-feature/_kickoff/baseline.json"),
       "{not json",
     );
     const loader = new FileBaselineLoader({ appRoot: tmpRoot });
@@ -38,8 +39,9 @@ describe("FileBaselineLoader", () => {
   });
 
   it("returns null when the baseline file is missing the `feature` field", () => {
+    fs.mkdirSync(path.join(tmpRoot, "in-progress", "nofeat/_kickoff"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpRoot, "in-progress", "nofeat_BASELINE.json"),
+      path.join(tmpRoot, "in-progress", "nofeat/_kickoff/baseline.json"),
       JSON.stringify({ console_errors: [{ pattern: "x" }] }),
     );
     const loader = new FileBaselineLoader({ appRoot: tmpRoot });
@@ -55,8 +57,9 @@ describe("FileBaselineLoader", () => {
       network_failures: [],
       uncaught_exceptions: [],
     };
+    fs.mkdirSync(path.join(tmpRoot, "in-progress", "pqv/_kickoff"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpRoot, "in-progress", "pqv_BASELINE.json"),
+      path.join(tmpRoot, "in-progress", "pqv/_kickoff/baseline.json"),
       JSON.stringify(profile),
     );
     const loader = new FileBaselineLoader({ appRoot: tmpRoot });
@@ -67,7 +70,7 @@ describe("FileBaselineLoader", () => {
   });
 
   it("does not throw on a directory-where-file-should-be", () => {
-    fs.mkdirSync(path.join(tmpRoot, "in-progress", "dir-feature_BASELINE.json"));
+    fs.mkdirSync(path.join(tmpRoot, "in-progress", "dir-feature/_kickoff/baseline.json"), { recursive: true });
     const loader = new FileBaselineLoader({ appRoot: tmpRoot });
     assert.equal(loader.loadBaseline("dir-feature"), null);
   });

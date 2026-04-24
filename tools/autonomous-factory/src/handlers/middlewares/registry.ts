@@ -16,6 +16,7 @@ import { lifecycleHooksMiddleware } from "./lifecycle-hooks.js";
 import { resultProcessorMiddleware } from "./result-processor.js";
 import { metricsMiddleware } from "./metrics.js";
 import { acceptanceIntegrityMiddleware } from "./acceptance-integrity.js";
+import { materializeInputsMiddleware } from "./materialize-inputs.js";
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -27,6 +28,7 @@ const BUILT_IN_MIDDLEWARES: Record<string, NodeMiddleware> = {
   [resultProcessorMiddleware.name]: resultProcessorMiddleware,
   [metricsMiddleware.name]: metricsMiddleware,
   [acceptanceIntegrityMiddleware.name]: acceptanceIntegrityMiddleware,
+  [materializeInputsMiddleware.name]: materializeInputsMiddleware,
 };
 
 const USER_MIDDLEWARES: Record<string, NodeMiddleware> = {};
@@ -76,6 +78,7 @@ export const ENGINE_DEFAULT_MIDDLEWARE_NAMES: ReadonlyArray<string> = [
   "auto-skip",
   "acceptance-integrity",
   "lifecycle-hooks",
+  "materialize-inputs",
   "result-processor",
 ];
 

@@ -4,7 +4,7 @@ This directory is the heartbeat of the Autonomous Software Factory. It holds the
 
 ## 🚀 How to Start a Feature
 
-1. **Write the Spec:** Create `in-progress/FEATURE_NAME_SPEC.md` using the strictly formatted template below. Replace `FEATURE_NAME` with your feature slug (e.g., `system-health`).
+1. **Write the Spec:** Create `in-progress/<slug>/_kickoff/spec.md` using the strictly formatted template below. Replace `<slug>` with your feature slug (e.g., `system-health`).
 2. **Initialize State:** Run `npm run pipeline:init <slug> <type>`
    *(Valid Types: `Full-Stack`, `App-Only`, `Backend-Only`)*
 3. **Launch Orchestrator:** Run the autonomous loop: `npm run agent:run -- --app apps/sample-app <slug>`
@@ -16,7 +16,7 @@ This directory is the heartbeat of the Autonomous Software Factory. It holds the
 
 ## 📄 SPEC Template
 
-Copy this exact structure into `in-progress/FEATURE_NAME_SPEC.md`. The orchestrator relies on these specific markdown headers to parse context.
+Copy this exact structure into `in-progress/<slug>/_kickoff/spec.md`. The orchestrator relies on these specific markdown headers to parse context.
 
 ```markdown
 # Feature: [Feature Name]

@@ -18,6 +18,8 @@ import type { TriageResult } from "../types.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { extractPriorAttempts } from "./historian.js";
 import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "./handoff-evidence.js";
+import { featureRelPath } from "../adapters/feature-paths.js";
+import { getArtifactSchemaVersion } from "../apm/artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Domain-tag format — single source of truth shared with triage-handler's
@@ -126,6 +128,12 @@ export interface BuildTriageHandoffArgs {
   /** Feature slug — used to construct the `_BASELINE.json` path on
    *  `baselineRef`. Ignored when `baseline` is absent. */
   readonly slug?: string;
+  /** Invocation id of the triage node itself. When set, `buildTriageHandoff`
+   *  stamps it onto the returned handoff so a downstream `reset-for-reroute`
+   *  dispatch can record it as `parentInvocationId` — giving the artifact-bus
+   *  lineage a traversable chain from the original failure through every
+   *  reroute (Phase 5 follow-up). Absent = legacy behaviour. */
+  readonly triageInvocationId?: string;
 }
 
 /**
@@ -179,6 +187,7 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     baselineDropCounts,
     baseline,
     slug,
+    triageInvocationId,
   } = args;
 
   const touched = resolveTouchedFiles(failingNodeKey, routeToKey, pipelineSummaries);
@@ -195,7 +204,7 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
   let baselineRef: TriageHandoff["baselineRef"];
   if (baseline && slug) {
     baselineRef = {
-      path: `in-progress/${slug}_BASELINE.json`,
+      path: featureRelPath(slug, "baseline"),
       consolePatternCount: baseline.console_errors?.length ?? 0,
       networkPatternCount: baseline.network_failures?.length ?? 0,
       uncaughtPatternCount: baseline.uncaught_exceptions?.length ?? 0,
@@ -203,6 +212,7 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
   }
 
   return {
+    schemaVersion: getArtifactSchemaVersion("triage-handoff") as 1 | undefined,
     failingItem: failingNodeKey,
     errorExcerpt: truncateError(rawError),
     errorSignature: triageRecord.error_signature,
@@ -217,5 +227,6 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     baselineDropCounts: drops,
     failedTests: toFailedTests(structuredFailure),
     baselineRef,
+    triageInvocationId,
   };
 }

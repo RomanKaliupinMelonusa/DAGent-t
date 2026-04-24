@@ -2,12 +2,21 @@
  * harness/outcome-tool.ts — Custom `report_outcome` SDK tool.
  *
  * Phase A migration: replaces the agent-facing bash CLI verbs
- * `pipeline:complete | pipeline:fail | pipeline:doc-note | pipeline:set-url
- *  | pipeline:set-note | pipeline:handoff-artifact`
+ * `pipeline:complete | pipeline:fail`
  * with a single typed SDK tool. The session runner observes the latest
  * call via `telemetry.reportedOutcome` and the `copilot-agent` handler
  * translates it into a kernel Command — making the kernel the sole
  * writer of pipeline state.
+ *
+ * Phase 5 cutover: the optional `docNote` / `deployedUrl` / `projectNote`
+ * fields have been removed. Their replacements are declared artifacts:
+ *   - `docNote` (and `projectNote`) → `summary` artifact written to
+ *     `outputs/summary.md` (declared via `produces_artifacts: ["summary"]`).
+ *   - `deployedUrl` → `deployment-url` artifact written to
+ *     `outputs/deployment-url.json` (declared via
+ *     `produces_artifacts: ["deployment-url"]`).
+ * This keeps the SDK surface small and routes all rich content through
+ * the same artifact tree the rest of the pipeline already inspects.
  *
  * The tool is idempotent — only the LAST call wins. Agents are expected
  * to call it exactly once at the end of their session.
@@ -19,26 +28,15 @@ import type { ItemSummary } from "../types.js";
 
 /**
  * Structured outcome reported by an agent at session end.
- * Mirrors the verbs that previously required a bash CLI invocation.
+ * Status + (on failure) a diagnostic message — nothing else. Rich content
+ * (notes, URLs, …) flows through declared artifacts in `outputs/`.
  */
 export type ReportedOutcome =
-  | {
-      status: "completed";
-      /** Optional documented decision/note recorded against the item. */
-      docNote?: string;
-      /** Optional JSON string handed to downstream items (e.g. spec → dev). */
-      handoffArtifact?: string;
-      /** Optional URL recorded against the feature (deploy nodes only). */
-      deployedUrl?: string;
-      /** Optional free-form project-level note appended to feature state. */
-      projectNote?: string;
-    }
+  | { status: "completed" }
   | {
       status: "failed";
       /** REQUIRED diagnostic message — usually a TriageDiagnostic JSON. */
       message: string;
-      /** Optional doc-note recorded against the item even on failure. */
-      docNote?: string;
     };
 
 /**
@@ -56,7 +54,10 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
       "as the LAST action before you stop. The orchestrator uses this " +
       "to mutate pipeline state — do NOT also call any `pipeline:*` " +
       "bash command. Set status='completed' on success, status='failed' " +
-      "with a diagnostic `message` on failure.",
+      "with a diagnostic `message` on failure. " +
+      "Notes, URLs, and other rich content go in declared artifacts " +
+      "(write `outputs/summary.md` or `outputs/deployment-url.json` " +
+      "instead of passing them here).",
     parameters: {
       type: "object",
       properties: {
@@ -72,40 +73,12 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
             "a TriageDiagnostic JSON object describing root cause, blame, " +
             "and suggested next agent.",
         },
-        docNote: {
-          type: "string",
-          description:
-            "OPTIONAL. Short documented decision/insight to record against " +
-            "this item (e.g. 'skipped flaky test pending upstream fix #123').",
-        },
-        handoffArtifact: {
-          type: "string",
-          description:
-            "OPTIONAL. JSON string handed to downstream items (e.g. spec → " +
-            "backend-dev contract, integration test results).",
-        },
-        deployedUrl: {
-          type: "string",
-          description:
-            "OPTIONAL. Deployed URL to record against the feature. Only " +
-            "meaningful for deploy nodes (frontend/backend).",
-        },
-        projectNote: {
-          type: "string",
-          description:
-            "OPTIONAL. Free-form note appended to feature-level " +
-            "implementation notes (rare — prefer docNote).",
-        },
       },
       required: ["status"],
     },
     handler: (args: {
       status: "completed" | "failed";
       message?: string;
-      docNote?: string;
-      handoffArtifact?: string;
-      deployedUrl?: string;
-      projectNote?: string;
     }) => {
       if (args.status === "failed") {
         const message = (args.message ?? "").trim();
@@ -116,21 +89,11 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
             "call again with a diagnostic message."
           );
         }
-        telemetry.reportedOutcome = {
-          status: "failed",
-          message,
-          ...(args.docNote ? { docNote: args.docNote } : {}),
-        };
+        telemetry.reportedOutcome = { status: "failed", message };
         return `Outcome recorded: failed. ${message.length > 120 ? message.slice(0, 117) + "..." : message}`;
       }
 
-      telemetry.reportedOutcome = {
-        status: "completed",
-        ...(args.docNote ? { docNote: args.docNote } : {}),
-        ...(args.handoffArtifact ? { handoffArtifact: args.handoffArtifact } : {}),
-        ...(args.deployedUrl ? { deployedUrl: args.deployedUrl } : {}),
-        ...(args.projectNote ? { projectNote: args.projectNote } : {}),
-      };
+      telemetry.reportedOutcome = { status: "completed" };
       return "Outcome recorded: completed.";
     },
   });

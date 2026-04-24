@@ -4,7 +4,7 @@
  * Orchestrates a pipeline item's LLM agent run:
  * 1. Build AgentContext from NodeContext + APM config (+ upstream handoff artifacts)
  * 2. Resolve tool/harness limits + sandbox with APM cascade (support/agent-limits)
- * 3. Build task prompt (with pendingContext injection)
+ * 3. Build task prompt
  * 4. Delegate the session to `adapters/copilot-session-runner`
  * 5. Post-session: record HEAD, git-diff fallback, budget utilization
  *    (support/agent-post-session — all git I/O via ctx.vcs port)
@@ -27,6 +27,7 @@ import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
 import { formatDerivedTargetsMarkdown } from "../triage/derive-baseline-targets.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
@@ -128,7 +129,7 @@ const copilotAgentHandler: NodeHandler = {
     }
 
     // ── 1. Build agent context ──────────────────────────────────────────────
-    const { agentContext, upstreamArtifacts } = buildAgentContext(ctx);
+    const { agentContext, upstreamArtifacts } = await buildAgentContext(ctx);
     const hasArtifacts = Object.keys(upstreamArtifacts).length > 0;
 
     if (hasArtifacts) {
@@ -144,25 +145,29 @@ const copilotAgentHandler: NodeHandler = {
     // ── 2. Resolve tool + harness limits + sandbox ──────────────────────────
     const limits = resolveAgentLimits(ctx);
 
-    // ── 3. Build task prompt (with pendingContext injection) ────────────────
+    // ── 3. Build task prompt ───────────────────────────────────────────────
     const node = getWorkflowNode(ctx);
+    const artifactBus = new FileArtifactBus(appRoot, ctx.filesystem, undefined, {
+      strict: apmContext.config?.strict_artifacts === true,
+    });
     let taskPrompt = buildTaskPrompt(
       { key: itemKey, label: (ctx.pipelineState.items.find((i) => i.key === itemKey) as { label?: string })?.label ?? itemKey },
       slug,
       appRoot,
       apmContext,
+      {
+        node,
+        pipelineState: ctx.pipelineState,
+        artifactBus,
+        invocationId: ctx.executionId,
+      },
     );
 
-    // The triage handler composes retry context, downstream failures, revert
-    // warnings, and rejection narratives into a single pendingContext string.
-    const pendingItem = ctx.pipelineState.items.find((i) => i.key === itemKey);
-    if (pendingItem?.pendingContext) {
-      taskPrompt += pendingItem.pendingContext;
-      ctx.logger.event("handoff.inject", itemKey, {
-        injection_types: ["pending_context"],
-        context_length: pendingItem.pendingContext.length,
-      });
-    }
+    // Phase 6 — re-entrance context (e.g. triage handoff) is no longer
+    // injected as prose. The triage handler writes a `triage-handoff`
+    // JSON artifact, and Phase 3's materialize-inputs middleware copies
+    // it into `<inv>/inputs/triage-handoff.json` for nodes that declare
+    // `consumes_reroute`. The agent reads it from disk.
 
     // Dispatch-time target derivation for baseline-analyzer — extract
     // pages + modal triggers from ACCEPTANCE.yml deterministically and
@@ -346,7 +351,10 @@ const copilotAgentHandler: NodeHandler = {
       }
 
       ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "report_outcome" });
-      return { outcome: "completed", summary: telemetry };
+      return {
+        outcome: "completed",
+        summary: telemetry,
+      };
     }
 
     const missingOutcomeMsg =

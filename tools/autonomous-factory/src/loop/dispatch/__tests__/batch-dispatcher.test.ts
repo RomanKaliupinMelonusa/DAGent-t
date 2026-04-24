@@ -28,6 +28,8 @@ function makeCtx(key: string): NodeContext {
     stateReader: {} as NodeContext["stateReader"],
     shell: {} as NodeContext["shell"],
     filesystem: {} as NodeContext["filesystem"],
+    invocation: {} as NodeContext["invocation"],
+    invocationLogger: {} as NodeContext["invocationLogger"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
   };
 }

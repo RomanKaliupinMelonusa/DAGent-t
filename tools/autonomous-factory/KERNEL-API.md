@@ -38,10 +38,8 @@
 | Function | Signature | Purpose |
 |---|---|---|
 | `setNote` | `(slug, note) → PipelineState` | Append implementation note |
-| `setDocNote` | `(slug, itemKey, note) → PipelineState` | Per-item documentation note |
-| `setHandoffArtifact` | `(slug, itemKey, json) → PipelineState` | Structured handoff data between nodes |
-| `setUrl` | `(slug, url) → PipelineState` | Set deployed URL |
-| `setLastTriageRecord` | `(slug, record) → PipelineState` | Persist triage classification result |
+| `setDocNote` | `(slug, itemKey, note) → PipelineState` | Per-item documentation note (legacy — prefer the `summary` artifact) |
+| `setUrl` | `(slug, url) → PipelineState` | Set deployed URL (legacy — prefer the `deployment-url` artifact) |
 
 ## CLI Convenience (src/cli/pipeline-state.ts)
 

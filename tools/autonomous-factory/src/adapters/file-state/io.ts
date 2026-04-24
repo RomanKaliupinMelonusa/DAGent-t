@@ -13,10 +13,11 @@
  * the lock primitive to be promise-aware for no real benefit.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PipelineState } from "../../types.js";
+import { renderInvocationTree } from "../../reporting/trans-tree.js";
 
 // ─── Path constants ─────────────────────────────────────────────────────────
 
@@ -31,12 +32,14 @@ export const IN_PROGRESS = join(APP_ROOT, "in-progress");
 
 // ─── Path helpers ───────────────────────────────────────────────────────────
 
+/** `<inProgress>/<slug>/_state.json` — nested-layout state path. */
 export function statePath(slug: string): string {
-  return join(IN_PROGRESS, `${slug}_STATE.json`);
+  return join(IN_PROGRESS, slug, "_state.json");
 }
 
+/** `<inProgress>/<slug>/_trans.md` — nested-layout transition log path. */
 export function transPath(slug: string): string {
-  return join(IN_PROGRESS, `${slug}_TRANS.md`);
+  return join(IN_PROGRESS, slug, "_trans.md");
 }
 
 export function today(): string {
@@ -72,7 +75,9 @@ export function readStateOrNull(slug: string): PipelineState | null {
 
 /** Write state (atomically replaces the file) and regenerates TRANS.md. */
 export function writeState(slug: string, state: PipelineState): void {
-  writeFileSync(statePath(slug), JSON.stringify(state, null, 2) + "\n", "utf-8");
+  const p = statePath(slug);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
   renderTrans(slug, state);
 }
 
@@ -141,6 +146,16 @@ function renderTrans(slug: string, state: PipelineState): void {
       lines.push(entry.message);
       lines.push("");
     }
+  }
+
+  // Invocation lineage tree — walks state.artifacts grouped by nodeKey,
+  // nesting child invocations under their parent. Empty when the artifact
+  // ledger has no entries (legacy state files, fresh init).
+  const treeLines = renderInvocationTree(state.artifacts ?? {});
+  if (treeLines.length > 0) {
+    lines.push("");
+    lines.push("## Invocations");
+    for (const line of treeLines) lines.push(line);
   }
 
   lines.push("");

@@ -13,7 +13,9 @@ function makeApp(files: Record<string, string>): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-"));
   fs.mkdirSync(path.join(dir, "in-progress"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
-    fs.writeFileSync(path.join(dir, "in-progress", name), body, "utf-8");
+    const target = path.join(dir, "in-progress", name);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, body, "utf-8");
   }
   return dir;
 }
@@ -28,19 +30,19 @@ describe("triage/contract-evidence", () => {
 
   it("renders the VALIDATION artifact when present", () => {
     const dir = makeApp({
-      "pqv_VALIDATION.json": JSON.stringify({ outcome: "fail", violations: [{ title: "flow-1", message: "Uncaught TypeError" }] }, null, 2),
+      "pqv/_validation.json": JSON.stringify({ outcome: "fail", violations: [{ title: "flow-1", message: "Uncaught TypeError" }] }, null, 2),
     });
     const r = loadContractEvidence(dir, "pqv");
     assert.match(r.text, /### Contract evidence/);
     assert.match(r.text, /Acceptance Oracle Verdict/);
     assert.match(r.text, /Uncaught TypeError/);
-    assert.deepEqual(r.sources, [path.join("in-progress", "pqv_VALIDATION.json")]);
+    assert.deepEqual(r.sources, [path.join("in-progress", "pqv/_validation.json")]);
   });
 
   it("renders both VALIDATION and QA-REPORT when both exist", () => {
     const dir = makeApp({
-      "pqv_VALIDATION.json": JSON.stringify({ outcome: "fail", violations: [] }),
-      "pqv_QA-REPORT.json": JSON.stringify({ outcome: "fail", probes_run: 3, violations: [{ probe: "rapid-click" }] }),
+      "pqv/_validation.json": JSON.stringify({ outcome: "fail", violations: [] }),
+      "pqv/_qa-report.json": JSON.stringify({ outcome: "fail", probes_run: 3, violations: [{ probe: "rapid-click" }] }),
     });
     const r = loadContractEvidence(dir, "pqv");
     assert.match(r.text, /Acceptance Oracle Verdict/);
@@ -50,7 +52,7 @@ describe("triage/contract-evidence", () => {
   });
 
   it("silently skips unreadable/missing artifacts", () => {
-    const dir = makeApp({ "pqv_QA-REPORT.json": JSON.stringify({ outcome: "pass", violations: [] }) });
+    const dir = makeApp({ "pqv/_qa-report.json": JSON.stringify({ outcome: "pass", violations: [] }) });
     const r = loadContractEvidence(dir, "pqv");
     assert.equal(r.sources.length, 1);
     assert.match(r.text, /QA Adversary Report/);
@@ -63,7 +65,7 @@ describe("triage/contract-evidence", () => {
   });
 
   it("prepends evidence to raw error when artifacts exist", () => {
-    const dir = makeApp({ "pqv_VALIDATION.json": JSON.stringify({ outcome: "fail" }) });
+    const dir = makeApp({ "pqv/_validation.json": JSON.stringify({ outcome: "fail" }) });
     const raw = "Test timed out after 60000ms";
     const { trace, sources } = prependContractEvidence(raw, dir, "pqv");
     assert.ok(trace.indexOf("### Contract evidence") < trace.indexOf("### Raw failure output"));
@@ -81,7 +83,7 @@ describe("triage/contract-evidence", () => {
 
   it("truncates very large artifacts", () => {
     const big = "x".repeat(10_000);
-    const dir = makeApp({ "pqv_VALIDATION.json": big });
+    const dir = makeApp({ "pqv/_validation.json": big });
     const r = loadContractEvidence(dir, "pqv");
     assert.match(r.text, /truncated/);
     // Block must be bounded (4 KB per file + markdown scaffolding).

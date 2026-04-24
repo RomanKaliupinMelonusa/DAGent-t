@@ -65,7 +65,7 @@ describe("writeFlightData — atomic write contract", () => {
     tmpDirs.length = 0;
   });
 
-  it("writes a valid JSON envelope to _FLIGHT_DATA.json", () => {
+  it("writes a valid JSON envelope to /_kickoff/flight-data.json", () => {
     const appRoot = makeTmpAppRoot();
     tmpDirs.push(appRoot);
     const slug = "atomic-basic";
@@ -73,8 +73,8 @@ describe("writeFlightData — atomic write contract", () => {
 
     writeFlightData(appRoot, slug, summaries);
 
-    const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
-    assert.ok(fs.existsSync(flightPath), "_FLIGHT_DATA.json must exist");
+    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
+    assert.ok(fs.existsSync(flightPath), "/_kickoff/flight-data.json must exist");
 
     const envelope = JSON.parse(fs.readFileSync(flightPath, "utf-8"));
     assert.equal(envelope.version, 1);
@@ -91,7 +91,7 @@ describe("writeFlightData — atomic write contract", () => {
 
     writeFlightData(appRoot, slug, [makeItemSummary()]);
 
-    const tmpPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json.tmp`);
+    const tmpPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json.tmp`);
     assert.ok(!fs.existsSync(tmpPath), ".tmp file must not remain after successful write");
   });
 
@@ -103,7 +103,7 @@ describe("writeFlightData — atomic write contract", () => {
     writeFlightData(appRoot, slug, [makeItemSummary()]);
 
     const raw = fs.readFileSync(
-      path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`),
+      path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`),
       "utf-8",
     );
     const roundTrip = JSON.stringify(JSON.parse(raw), null, 2);
@@ -127,7 +127,7 @@ describe("writeFlightData — atomic write contract", () => {
     assert.equal(flightLogs.length, 0, "silent=true must suppress ✈ log line");
 
     // File must still be written
-    const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
     assert.ok(fs.existsSync(flightPath), "file must still be written when silent");
   });
 
@@ -160,7 +160,7 @@ describe("writeFlightData — atomic write contract", () => {
     writeFlightData(appRoot, slug, summaries, true);
 
     const envelope = JSON.parse(
-      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`), "utf-8"),
+      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`), "utf-8"),
     );
     assert.equal(envelope.items[1].outcome, "in-progress");
   });
@@ -180,7 +180,8 @@ describe("writeFlightData — atomic write contract", () => {
     const slug = "stale-tmp";
 
     // Plant a stale .tmp file (simulating a prior crash)
-    const tmpPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json.tmp`);
+    const tmpPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json.tmp`);
+    fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
     fs.writeFileSync(tmpPath, "stale data", "utf-8");
 
     writeFlightData(appRoot, slug, [makeItemSummary()]);
@@ -189,7 +190,7 @@ describe("writeFlightData — atomic write contract", () => {
     assert.ok(!fs.existsSync(tmpPath), "stale .tmp must be cleaned up");
     // Final .json must be valid
     const envelope = JSON.parse(
-      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`), "utf-8"),
+      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`), "utf-8"),
     );
     assert.equal(envelope.version, 1);
   });

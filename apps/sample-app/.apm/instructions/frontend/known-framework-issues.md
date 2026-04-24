@@ -4,7 +4,9 @@ This is a registry of confirmed framework-level bugs and incompatibilities. Thes
 
 **CRITICAL RULE:** If you encounter a framework limitation listed here, you MUST:
 1. Add `test.skip()` to the affected test with the reason from this registry.
-2. Record the skip in your `report_outcome` (with docNote).
+2. Record the skip in `$OUTPUTS_DIR/summary.md` (MUST start with the YAML
+   front-matter envelope — see the global completion block for the canonical
+   `cat <<EOF` form) so the next agent sees it.
 3. Move on immediately. Do NOT spend more than 3 shell commands attempting to work around a known framework bug.
 
 ---

@@ -18,7 +18,7 @@ Handlers are **observers**: they never mutate pipeline state. They return a `Nod
 | [local-exec.ts](local-exec.ts) | Runs a shell script declared in `workflows.yml` (e.g. `push-app`, `publish-pr`). Uses `Shell` port. |
 | [github-ci-poll.ts](github-ci-poll.ts) | Polls a GitHub Actions run pinned to a specific SHA via `CiGateway`. |
 | [approval.ts](approval.ts) | Human approval gate — records state, emits command to wait; kernel holds until resumed. |
-| [triage-handler.ts](triage-handler.ts) | Classifies a prior failure by invoking [src/triage/](../triage/README.md), emits `reset-nodes` / `set-pending-context` commands. |
+| [triage-handler.ts](triage-handler.ts) | Classifies a prior failure by invoking [src/triage/](../triage/README.md), emits `reset-nodes` + `stage-invocation` (with `trigger: "triage-reroute"` and a `parentInvocationId`); the triage handoff payload is written as the declared `triage-handoff` artifact under `outputs/`. |
 | [middleware.ts](middleware.ts) | Chains middlewares around handler execution (timing, logging, auth). |
 | [middlewares/](middlewares/) | Built-in middleware registry + individual middleware modules. |
 | [support/](support/) | Shared helpers for `copilot-agent`: [agent-context.ts](support/agent-context.ts) (build `AgentContext` from APM + NodeContext), [agent-limits.ts](support/agent-limits.ts) (tool/timeout limit cascade), [agent-post-session.ts](support/agent-post-session.ts) (HEAD capture, git-diff fallback), [auto-skip-evaluator.ts](support/auto-skip-evaluator.ts) (skip re-run if nothing changed), [result-processor.ts](support/result-processor.ts) (collapse identical failures). |
@@ -35,7 +35,7 @@ export interface NodeHandler {
 export interface NodeResult {
   kind: "done" | "failed";
   summary: ItemSummary;
-  commands: DagCommand[];            // e.g. reset-nodes, set-pending-context
+  commands: DagCommand[];            // e.g. reset-nodes, stage-invocation
   // …
 }
 ```

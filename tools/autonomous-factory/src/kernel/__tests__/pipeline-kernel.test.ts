@@ -360,71 +360,129 @@ describe("PipelineKernel — collectStallCommands", () => {
 });
 
 // ---------------------------------------------------------------------------
-// set-pending-context mirrors to in-memory state
+// stage-invocation appends an unsealed record + retargets the item pointer
 // ---------------------------------------------------------------------------
 
-describe("PipelineKernel — set-pending-context in-memory mirror", () => {
-  it("dagSnapshot reflects pendingContext after set-pending-context (string)", () => {
+describe("PipelineKernel — stage-invocation", () => {
+  it("dagSnapshot's item.latestInvocationId points at the staged record", () => {
     const kernel = makeKernel();
     const cmds = wrapDagCommands([{
-      type: "set-pending-context",
+      type: "stage-invocation",
       itemKey: "A",
-      context: "triage handoff text",
+      invocationId: "inv_01H000000000000000000001",
+      trigger: "triage-reroute",
     }]);
     const { result } = kernel.process(cmds[0]);
     assert.equal(result.ok, true);
     const snap = kernel.dagSnapshot();
-    assert.equal(snap.items.find((i) => i.key === "A")?.pendingContext, "triage handoff text");
-  });
-
-  it("dagSnapshot reflects pendingContext after set-pending-context (payload)", () => {
-    const kernel = makeKernel();
-    const cmds = wrapDagCommands([{
-      type: "set-pending-context",
-      itemKey: "B",
-      context: {
-        narrative: "Redevelopment context for B",
-        handoff: {
-          failingItem: "e2e-runner",
-          triageDomain: "frontend",
-          triageReason: "locator not found",
-          errorSignature: "abc123",
-          errorExcerpt: "timeout waiting for modal",
-          priorAttemptCount: 0,
-          touchedFiles: [],
-        },
-      },
-    }]);
-    const { result } = kernel.process(cmds[0]);
-    assert.equal(result.ok, true);
-    const snap = kernel.dagSnapshot();
-    const pc = snap.items.find((i) => i.key === "B")?.pendingContext;
-    assert.ok(pc, "pendingContext should be non-null");
-    assert.ok(typeof pc === "string", "pendingContext should be a string");
-    assert.ok(pc!.trim().length > 0, "pendingContext should be non-empty");
-    assert.ok(pc!.includes("Redevelopment context for B"), "should contain narrative");
+    const a = snap.items.find((i) => i.key === "A");
+    assert.equal(a?.latestInvocationId, "inv_01H000000000000000000001");
   });
 
   it("does not affect other items", () => {
     const kernel = makeKernel();
     const cmds = wrapDagCommands([{
-      type: "set-pending-context",
+      type: "stage-invocation",
       itemKey: "A",
-      context: "context for A only",
+      invocationId: "inv_01H000000000000000000002",
+      trigger: "triage-reroute",
     }]);
     kernel.process(cmds[0]);
     const snap = kernel.dagSnapshot();
-    assert.equal(snap.items.find((i) => i.key === "B")?.pendingContext, undefined);
+    assert.equal(snap.items.find((i) => i.key === "B")?.latestInvocationId, undefined);
   });
 
-  it("generates persist-pending-context effect", () => {
+  it("emits an append-invocation-record effect carrying trigger + parent", () => {
     const kernel = makeKernel();
     const cmds = wrapDagCommands([{
-      type: "set-pending-context",
+      type: "stage-invocation",
       itemKey: "A",
-      context: "test context",
+      invocationId: "inv_01H000000000000000000003",
+      trigger: "triage-reroute",
+      parentInvocationId: "inv_01H000000000000000000000",
     }]);
     const { effects } = kernel.process(cmds[0]);
-    assert.ok(effects.some((e) => e.type === "persist-pending-context"));
+    const eff = effects.find((e) => e.type === "append-invocation-record");
+    assert.ok(eff, "should emit append-invocation-record effect");
+    if (eff && eff.type === "append-invocation-record") {
+      assert.equal(eff.input.invocationId, "inv_01H000000000000000000003");
+      assert.equal(eff.input.trigger, "triage-reroute");
+      assert.equal(eff.input.parentInvocationId, "inv_01H000000000000000000000");
+      // Staged record carries no startedAt — the dispatch hook stamps it.
+      assert.equal(eff.input.startedAt, undefined);
+    }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 2.2 — single-writer re-entrance guard
+// ---------------------------------------------------------------------------
+
+describe("PipelineKernel — re-entrance guard", () => {
+  it("throws KernelReentryError when process() is called re-entrantly", async () => {
+    const { KernelReentryError } = await import("../pipeline-kernel.js");
+
+    // Hijack `complete()` to recurse back into the kernel — this simulates
+    // a hostile or buggy effect consumer that tries to feed the kernel
+    // during rule evaluation.
+    const hostile = Object.create(new DefaultKernelRules()) as DefaultKernelRules & {
+      complete: DefaultKernelRules["complete"];
+    };
+    hostile.complete = function (state: Parameters<DefaultKernelRules["complete"]>[0], key: string) {
+      reenter.process({ type: "record-attempt", itemKey: "A" });
+      return DefaultKernelRules.prototype.complete.call(this, state, key);
+    };
+    const reenter = new PipelineKernel(
+      "test-feature",
+      makePipelineState(),
+      createRunState(),
+      hostile,
+    );
+
+    assert.throws(
+      () => reenter.process({ type: "complete-item", itemKey: "A" }),
+      (err: unknown) =>
+        err instanceof KernelReentryError &&
+        /not re-entrant/i.test((err as Error).message),
+    );
+  });
+
+  it("clears the in-flight flag after a throw so subsequent calls still work", async () => {
+    const { KernelReentryError } = await import("../pipeline-kernel.js");
+    const hostile = Object.create(new DefaultKernelRules()) as DefaultKernelRules & {
+      complete: DefaultKernelRules["complete"];
+    };
+    let firstCall = true;
+    hostile.complete = function (state: Parameters<DefaultKernelRules["complete"]>[0], key: string) {
+      if (firstCall) {
+        firstCall = false;
+        kernel.process({ type: "record-attempt", itemKey: "A" });
+      }
+      return DefaultKernelRules.prototype.complete.call(this, state, key);
+    };
+    const kernel = new PipelineKernel(
+      "test-feature",
+      makePipelineState(),
+      createRunState(),
+      hostile,
+    );
+    assert.throws(
+      () => kernel.process({ type: "complete-item", itemKey: "A" }),
+      (err: unknown) => err instanceof KernelReentryError,
+    );
+    // Follow-up call must succeed — `finally` reset #inFlight.
+    const res = kernel.process({ type: "record-attempt", itemKey: "B" });
+    assert.equal(res.result.ok, true);
+  });
+
+  it("accepts sequential (non-nested) process() calls", () => {
+    const kernel = makeKernel();
+    const r1 = kernel.process({ type: "record-attempt", itemKey: "A" });
+    const r2 = kernel.process({ type: "complete-item", itemKey: "A" });
+    const r3 = kernel.process({ type: "record-attempt", itemKey: "B" });
+    assert.equal(r1.result.ok, true);
+    assert.equal(r2.result.ok, true);
+    assert.equal(r3.result.ok, true);
+  });
+});
+

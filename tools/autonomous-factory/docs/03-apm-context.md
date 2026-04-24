@@ -482,6 +482,9 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **3-layer architecture** | Node Pool (what), Agent Configs (brain), Workflow DAGs (how connected) — eliminates config duplication |
 | **Type-agnostic node pool** | All node types (agent, script, barrier, triage, approval) are equal pool citizens. Only `type: agent` needs an `agents:` declaration |
 | **Workflow-level `default_on_failure`** | Common triage routes declared once per workflow, merged into per-node `on_failure`. Scales O(1) instead of O(nodes) |
+| **Named `routeProfiles` with `extends:`** | Reusable `on_failure.routes` bundles. Nodes reference them with `on_failure.extends: <profile>`; profiles chain via their own `extends:`. Merge precedence (lowest→highest): profile chain → `default_on_failure` → node override. Inheritance cycles and unknown parents fail at compile time |
+| **Compile-time domain-key validation** | Every key in any `on_failure.routes` is checked against the triage profile's declared (or derived) `domains:` set. Typos produce an `ApmCompileError` with a Levenshtein-based "Did you mean ...?" suggestion, closing the silent-misroute leak where `front-end` would resolve to `null` |
+| **Declarative L0 triage patterns** | Triage profiles can list `patterns:` (discriminated union: `match_kind: raw-regex \| structured-field`) to short-circuit before RAG/LLM. Three built-ins ship with the engine (uncaught browser errors, Playwright testid timeouts, spec-compiler schema violations) and auto-merge unless `builtin_patterns: false`. Built-ins whose `domain` is not in the profile are silently dropped; user-declared patterns emitting an unrouted domain fail compile |
 | **`_node` directive** | Explicit catalog reference for aliased nodes (e.g. `push-infra: { _node: push-code }`). Replaces implicit `_template` |
 
 ---
@@ -620,6 +623,7 @@ These are enforced at compile time by the constraint system:
 | `redevelopment_categories` | string[] | `["test"]` | Node categories whose failures trigger redevelopment context injection |
 | `phase_labels` | map | — | Human-readable labels for phase slugs (e.g. `{ "pre-deploy": "Pre-Deploy" }`) |
 | `handler_defaults` | map | — | Type → handler key inference map. Extends built-in defaults |
+| `strict_handler_inference` | bool | `false` | Disable the built-in inference fallback — every node must set `handler:` or match `handler_defaults` |
 | `handlers` | map | — | Custom handler declarations with metadata |
 | `reindex_categories` | string[] | `["dev", "test"]` | Categories that trigger roam-code re-index after triage reroute |
 
@@ -758,6 +762,8 @@ When a node doesn't declare an explicit `handler` field, the kernel infers it:
 | `triage` | — | `triage` | Error classification via RAG + LLM |
 
 Custom types extend this via `config.handler_defaults` or per-node `handler` fields.
+
+Set `config.strict_handler_inference: true` to disable the built-in fallback table above — every node must then either declare `handler:` explicitly or match a key in `handler_defaults`. Catches typos like `type: "scripts"` at lint time (`npm run lint:pipeline`) instead of silently at dispatch.
 
 ---
 

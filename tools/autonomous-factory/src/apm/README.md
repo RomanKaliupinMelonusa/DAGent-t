@@ -14,7 +14,7 @@ This layer is the reason the engine is stack-agnostic. All cloud/framework-speci
 |---|---|
 | [compiler.ts](compiler.ts) | `compileApm(appRoot)` — the main compile function. Parses `apm.yml`, resolves instructions, validates with Zod, enforces token budgets, returns `ApmCompiledOutput`. |
 | [context-loader.ts](context-loader.ts) | `loadApmContext(appRoot)` — loads cached `context.json`; re-compiles on mtime staleness; defense-in-depth schema + budget re-validation. Used at bootstrap. |
-| [agents.ts](agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + pending context injection). |
+| [agents.ts](agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + declared `inputs/` block + re-invocation lineage block when triage rerouted). |
 | [types.ts](types.ts) | Zod schemas + types: `ApmManifestSchema`, `ApmWorkflowSchema`, `ApmCompiledOutputSchema`, `CompiledTriageProfile`, `ApmMcpFileSchema`, `ApmSkillFrontmatterSchema`, `TriagePackSchema`. Errors: `ApmCompileError`, `ApmBudgetExceededError`. |
 | [acceptance-schema.ts](acceptance-schema.ts) | Schema for the acceptance block in `apm.yml`. |
 | [canvas.ts](canvas.ts) | DAG visualization export helpers consumed by `scripts/export-canvas.ts`. |
@@ -34,7 +34,7 @@ const apmContext = await loadApmContext(appRoot);
 const agentConfig = getAgentConfig("backend-dev", nodeContext, apmContext);
 //   → { systemMessage, model, mcpServers, timeout, toolLimits, … }
 
-const taskPrompt = buildTaskPrompt(itemKey, nodeContext, apmContext, pendingContext);
+const taskPrompt = buildTaskPrompt(itemKey, nodeContext, apmContext);
 //   → Final string the SDK session receives as the first user message.
 ```
 

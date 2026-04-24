@@ -6,7 +6,7 @@
  *   - records `failed` outcome with diagnostic message
  *   - rejects `failed` without a message (no telemetry mutation)
  *   - last-call-wins idempotency
- *   - propagates optional fields (docNote, handoffArtifact, deployedUrl, projectNote)
+ *   - propagates only the canonical fields (status, message)
  */
 
 import { describe, it } from "node:test";
@@ -64,26 +64,21 @@ describe("buildReportOutcomeTool", () => {
     assert.equal(t.reportedOutcome, undefined);
   });
 
-  it("propagates optional fields on `completed`", async () => {
+  it("ignores extra fields on `completed` (Phase 5: schema collapsed)", async () => {
     const t = emptyTelemetry();
     const tool = buildReportOutcomeTool(t);
     await (tool as any).handler({
       status: "completed",
+      // Pre-Phase-5 fields are silently dropped — SDK strips unknown
+      // params at runtime; we just assert the recorded outcome is bare.
       docNote: "noted",
-      handoffArtifact: '{"contract":1}',
       deployedUrl: "https://x.example",
       projectNote: "feature note",
     });
-    assert.deepEqual(t.reportedOutcome, {
-      status: "completed",
-      docNote: "noted",
-      handoffArtifact: '{"contract":1}',
-      deployedUrl: "https://x.example",
-      projectNote: "feature note",
-    });
+    assert.deepEqual(t.reportedOutcome, { status: "completed" });
   });
 
-  it("propagates docNote on `failed`", async () => {
+  it("records only status + message on `failed` (Phase 5: schema collapsed)", async () => {
     const t = emptyTelemetry();
     const tool = buildReportOutcomeTool(t);
     await (tool as any).handler({
@@ -94,7 +89,6 @@ describe("buildReportOutcomeTool", () => {
     assert.deepEqual(t.reportedOutcome, {
       status: "failed",
       message: "diag",
-      docNote: "skipped flaky test",
     });
   });
 
@@ -103,19 +97,15 @@ describe("buildReportOutcomeTool", () => {
     const tool = buildReportOutcomeTool(t);
     await (tool as any).handler({ status: "failed", message: "first" });
     await (tool as any).handler({ status: "completed", docNote: "actually fine" });
-    assert.deepEqual(t.reportedOutcome, {
-      status: "completed",
-      docNote: "actually fine",
-    });
+    assert.deepEqual(t.reportedOutcome, { status: "completed" });
   });
 
-  it("strips empty optional fields", async () => {
+  it("records bare status when no extra fields supplied", async () => {
     const t = emptyTelemetry();
     const tool = buildReportOutcomeTool(t);
     await (tool as any).handler({
       status: "completed",
       docNote: "",
-      handoffArtifact: "",
       deployedUrl: "",
       projectNote: "",
     });

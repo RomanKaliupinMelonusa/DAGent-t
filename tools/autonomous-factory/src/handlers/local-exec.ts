@@ -51,7 +51,12 @@ const localExecHandler: NodeHandler = {
     const timeoutMinutes = node?.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
-    // Build env with kernel-provided context variables for hook scripts
+    // Build env with kernel-provided context variables for hook scripts.
+    // Invocation-scoped env vars expose the canonical per-invocation
+    // directory layout owned by the Artifact Bus — scripts consume them to
+    // read declared inputs / write declared outputs / append logs without
+    // reconstructing paths from slug + node key + invocation id.
+    const invocationDir = path.join(appRoot, "in-progress", slug, itemKey, ctx.executionId);
     const execEnv: Record<string, string | undefined> = {
       ...process.env,
       ...environment,
@@ -59,6 +64,12 @@ const localExecHandler: NodeHandler = {
       APP_ROOT: appRoot,
       REPO_ROOT: repoRoot,
       BASE_BRANCH: baseBranch,
+      NODE_KEY: itemKey,
+      INVOCATION_ID: ctx.executionId,
+      INVOCATION_DIR: invocationDir,
+      INPUTS_DIR: path.join(invocationDir, "inputs"),
+      OUTPUTS_DIR: path.join(invocationDir, "outputs"),
+      LOGS_DIR: path.join(invocationDir, "logs"),
     };
 
     // Structured-failure extractor — when declared on the node, resolve the
@@ -93,6 +104,15 @@ const localExecHandler: NodeHandler = {
 
       onHeartbeat();
 
+      // Phase 4 — persist the full child output into `<inv>/logs/`
+      // alongside the in-memory tail used by triage / summaries.
+      if (typeof ctx.invocationLogger?.stdout === "function") {
+        try {
+          if (stdout) await ctx.invocationLogger.stdout(stdout);
+          if (stderr) await ctx.invocationLogger.stderr(stderr);
+        } catch { /* best-effort */ }
+      }
+
       const output = (stdout + stderr).trim();
 
       ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "local-exec" });
@@ -111,6 +131,14 @@ const localExecHandler: NodeHandler = {
       const stdout = execErr.stdout ?? "";
       const stderr = execErr.stderr ?? "";
       const combinedOutput = (stdout + stderr).trim();
+
+      // Phase 4 — persist the failed child output too.
+      if (typeof ctx.invocationLogger?.stdout === "function") {
+        try {
+          if (stdout) await ctx.invocationLogger.stdout(stdout);
+          if (stderr) await ctx.invocationLogger.stderr(stderr);
+        } catch { /* best-effort */ }
+      }
 
       // Timeout kill — shell port normalizes SIGTERM timeouts to timedOut=true
       if (execErr.timedOut) {

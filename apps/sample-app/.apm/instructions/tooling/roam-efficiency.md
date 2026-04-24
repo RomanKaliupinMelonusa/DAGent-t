@@ -31,5 +31,7 @@ If yes — stop reading, start editing.
 
 1. Run **one** `roam_batch_search` to consolidate unknowns.
 2. Still unclear -> write a `// TODO:` comment and move to the next sub-task.
-3. Hit the limit twice consecutively -> `report_outcome` (with docNote) the blocker,
-   proceed with best-effort implementation.
+3. Hit the limit twice consecutively -> write the blocker to `$OUTPUTS_DIR/summary.md`
+   (MUST start with the YAML front-matter envelope — see the global completion
+   block for the canonical `cat <<EOF` form), proceed with best-effort
+   implementation.

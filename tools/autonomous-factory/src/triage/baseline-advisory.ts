@@ -23,6 +23,7 @@
  */
 
 import type { BaselineProfile, BaselineEntry } from "../ports/baseline-loader.js";
+import { featureRelPath } from "../adapters/feature-paths.js";
 
 /** Cap per channel so the advisory stays compact. */
 const MAX_PATTERNS_PER_KIND = 6;
@@ -108,7 +109,7 @@ export function formatBaselineAdvisory(
 
   parts.push("");
   parts.push(
-    `> Full baseline: \`<appRoot>/in-progress/${slug}_BASELINE.json\`.`,
+    `> Full baseline: \`<appRoot>/${featureRelPath(slug, "baseline")}\`.`,
   );
 
   return parts.join("\n");

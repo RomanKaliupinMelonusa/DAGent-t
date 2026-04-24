@@ -29,6 +29,7 @@ import fs from "node:fs";
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
 import { hashAcceptanceContract, loadAcceptanceContract } from "../../apm/acceptance-schema.js";
+import { featurePath } from "../../adapters/feature-paths.js";
 
 export const SPEC_COMPILER_KEY = "spec-compiler";
 
@@ -108,11 +109,11 @@ export const acceptanceIntegrityMiddleware: NodeMiddleware = {
     const result = await next();
     if (result.outcome !== "completed") return result;
 
-    // The spec-compiler is expected to have written
-    // `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`. If it didn't, we
-    // fail the node — completion without the artifact is a contract
+    // The spec-compiler is expected to have written the kickoff
+    // `<appRoot>/in-progress/<slug>/_kickoff/acceptance.yml`. If it didn't,
+    // we fail the node — completion without the artifact is a contract
     // violation against the agent's job description.
-    const acceptancePath = `${ctx.appRoot}/in-progress/${ctx.slug}_ACCEPTANCE.yml`;
+    const acceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
     if (!fs.existsSync(acceptancePath)) {
       return {
         outcome: "failed",

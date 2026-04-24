@@ -133,12 +133,35 @@ Violations of this direction are the main source of tech debt (see [Rough edges]
    - `approval`: wait on a human gate (elevated-infra).
    - `triage`: classify a prior failure, emit DAG reset commands.
 6. **Commands back to kernel**
-   Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `set-pending-context`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
+   Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `stage-invocation`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
 7. **Effect execution** ([kernel/effect-executor.ts](src/kernel/effect-executor.ts))
    `persist-state`, `persist-execution-record`, `telemetry-event`, `reindex`, `write-halt-artifact` flow to adapters.
 8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `in-progress/`.
 
 **Failure path**: if post-deploy verification (`integration-test`, `live-ui`) fails, the `triage` handler runs the [2-layer classifier](src/triage/index.ts) (RAG substring → optional LLM fallback), emits a `reset-nodes` command with the responsible domain's items, and the loop picks them up on the next batch. Bounded by 5 redevelopment cycles.
+
+---
+
+## The Node I/O Contract
+
+Every DAG node's I/O flows through one declarative contract backed by the [`ArtifactBus`](src/ports/artifact-bus.ts) port. Agents declare `consumes_kickoff`, `consumes_artifacts`, and `produces_artifacts` in `workflows.yml`; the kernel resolves inputs, enforces declared outputs, and indexes every dispatch in `state.artifacts[invocationId]` — the authoritative lineage ledger. No handler hardcodes filenames.
+
+```
+apps/<app>/in-progress/<slug>/
+  _state.json                      # DAG state + invocation ledger (artifacts[inv])
+  _kickoff/<kind>.<ext>            # feature inputs authored BEFORE any node runs
+  <nodeKey>/<invocationId>/        # immutable once sealed
+    meta.json                      # mirror of InvocationRecord
+    inputs/                        # materialized from declared consumes_*
+      params.in.json               # resolved input manifest
+      <kind>.<ext>                 # one file per resolved input (copied, not symlinked)
+    outputs/                       # one file per declared produces_artifacts
+      <kind>.<ext>                 # e.g. summary.md, deployment-url.json, ci-result.json, triage-handoff.json
+    logs/
+      events.jsonl · tool-calls.jsonl · messages.jsonl · stdout.log · stderr.log
+```
+
+Re-runs never overwrite — each dispatch creates a fresh invocation dir. `report_outcome` is now `{ status, message? }` only; everything else is a declared artifact. The kernel hard-fails when declared `produces_artifacts` are missing (errorSignature `missing_required_output:<kind>`) and routes through `on_failure.triage`. Inputs are materialized into `<inv>/inputs/` *before* the handler runs — `INPUTS_DIR`, `OUTPUTS_DIR`, and `LOGS_DIR` env vars are real, file-backed paths. Every handler emits the same `node.*` event schema keyed by `invocationId`; per-invocation logs sink to `<inv>/logs/` via the `InvocationLogger` port. Triage hands off to retried dev agents through `outputs/triage-handoff.json` — no prose injection, no `pendingContext` string. See [`docs/04-state-machine.md` → "The Node I/O Contract"](docs/04-state-machine.md#the-node-io-contract) for the full reference.
 
 ---
 

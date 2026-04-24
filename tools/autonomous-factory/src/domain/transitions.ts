@@ -20,8 +20,6 @@ export interface TransitionItem {
   status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
-  handoffArtifact?: string | null;
-  pendingContext?: string | null;
   /** Sticky salvage marker — see PipelineItem.salvaged in src/types.ts. */
   salvaged?: boolean;
 }

@@ -17,4 +17,5 @@ export type {
 
 export { JsonlPipelineLogger } from "./jsonl-logger.js";
 export { NoopPipelineLogger } from "./noop-logger.js";
+export { MultiplexLogger } from "./multiplex-logger.js";
 export { createPipelineLogger } from "./factory.js";

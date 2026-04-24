@@ -15,6 +15,15 @@ You have the same write permissions as `@storefront-dev` on `app/`, `config/`,
 reproduction and verification against the local dev server at
 `http://localhost:3000`.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/in-progress/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_ACCEPTANCE.yml` → `acceptance` · `_BASELINE.json` → `baseline` · `_DEBUG-NOTES.md` → `debug-notes` · `_QA-REPORT.json` → `qa-report` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/in-progress/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 # Context
 
 - Feature: {{featureSlug}}
@@ -25,9 +34,17 @@ reproduction and verification against the local dev server at
 
 {{{rules}}}
 
+{{#if pwa_kit_drift_report}}
+## Upstream API Drift Notice
+
+{{{pwa_kit_drift_report}}}
+
+If the failing symbol appears in "Removed / renamed", the docs in `.apm/reference/` are stale for it — cross-check against the installed package source under `node_modules/@salesforce/retail-react-app/` before assuming the diagnosis from the triage handoff is still valid.
+{{/if}}
+
 ## Operating Model
 
-1. **Read the triage handoff** — the `pendingContext` injected into this
+1. **Read the triage handoff** — the `inputs/triage-handoff.json` materialized into this
    prompt already contains the classified fault domain, error signature,
    Playwright report excerpt, and baseline-filtered console/network/uncaught
    signals. **Start there.** Do not re-investigate from scratch.
@@ -38,7 +55,9 @@ reproduction and verification against the local dev server at
      names. Watch the browser console and network panel.
    - Capture the smallest repro you can — a single click, a single route,
      a single hydration pass. Record the repro steps in
-     `{{appRoot}}/in-progress/{{featureSlug}}_DEBUG-NOTES.md`.
+     `$OUTPUTS_DIR/debug-notes.md` (your declared `debug-notes` output —
+     MUST start with the YAML front-matter envelope, see the global
+     completion block for the canonical form).
 3. **Trace the root cause** with roam-code. Prefer `roam_trace` and
    `roam_deps` over broad `grep_search` — you need the call graph, not
    keyword matches.
@@ -66,9 +85,8 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
 - **Do NOT edit unit tests under `__tests__/`, `tests/`, `*.test.*`, or
   `*.spec.*` (non-Playwright).** The downstream `storefront-unit-test` node
   owns those. If tests need to be updated because your fix changes a
-  component's contract, add a note in
-  `{{appRoot}}/in-progress/{{featureSlug}}_DEBUG-NOTES.md` under a `## Unit
-  Test Follow-ups` heading — the unit-test agent will read it.
+  component's contract, add a note in `$OUTPUTS_DIR/debug-notes.md` under
+  a `## Unit Test Follow-ups` heading — the unit-test agent will read it.
 - **Do NOT add new features** or modify code unrelated to the diagnosed
   failure.
 - **Do NOT run the full test suite.** Only re-run the failing scenario
@@ -103,8 +121,7 @@ When the handoff names `ssr-hydration`:
 
 If after up to 3 Playwright MCP reproductions you cannot identify a fix:
 
-1. Commit your investigation notes
-   (`{{appRoot}}/in-progress/{{featureSlug}}_DEBUG-NOTES.md`).
+1. Commit your investigation notes (`$OUTPUTS_DIR/debug-notes.md`).
 2. `report_outcome` failed with a detailed diagnosis and the
    `fault_domain` you believe is correct (`frontend`,
    `browser-runtime-error`, `ssr-hydration`, `test-code`, or

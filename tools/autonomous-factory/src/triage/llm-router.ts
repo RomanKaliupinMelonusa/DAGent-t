@@ -14,9 +14,9 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageSignature } from "../apm/types.js";
+import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 
 export interface LlmTriageResult {
   fault_domain: string;
@@ -71,7 +71,8 @@ function appendNovelTriageLog(
   appRoot: string,
   entry: NovelTriageEntry,
 ): void {
-  const logPath = path.join(appRoot, "in-progress", `${slug}_NOVEL_TRIAGE.jsonl`);
+  const logPath = featurePath(appRoot, slug, "novel-triage");
+  ensureFeatureDir(appRoot, slug, "novel-triage");
   const line = JSON.stringify(entry) + "\n";
   fs.appendFileSync(logPath, line, "utf-8");
 }

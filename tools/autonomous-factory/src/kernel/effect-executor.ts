@@ -3,6 +3,17 @@
  *
  * The kernel is pure — it returns Effect descriptors. This module
  * translates those into real I/O operations via port interfaces.
+ *
+ * Phase 4.2 — effects are partitioned into two classes:
+ *
+ *   - **critical**: awaited in order. A slow critical sink blocks the
+ *     pipeline loop (by design — state mutations and invocation records
+ *     must land before the next batch runs).
+ *   - **observational**: submitted to a module-level queue and drained
+ *     by a bounded worker pool in the background. `executeEffects`
+ *     returns as soon as critical effects finish. A slow telemetry sink
+ *     never blocks the loop. Queue has a fixed depth cap; overflow drops
+ *     oldest and bumps a counter.
  */
 
 import type { Effect } from "./effects.js";
@@ -15,21 +26,201 @@ export interface EffectPorts {
 }
 
 /**
- * Execute a list of effects sequentially against the provided ports.
- * Returns the count of successfully executed effects.
+ * Classify an effect as critical (state-mutating, must block) or
+ * observational (metrics/logging, fire-and-forget). Keyed purely by
+ * `effect.type` so it stays a pure function over the Effect union.
+ */
+function classifyEffect(effect: Effect): "critical" | "observational" {
+  switch (effect.type) {
+    case "persist-state":
+    case "persist-execution-record":
+    case "write-halt-artifact":
+    case "append-invocation-record":
+    case "seal-invocation":
+      return "critical";
+    case "telemetry-event":
+    case "reindex":
+      return "observational";
+    default: {
+      const _exhaustive: never = effect;
+      return _exhaustive;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Observational queue — bounded FIFO drained in the background.
+// ---------------------------------------------------------------------------
+
+/** Default cap on the observational in-flight + queued depth. Overridable
+ *  via `configureObservationalQueue({ cap })` — kept module-level so the
+ *  loop doesn't need to thread it through every call site. */
+const DEFAULT_QUEUE_CAP = 256;
+const DEFAULT_CONCURRENCY = 4;
+
+interface QueueEntry {
+  readonly effect: Effect;
+  readonly ports: EffectPorts;
+}
+
+interface ObservationalState {
+  queued: QueueEntry[];
+  inFlight: number;
+  concurrency: number;
+  cap: number;
+  dropped: number;
+  processed: number;
+  /** Promises currently executing — awaited by `drainObservational()`
+   *  so tests can assert on the post-drain state. */
+  pending: Set<Promise<void>>;
+}
+
+const observational: ObservationalState = {
+  queued: [],
+  inFlight: 0,
+  concurrency: DEFAULT_CONCURRENCY,
+  cap: DEFAULT_QUEUE_CAP,
+  dropped: 0,
+  processed: 0,
+  pending: new Set(),
+};
+
+/** Tune the observational queue. Intended for test harnesses and the
+ *  composition root; runtime reconfiguration during a pipeline run is
+ *  supported but discouraged. */
+export function configureObservationalQueue(opts: {
+  cap?: number;
+  concurrency?: number;
+}): void {
+  if (opts.cap !== undefined) observational.cap = Math.max(1, opts.cap);
+  if (opts.concurrency !== undefined) {
+    observational.concurrency = Math.max(1, opts.concurrency);
+  }
+}
+
+/** Snapshot queue metrics — read-only surface for tests and telemetry. */
+export function observationalQueueMetrics(): {
+  readonly queueDepth: number;
+  readonly inFlight: number;
+  readonly dropped: number;
+  readonly processed: number;
+  readonly cap: number;
+} {
+  return {
+    queueDepth: observational.queued.length,
+    inFlight: observational.inFlight,
+    dropped: observational.dropped,
+    processed: observational.processed,
+    cap: observational.cap,
+  };
+}
+
+/** Wait until the observational queue is empty AND all in-flight effects
+ *  have completed. Used by tests; the pipeline loop never calls this. */
+export async function drainObservational(): Promise<void> {
+  while (observational.queued.length > 0 || observational.inFlight > 0) {
+    if (observational.pending.size === 0) {
+      // Nothing in flight but queue non-empty — kick the pump once.
+      pumpObservational();
+      if (observational.pending.size === 0) return;
+    }
+    await Promise.race(observational.pending);
+  }
+}
+
+/** Reset all queue state — tests only. */
+export function _resetObservationalQueueForTests(): void {
+  observational.queued = [];
+  observational.inFlight = 0;
+  observational.dropped = 0;
+  observational.processed = 0;
+  observational.pending.clear();
+  observational.cap = DEFAULT_QUEUE_CAP;
+  observational.concurrency = DEFAULT_CONCURRENCY;
+}
+
+/** Submit an observational effect to the queue. Drops oldest if the
+ *  combined (queued + in-flight) depth exceeds the cap. Never throws. */
+function submitObservational(effect: Effect, ports: EffectPorts): void {
+  const depth = observational.queued.length + observational.inFlight;
+  if (depth >= observational.cap) {
+    // Drop oldest — matches the plan's "never drop critical, drop oldest
+    // observational when saturated" rule. Newest survives.
+    observational.queued.shift();
+    observational.dropped++;
+  }
+  observational.queued.push({ effect, ports });
+  pumpObservational();
+}
+
+function pumpObservational(): void {
+  while (
+    observational.inFlight < observational.concurrency &&
+    observational.queued.length > 0
+  ) {
+    const next = observational.queued.shift()!;
+    observational.inFlight++;
+    const p = runObservational(next.effect, next.ports)
+      .finally(() => {
+        observational.inFlight--;
+        observational.processed++;
+        observational.pending.delete(p);
+        // Drain remaining queued entries without blowing the stack.
+        if (observational.queued.length > 0) queueMicrotask(pumpObservational);
+      });
+    observational.pending.add(p);
+  }
+}
+
+async function runObservational(effect: Effect, ports: EffectPorts): Promise<void> {
+  try {
+    switch (effect.type) {
+      case "telemetry-event":
+        ports.telemetry.event(effect.category, effect.itemKey, effect.context);
+        break;
+      case "reindex":
+        ports.telemetry.event("roam.reindex", null, { categories: effect.categories });
+        break;
+      default:
+        // Non-observational effects should never reach here; silently ignore.
+        break;
+    }
+  } catch {
+    // Observational effects are fire-and-forget — sink failures never
+    // propagate into the pipeline loop.
+  }
+}
+
+/**
+ * Execute a list of effects. Critical effects run sequentially and are
+ * awaited before the returned promise resolves. Observational effects
+ * are submitted to the background queue and drained concurrently — the
+ * returned promise does NOT wait for them.
+ *
+ * Returns the count of effects accepted (all critical executed + all
+ * observational submitted, whether or not they have been processed).
+ * Callers treating this as a "work done" counter should prefer
+ * `observationalQueueMetrics().processed` for the observational side.
  */
 export async function executeEffects(
   effects: readonly Effect[],
   ports: EffectPorts,
 ): Promise<number> {
-  let executed = 0;
+  let accepted = 0;
 
   for (const effect of effects) {
+    if (classifyEffect(effect) === "observational") {
+      submitObservational(effect, ports);
+      accepted++;
+      continue;
+    }
+
+    // Critical — await in order.
     switch (effect.type) {
       case "persist-state":
         // State persistence is handled by the loop's lifecycle.commitState(),
         // not individual effects. This is a placeholder for future use.
-        executed++;
+        accepted++;
         break;
 
       case "persist-execution-record":
@@ -38,48 +229,9 @@ export async function executeEffects(
             executionId: effect.record.executionId,
             nodeKey: effect.record.nodeKey,
           });
-          executed++;
+          accepted++;
         } catch {
           // Non-fatal — don't block the pipeline for telemetry failures
-        }
-        break;
-
-      case "persist-pending-context":
-        try {
-          await ports.stateStore.setPendingContext(effect.slug, effect.itemKey, effect.context);
-          executed++;
-        } catch {
-          // Non-fatal — context injection is best-effort
-        }
-        break;
-
-      case "persist-triage-record":
-        try {
-          await ports.stateStore.setLastTriageRecord(effect.slug, effect.record);
-          executed++;
-        } catch {
-          // Non-fatal
-        }
-        break;
-
-      case "reindex":
-        // Reindex is a roam-code operation — emit telemetry so the loop
-        // layer can trigger it if needed. The effect executor doesn't
-        // have a direct roam-code port.
-        try {
-          ports.telemetry.event("roam.reindex", null, { categories: effect.categories });
-          executed++;
-        } catch {
-          // Non-fatal
-        }
-        break;
-
-      case "telemetry-event":
-        try {
-          ports.telemetry.event(effect.category, effect.itemKey, effect.context);
-          executed++;
-        } catch {
-          // Non-fatal
         }
         break;
 
@@ -117,18 +269,48 @@ export async function executeEffects(
           lines.push(`3. Run: \`npm run pipeline:resume ${effect.slug}\` — (not yet implemented for escalation halts; reset the stuck node via \`pipeline:reset-scripts\` or clear \`${effect.slug}_HALT.md\` and re-run \`agent:run\` to retry).`);
           lines.push("");
           await ports.stateStore.writeHaltArtifact(effect.slug, lines.join("\n") + "\n");
-          executed++;
+          accepted++;
         } catch {
           // Non-fatal — halt itself is already recorded via telemetry + kernel signal
         }
         break;
 
+      case "append-invocation-record":
+        try {
+          await ports.stateStore.appendInvocationRecord(effect.slug, effect.input);
+          accepted++;
+        } catch (err) {
+          // Non-fatal — ledger is a derived index, the handler still runs.
+          ports.telemetry.event("invocation.append_failed", null, {
+            slug: effect.slug,
+            invocationId: effect.input.invocationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+
+      case "seal-invocation":
+        try {
+          await ports.stateStore.sealInvocation(effect.slug, effect.input);
+          accepted++;
+        } catch (err) {
+          // Non-fatal — the invocation dir may have been cleaned up or the
+          // append effect may have been dropped earlier in the same batch.
+          ports.telemetry.event("invocation.seal_failed", null, {
+            slug: effect.slug,
+            invocationId: effect.input.invocationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+
       default: {
-        const _exhaustive: never = effect;
+        // Unreachable — classifyEffect partitions the union and
+        // observational branches returned early above.
         break;
       }
     }
   }
 
-  return executed;
+  return accepted;
 }

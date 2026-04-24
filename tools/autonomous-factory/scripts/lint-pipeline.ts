@@ -62,10 +62,11 @@ function lintApp(appRoot: string): LintReport {
     workflows = Object.keys(compiled.workflows).length;
     agents = Object.keys(compiled.agents).length;
     const handlerDefaults = compiled.config?.handler_defaults;
+    const strict = compiled.config?.strict_handler_inference;
     for (const [wfName, wf] of Object.entries(compiled.workflows)) {
       for (const [nodeKey, node] of Object.entries(wf.nodes)) {
         nodes++;
-        const handlerRef = node.handler ?? inferHandler(node.type, node.script_type, handlerDefaults);
+        const handlerRef = node.handler ?? inferHandler(node.type, node.script_type, handlerDefaults, strict);
         if (!handlerRef) {
           issues.push({
             app: appRel,

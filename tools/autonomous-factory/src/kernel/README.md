@@ -41,7 +41,7 @@ await executeEffects(effects, { stateStore, telemetry, fileSystem });
 1. **No `async` anywhere in this folder** (except `effect-executor.ts`).
 2. **No I/O imports** — no `node:fs`, `node:child_process`, `@github/copilot-sdk`, `gh`, `git`. Lint-enforced where possible.
 3. **State is replaced, not mutated in place.** Every transition produces a new state object via `structuredClone`.
-4. **`process(cmd)` is idempotent for queries but serialised for writes.** Callers must not call `process` concurrently for the same slug.
+4. **`process(cmd)` is idempotent for queries but serialised for writes.** Callers must not call `process` concurrently for the same slug. A runtime re-entrance guard throws `KernelReentryError` if `process()` is invoked nested (e.g. an effect consumer recurses back into the kernel inline instead of returning effects to the caller).
 5. **Handlers do not import this folder.** They emit `DagCommand[]` in their `NodeResult`; dispatch wraps those into kernel commands.
 
 ## How to extend

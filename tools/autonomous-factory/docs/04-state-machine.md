@@ -319,7 +319,6 @@ classDiagram
         +string feature
         +string workflowType
         +string started
-        +string|null deployedUrl
         +string|null implementationNotes
         +boolean|null elevatedApply
         +PipelineItem[] items
@@ -329,6 +328,7 @@ classDiagram
         +Record~string,string~ nodeTypes
         +Record~string,string~ nodeCategories
         +string[] naByType
+        +Record~string,InvocationRecord~ artifacts
     }
 
     class PipelineItem {
@@ -338,8 +338,6 @@ classDiagram
         +string phase
         +string status
         +string|null error
-        +string|null docNote
-        +string|null handoffArtifact
     }
 
     class ErrorEntry {
@@ -377,12 +375,12 @@ classDiagram
 
 | File | Format | Purpose |
 |------|--------|---------|
-| `in-progress/<slug>_STATE.json` | JSON | Machine-readable state (read by orchestrator) |
-| `in-progress/<slug>_TRANS.md` | Markdown | Human-readable view (auto-generated from state) |
+| `in-progress/<slug>/_state.json` | JSON | Machine-readable state (read by orchestrator) |
+| `in-progress/<slug>/_trans.md` | Markdown | Human-readable view (auto-generated from state) |
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
-> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_state.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
 
 ---
 
@@ -426,9 +424,8 @@ flowchart TD
 | `npm run pipeline:status <slug>` | Show current pipeline state |
 | `npm run pipeline:next <slug>` | Get next single item (naive order) |
 | `npm run pipeline:next-available <slug>` | Get all parallelizable items (DAG-aware) |
-| `npm run pipeline:set-note <slug> <note>` | Set implementation notes |
-| `npm run pipeline:doc-note <slug> <key> <note>` | Set per-item doc-note for docs handoff |
-| `npm run pipeline:set-url <slug> <url>` | Set deployed URL after deployment |
+
+> **No item-scoped CLI verbs.** `docNote`, `handoffArtifact`, and `deployedUrl` are no longer state fields — dev agents emit them as declared artifacts (`outputs/summary.md`, `outputs/<kind>.json`, `outputs/deployment-url.json`). The kernel reads them from disk via the `ArtifactBus` port. See "The Node I/O Contract" below.
 
 ---
 
@@ -512,6 +509,60 @@ When a test node fails, the error output and triage classification are **injecte
 | **3** | Legacy keywords | `api`, `500`, `cors`, `/backend/`, `/frontend/` | Fallback for SDK crashes; no-match → itemKey only |
 
 > **Ambiguous fallback changed:** The zero-match keyword fallback now returns `[itemKey]` only (early return) — it no longer resets all dev items. This prevents a single ambiguous error from triggering a full pipeline reset.
+
+---
+
+## The Node I/O Contract
+
+> Formerly `docs/06-roadmap/artifact-bus.md` Phases 1–6 + "Unified Node I/O + Observability Contract" Phases A–G. Shipped. This section is the mainline reference.
+
+Every DAG node's I/O flows through a single declarative contract — the **artifact bus** — backed by the `ArtifactBus` port ([src/ports/artifact-bus.ts](../src/ports/artifact-bus.ts)) and its filesystem adapter ([src/adapters/file-artifact-bus.ts](../src/adapters/file-artifact-bus.ts)), with the per-invocation directory tree owned by the `InvocationFilesystem` port ([src/ports/invocation-filesystem.ts](../src/ports/invocation-filesystem.ts)). Agents never hardcode filenames; they declare `consumes_kickoff`, `consumes_artifacts`, `consumes_reroute`, and `produces_artifacts` in [workflows.yml](../../../apps/sample-app/.apm/workflows.yml), and the kernel enforces the contract.
+
+### Directory layout
+
+```
+apps/<app>/in-progress/<slug>/
+  _state.json                      # kernel-owned DAG state + invocation ledger
+  _trans.md                        # human-readable transition log
+  _kickoff/                        # feature inputs authored BEFORE any node runs
+    spec.md                        # user-authored feature spec
+  <nodeKey>/
+    <invocationId>/                # immutable once sealed
+      meta.json                    # mirror of InvocationRecord (trigger · parentInvocationId · cycleIndex · outcome · timestamps)
+      inputs/                      # materialized BEFORE handler runs by invocation-builder
+        params.in.json             # resolved input manifest
+        <kind>.<ext>               # one file per resolved consumes_kickoff/consumes_artifacts/consumes_reroute entry
+      outputs/                     # one file per declared produces_artifacts (kernel validates on completion)
+        <kind>.<ext>               # e.g. summary.md, deployment-url.json, ci-result.json, approval.json, triage-handoff.json
+      logs/                        # populated by the InvocationLogger port
+        events.jsonl               # node.* lifecycle events keyed by invocationId
+        tool-calls.jsonl           # SDK tool invocations from the harness
+        messages.jsonl             # LLM message stream
+        stdout.log / stderr.log    # script-node child process output (full stream)
+```
+
+The `_kickoff/` scope is the only non-node path. Re-runs never overwrite: every dispatch creates a new `<invocationId>` directory (ULID-prefix time-sortable). `_state.json.artifacts[invocationId]` is authoritative; `meta.json` is a disk-level mirror for inspection. `INPUTS_DIR`, `OUTPUTS_DIR`, and `LOGS_DIR` env vars exposed to script handlers point at the matching subdirs and are real, file-backed paths.
+
+### The five mechanics
+
+| Mechanic | Where | Contract |
+|---|---|---|
+| **Declare** | `workflows.yml` | Each node lists `consumes_kickoff: [kind]`, `consumes_artifacts: [{from, kind}]`, `consumes_reroute: [kind]` (optional, only resolved when `trigger === "triage-reroute"`), `produces_artifacts: [kind]`. Artifact kinds registered in [artifact-catalog.ts](../src/apm/artifact-catalog.ts). |
+| **Resolve** | `loop/dispatch/invocation-builder.ts` (via `materializeInputsMiddleware`) | At dispatch, the builder walks the ledger, resolves each declared input to an `ArtifactRef`, **copies** the file into `<inv>/inputs/<kind>.<ext>`, and writes `inputs/params.in.json`. Required-but-missing throws `MissingRequiredInputError` → synthetic failed `InvocationRecord` with `errorSignature = missing_required_input:<kind>`. |
+| **Write** | Agent writes to `$OUTPUTS_DIR/<kind>.<ext>`; `harness/outcome-tool.ts` `report_outcome({status, message?})` signals completion | The collapsed `report_outcome` schema carries only control flow — every payload (summary, deployment URL, CI result, approval, triage handoff) is a declared artifact written to `outputs/`. The `ArtifactBus` write path computes `<appRoot>/in-progress/<slug>/<nodeKey>/<invocationId>/outputs/<kind>.<ext>`. |
+| **Enforce** | `kernel/pipeline-kernel.ts` | On `report_outcome(completed)`, the kernel diffs declared `produces_artifacts` against `state.artifacts[inv].outputs`. Missing → `failed` with `errorSignature = missing_required_output:<kind>` → routed through `on_failure.triage`. |
+| **Trace** | `state.artifacts[inv].parentInvocationId` + `cli/pipeline-lineage.ts` | The ledger is the lineage graph. `pipeline:lineage <slug> --tree` renders the ancestry forest; `TriageArtifactLoader.loadEvidenceBundle` produces a `{ invocation, ancestry, events, artifacts }` record for triage agents. Triage re-entrance: triage emits `outputs/triage-handoff.json`; the rerouted dev node declares `consumes_reroute: [triage-handoff]`; the builder copies it into the next invocation's `inputs/triage-handoff.json`. |
+
+### Observability: one event stream, one primary key
+
+Every handler type emits the same baseline `node.*` event schema. Events sink to two places: the global `_EVENTS.jsonl` (via the `PipelineLogger` port, for cross-invocation queries) and the per-invocation `<inv>/logs/events.jsonl` (via the `InvocationLogger` port, for self-contained debugging). Tool calls and LLM messages sink only to `<inv>/logs/`. Script-node stdout/stderr is streamed live into `<inv>/logs/stdout.log` / `stderr.log` while a tail buffer feeds the failure summary. Triage walks `state.artifacts` for lineage and reads `<inv>/logs/` + `<inv>/outputs/` for evidence — never by prose.
+
+### Extension points
+
+- **New artifact kind.** Add to [artifact-catalog.ts](../src/apm/artifact-catalog.ts); declare it in workflow nodes' `produces_artifacts` / `consumes_artifacts`.
+- **New node type.** Register a handler under [src/handlers/](../src/handlers/); it inherits the contract — inputs materialized into `inputs/`, declared `produces_artifacts` written to `outputs/`, uniform event stream into `logs/`.
+- **Schema gate on prompts.** The APM compiler ([src/apm/instruction-lint.ts](../src/apm/instruction-lint.ts)) rejects rendered instructions that hardcode legacy `<slug>_*` paths or unbacked `${SLUG}_*` env vars. Violations fail bootstrap with line refs.
+- **New consumer of the ledger.** Depend on `TriageArtifactLoader` or `ArtifactBus` — never on flat filesystem paths.
 
 ---
 

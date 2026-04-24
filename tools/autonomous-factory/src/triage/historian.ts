@@ -99,7 +99,7 @@ export function extractPriorAttempts(
 
 /**
  * Render the prior-attempts block as markdown for injection into a
- * redevelopment dev agent's `pendingContext`. Returns an empty string when
+ * redevelopment dev agent's triage-handoff input. Returns an empty string when
  * no prior attempts exist (i.e. first cycle — nothing to summarize).
  */
 export function buildPriorAttemptsBlock(

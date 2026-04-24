@@ -26,6 +26,16 @@ export interface PipelineRunConfig {
   readonly apmContext: ApmCompiledOutput;
   readonly roamAvailable: boolean;
   readonly logger: PipelineLogger;
+  /**
+   * Optional advisory markdown produced by the pinned-dependency preflight
+   * (see `lifecycle/dependency-pinning.ts`). When present, the context
+   * builder forwards it to the `AgentContext` of agents that consult the
+   * vendored reference snapshot (storefront-dev, storefront-debug,
+   * e2e-author) so their prompt templates can surface it as an "Upstream
+   * API Drift Notice". Absent when no drift was detected or no snapshot
+   * is configured.
+   */
+  readonly pwaKitDriftReport?: string;
 }
 
 /** All mutable state that persists across pipeline iterations. */

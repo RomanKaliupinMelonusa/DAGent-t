@@ -54,7 +54,22 @@ export type EventKind =
   | "hook.post.start"
   | "hook.post.end"
   // Metrics (structured observation, emitted by the metrics middleware)
-  | "node.metric";
+  | "node.metric"
+  // Artifact bus / invocation ledger (Phase 4)
+  | "invocation.append_failed"
+  | "invocation.seal_failed"
+  | "invocation.params_write_failed"
+  | "invocation.meta_write_failed"
+  | "invocation.meta_seal_failed"
+  | "invocation.node_report_failed"
+  // Uniform per-invocation lifecycle (Phase B — fires for every handler type
+  // regardless of whether the handler itself emits item.start/item.end).
+  // Stamped with { invocationId, nodeKey, trigger, parentInvocationId,
+  // cycleIndex, attempt }. Triage filters by invocationId for lineage.
+  | "node.start"
+  | "node.end"
+  | "node.artifact.write"
+  | "node.artifact.seal";
 
 // ---------------------------------------------------------------------------
 // Core types

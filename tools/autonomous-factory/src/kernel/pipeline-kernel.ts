@@ -34,11 +34,28 @@ export interface ProcessResult {
 // PipelineKernel
 // ---------------------------------------------------------------------------
 
+/**
+ * Phase 2.2 — thrown by `PipelineKernel.process()` when a nested (re-entrant)
+ * call is detected. The kernel is the sole state writer; any code path that
+ * appears to recurse into `process()` indicates an effect is being consumed
+ * inline instead of returned to the caller.
+ */
+export class KernelReentryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KernelReentryError";
+  }
+}
+
 export class PipelineKernel {
   private dagState: PipelineState;
   private runState: RunState;
   private readonly rules: KernelRules;
   private readonly slug: string;
+  /** Phase 2.2 — single-writer re-entrance guard. Flips to `true` for the
+   *  duration of `process()`; a nested call throws `KernelReentryError`
+   *  instead of silently corrupting state. */
+  #inFlight = false;
 
   constructor(
     slug: string,
@@ -141,6 +158,23 @@ export class PipelineKernel {
 
   /** Process a command and return the result + effects. */
   process(cmd: Command): ProcessResult {
+    if (this.#inFlight) {
+      throw new KernelReentryError(
+        `PipelineKernel.process() is not re-entrant. ` +
+          `A nested call was made while processing command "${cmd.type}". ` +
+          `Effects must be consumed by the caller — never recursively fed ` +
+          `back into the kernel inside a command handler.`,
+      );
+    }
+    this.#inFlight = true;
+    try {
+      return this.#processInner(cmd);
+    } finally {
+      this.#inFlight = false;
+    }
+  }
+
+  #processInner(cmd: Command): ProcessResult {
     const effects: Effect[] = [];
 
     switch (cmd.type) {
@@ -169,6 +203,10 @@ export class PipelineKernel {
         return this.processRecordForceRun(cmd.itemKey, cmd.changesDetected, effects);
       case "record-execution":
         return this.processRecordExecution(cmd.record, effects);
+      case "register-invocation":
+        return this.processRegisterInvocation(cmd.input, effects);
+      case "seal-invocation":
+        return this.processSealInvocation(cmd.input, effects);
       case "dag-command":
         return this.processDagCommand(cmd.inner, effects);
       default: {
@@ -319,6 +357,30 @@ export class PipelineKernel {
     return { result: { ok: true }, effects };
   }
 
+  private processRegisterInvocation(
+    input: import("../types.js").AppendInvocationInput,
+    effects: Effect[],
+  ): ProcessResult {
+    effects.push({
+      type: "append-invocation-record",
+      slug: this.slug,
+      input,
+    });
+    return { result: { ok: true }, effects };
+  }
+
+  private processSealInvocation(
+    input: import("../types.js").SealInvocationInput,
+    effects: Effect[],
+  ): ProcessResult {
+    effects.push({
+      type: "seal-invocation",
+      slug: this.slug,
+      input,
+    });
+    return { result: { ok: true }, effects };
+  }
+
   private processDagCommand(
     inner: import("../handlers/types.js").DagCommand,
     effects: Effect[],
@@ -383,39 +445,40 @@ export class PipelineKernel {
         return { result: { ok: true }, effects };
       }
 
-      case "set-pending-context": {
-        // Mirror pendingContext into in-memory dagState so that downstream
-        // readers (e.g. auto-skip evaluator via kernel.dagSnapshot()) see it
-        // immediately — not only after the deferred disk effect runs.
-        // The context may be a plain string or a structured PendingContextPayload.
-        // The disk adapter renders payloads to markdown; here we coerce to a
-        // non-empty string so auto-skip checks pass. The authoritative
-        // rendered version is written to disk by the deferred effect and
-        // survives via persistDagSnapshot's merge (disk → merged items).
-        const pcRendered = typeof inner.context === "string"
-          ? inner.context
-          : inner.context.narrative ?? "[pending-context]";
-        const pcItems = this.dagState.items.map((it) =>
-          it.key === inner.itemKey ? { ...it, pendingContext: pcRendered } : it,
+      case "stage-invocation": {
+        // Reserve an unsealed `InvocationRecord` for the target node's next
+        // dispatch. Replaces the old `set-pending-context` flow: instead of
+        // decorating `PipelineItem.pendingContext` (Phase 6 — removed), we
+        // add a record to
+        // `state.artifacts` that the dispatch hook will stamp `startedAt`
+        // on (rather than appending a fresh sibling). The dispatcher
+        // adopts the staged record by reading `item.latestInvocationId`.
+        // Phase 6 — re-entrance prose no longer rides on the staged record;
+        // re-entrance context flows through the `triage-handoff` JSON
+        // artifact (declared via `consumes_reroute`) which Phase 3's
+        // `materializeInputsMiddleware` copies into `<inv>/inputs/`
+        // before the dev agent runs.
+        const stagedItems = this.dagState.items.map((it) =>
+          it.key === inner.itemKey
+            ? { ...it, latestInvocationId: inner.invocationId }
+            : it,
         );
-        this.dagState = { ...this.dagState, items: pcItems } as PipelineState;
-
+        this.dagState = { ...this.dagState, items: stagedItems } as PipelineState;
         effects.push({
-          type: "persist-pending-context",
+          type: "append-invocation-record",
           slug: this.slug,
-          itemKey: inner.itemKey,
-          context: inner.context,
+          input: {
+            invocationId: inner.invocationId,
+            nodeKey: inner.itemKey,
+            trigger: inner.trigger,
+            ...(inner.parentInvocationId ? { parentInvocationId: inner.parentInvocationId } : {}),
+            ...(inner.producedBy ? { producedBy: inner.producedBy } : {}),
+            // No `startedAt` — the staged record has no run time yet; the
+            // dispatch hook stamps it when the handler begins.
+          },
         });
         return { result: { ok: true }, effects };
       }
-
-      case "set-triage-record":
-        effects.push({
-          type: "persist-triage-record",
-          slug: this.slug,
-          record: inner.record,
-        });
-        return { result: { ok: true }, effects };
 
       case "reindex":
         effects.push({

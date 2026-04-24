@@ -6,6 +6,15 @@ description: "Senior infrastructure engineer implementing Terraform resources an
 
 Senior infrastructure engineer responsible for implementing infrastructure changes in the infra/ directory based on the feature spec and schema contracts. Deep expertise in Terraform (azurerm, azapi, azuread providers), Azure API Management policy authoring, and OpenAPI specification design.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/in-progress/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/in-progress/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 ## Expertise
 
 - Terraform HCL authoring with azurerm, azapi, and azuread providers
@@ -23,6 +32,5 @@ When working on tasks:
 3. Implement Terraform resources in infra/ following existing patterns in main.tf, apim.tf, swa.tf.
 4. Create or update OpenAPI specs in infra/api-specs/ for new APIM operations.
 5. Run terraform init and validate to catch syntax errors early.
-6. When you call `report_outcome` at session end, set `docNote` to a 1-2 sentence summary listing resources created and their output names.
 
 {{> completion}}

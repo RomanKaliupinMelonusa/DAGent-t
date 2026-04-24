@@ -32,6 +32,9 @@ import {
   resolveCapabilityProfile,
   renderPreferencesMarkdown,
 } from "./capability-profiles.js";
+import { validateArtifactIO } from "./artifact-io-validator.js";
+import { lintAssembledInstructions, formatViolations } from "./instruction-lint.js";
+import { BUILTIN_TRIAGE_PATTERNS } from "../triage/builtin-patterns.js";
 
 // ---------------------------------------------------------------------------
 // Plugin discovery — record app-local plugin paths in compiled output
@@ -68,6 +71,76 @@ function listPluginFiles(dir: string): string[] {
 /** Graph-only fields that NEVER inherit from the node pool/templates. */
 const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure", "triage", "poll_target", "triage_profile", "post_ci_artifact_to_pr"]);
 
+/** Lightweight Levenshtein-based suggestion for config typos. Returns the
+ *  closest candidate within edit-distance ≤ 3, or null. */
+function nearestNeighbor(input: string, candidates: readonly string[]): string | null {
+  if (candidates.length === 0) return null;
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const cand of candidates) {
+    const d = editDistance(input, cand);
+    if (d < bestDist) { bestDist = d; best = cand; }
+  }
+  return bestDist <= 3 ? best : null;
+}
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const row = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = row[j];
+      row[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, row[j], row[j - 1]);
+      prev = tmp;
+    }
+  }
+  return row[n];
+}
+
+/**
+ * Session B (Item 4) — flatten `routeProfiles` so every entry has no
+ * remaining `extends` field. Single-level semantics with cycle detection.
+ * The output preserves profile keys but emits flat `{ triage?, routes }`
+ * objects (no `extends`), ready for node-level merging.
+ */
+function flattenRouteProfiles(
+  raw: Record<string, Record<string, unknown>> | undefined,
+): Record<string, { triage?: string; routes: Record<string, string | null> }> {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw;
+  const out: Record<string, { triage?: string; routes: Record<string, string | null> }> = {};
+
+  function resolve(key: string, stack: string[]): { triage?: string; routes: Record<string, string | null> } {
+    if (out[key]) return out[key];
+    if (stack.includes(key)) {
+      throw new ApmCompileError(
+        `routeProfiles inheritance cycle: ${[...stack, key].join(" → ")}`,
+      );
+    }
+    const entry = source[key];
+    if (!entry) {
+      throw new ApmCompileError(
+        `routeProfiles[${stack[stack.length - 1] ?? "?"}].extends references unknown profile "${key}". ` +
+        `Defined profiles: ${Object.keys(source).join(", ") || "(none)"}`,
+      );
+    }
+    const parentKey = typeof entry.extends === "string" ? entry.extends : null;
+    const parent = parentKey ? resolve(parentKey, [...stack, key]) : { routes: {} as Record<string, string | null> };
+    const selfRoutes = (entry.routes ?? {}) as Record<string, string | null>;
+    const merged = {
+      triage: (entry.triage as string | undefined) ?? parent.triage,
+      routes: { ...parent.routes, ...selfRoutes },
+    };
+    out[key] = merged;
+    return merged;
+  }
+
+  for (const key of Object.keys(source)) resolve(key, []);
+  return out;
+}
+
 /**
  * Merge node catalog (from manifest.nodes) and legacy _templates into workflow
  * nodes before Zod validation.
@@ -80,11 +153,11 @@ const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure", "triage", "poll_t
  * Graph-only fields (depends_on, on_failure, poll_target, triage_profile,
  * post_ci_artifact_to_pr) are NEVER inherited from catalog/templates.
  *
- * default_on_failure merging:
- *   - If the workflow declares `default_on_failure` and a node declares `on_failure`,
- *     the routes are merged (node routes win). If the node omits `triage`, it
- *     inherits from `default_on_failure.triage`.
- *   - Nodes without `on_failure` are untouched (no implicit opt-in).
+ * on_failure merging precedence (lowest → highest):
+ *   1. routeProfiles[on_failure.extends] (flattened, single-level w/ cycle check)
+ *   2. workflow-level default_on_failure
+ *   3. the node's own on_failure
+ * Nodes without `on_failure` are untouched (no implicit opt-in).
  */
 function mergeNodeCatalogIntoWorkflow(
   raw: Record<string, unknown>,
@@ -115,6 +188,9 @@ function mergeNodeCatalogIntoWorkflow(
   const rawNodes = raw.nodes as Record<string, Record<string, unknown>>;
   const mergedNodes: Record<string, Record<string, unknown>> = {};
   const defaultOnFailure = raw.default_on_failure as Record<string, unknown> | undefined;
+  const routeProfiles = flattenRouteProfiles(
+    raw.routeProfiles as Record<string, Record<string, unknown>> | undefined,
+  );
 
   for (const [key, nodeRaw] of Object.entries(rawNodes)) {
     // Resolve pool entry: explicit _node (new) or _template (legacy), else key-match
@@ -140,16 +216,34 @@ function mergeNodeCatalogIntoWorkflow(
       merged = nodeFields;
     }
 
-    // Merge default_on_failure into per-node on_failure
-    if (defaultOnFailure && merged.on_failure) {
+    // on_failure merge: routeProfiles[extends] → default_on_failure → node.on_failure
+    if (merged.on_failure) {
       const nodeOnFailure = merged.on_failure as Record<string, unknown>;
-      const defaultRoutes = (defaultOnFailure.routes ?? {}) as Record<string, unknown>;
-      const nodeRoutes = (nodeOnFailure.routes ?? {}) as Record<string, unknown>;
+      const extendsKey = typeof nodeOnFailure.extends === "string" ? nodeOnFailure.extends : null;
+      let base: { triage?: string; routes: Record<string, string | null> } = { routes: {} };
+
+      if (extendsKey) {
+        const profile = routeProfiles[extendsKey];
+        if (!profile) {
+          throw new ApmCompileError(
+            `Node "${key}" on_failure.extends references unknown routeProfile "${extendsKey}". ` +
+            `Defined profiles: ${Object.keys(routeProfiles).join(", ") || "(none)"}`,
+          );
+        }
+        base = { triage: profile.triage, routes: { ...profile.routes } };
+      }
+
+      if (defaultOnFailure) {
+        base = {
+          triage: (defaultOnFailure.triage as string | undefined) ?? base.triage,
+          routes: { ...base.routes, ...((defaultOnFailure.routes ?? {}) as Record<string, string | null>) },
+        };
+      }
+
+      const nodeRoutes = (nodeOnFailure.routes ?? {}) as Record<string, string | null>;
       merged.on_failure = {
-        // Node triage wins; fallback to default
-        triage: nodeOnFailure.triage ?? defaultOnFailure.triage,
-        // Default routes as base, node routes override
-        routes: { ...defaultRoutes, ...nodeRoutes },
+        triage: nodeOnFailure.triage ?? base.triage,
+        routes: { ...base.routes, ...nodeRoutes },
       };
     }
 
@@ -396,9 +490,64 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     }
   }
 
+  // --- 5c. Validate artifact-bus declarations per workflow (Phase 3). ---
+  // Every node's `consumes_kickoff`, `produces_artifacts`, and
+  // `consumes_artifacts` are checked against the artifact catalog and DAG
+  // topology. Soft warnings (optional missing outputs) are logged; hard
+  // violations throw `ApmCompileError`.
+  //
+  // Phase 1.3: `config.strict_consumes_artifacts` upgrades the
+  // "agent node declares no consumes_artifacts" condition from silent
+  // to fatal. Default off — flipping requires every agent node to either
+  // declare upstream edges or write `consumes_artifacts: []` explicitly.
+  const strictConsumesArtifacts =
+    manifest.config?.strict_consumes_artifacts === true;
+  for (const [workflowName, workflow] of Object.entries(workflows)) {
+    const { warnings } = validateArtifactIO(workflowName, workflow, {
+      strictConsumesArtifacts,
+    });
+    for (const w of warnings) {
+      console.warn(
+        `[APM] workflow "${workflowName}" node "${w.node}": ${w.message}`,
+      );
+    }
+  }
+
   // --- 6. For each agent: resolve includes, validate budget, load template, build compiled entry ---
   const agents: Record<string, ApmCompiledAgent> = {};
   const agentsDir = path.join(apmDir, "agents");
+
+  // --- 5c. Resolve app-registered Handlebars partials ---
+  // Inline source is recognised by `{{` or a newline; anything else is
+  // treated as a path relative to `.apm/` and read from disk. Names that
+  // collide with built-in partials or helpers registered in agents.ts
+  // raise a fatal error so apps can't silently override orchestrator
+  // contracts (e.g. the `completion` partial).
+  const BUILTIN_PARTIAL_NAMES = new Set(["completion", "eq", "artifact"]);
+  const resolvedHandlebarsPartials: Record<string, string> = {};
+  const declaredPartials = manifest.config?.handlebarsPartials ?? {};
+  for (const [name, source] of Object.entries(declaredPartials)) {
+    if (BUILTIN_PARTIAL_NAMES.has(name)) {
+      throw new ApmCompileError(
+        `config.handlebarsPartials["${name}"] collides with a built-in Handlebars ` +
+        `partial/helper. Built-in names reserved: ${[...BUILTIN_PARTIAL_NAMES].join(", ")}.`,
+      );
+    }
+    const isInline = source.includes("{{") || source.includes("\n");
+    if (isInline) {
+      resolvedHandlebarsPartials[name] = source;
+    } else {
+      const partialPath = path.join(apmDir, source);
+      if (!fs.existsSync(partialPath)) {
+        throw new ApmCompileError(
+          `config.handlebarsPartials["${name}"] points to "${source}" ` +
+          `which does not exist under .apm/. Provide inline source (containing ` +
+          `"{{" or a newline) or a valid path relative to .apm/.`,
+        );
+      }
+      resolvedHandlebarsPartials[name] = fs.readFileSync(partialPath, "utf-8");
+    }
+  }
 
   // --- 5b. Load triage packs ---
   const triagePacksDir = path.join(apmDir, "triage-packs");
@@ -421,6 +570,29 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       }));
       triagePacksByName.set(result.data.name, normalizedSigs);
     }
+  }
+
+  // Normalize `promptFile` to an ordered fragment array so downstream code
+  // is fragment-agnostic. A declared string becomes a single-entry array;
+  // a declared array is used verbatim. The join-string is the dedupe key
+  // for slug-literal lint reporting — agents sharing the identical fragment
+  // set are reported together.
+  const promptFragments = (agentDecl: { promptFile: string | string[] }): string[] =>
+    Array.isArray(agentDecl.promptFile) ? agentDecl.promptFile : [agentDecl.promptFile];
+  const promptFragmentKey = (agentDecl: { promptFile: string | string[] }): string =>
+    promptFragments(agentDecl).join("\0");
+
+  // Track agents that share a prompt-fragment set so the slug-literal lint
+  // reports each offending fragment-set once, listing every agent that
+  // reuses it. Without this, a prompt set referenced by N agents would
+  // print the same N×M offenders.
+  const lintReportedPromptKeys = new Set<string>();
+  const agentsByPromptKey = new Map<string, string[]>();
+  for (const [agentKey, agentDecl] of Object.entries(manifest.agents)) {
+    const k = promptFragmentKey(agentDecl);
+    const list = agentsByPromptKey.get(k);
+    if (list) list.push(agentKey);
+    else agentsByPromptKey.set(k, [agentKey]);
   }
 
   for (const [agentKey, agentDecl] of Object.entries(manifest.agents)) {
@@ -460,6 +632,17 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     // Assemble rules block
     const assembled = parts.join("\n\n");
 
+    // --- Phase 7: Schema gate on rendered instructions ---
+    // Reject prompts that hard-code legacy `<slug>_*` paths or unbacked
+    // `${SLUG}_*` envvars. Code spans (fenced blocks + inline backticks)
+    // are exempted so migration notes can quote the old shape.
+    const violations = lintAssembledInstructions(assembled);
+    if (violations.length > 0) {
+      throw new ApmCompileError(
+        formatViolations(agentKey, path.basename(appRoot), violations),
+      );
+    }
+
     // --- Capability profile resolution ---
     // When the agent declares `capability_profile`, flatten its extends
     // chain and translate into the effective `security` + `tools` blocks.
@@ -493,16 +676,55 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     const engine = getTiktokenEncoder() ? "tiktoken" : "heuristic";
     console.log(`[APM] agent "${agentKey}": ${tokenCount}/${manifest.tokenBudget} tokens (${pct}%) [${engine}]`);
 
-    // --- Load agent prompt template from .apm/agents/<promptFile> ---
-    const templatePath = path.join(agentsDir, agentDecl.promptFile);
-    if (!fs.existsSync(templatePath)) {
+    // --- Load agent prompt template(s) from .apm/agents/<promptFile> ---
+    // `promptFile` may be a single path or an ordered list of fragment
+    // paths; fragments are concatenated with a blank line between them
+    // into one template, applied to the rest of the pipeline as-is.
+    const fragments = promptFragments(agentDecl);
+    const fragmentContents: string[] = [];
+    for (const fragment of fragments) {
+      const templatePath = path.join(agentsDir, fragment);
+      if (!fs.existsSync(templatePath)) {
+        const via = fragments.length === 1
+          ? "via promptFile"
+          : `via promptFile fragment [${fragments.indexOf(fragment)}]`;
+        throw new ApmCompileError(
+          `Agent template not found: .apm/agents/${fragment} ` +
+          `(referenced by agent "${agentKey}" ${via}). ` +
+          `Create the file or fix the promptFile path in apm.yml.`,
+        );
+      }
+      fragmentContents.push(fs.readFileSync(templatePath, "utf-8"));
+    }
+    const systemPromptTemplate = fragmentContents.join("\n\n");
+    const promptSource = fragments.length === 1
+      ? fragments[0]
+      : `[${fragments.join(" + ")}]`;
+
+    // Lint: ERROR on literal `{{featureSlug}}_*.ext` constructions inside
+    // fenced code blocks. Those are executable instructions (shell snippets,
+    // tool-call arguments) that bypass the typed Declared I/O block and
+    // re-introduce the flat `in-progress/<slug>_*` namespace the artifact
+    // bus replaced. Inline-backtick references inside the standard "legacy
+    // path warning" boilerplate are intentional and excluded by this
+    // heuristic (only fenced ``` blocks are scanned). Promoted from
+    // warning to error after both apps cleared the surface.
+    const promptKey = promptFragmentKey(agentDecl);
+    const slugLiteralLint = lintAgentPromptForSlugLiterals(systemPromptTemplate);
+    if (slugLiteralLint.length > 0 && !lintReportedPromptKeys.has(promptKey)) {
+      lintReportedPromptKeys.add(promptKey);
+      const sharingAgents = agentsByPromptKey.get(promptKey) ?? [agentKey];
+      const sharedNote = sharingAgents.length > 1
+        ? ` (shared by agents: ${sharingAgents.join(", ")})`
+        : "";
+      const lines = slugLiteralLint
+        .map((hit) => `  .apm/agents/${promptSource}:${hit.line}: ${hit.text}`)
+        .join("\n");
       throw new ApmCompileError(
-        `Agent template not found: .apm/agents/${agentDecl.promptFile} ` +
-        `(referenced by agent "${agentKey}" via promptFile). ` +
-        `Create the file or fix the promptFile path in apm.yml.`,
+        `[APM] agent "${agentKey}": ${slugLiteralLint.length} literal {{featureSlug}}_* path(s) ` +
+        `inside fenced code blocks (use the Declared I/O block instead)${sharedNote}:\n${lines}`,
       );
     }
-    const systemPromptTemplate = fs.readFileSync(templatePath, "utf-8");
 
     // Resolve MCP configs for this agent
     const agentMcp: Record<string, ApmMcpConfig> = {};
@@ -537,6 +759,8 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
 
   // --- 7. Compile triage profiles ---
   const triageProfiles: Record<string, CompiledTriageProfile> = {};
+  // Reserved pseudo-domains never need to be declared in `domains:`.
+  const RESERVED_DOMAINS = new Set(["blocked"]);
   for (const [wfName, wf] of Object.entries(workflows)) {
     if (!wf.triage) continue;
     for (const [profileName, profile] of Object.entries(wf.triage)) {
@@ -552,14 +776,86 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
         signatures.push(...packSigs);
       }
 
+      // Resolve domain set: explicit `domains:` wins; otherwise derive from routing keys.
+      const routingKeys = Object.keys(profile.routing);
+      const declaredDomains = profile.domains;
+      if (declaredDomains && declaredDomains.length > 0) {
+        const declaredSet = new Set(declaredDomains);
+        for (const k of routingKeys) {
+          if (!declaredSet.has(k)) {
+            throw new ApmCompileError(
+              `Triage profile "${wfName}.${profileName}" declares routing domain "${k}" ` +
+              `that is not in the profile's domains list [${declaredDomains.join(", ")}]. ` +
+              `Add it to domains: or remove from routing:.`,
+            );
+          }
+        }
+      }
+      const domainSet = new Set(declaredDomains ?? routingKeys);
+
+      // Resolve patterns: prepend built-ins unless opted out. Built-in
+      // patterns are silently filtered out when their suggested domain is
+      // not in this profile's domain set — they are general-purpose hints,
+      // not required routes. User-declared patterns (from `profile.patterns`)
+      // are strictly validated: an unrouted domain is a config error.
+      const declaredPatterns = profile.patterns ?? [];
+      const includeBuiltins = profile.builtin_patterns !== false;
+      const filteredBuiltins = includeBuiltins
+        ? BUILTIN_TRIAGE_PATTERNS.filter(
+            (p) => domainSet.has(p.domain) || RESERVED_DOMAINS.has(p.domain),
+          )
+        : [];
+      const patterns = [...filteredBuiltins, ...declaredPatterns];
+
+      // Validate declared-pattern domains against the profile's domain set.
+      // Reserved pseudo-domains are allowed. Built-ins are not validated
+      // here — they were already filtered above.
+      for (const pat of declaredPatterns) {
+        if (!domainSet.has(pat.domain) && !RESERVED_DOMAINS.has(pat.domain)) {
+          throw new ApmCompileError(
+            `Triage profile "${wfName}.${profileName}" has a declared pattern emitting ` +
+            `domain "${pat.domain}" which is not in the profile's domain set ` +
+            `[${[...domainSet].join(", ")}]. ` +
+            `Add "${pat.domain}" to routing: or domains:.`,
+          );
+        }
+      }
+
       const compiledKey = `${wfName}.${profileName}`;
       triageProfiles[compiledKey] = {
         llm_fallback: profile.llm_fallback,
         ...(profile.classifier ? { classifier: profile.classifier } : {}),
         max_reroutes: profile.max_reroutes,
         routing: profile.routing,
+        domains: [...domainSet],
+        patterns,
         signatures,
       };
+    }
+
+    // Session B (Item 4) — validate every node's on_failure.routes key
+    // resolves to a declared domain for the referenced triage profile.
+    for (const [nodeKey, node] of Object.entries(wf.nodes)) {
+      if (!node.on_failure) continue;
+      const triageNodeKey = node.on_failure.triage;
+      const triageNode = wf.nodes[triageNodeKey];
+      const profileName = triageNode?.triage_profile;
+      if (!profileName) continue;
+      const compiledKey = `${wfName}.${profileName}`;
+      const compiled = triageProfiles[compiledKey];
+      if (!compiled) continue;
+      const allowed = new Set([...compiled.domains, ...RESERVED_DOMAINS]);
+      for (const key of Object.keys(node.on_failure.routes)) {
+        if (!allowed.has(key)) {
+          const suggestion = nearestNeighbor(key, [...allowed]);
+          throw new ApmCompileError(
+            `Node "${nodeKey}" on_failure.routes has domain key "${key}" ` +
+            `which is not in triage profile "${compiledKey}" ` +
+            `[${[...allowed].sort().join(", ")}]. ` +
+            (suggestion ? `Did you mean "${suggestion}"?` : "Fix the domain key or add it to routing:."),
+          );
+        }
+      }
     }
   }
 
@@ -567,6 +863,13 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
   const resolvedConfig = manifest.config
     ? resolveEnvVars(manifest.config)
     : undefined;
+
+  // Replace the raw (possibly path-form) handlebarsPartials map with the
+  // resolved inline contents from step 5c — agents.ts registers these
+  // verbatim at render time.
+  if (resolvedConfig && Object.keys(resolvedHandlebarsPartials).length > 0) {
+    resolvedConfig.handlebarsPartials = resolvedHandlebarsPartials;
+  }
 
   const output: ApmCompiledOutput = {
     version: "1.0.0",
@@ -619,4 +922,43 @@ export function getApmSourceMtime(appRoot: string): number {
 
   walk(apmDir);
   return maxMtime;
+}
+
+/**
+ * lintAgentPromptForSlugLiterals — flag every `{{featureSlug}}_*.<ext>`
+ * path in an agent prompt that is NOT a documented negative example.
+ *
+ * Background: the artifact bus replaced the flat
+ * `in-progress/<slug>_<KIND>.<ext>` namespace with per-invocation typed
+ * artifacts, and kernel-owned files moved under `<slug>/` (e.g.
+ * `<slug>/_trans.md`, `<slug>/_change-manifest.json`). Legacy flat
+ * paths like `<slug>_TRANS.md` or `<slug>_CHANGES.json` are no longer
+ * written, so any prompt that reads or writes them is broken.
+ *
+ * Live constructions inside fenced code blocks (shell snippets,
+ * `cat`/`>` redirects, tool-call args) and prose reads/writes in
+ * inline backticks are both bugs. Documented negative examples are
+ * intentional: a line containing one of the allow-list markers
+ * (`do NOT`, `never`, `no longer scanned`, case-insensitive) is
+ * treated as documentation and skipped.
+ *
+ * The lint is a pure string scan: returns one entry per offending line
+ * with its 1-based line number and the line text (trimmed). Returns
+ * `[]` when the prompt is clean.
+ */
+export function lintAgentPromptForSlugLiterals(
+  prompt: string,
+): Array<{ line: number; text: string }> {
+  const hits: Array<{ line: number; text: string }> = [];
+  const lines = prompt.split("\n");
+  const slugLiteralRe = /\{\{\s*featureSlug\s*\}\}_[A-Za-z0-9-]+/;
+  const allowListRe = /\b(do\s+not|never|no\s+longer\s+scanned)\b/i;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i] ?? "";
+    if (/^\s*```/.test(raw)) continue;
+    if (!slugLiteralRe.test(raw)) continue;
+    if (allowListRe.test(raw)) continue;
+    hits.push({ line: i + 1, text: raw.trim() });
+  }
+  return hits;
 }

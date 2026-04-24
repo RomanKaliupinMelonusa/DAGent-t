@@ -28,6 +28,8 @@ import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
 import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
 import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
 import { CopilotTriageLlm } from "../adapters/copilot-triage-llm.js";
@@ -71,7 +73,16 @@ class RegistryHandlerResolver implements HandlerResolver {
     };
 
     return {
-      name: node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type) ?? "copilot-agent",
+      // Display-only name for the lazy proxy. The real handler is resolved in
+      // doResolve(); if strict mode rejects the inference there, execute() will
+      // surface the failure. We still fall back to "copilot-agent" here purely
+      // for telemetry/display consistency.
+      name: node?.handler ?? inferHandler(
+        node?.type ?? "agent",
+        node?.script_type,
+        this.apmContext.config?.handler_defaults,
+        this.apmContext.config?.strict_handler_inference,
+      ) ?? "copilot-agent",
       async execute(ctx) {
         const handler = await getHandler();
         return handler.execute(ctx);
@@ -85,6 +96,7 @@ class RegistryHandlerResolver implements HandlerResolver {
         node?.type ?? "agent",
         node?.script_type,
         this.apmContext.config?.handler_defaults,
+        this.apmContext.config?.strict_handler_inference,
       )
       ?? "copilot-agent";
 
@@ -127,6 +139,15 @@ export async function runWithKernel(
   const stateStore = new JsonFileStateStore();
   const vcs = new GitShellAdapter(repoRoot, logger);
   const filesystem = new LocalFilesystem();
+  // Session A \u2014 honour `config.strict_artifacts` from the compiled APM
+  // manifest. Default false keeps legacy producers working during rollout;
+  // commerce-storefront (and any app that flips it) gets hard envelope
+  // enforcement at the bus boundary.
+  const strictArtifacts = config.apmContext.config?.strict_artifacts === true;
+  const artifactBus = new FileArtifactBus(appRoot, filesystem, logger, {
+    strict: strictArtifacts,
+  });
+  const invocation = new FileInvocationFilesystem(appRoot, filesystem, artifactBus);
   const shell = new NodeShellAdapter();
   const copilotSessionRunner = new NodeCopilotSessionRunner();
   const telemetry = new JsonlTelemetry(logger);
@@ -210,7 +231,9 @@ export async function runWithKernel(
     stateReader: stateStore,
     shell,
     filesystem,
+    invocation,
     copilotSessionRunner,
+    ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   });
 
   return { loopResult };

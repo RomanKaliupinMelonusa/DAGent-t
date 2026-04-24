@@ -24,6 +24,7 @@ import type { NodeContext, NodeResult } from "../types.js";
 import { executeHook } from "../../lifecycle/hooks.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { featurePath } from "../../adapters/feature-paths.js";
 
 /** Resolve the workflow node definition for the current item, if any. */
 function getNode(ctx: NodeContext) {
@@ -35,7 +36,7 @@ function getNode(ctx: NodeContext) {
  *  that were already failing on the BASE branch. Returns a JSON string
  *  or empty string when no baseline was captured. */
 function readBaselineValidation(ctx: NodeContext): string {
-  const flightPath = path.join(ctx.appRoot, "in-progress", `${ctx.slug}_FLIGHT_DATA.json`);
+  const flightPath = featurePath(ctx.appRoot, ctx.slug, "flight-data");
   if (!fs.existsSync(flightPath)) return "";
   try {
     const parsed = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
@@ -49,6 +50,11 @@ function readBaselineValidation(ctx: NodeContext): string {
 
 /** Env passed to every pre/post hook — merges apm config env + pipeline context. */
 function buildHookEnv(ctx: NodeContext): Record<string, string> {
+  // Invocation-scoped env vars expose the canonical per-invocation directory
+  // layout owned by the Artifact Bus. Hook scripts consume them to read
+  // declared inputs / write declared outputs / append logs without
+  // reconstructing paths from slug + node key + invocation id.
+  const invocationDir = path.join(ctx.appRoot, "in-progress", ctx.slug, ctx.itemKey, ctx.executionId);
   const env: Record<string, string> = {
     ...ctx.environment,
     SLUG: ctx.slug,
@@ -56,6 +62,12 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
     REPO_ROOT: ctx.repoRoot,
     BASE_BRANCH: ctx.baseBranch,
     ITEM_KEY: ctx.itemKey,
+    NODE_KEY: ctx.itemKey,
+    INVOCATION_ID: ctx.executionId,
+    INVOCATION_DIR: invocationDir,
+    INPUTS_DIR: path.join(invocationDir, "inputs"),
+    OUTPUTS_DIR: path.join(invocationDir, "outputs"),
+    LOGS_DIR: path.join(invocationDir, "logs"),
   };
   const baseline = readBaselineValidation(ctx);
   if (baseline) env.BASELINE_VALIDATION = baseline;

@@ -12,7 +12,7 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 
 | File | Implements port | What it does |
 |---|---|---|
-| [json-file-state-store.ts](json-file-state-store.ts) | `StateStore` | Persists `PipelineState` to `in-progress/<slug>_STATE.json` behind a POSIX `mkdirSync` lock ([file-state/lock.ts](file-state/lock.ts)). |
+| [json-file-state-store.ts](json-file-state-store.ts) | `StateStore` | Persists `PipelineState` to `in-progress/<slug>/_state.json` (nested layout) behind a POSIX `mkdirSync` lock ([file-state/lock.ts](file-state/lock.ts)). Also owns the invocation ledger (`state.artifacts`) and re-renders `_trans.md` on every write. |
 | [file-state/](file-state/) | — | Internal helpers for `JsonFileStateStore`: `io.ts` (read/write), `lock.ts` (mkdir mutex), `init.ts` (state bootstrap from workflows.yml). |
 | [git-shell-adapter.ts](git-shell-adapter.ts) | `VersionControl` | Runs `git` subprocesses via the `Shell` port. Never shells out directly; composes with `node-shell-adapter`. |
 | [git-ops.ts](git-ops.ts) | — | Higher-level helpers (`createFeatureBranch`, branch checks) used at bootstrap. |
@@ -24,7 +24,7 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 | [jsonl-telemetry.ts](jsonl-telemetry.ts) | `Telemetry` | Appends structured events to JSONL log files per slug. |
 | [copilot-session-runner.ts](copilot-session-runner.ts) | `CopilotSessionRunner` | Creates a Copilot SDK session, wires harness (tool logging, limits), sends prompt, waits for outcome. Owns SDK event plumbing. |
 | [copilot-triage-llm.ts](copilot-triage-llm.ts) | `TriageLlm` | Dedicated short-prompt Copilot session for failure classification. |
-| [file-triage-artifact-loader.ts](file-triage-artifact-loader.ts) | `TriageArtifactLoader` | Reads feature artifacts (`_SUMMARY.md`, `_STATE.json`, `_PLAYWRIGHT-LOG.md`, prior-cycle evidence) for triage handoff. |
+| [file-triage-artifact-loader.ts](file-triage-artifact-loader.ts) | `TriageArtifactLoader` | Reads feature artifacts via [feature-paths.ts](feature-paths.ts) (kickoff `acceptance`, nested `_state.json`, per-invocation outputs/logs) and assembles the prior-cycle evidence bundle for triage. |
 | [file-baseline-loader.ts](file-baseline-loader.ts) | `BaselineLoader` | Loads prior-pass baseline evidence used to skip nodes that are still green. |
 | [subprocess-feature-runner.ts](subprocess-feature-runner.ts) | — | Spawns a child orchestrator for nested feature runs. Rarely used. |
 | [session-circuit-breaker.ts](session-circuit-breaker.ts) | `CognitiveBreaker` | In-session tool-call counter. Injects soft-limit warnings, force-disconnects at hard limit. |

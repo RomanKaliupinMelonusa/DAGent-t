@@ -17,10 +17,10 @@ import type {
   FailResult,
   ResetResult,
   InitResult,
-  TriageRecord,
   ExecutionRecord,
-  PendingContextPayload,
-  TriageHandoff,
+  InvocationRecord,
+  AppendInvocationInput,
+  SealInvocationInput,
 } from "../types.js";
 import {
   completeItem as completeItemRule,
@@ -36,6 +36,11 @@ import {
 } from "../kernel/admin.js";
 import { initState as initStateImpl } from "./file-state/init.js";
 import { readStateOrThrow, readStateOrNull, writeState } from "./file-state/io.js";
+import {
+  appendInvocationRecord as appendInvocationRecordImpl,
+  sealInvocationRecord as sealInvocationRecordImpl,
+  stampInvocationStart as stampInvocationStartImpl,
+} from "./file-state/artifacts.js";
 import { withLock } from "./file-state/lock.js";
 
 // ---------------------------------------------------------------------------
@@ -53,116 +58,10 @@ function findItemOrThrow(state: PipelineState, itemKey: string): PipelineItem {
   return item;
 }
 
-/**
- * Render a structured `PendingContextPayload` to a single markdown string.
- *
- * Output shape:
- *   <narrative>
- *   (blank line)
- *   ## 🧩 Triage handoff
- *   - **Failing item:** …
- *   - **Domain:** …
- *   - **Reason:** …
- *   - **Error signature:** …
- *   - **Prior attempts:** …
- *   - **Touched files:** …
- *   ### 🧪 Failed tests  (when handoff.failedTests is populated)
- *   - **<title>** (<file>:<line>) — <error>
- *
- * Rich Playwright forensics (browser signals, screenshot/trace evidence,
- * ARIA DOM snapshots) are intentionally *not* rendered here — they remain
- * on `TriageHandoff` for a future debug agent (Playwright MCP) to consume.
- *
- * Exported for unit testing — the adapter is the single rendering point.
- */
-export function renderTriageHandoffMarkdown(
-  handoff: TriageHandoff,
-  options?: { suppressErrorExcerpt?: boolean },
-): string {
-  const touched = handoff.touchedFiles && handoff.touchedFiles.length > 0
-    ? handoff.touchedFiles.join(", ")
-    : "(none captured)";
-  // Provenance hint — who actually wrote these files. When the failing
-  // item is a non-writing script (e2e-runner, push-app), the list comes
-  // from an upstream dev summary and we surface that so the agent knows
-  // where to start reading.
-  const touchedSrc = handoff.touchedFilesSource && handoff.touchedFilesSource !== "self"
-    ? ` _(from upstream \`${handoff.touchedFilesSource}\` attempt)_`
-    : "";
-  const lines: string[] = [
-    "## 🧩 Triage handoff",
-    `- **Failing item:** \`${handoff.failingItem}\``,
-    `- **Domain:** ${handoff.triageDomain}`,
-    `- **Reason:** ${handoff.triageReason}`,
-    `- **Error signature:** \`${handoff.errorSignature}\``,
-    `- **Prior attempts:** ${handoff.priorAttemptCount}`,
-    `- **Touched files:** ${touched}${touchedSrc}`,
-  ];
-  // When the handoff carries a compact `failedTests` summary we treat that
-  // as the canonical "what broke" signal and suppress the more verbose
-  // assertion excerpt — the two describe the same event and the list is
-  // cheaper to read. Callers may still force-suppress via options (used
-  // when the narrative inlines the raw failure output itself).
-  const hasFailedTests = Array.isArray(handoff.failedTests) && handoff.failedTests.length > 0;
-  const suppressExcerpt = options?.suppressErrorExcerpt || hasFailedTests;
-  if (suppressExcerpt) {
-    lines.push(
-      "",
-      "> _Failing assertion excerpt omitted — see the compact failed-tests list below._",
-    );
-  } else {
-    lines.push(
-      "",
-      "### Failing test step (context)",
-      "*This excerpt shows which assertion/step was running when the test failed. It identifies the user flow but is **not** the root cause.*",
-      "```",
-      handoff.errorExcerpt,
-      "```",
-    );
-  }
-  if (handoff.advisory && handoff.advisory.trim().length > 0) {
-    // Round-2 R3: consecutive-domain advisory rendered immediately after the
-    // diagnosis block so the dev agent sees it before reading the excerpt.
-    lines.push("", "### ⚠️ Advisory", handoff.advisory.trim());
-  }
-  if (hasFailedTests) {
-    // Compact "which tests failed" list. This replaces the legacy Browser
-    // signals / Evidence / DOM-snapshot blocks that used to ride along in
-    // the redevelopment prompt. A future debug agent with Playwright MCP
-    // access is expected to harvest deeper context on demand; the data is
-    // still captured on `TriageHandoff.evidence` / `.browserSignals` for
-    // that downstream consumer.
-    lines.push("", "### 🧪 Failed tests");
-    for (const t of handoff.failedTests!) {
-      const loc = t.file
-        ? ` (${t.file}${typeof t.line === "number" ? `:${t.line}` : ""})`
-        : "";
-      lines.push(`- **${t.title}**${loc} — ${t.error}`);
-    }
-  }
-  if (handoff.baselineRef) {
-    // Pointer to the pre-feature noise catalogue. Current dev agents can
-    // ignore it; a future debug agent (Playwright MCP) will read the file
-    // to filter runtime signals that pre-date the feature branch.
-    const ref = handoff.baselineRef;
-    lines.push(
-      "",
-      `> _Baseline noise catalogue: \`${ref.path}\` — ${ref.consolePatternCount} console / ${ref.networkPatternCount} network / ${ref.uncaughtPatternCount} uncaught patterns._`,
-    );
-  }
-  return lines.join("\n");
-}
+// Phase 6 — `renderTriageHandoffMarkdown` removed. Triage now writes the
+// structured `triage-handoff` JSON artifact directly; the rerouted dev
+// agent reads it from `inputs/triage-handoff.json`.
 
-export function renderPendingContext(payload: PendingContextPayload): string {
-  const narrative = payload.narrative.trimEnd();
-  // Narratives that still inline a full "## Most recent failure output"
-  // block force-suppress the excerpt re-render. When the narrative omits
-  // that block (new default), the renderer decides based on whether the
-  // handoff carries a compact `failedTests` list.
-  const suppressErrorExcerpt = /(^|\n)##\s+Most recent failure output\b/.test(narrative);
-  const handoffMd = renderTriageHandoffMarkdown(payload.handoff, { suppressErrorExcerpt });
-  return `${narrative}\n\n${handoffMd}\n`;
-}
 
 // ---------------------------------------------------------------------------
 // Adapter
@@ -302,26 +201,6 @@ export class JsonFileStateStore implements StateStore {
     });
   }
 
-  async setHandoffArtifact(slug: string, itemKey: string, artifactJson: string): Promise<PipelineState> {
-    if (!slug || !itemKey || !artifactJson) {
-      throw new Error("setHandoffArtifact requires slug, itemKey, and artifactJson");
-    }
-    try {
-      JSON.parse(artifactJson);
-    } catch {
-      throw new Error(
-        `setHandoffArtifact: artifactJson must be valid JSON. Got: ${artifactJson.slice(0, 200)}`,
-      );
-    }
-    return withLock(slug, () => {
-      const state = readStateOrThrow(slug);
-      const item = findItemOrThrow(state, itemKey);
-      item.handoffArtifact = artifactJson;
-      writeState(slug, state);
-      return state;
-    });
-  }
-
   async setNote(slug: string, note: string): Promise<PipelineState> {
     if (!slug || !note) throw new Error("setNote requires slug and note");
     return withLock(slug, () => {
@@ -344,41 +223,14 @@ export class JsonFileStateStore implements StateStore {
     });
   }
 
-  async setPendingContext(
-    slug: string,
-    itemKey: string,
-    context: string | PendingContextPayload,
-  ): Promise<PipelineState> {
-    if (!slug || !itemKey) throw new Error("setPendingContext requires slug and itemKey");
-    const rendered = typeof context === "string" ? context : renderPendingContext(context);
-    return withLock(slug, () => {
-      const state = readStateOrThrow(slug);
-      const item = findItemOrThrow(state, itemKey);
-      item.pendingContext = rendered;
-      writeState(slug, state);
-      return state;
-    });
-  }
-
-  async setLastTriageRecord(slug: string, record: TriageRecord): Promise<PipelineState> {
-    if (!slug || !record) throw new Error("setLastTriageRecord requires slug and record");
-    return withLock(slug, () => {
-      const state = readStateOrThrow(slug);
-      state.lastTriageRecord = record;
-      writeState(slug, state);
-      return state;
-    });
-  }
-
   async persistDagSnapshot(slug: string, snapshot: PipelineState): Promise<PipelineState> {
     if (!slug || !snapshot) throw new Error("persistDagSnapshot requires slug and snapshot");
     return withLock(slug, () => {
       const disk = readStateOrThrow(slug);
       // Merge DAG-shaped fields from the kernel snapshot over the on-disk
-      // state. Per-item side-setter fields (pendingContext, docNote,
-      // handoffArtifact) are preserved from disk so a setPendingContext
-      // write that raced ahead isn't clobbered by the kernel's item list
-      // (which carries only status + error).
+      // state. Per-item side-setter fields (docNote) are preserved from
+      // disk so a non-kernel writer that raced ahead isn't clobbered by
+      // the kernel's item list (which carries only status + error).
       const diskItemsByKey = new Map(disk.items.map((i) => [i.key, i]));
       const mergedItems = snapshot.items.map((kernelItem) => {
         const diskItem = diskItemsByKey.get(kernelItem.key);
@@ -387,6 +239,10 @@ export class JsonFileStateStore implements StateStore {
           ...diskItem,
           status: kernelItem.status,
           error: kernelItem.error,
+          // Preserve Phase 2 artifact-bus pointer from disk unless the kernel
+          // explicitly moved it forward (new dispatch / staged invocation).
+          latestInvocationId:
+            kernelItem.latestInvocationId ?? diskItem.latestInvocationId,
         };
       });
       // cycleCounters: kernel is the authoritative writer (mutated via
@@ -400,6 +256,10 @@ export class JsonFileStateStore implements StateStore {
         implementationNotes: snapshot.implementationNotes ?? disk.implementationNotes,
         deployedUrl: snapshot.deployedUrl ?? disk.deployedUrl,
         salvageSurvivors: snapshot.salvageSurvivors ?? disk.salvageSurvivors,
+        // Artifact-bus invocation ledger is an append-only side table —
+        // always keep the on-disk copy so a concurrent appendInvocationRecord
+        // writer isn't clobbered by a DAG snapshot that never loaded it.
+        artifacts: disk.artifacts ?? snapshot.artifacts ?? {},
       };
       writeState(slug, next);
       return next;
@@ -417,9 +277,11 @@ export class JsonFileStateStore implements StateStore {
     try {
       const { writeFile, mkdir } = await import("node:fs/promises");
       const { IN_PROGRESS } = await import("./file-state/io.js");
-      const { join } = await import("node:path");
-      await mkdir(IN_PROGRESS, { recursive: true });
-      await writeFile(join(IN_PROGRESS, `${slug}_HALT.md`), content, "utf-8");
+      const { dirname } = await import("node:path");
+      const { featurePath } = await import("./feature-paths.js");
+      const target = featurePath(dirname(IN_PROGRESS), slug, "halt");
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content, "utf-8");
     } catch {
       // non-fatal
     }
@@ -506,5 +368,70 @@ export class JsonFileStateStore implements StateStore {
       writeState(slug, state);
       return state;
     });
+  }
+
+  // ── Artifact Bus — invocation ledger (Phase 2) ────────────────────────────
+
+  async appendInvocationRecord(
+    slug: string,
+    input: AppendInvocationInput,
+  ): Promise<InvocationRecord> {
+    if (!slug) throw new Error("appendInvocationRecord requires slug");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const rec = appendInvocationRecordImpl(state, slug, input);
+      writeState(slug, state);
+      return rec;
+    });
+  }
+
+  async stampInvocationStart(
+    slug: string,
+    invocationId: string,
+    startedAt: string,
+  ): Promise<InvocationRecord> {
+    if (!slug) throw new Error("stampInvocationStart requires slug");
+    if (!invocationId) throw new Error("stampInvocationStart requires invocationId");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const rec = stampInvocationStartImpl(state, invocationId, startedAt);
+      writeState(slug, state);
+      return rec;
+    });
+  }
+
+  async sealInvocation(
+    slug: string,
+    input: SealInvocationInput,
+  ): Promise<InvocationRecord> {
+    if (!slug) throw new Error("sealInvocation requires slug");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const rec = sealInvocationRecordImpl(state, slug, input);
+      writeState(slug, state);
+      return rec;
+    });
+  }
+
+  async getInvocationRecord(
+    slug: string,
+    invocationId: string,
+  ): Promise<InvocationRecord | null> {
+    if (!slug) throw new Error("getInvocationRecord requires slug");
+    const state = readStateOrNull(slug);
+    if (!state?.artifacts) return null;
+    return state.artifacts[invocationId] ?? null;
+  }
+
+  async listInvocationRecords(
+    slug: string,
+    nodeKey: string,
+  ): Promise<InvocationRecord[]> {
+    if (!slug) throw new Error("listInvocationRecords requires slug");
+    const state = readStateOrNull(slug);
+    if (!state?.artifacts) return [];
+    return Object.values(state.artifacts)
+      .filter((r) => r.nodeKey === nodeKey)
+      .sort((a, b) => a.invocationId.localeCompare(b.invocationId));
   }
 }

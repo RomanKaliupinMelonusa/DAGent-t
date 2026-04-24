@@ -53,6 +53,8 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
     shell: {} as NodeContext["shell"],
     filesystem: {} as NodeContext["filesystem"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
+    invocation: {} as NodeContext["invocation"],
+    invocationLogger: {} as NodeContext["invocationLogger"],
     ...overrides,
   };
   (ctx as unknown as { __events: typeof events }).__events = events;
@@ -154,13 +156,13 @@ describe("lifecycleHooksMiddleware", () => {
     assert.equal(readFileSync(marker, "utf8").trim(), "feat-abc");
   });
 
-  it("injects BASELINE_VALIDATION from _FLIGHT_DATA.json when baselineValidation is present (A2)", async () => {
+  it("injects BASELINE_VALIDATION from /_kickoff/flight-data.json when baselineValidation is present (A2)", async () => {
     const slug = "feat-xyz";
     const ctx = makeCtx({ appRoot: tmpDir, slug });
     const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    mkdirSync(join(tmpDir, "in-progress", slug, "_kickoff"), { recursive: true });
     writeFileSync(
-      join(tmpDir, "in-progress", `${slug}_FLIGHT_DATA.json`),
+      join(tmpDir, "in-progress", `${slug}/_kickoff/flight-data.json`),
       JSON.stringify({ baselineValidation: { "/foo": "fail" } }),
     );
     const marker = join(tmpDir, "baseline-env.txt");
@@ -176,9 +178,9 @@ describe("lifecycleHooksMiddleware", () => {
     const slug = "feat-no-baseline";
     const ctx = makeCtx({ appRoot: tmpDir, slug });
     const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    mkdirSync(join(tmpDir, "in-progress", slug, "_kickoff"), { recursive: true });
     writeFileSync(
-      join(tmpDir, "in-progress", `${slug}_FLIGHT_DATA.json`),
+      join(tmpDir, "in-progress", `${slug}/_kickoff/flight-data.json`),
       JSON.stringify({ somethingElse: true }),
     );
     const marker = join(tmpDir, "baseline-env-empty.txt");

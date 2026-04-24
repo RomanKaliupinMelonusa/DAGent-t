@@ -159,7 +159,7 @@ flowchart TD
         B2["📋 Context Block\nFeature slug, spec path,\nrepo root, app root,\nworkflow type"]
         B3["📏 Assembled Rules\nFrom APM compiled output\n(apm.yml → persona → rules)\nToken-budgeted, cached"]
         B4["📝 Workflow Steps\nNumbered step-by-step\ninstructions (5–12 steps)\nagent-specific"]
-        B5["✅ Completion Block\npipeline:complete/fail commands\npipeline:doc-note for handoff\n(scoped to agent type)"]
+        B5["✅ Completion Block\nreport_outcome SDK tool\n+ summary.md / declared\nproduces_artifacts (per agent)"]
     end
 
     B1 --> B2 --> B3 --> B4 --> B5
@@ -184,55 +184,58 @@ flowchart TD
 | 7 | Write/update tests |
 | 8 | `roam_check_rules` — SEC/PERF/COR/ARCH gate |
 | 9 | `agent-commit.sh` — scoped commit |
-| 10 | `pipeline:doc-note` — architectural summary for docs-archived |
+| 10 | Write architectural summary to `$OUTPUTS_DIR/summary.md`; call `report_outcome({status: "completed"})` |
 
 ---
 
-## Doc-Note Handoff Pattern
+## Summary Handoff Pattern
 
 ```mermaid
 sequenceDiagram
     participant BD as backend-dev
-    participant PS as pipeline-state
+    participant FS as $OUTPUTS_DIR
     participant CJ as _CHANGES.json
     participant DA as docs-archived
 
-    BD->>PS: pipeline:doc-note slug backend-dev<br/>"Added fn-generate with structured<br/>outputs via BrandedAgentService"
-    PS->>PS: Store in _STATE.json<br/>item.docNote
+    BD->>FS: echo "Added fn-generate with structured<br/>outputs via BrandedAgentService"<br/>> $OUTPUTS_DIR/summary.md
+    BD->>BD: report_outcome({status: "completed"})
 
-    Note over CJ: Watchdog writes<br/>_CHANGES.json before<br/>docs-archived session
+    Note over CJ: Watchdog writes _CHANGES.json<br/>before docs-archived session<br/>(walks state.artifacts for each<br/>node's outputs/summary.md)
 
-    PS-->>CJ: All doc-notes collected
-    CJ-->>DA: Read _CHANGES.json<br/>+ per-item doc-notes
-    DA->>DA: Update architecture docs<br/>based on change summaries
+    FS-->>CJ: Per-node summaries collected
+    CJ-->>DA: docs-archived reads<br/>_CHANGES.json + the per-node<br/>summary.md files in inputs/
+    DA->>DA: Update architecture docs
 ```
 
-> Dev agents leave 1–2 sentence architectural summaries via `pipeline:doc-note`. The `docs-archived` agent reads all doc-notes via `_CHANGES.json` to update documentation without re-analyzing the entire codebase.
+> Dev agents leave 1–2 sentence architectural summaries as a declared `summary` artifact (`outputs/summary.md`). The `docs-archived` agent declares `consumes_artifacts: [{from: <each-dev-node>, kind: summary}]`; the dispatcher copies each upstream summary into `docs-archived`'s `inputs/` before the session starts. No CLI verb — the file *is* the handoff.
 
-### Handoff Artifact Pattern
+### Typed Handoff Artifacts
 
-For structured inter-agent contracts beyond free-text doc-notes, dev agents can set a **typed JSON handoff artifact** on their pipeline item via `pipeline:handoff-artifact`. Unlike doc-notes (human-readable summaries), handoff artifacts carry machine-parseable data — testid maps, affected routes, SSR-safety flags — that downstream agents (SDET, test runners) can consume programmatically.
+For structured inter-agent contracts beyond free-text summaries, dev agents emit **typed JSON handoff artifacts** as declared `produces_artifacts`. Unlike `summary.md` (human-readable), typed artifacts carry machine-parseable data — testid maps, affected routes, SSR-safety flags, deployment URLs — that downstream agents (SDET, test runners, deploy pollers) consume programmatically.
 
 ```mermaid
 sequenceDiagram
     participant SD as storefront-dev
-    participant PS as pipeline-state
+    participant FS as $OUTPUTS_DIR
+    participant DISP as dispatcher<br/>(invocation-builder)
     participant SDET as @sdet-expert
 
-    SD->>PS: pipeline:handoff-artifact slug storefront-dev<br/>'{"affectedRoutes":["/list","/detail"],<br/>"newTestIds":["widget-open-button","widget-modal"]}'
-    PS->>PS: Validate JSON, store in<br/>item.handoffArtifact
+    SD->>FS: write $OUTPUTS_DIR/storefront-handoff.json<br/>{"affectedRoutes":["/list","/detail"],<br/>"newTestIds":["widget-open-button","widget-modal"]}
+    SD->>SD: report_outcome({status: "completed"})
 
-    Note over PS,SDET: Watchdog reads handoffArtifact<br/>when building SDET prompt
+    Note over DISP: Kernel validates declared<br/>produces_artifacts; SDET node<br/>declares consumes_artifacts: [{from: storefront-dev,<br/>kind: storefront-handoff}]
 
-    PS-->>SDET: Agent prompt includes<br/>structured handoff data
-    SDET->>SDET: Generate E2E tests targeting<br/>exact routes + testids
+    DISP-->>SDET: Copies storefront-handoff.json<br/>into SDET's inputs/<br/>+ inputs/params.in.json manifest
+    SDET->>SDET: Read inputs/storefront-handoff.json<br/>→ generate E2E tests targeting<br/>exact routes + testids
 ```
 
-| CLI | `npm run pipeline:handoff-artifact <slug> <item-key> <json>` |
-|-----|--------------------------------------------------------------|
-| **Validation** | Must be parseable JSON (rejects malformed strings) |
-| **Storage** | `_STATE.json` → `item.handoffArtifact` |
-| **Consumers** | Downstream agents via prompt injection |
+| Mechanism | Declared `produces_artifacts: [<kind>]` on the producer + `consumes_artifacts: [{from, kind}]` on the consumer |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| **Validation** | Kernel verifies `outputs/<kind>.<ext>` exists on `report_outcome(completed)`; missing → `errorSignature: missing_required_output:<kind>` |
+| **Storage** | `<inv>/outputs/<kind>.<ext>` (canonical) → copied into next dispatch's `<inv>/inputs/<kind>.<ext>` |
+| **Consumers** | Downstream agents read from `inputs/`; script handlers via `$INPUTS_DIR/<kind>.<ext>` |
+
+> Triage handoff uses this same channel: triage emits `outputs/triage-handoff.json`; rerouted dev nodes declare `consumes_reroute: [triage-handoff]` and read from `inputs/triage-handoff.json`. No `pendingContext` string — the JSON artifact is the only re-entrance contract.
 
 ---
 

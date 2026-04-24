@@ -1,5 +1,5 @@
 /**
- * archive.ts — Feature file archiving and state commit/push plumbing.
+ * archive.ts — Feature directory archiving and state commit/push plumbing.
  *
  * Extracted from watchdog.ts for Single Responsibility.
  * Contains deterministic archive logic and the centralized state commit mutex.
@@ -10,116 +10,43 @@ import path from "node:path";
 import { execSync, spawnSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
-// Spec file matching
-// ---------------------------------------------------------------------------
-
-/**
- * Find the spec file for a feature in a list of directory entries.
- * Uses three matching strategies in priority order:
- *   1. Exact slug match (e.g. "my-feature_SPEC.md")
- *   2. Hyphen-to-underscore variant (e.g. "my_feature_SPEC.md")
- *   3. Generic fallback — any _spec.md or _deploy_spec.md that isn't
- *      from another feature
- */
-export function findSpecFile(entries: string[], featureSlug: string): string | undefined {
-  const specTarget1 = `${featureSlug}_spec.md`.toLowerCase();
-  const specTarget2 = `${featureSlug.replace(/-/g, "_")}_spec.md`.toLowerCase();
-  return entries.find((f) => {
-    const lower = f.toLowerCase();
-    if (lower === specTarget1 || lower === specTarget2) return true;
-    // Fallback: match any file ending in _spec.md or _deploy_spec.md that isn't
-    // from another feature (i.e. not prefixed with a different slug)
-    if (lower.endsWith("_spec.md") || lower.endsWith("_deploy_spec.md")) {
-      // Accept if no other slug prefix is present (standalone spec files)
-      const hasSlugPrefix = lower.startsWith(featureSlug.toLowerCase())
-        || lower.startsWith(featureSlug.replace(/-/g, "_").toLowerCase());
-      const isGenericSpec = !lower.includes("_state.") && !entries.some(
-        (other) => other !== f && other.toLowerCase().startsWith(lower.split("_spec")[0])
-          && other.toLowerCase().endsWith("_state.json"),
-      );
-      return hasSlugPrefix || isGenericSpec;
-    }
-    return false;
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Feature archiving
 // ---------------------------------------------------------------------------
 
 /**
- * Deterministic archiving — moves all feature artifacts from in-progress/
- * to archive/features/<slug>/. This replaces LLM-driven shell commands that
- * previously lived in the pr-creator agent prompt.
+ * Deterministic archiving — moves the feature's `<inProgress>/<slug>/`
+ * directory (state, trans, kickoff inputs, per-invocation tree, telemetry,
+ * reporting outputs) to `<root>/archive/features/<slug>/`. The whole-dir
+ * move is atomic on the same filesystem.
+ *
+ * Replaces LLM-driven shell commands that previously lived in the
+ * pr-creator agent prompt.
  */
 export function archiveFeatureFiles(featureSlug: string, root: string, repoRootDir: string): void {
   const inProgress = path.join(root, "in-progress");
-  const archiveDir = path.join(root, "archive", "features", featureSlug);
-  const screenshotsDir = path.join(archiveDir, "screenshots");
+  const archiveRoot = path.join(root, "archive", "features");
+  const archiveDir = path.join(archiveRoot, featureSlug);
 
   try {
-    fs.mkdirSync(screenshotsDir, { recursive: true });
+    fs.mkdirSync(archiveRoot, { recursive: true });
 
-    // Move known feature artifacts
-    const artifacts = [
-      `${featureSlug}_TRANS.md`,
-      `${featureSlug}_STATE.json`,
-      `${featureSlug}_SUMMARY.md`,
-      `${featureSlug}_SUMMARY-DATA.json`,
-      `${featureSlug}_TERMINAL-LOG.md`,
-      `${featureSlug}_PLAYWRIGHT-LOG.md`,
-      `${featureSlug}_CHANGES.json`,
-      `${featureSlug}_EVENTS.jsonl`,
-      `${featureSlug}_BLOBS.jsonl`,
-      `${featureSlug}_NOVEL_TRIAGE.jsonl`,
-    ];
-
-    // Dynamically find the SPEC file
-    const entries = fs.readdirSync(inProgress);
-    const specFile = findSpecFile(entries, featureSlug);
-    if (specFile) artifacts.push(specFile);
-
-    for (const artifact of artifacts) {
-      const src = path.join(inProgress, artifact);
-      const dst = path.join(archiveDir, artifact);
-      if (fs.existsSync(src)) {
-        fs.renameSync(src, dst);
+    // Whole-directory move: every per-feature artifact (state, trans,
+    // _kickoff/*, telemetry, reporting outputs, per-invocation tree)
+    // lives under `in-progress/<slug>/` after the Slice-D hard cutover,
+    // so a single rename completes the migration to the archive.
+    const slugDir = path.join(inProgress, featureSlug);
+    if (fs.existsSync(slugDir) && fs.statSync(slugDir).isDirectory()) {
+      // If a stale archive dir exists from a prior run, remove it first
+      // so `renameSync` can complete cleanly.
+      if (fs.existsSync(archiveDir)) {
+        fs.rmSync(archiveDir, { recursive: true, force: true });
       }
-    }
-
-    // Move screenshots
-    const screenshotsSrc = path.join(inProgress, "screenshots");
-    if (fs.existsSync(screenshotsSrc)) {
-      const entries = fs.readdirSync(screenshotsSrc);
-      if (entries.length > 0) {
-        for (const entry of entries) {
-          const srcEntry = path.join(screenshotsSrc, entry);
-          const dstEntry = path.join(screenshotsDir, entry);
-          fs.renameSync(srcEntry, dstEntry);
-        }
-      }
-      fs.rmSync(screenshotsSrc, { recursive: true, force: true });
-    }
-
-    // Archive any remaining slug-prefixed files (e.g. _FLIGHT_DATA.json,
-    // _PIPELINE-TRIAGE.md, _CI-FAILURE.log) that weren't in the known list
-    const remaining = fs.readdirSync(inProgress).filter(
-      (f) => f.startsWith(`${featureSlug}_`) || f.startsWith(`${featureSlug}.`),
-    );
-    for (const f of remaining) {
-      fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
-    }
-
-    // Clean up non-slug-prefixed feature files
-    // that shouldn't persist after the feature is archived.  Keep only README.md.
-    const stragglers = fs.readdirSync(inProgress).filter((f) => {
-      if (f.toLowerCase() === "readme.md") return false;
-      // Skip directories (screenshots already handled above)
-      const stat = fs.statSync(path.join(inProgress, f));
-      return stat.isFile();
-    });
-    for (const f of stragglers) {
-      fs.renameSync(path.join(inProgress, f), path.join(archiveDir, f));
+      fs.renameSync(slugDir, archiveDir);
+    } else {
+      // Nothing to archive (already archived, or feature never produced
+      // artifacts). Still create the empty archive dir so the commit step
+      // has something to add.
+      fs.mkdirSync(archiveDir, { recursive: true });
     }
 
     // Remove PR_BODY.md if it exists

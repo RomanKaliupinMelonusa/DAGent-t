@@ -7,7 +7,12 @@
  * Pure types only — zero executable code.
  */
 
-import type { PipelineState, ExecutionRecord, TriageRecord, PendingContextPayload } from "../types.js";
+import type {
+  PipelineState,
+  ExecutionRecord,
+  AppendInvocationInput,
+  SealInvocationInput,
+} from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Effect union
@@ -16,11 +21,11 @@ import type { PipelineState, ExecutionRecord, TriageRecord, PendingContextPayloa
 export type Effect =
   | PersistStateEffect
   | PersistExecutionRecordEffect
-  | PersistPendingContextEffect
-  | PersistTriageRecordEffect
   | ReindexEffect
   | TelemetryEventEffect
   | WriteHaltArtifactEffect
+  | AppendInvocationRecordEffect
+  | SealInvocationEffect
   ;
 
 /** Persist the full pipeline state to the state store. */
@@ -43,26 +48,6 @@ export interface TelemetryEventEffect {
   readonly category: string;
   readonly itemKey: string | null;
   readonly context?: Record<string, unknown>;
-}
-
-/** Persist pending context (retry/revert context) for a pipeline item. */
-export interface PersistPendingContextEffect {
-  readonly type: "persist-pending-context";
-  readonly slug: string;
-  readonly itemKey: string;
-  /** Prompt context string to inject into the item's next attempt.
-   *  May be a plain string (legacy) or a structured `PendingContextPayload`
-   *  carrying a narrative plus a typed triage handoff. The adapter is
-   *  responsible for rendering the payload to a single markdown string. */
-  readonly context: string | PendingContextPayload;
-}
-
-/** Persist a triage record for a pipeline item. */
-export interface PersistTriageRecordEffect {
-  readonly type: "persist-triage-record";
-  readonly slug: string;
-  /** Full triage classification record. */
-  readonly record: TriageRecord;
 }
 
 /** Request a roam-code re-index of the codebase. */
@@ -89,4 +74,29 @@ export interface WriteHaltArtifactEffect {
   /** Last N failure messages that share the signature (newest first is fine
    *  — the adapter owns formatting). */
   readonly sampleFailures: ReadonlyArray<{ itemKey: string; timestamp: string; message: string }>;
+}
+
+/**
+ * Append a fresh `InvocationRecord` to `state.artifacts` at dispatch time.
+ * Part of the Artifact Bus (Phase 1 remainder). Idempotent only w.r.t.
+ * duplicate invocationIds — the adapter rejects repeats with a clear error.
+ * The handler loop emits this once per dispatch, before the handler runs.
+ */
+export interface AppendInvocationRecordEffect {
+  readonly type: "append-invocation-record";
+  readonly slug: string;
+  readonly input: AppendInvocationInput;
+}
+
+/**
+ * Seal an existing invocation: set outcome, finishedAt, merge outputs, and
+ * lock the invocation directory against further `ArtifactBus.write` calls.
+ * Part of the Artifact Bus (Phase 1 remainder). Idempotent — sealing a
+ * sealed record is a no-op. The handler loop emits this when a handler
+ * terminates (completed, failed, or error).
+ */
+export interface SealInvocationEffect {
+  readonly type: "seal-invocation";
+  readonly slug: string;
+  readonly input: SealInvocationInput;
 }

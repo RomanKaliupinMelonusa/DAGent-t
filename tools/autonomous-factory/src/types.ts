@@ -37,19 +37,122 @@ export interface PipelineItem {
   status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
-  /** Structured handoff artifact (JSON string) for downstream agent contracts.
-   *  Dev agents use this to communicate typed data (testid maps, affected routes,
-   *  SSR-safety flags) to SDET and test runner agents. */
-  handoffArtifact?: string | null;
-  /** Pre-built prompt context written by the triage handler (or node wrapper)
-   *  for injection into the next attempt of this item. Consumed and cleared
-   *  by the node wrapper before handler execution. */
-  pendingContext?: string | null;
   /** Sticky salvage marker — set when the kernel applies `salvage-draft` to
    *  this item. Subsequent `reset-nodes` dag-commands targeting a salvaged
    *  item are rejected by the reducer (no-op) and produce a telemetry signal.
    *  Prevents later triage cycles from resurrecting a gracefully-degraded node. */
   salvaged?: boolean;
+  /** Artifact-bus pointer: invocationId of the most recent (or staged) dispatch
+   *  for this item. Points into `PipelineState.artifacts`. Set by the kernel
+   *  at dispatch time AND when the triage handler stages a re-entrance via
+   *  the `stage-invocation` command. The dispatcher reads this to adopt the
+   *  staged record (carrying `parentInvocationId` + `trigger`) instead of
+   *  allocating a fresh invocationId. Re-entrance prose lives in declared
+   *  artifacts (e.g. `triage-handoff` JSON), not on the record itself. */
+  latestInvocationId?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Artifact Bus — invocation ledger (Phase 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialized reference to an artifact owned by the Artifact Bus. Mirrors the
+ * `ArtifactRef` union on `ports/artifact-bus.ts` but is the plain-data form
+ * persisted inside `InvocationRecord`. The `path` is absolute and recomputable
+ * from the other fields via `ArtifactBus.ref()` — stored for convenience so
+ * consumers reading state don't need an `ArtifactBus` instance to locate a
+ * file on disk.
+ */
+export interface ArtifactRefSerialized {
+  /** Stable kind id — see `apm/artifact-catalog.ts`. */
+  readonly kind: string;
+  readonly scope: "kickoff" | "node";
+  readonly slug: string;
+  readonly nodeKey?: string;
+  readonly invocationId?: string;
+  readonly path: string;
+}
+
+/**
+ * Trigger that caused an invocation to be created. Mirrors the failure-loop
+ * vocabulary the kernel already uses elsewhere (reset-for-dev, reset-for-reroute).
+ */
+export type InvocationTrigger =
+  | "initial"
+  | "triage-reroute"
+  | "retry"
+  | "redevelopment-cycle";
+
+/**
+ * Persisted metadata for a single invocation of a DAG node. Authoritative
+ * record under `PipelineState.artifacts[invocationId]`; the matching
+ * `<nodeKey>/<invocationId>/meta.json` file is a mirror, not the source of
+ * truth.
+ *
+ * Supplants per-item `handoffArtifact` and the legacy `pendingContext`
+ * string field: emitted handoffs live in `outputs`
+ * with their declared kind. Re-entrance context (e.g. triage handoffs)
+ * also flows through declared artifacts — the dispatcher's input
+ * materialization middleware copies them into `<inv>/inputs/` before the
+ * handler runs.
+ */
+export interface InvocationRecord {
+  /** Unique id — see `kernel/invocation-id.ts`. Lexicographically time-sortable. */
+  readonly invocationId: string;
+  /** Owning DAG node (e.g. "storefront-dev"). */
+  readonly nodeKey: string;
+  /** 1-based sequence index among invocations of the same node, assigned at
+   *  dispatch from the pre-existing `cycleCounters[nodeKey]`. Human-readable;
+   *  not a uniqueness key. */
+  readonly cycleIndex: number;
+  /** Why this invocation was created. */
+  readonly trigger: InvocationTrigger;
+  /** The invocation that caused this one (e.g. the triage invocation that
+   *  routed here). Absent for the first invocation of a node. */
+  readonly parentInvocationId?: string;
+  /** Item key that produced this invocation's pending context, if any.
+   *  Human-oriented convenience ("triage-storefront#inv_01H…"). */
+  readonly producedBy?: string;
+  /** ISO timestamp at dispatch. May be absent for staged records that have
+   *  not yet been picked up — the dispatch hook stamps this when the
+   *  handler actually starts. */
+  readonly startedAt?: string;
+  /** ISO timestamp when the invocation terminated (sealed). */
+  readonly finishedAt?: string;
+  /** Outcome of the owning handler. */
+  readonly outcome?: "completed" | "failed" | "error";
+  /** Artifacts the invocation consumed (resolved from declared `consumes` /
+   *  `consumes_kickoff`). Phase 2 ships the container; population happens
+   *  in Phase 4. */
+  readonly inputs: ArtifactRefSerialized[];
+  /** Artifacts the invocation produced. Populated by the kernel from
+   *  `report_outcome` in Phase 4. */
+  readonly outputs: ArtifactRefSerialized[];
+  /** `true` once the invocation dir is sealed — any subsequent `ArtifactBus.write`
+   *  targeting this invocation will throw. Mirrors the adapter's in-memory
+   *  cache so seal state survives orchestrator restarts. */
+  readonly sealed?: boolean;
+}
+
+export interface AppendInvocationInput {
+  readonly invocationId: string;
+  readonly nodeKey: string;
+  readonly trigger: InvocationTrigger;
+  readonly parentInvocationId?: string;
+  readonly producedBy?: string;
+  readonly startedAt?: string;
+  readonly inputs?: ArtifactRefSerialized[];
+  /** Optional cycleIndex override. Defaults to the current count of
+   *  invocations for `nodeKey` (plus one) as derived from `state.artifacts`. */
+  readonly cycleIndex?: number;
+}
+
+export interface SealInvocationInput {
+  readonly invocationId: string;
+  readonly outcome: "completed" | "failed" | "error";
+  readonly finishedAt?: string;
+  readonly outputs?: ArtifactRefSerialized[];
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +225,6 @@ export interface PipelineState {
   salvageSurvivors: string[];
   /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
   dormantByActivation?: string[];
-  /** Last triage record — persisted for downstream context injection. */
-  lastTriageRecord?: TriageRecord | null;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
   /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.
@@ -131,6 +232,11 @@ export interface PipelineState {
    *  and persisted via `StateStore.persistDagSnapshot`. Legacy state files without
    *  this field are backfilled on read from `errorLog` reset entries. */
   cycleCounters?: Record<string, number>;
+  /** Artifact-bus (Phase 2) invocation ledger, keyed by invocationId.
+   *  Authoritative index for per-dispatch artifacts + lineage. `items[].latestInvocationId`
+   *  points here. Absent on legacy state files; the adapter backfills an empty
+   *  object on read. */
+  artifacts?: Record<string, InvocationRecord>;
 }
 
 /** Status values for pipeline items in the DAG scheduler. */
@@ -193,7 +299,9 @@ export interface TriageResult {
 /**
  * Full triage record assembled by the triage handler (handlers/triage.ts).
  * Captures everything about a failure classification for retrospective analysis.
- * Persisted to `_STATE.json.lastTriageRecord` and emitted as a `triage.evaluate` event.
+ * Serialised to the `triage-handoff` artifact at
+ * `<slug>/<triage-nodeKey>/<invocationId>/triage-handoff.json` and emitted as
+ * a `triage.evaluate` event.
  */
 export interface TriageRecord {
   /** The DAG node that failed. */
@@ -230,14 +338,18 @@ export interface TriageRecord {
 
 /**
  * Structured handoff payload emitted by the triage handler when it reroutes
- * a failure to a dev agent. Consumed by the adapter that persists
- * `pendingContext` for the target node. Carries the diagnosis up-front so
- * the receiving agent does not have to re-discover it from raw logs.
- *
- * Backward compat: the pendingContext surface still accepts plain strings;
- * this is an additive, opt-in upgrade (B1).
+ * a failure to a dev agent. Serialized to the `triage-handoff` JSON
+ * artifact that the materialize-inputs middleware copies into the
+ * rerouted node's `inputs/` directory (declared via `consumes_reroute`).
+ * Carries the diagnosis up-front so the receiving agent does not have to
+ * re-discover it from raw logs.
  */
 export interface TriageHandoff {
+  /** On-disk wire-format version. Producers stamp the catalog's canonical
+   *  value (currently `1`); consumers treat an absent field as `1`
+   *  (pre-versioning artifacts on disk). Bumping requires either a
+   *  backwards-compatible schema union or a parallel major. */
+  readonly schemaVersion?: 1;
   /** The item whose failure triggered this handoff (upstream of route-to). */
   readonly failingItem: string;
   /** Trimmed error excerpt (first N lines) — no secrets, deterministic. */
@@ -343,17 +455,12 @@ export interface TriageHandoff {
     readonly networkPatternCount: number;
     readonly uncaughtPatternCount: number;
   };
-}
-
-/**
- * Structured pendingContext payload — narrative + handoff diagnosis.
- * Accepted anywhere a plain string pendingContext is accepted.
- */
-export interface PendingContextPayload {
-  /** Pre-composed prose block (existing `composeTriageContext` output). */
-  readonly narrative: string;
-  /** Structured diagnosis rendered as markdown by the adapter. */
-  readonly handoff: TriageHandoff;
+  /** Invocation id assigned to this triage run itself (Phase 5). Downstream
+   *  dispatches caused by this handoff record it as their
+   *  `parentInvocationId`, giving lineage queries a traversable chain from
+   *  the original failure through every reroute. Absent during the Phase 5
+   *  rollout window — consumers must treat this as optional. */
+  readonly triageInvocationId?: string;
 }
 
 /**

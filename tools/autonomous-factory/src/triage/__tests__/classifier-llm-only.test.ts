@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { evaluateTriage } from "../index.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
 
-// LLM router appends to <appRoot>/in-progress/<slug>_NOVEL_TRIAGE.jsonl on
+// LLM router appends to <appRoot>/in-progress/<slug>/_novel-triage.jsonl on
 // every invocation; the directory must exist.
 const TMP_APP_ROOT = mkdtempSync(join(tmpdir(), "triage-classifier-test-"));
 mkdirSync(join(TMP_APP_ROOT, "in-progress"), { recursive: true });
@@ -52,6 +52,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
           reason: "DNS resolution failed",
         },
       ],
+      domains: ["frontend", "environment"],
+      patterns: [],
     };
 
     const trace =
@@ -74,6 +76,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
       signatures: [],
+      domains: ["frontend"],
+      patterns: [],
     };
 
     const llm = makeStubLlm("frontend", "should not be called");
@@ -89,6 +93,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
       signatures: [],
+      domains: ["frontend"],
+      patterns: [],
     };
 
     const llm = makeStubLlm("frontend", "classified by llm");

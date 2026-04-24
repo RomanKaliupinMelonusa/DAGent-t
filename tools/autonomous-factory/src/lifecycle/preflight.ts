@@ -12,6 +12,7 @@ import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
 import { StateError } from "../errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
+import { featurePath } from "../adapters/feature-paths.js";
 
 /**
  * Warn about unexpected untracked files in the repo root.
@@ -53,6 +54,63 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
       }
     }
   } catch { /* non-fatal */ }
+}
+
+/**
+ * Warn when `config.defaultToolLimits` is absent or incomplete in apm.yml.
+ *
+ * Agents resolve limits as: per-agent `toolLimits` → `config.defaultToolLimits`
+ * → code fallback constants. Missing a sub-field silently lands on the code
+ * fallback, which is discoverable only by reading source. This check lists
+ * every missing sub-field and the exact fallback value so new apps can opt
+ * in deliberately.
+ *
+ * Non-fatal — console.warn only. No-op when every sub-field is present.
+ */
+export function checkToolLimitsHygiene(apmContext: ApmCompiledOutput): void {
+  // Sub-field descriptors; values mirror the runtime fallbacks in
+  // harness/limits.ts, adapters/session-circuit-breaker.ts, and
+  // handlers/support/agent-limits.ts. Kept inline (string literals) so a
+  // drift between this list and the fallback sources is caught by the
+  // hygiene warning test and is cheap to audit.
+  const fields: Array<{ name: string; fallback: string }> = [
+    { name: "soft",              fallback: "TOOL_LIMIT_FALLBACK_SOFT (30)" },
+    { name: "hard",              fallback: "TOOL_LIMIT_FALLBACK_HARD (40)" },
+    { name: "fileReadLineLimit", fallback: "DEFAULT_FILE_READ_LINE_LIMIT (500)" },
+    { name: "maxFileSize",       fallback: "DEFAULT_MAX_FILE_SIZE (5,242,880 = 5 MB)" },
+    { name: "shellOutputLimit",  fallback: "DEFAULT_SHELL_OUTPUT_LIMIT (64,000)" },
+    { name: "shellTimeoutMs",    fallback: "DEFAULT_SHELL_TIMEOUT_MS (600,000)" },
+    { name: "idleTimeoutLimit",  fallback: "IDLE_TIMEOUT_LIMIT_FALLBACK (2)" },
+    { name: "writeThreshold",    fallback: "code default (3)" },
+    { name: "preTimeoutPercent", fallback: "code default (0.8)" },
+  ];
+
+  const limits = apmContext.config?.defaultToolLimits as
+    | Record<string, unknown>
+    | undefined;
+
+  if (limits === undefined) {
+    const lines = fields.map((f) => `      - ${f.name} → ${f.fallback}`).join("\n");
+    console.warn(
+      "\n  ⚠ WARNING: `config.defaultToolLimits` is not declared in apm.yml.\n" +
+      "    Every agent without a per-agent `toolLimits` override will silently\n" +
+      "    fall back to code-level defaults:\n" +
+      `${lines}\n` +
+      "    Declare `config.defaultToolLimits` in apm.yml to set these explicitly.\n",
+    );
+    return;
+  }
+
+  const missing = fields.filter((f) => (limits as Record<string, unknown>)[f.name] === undefined);
+  if (missing.length === 0) return;
+
+  const lines = missing.map((f) => `      - ${f.name} → ${f.fallback}`).join("\n");
+  console.warn(
+    "\n  ⚠ WARNING: `config.defaultToolLimits` is missing sub-fields in apm.yml.\n" +
+    "    The following will fall back to code-level defaults:\n" +
+    `${lines}\n` +
+    "    Declare them in apm.yml to set explicit values.\n",
+  );
 }
 
 /**
@@ -170,8 +228,8 @@ export function runPreflightBaseline(
     return null;
   }
 
-  // Persist to _FLIGHT_DATA.json — merge with any existing content.
-  const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+  // Persist to the feature's flight-data sidecar — merge with any existing content.
+  const flightPath = featurePath(appRoot, slug, "flight-data");
   try {
     let existing: Record<string, unknown> = {};
     if (fs.existsSync(flightPath)) {

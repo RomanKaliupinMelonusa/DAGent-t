@@ -8,9 +8,9 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 
 import type { BaselineLoader, BaselineProfile } from "../ports/baseline-loader.js";
+import { featurePath } from "./feature-paths.js";
 
 export interface FileBaselineLoaderOptions {
   /** Absolute path to the app root (contains `in-progress/`). */
@@ -25,7 +25,7 @@ export class FileBaselineLoader implements BaselineLoader {
   }
 
   loadBaseline(slug: string): BaselineProfile | null {
-    const p = path.join(this.appRoot, "in-progress", `${slug}_BASELINE.json`);
+    const p = featurePath(this.appRoot, slug, "baseline");
     let raw: string;
     try {
       raw = fs.readFileSync(p, "utf8");

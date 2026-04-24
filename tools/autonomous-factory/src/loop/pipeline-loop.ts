@@ -35,12 +35,18 @@ import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
+import { buildSecretRedactor } from "../adapters/secret-redactor.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
+import {
+  recordInvocationDispatch,
+  recordInvocationSeal,
+} from "./dispatch/invocation-ledger-hooks.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
 import { resolveTriageActivations } from "./triage-activation.js";
 import type { TriageActivation } from "../app-types.js";
@@ -115,7 +121,12 @@ export interface PipelineLoopConfig {
   readonly stateReader: Pick<StateStore, "getStatus">;
   readonly shell: Shell;
   readonly filesystem: FeatureFilesystem;
+  readonly invocation: InvocationFilesystem;
   readonly copilotSessionRunner: CopilotSessionRunner;
+  /** Advisory API-drift markdown produced by bootstrap; forwarded to
+   *  agents that consult the vendored reference snapshot. Absent when
+   *  there is no drift or no snapshot configured. */
+  readonly pwaKitDriftReport?: string;
 }
 
 export interface HandlerResolver {
@@ -150,6 +161,10 @@ export async function runPipelineLoop(
   config: PipelineLoopConfig,
 ): Promise<LoopResult> {
   const { slug, logger, lifecycle } = config;
+  // Track B3: build the log redactor once per pipeline run. Reused by
+  // every FileInvocationLogger created in the context builder so all
+  // per-invocation logs get the same denylist treatment.
+  const logRedactor = buildSecretRedactor(config.apmContext.config?.environment);
   const ctxConfig: ContextBuilderConfig = {
     slug: config.slug,
     appRoot: config.appRoot,
@@ -165,7 +180,10 @@ export async function runPipelineLoop(
     stateReader: config.stateReader,
     shell: config.shell,
     filesystem: config.filesystem,
+    invocation: config.invocation,
     copilotSessionRunner: config.copilotSessionRunner,
+    logRedactor,
+    ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   };
 
   const policy = config.apmContext.config?.policy;
@@ -282,7 +300,16 @@ export async function runPipelineLoop(
             console.log(`    · ${a.triageNodeKey} ← ${a.failingKey}`);
           }
           console.log(`${"─".repeat(70)}`);
+          await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger);
           const triageResult = await dispatchBatch(triagePairs);
+          await recordInvocationSeal(
+            effectPorts.stateStore,
+            slug,
+            triagePairs,
+            triageResult,
+            logger,
+            { resolveNode: (key) => lifecycle.getWorkflowNode(key) },
+          );
           const triageEffects: Effect[] = [];
           let triageHalt = false;
           for (const cmd of triageResult.commands) {
@@ -363,7 +390,16 @@ export async function runPipelineLoop(
       }
 
       // Step 5: Dispatch batch
+      await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger);
       const batchResult = await dispatchBatch(dispatchPairs);
+      await recordInvocationSeal(
+        effectPorts.stateStore,
+        slug,
+        dispatchPairs,
+        batchResult,
+        logger,
+        { resolveNode: (key) => lifecycle.getWorkflowNode(key) },
+      );
 
       // Per-item outcome banner on stdout for operator visibility.
       for (const { itemKey, result } of batchResult.itemResults) {

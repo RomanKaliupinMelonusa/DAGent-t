@@ -60,13 +60,20 @@ export function evaluateAutoSkip(
 
   // ── Triage-reroute gate: skip unless routed in by the triage handler ──
   // When `auto_skip_unless_triage_reroute` is true, the node is only
-  // meaningful if it was activated via a triage reroute (which writes
-  // pendingContext on the target item before reset). Absent a pending
-  // context, we treat the happy-path visit as a no-op.
+  // meaningful if it was activated via a triage reroute. Triage stages
+  // an unsealed `InvocationRecord` with `trigger: "triage-reroute"` and
+  // points `item.latestInvocationId` at it; absent that staged record
+  // (or any other trigger), treat the happy-path visit as a no-op.
+  // Phase 6 — detection switched from the legacy `pendingContext` string
+  // probe (now removed) to the staged record's `trigger` field.
+  // probe to the `trigger` field, which is the canonical signal.
   if (node.auto_skip_unless_triage_reroute) {
     const item = pipelineState?.items.find((i) => i.key === itemKey);
-    const hasHandoff = !!(item?.pendingContext && item.pendingContext.trim().length > 0);
-    if (!hasHandoff) {
+    const staged = item?.latestInvocationId
+      ? pipelineState?.artifacts?.[item.latestInvocationId]
+      : undefined;
+    const isReroute = staged?.trigger === "triage-reroute" && !staged.sealed;
+    if (!isReroute) {
       console.log(`  ⏭ Auto-skipping ${itemKey} — no triage handoff (auto_skip_unless_triage_reroute)`);
       return {
         skip: {

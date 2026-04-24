@@ -18,25 +18,27 @@
  *   - domain: string             — classified fault domain
  *   - reason: string             — human-readable reason
  *   - source: "contract" | "rag" | "llm" | "fallback" — which classification layer matched
- *   - triageRecord: TriageRecord — full record (persisted via set-triage-record command)
+ *   - triageRecord: TriageRecord — full record (serialised to the `triage-handoff` artifact after execute)
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
 import type { NodeBudgetPolicy } from "../app-types.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
-import type { TriageRecord, TriageResult } from "../types.js";
+import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
 import { RESET_OPS } from "../types.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { newInvocationId } from "../kernel/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
-import { classifyStructuredFailure, classifyRawError } from "../triage/contract-classifier.js";
+import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
 import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
-import { composeTriageContext } from "../triage/context-builder.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
+import { buildEnvelope } from "../apm/artifact-catalog.js";
 import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 // ---------------------------------------------------------------------------
@@ -52,8 +54,17 @@ export interface TriageHandlerOutput {
   reason: string;
   /** Which classification layer produced the result. */
   source: "contract" | "rag" | "llm" | "fallback";
-  /** Full triage record for kernel to persist via setLastTriageRecord(). */
+  /** Full triage record — kept on `handlerOutput` for telemetry / RAG /
+   *  LLM observability. NOT serialised to the on-disk `triage-handoff`
+   *  artifact (the rerouted dev agent receives the structured
+   *  `TriageHandoff` payload below instead). */
   triageRecord: TriageRecord;
+  /** Structured handoff payload built by `buildTriageHandoff`. The outer
+   *  `attachTriageHandoffArtifact` wrapper serialises this to
+   *  `outputs/triage-handoff.json` so the rerouted dev / debug node sees
+   *  the diagnosis + evidence (not the RAG/LLM internals). Absent on
+   *  guard / salvage / degradation paths where no reroute happens. */
+  triageHandoff?: TriageHandoff;
   /** Pre-triage guard outcome — "passed" if guards did not intercept. */
   guardResult: TriageRecord["guard_result"];
 }
@@ -79,15 +90,31 @@ function buildSalvageCommands(
   errorMsg: string,
   triageRecord: TriageRecord,
 ): DagCommand[] {
+  // The triage record itself is serialised to the `triage-handoff` artifact
+  // by the outer execute wrapper; no kernel command is needed for persistence.
+  void triageRecord;
   return [
-    { type: "set-triage-record", record: triageRecord },
     { type: "salvage-draft", failedItemKey: failingKey, reason: errorMsg },
   ];
 }
 
 /**
+ * Result of `buildRerouteCommands` — the kernel commands to push, plus
+ * the structured `TriageHandoff` payload built along the way so the
+ * caller can stash it on `handlerOutput.triageHandoff` for the outer
+ * `attachTriageHandoffArtifact` wrapper to serialise.
+ */
+interface RerouteBuildResult {
+  readonly commands: DagCommand[];
+  readonly handoff?: TriageHandoff;
+}
+
+/**
  * Build DagCommands for a successful reroute (reset target + downstream).
- * Assembles: set-triage-record → reset-nodes → set-pending-context → reindex.
+ * Assembles: reset-nodes → stage-invocation → reindex. Also builds the
+ * structured `TriageHandoff` payload and returns it so the caller can
+ * propagate it to `handlerOutput.triageHandoff` — the outer execute
+ * wrapper serialises it to the on-disk `triage-handoff` artifact.
  */
 async function buildRerouteCommands(
   ctx: NodeContext,
@@ -111,14 +138,15 @@ async function buildRerouteCommands(
    *  as a provenance footer in the dev-agent handoff so the agent can
    *  confirm the filter ran. Zero / omitted when no filtering happened. */
   baselineDropCounts?: { console: number; network: number; uncaught: number },
-): Promise<DagCommand[]> {
+): Promise<RerouteBuildResult> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
+  let handoff: TriageHandoff | undefined;
 
-  // 1. Persist triage record first (so it's available during reset)
-  commands.push({ type: "set-triage-record", record: triageRecord });
-
-  // 2. Reset target node + all downstream dependents
+  // 1. Reset target node + all downstream dependents
+  //    (the structured handoff is serialised to the `triage-handoff`
+  //    artifact by the outer execute wrapper using the `handoff` value
+  //    returned from this function — no persistence command needed.)
   const taggedReason = `${formatDomainTag(triageResult.domain)} [source:${triageResult.source}] ${triageResult.reason}`;
   commands.push({
     type: "reset-nodes",
@@ -128,88 +156,112 @@ async function buildRerouteCommands(
     maxCycles: maxReroutes,
   });
 
-  // 3. Build and inject pendingContext for the target node
+  // 2. Stage an unsealed `InvocationRecord` for the routed-to node.
+  //    Phase 6 — the staged record carries trigger + parent lineage only.
+  //    Re-entrance context flows through the `triage-handoff` JSON
+  //    artifact (declared via `consumes_reroute`); Phase 3's
+  //    `materializeInputsMiddleware` copies it into `<inv>/inputs/`
+  //    before the dev agent runs. No prose `pendingContext` is built or
+  //    persisted anymore.
   try {
     const pipeStateForCtx = await ctx.stateReader.getStatus(slug);
-    const targetExecLog = (pipeStateForCtx.executionLog ?? [])
-      .filter((r: { nodeKey: string }) => r.nodeKey === routeToKey);
-    const targetAttempt = targetExecLog.length > 0
-      ? Math.max(...targetExecLog.map((r: { attempt: number }) => r.attempt)) + 1
-      : 1;
-    const artifacts: TriageArtifactLoader =
-      ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
-    const targetEffective = await artifacts.computeEffectiveDevAttempts(
-      routeToKey, targetAttempt, slug, routeToPolicy.allowsRevertBypass,
-    );
-    const lastSummary = [...ctx.pipelineSummaries].reverse().find((s) => s.key === routeToKey);
-    const rejectionCtx = await artifacts.loadRejectionContext(slug);
-    const composed = composeTriageContext({
-      slug,
-      itemKey: routeToKey,
-      attempt: targetAttempt,
-      effectiveAttempts: targetEffective,
+    // Build the structured handoff so the outer `attachTriageHandoffArtifact`
+    // wrapper can write `outputs/triage-handoff.json` for this triage
+    // invocation. The `priorAttemptCount` reflects feature-level effort
+    // (executionLog entries for the failing node + reset-for-reroute
+    // cycles) so the rendered "Prior attempts" line tells the truth.
+    const execAttempts = (pipeStateForCtx.executionLog ?? [])
+      .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
+    const cycleAttempts = extractPriorAttempts(pipeStateForCtx.errorLog ?? []).length;
+    const priorAttemptCount = execAttempts + cycleAttempts;
+    handoff = buildTriageHandoff({
+      failingNodeKey,
+      rawError,
+      triageRecord,
+      triageResult,
+      priorAttemptCount,
       pipelineSummaries: ctx.pipelineSummaries,
-      previousAttempt: lastSummary,
-      allowsRevertBypass: routeToPolicy.allowsRevertBypass,
-      revertWarningAt: routeToPolicy.revertWarningAt,
-      ciWorkflowFilePatterns: ctx.apmContext.config?.ciWorkflows?.filePatterns as string[] | undefined,
-      ciScopeWarning: ctx.apmContext.config?.ci_scope_warning as string | undefined,
-      rejectionContext: rejectionCtx || undefined,
-      rawMode: ctx.apmContext.config?.context?.raw_mode === true,
-      failureFallback: { failingItemKey: failingNodeKey, rawError },
+      errorLog: pipeStateForCtx.errorLog ?? [],
+      structuredFailure,
+      routeToKey,
+      baselineDropCounts,
       baseline,
+      slug,
+      triageInvocationId: ctx.executionId,
     });
-    if (composed) {
-      // B1 — emit structured handoff alongside the narrative so the adapter
-      // appends a typed diagnosis block. The dev agent no longer needs to
-      // re-discover the failure domain from raw logs.
-      //
-      // `priorAttemptCount` must reflect feature-level effort, not just this
-      // node's exec count. Before C6 this counted only executionLog entries
-      // for the failing node, which reads "0" on the first cycle even when
-      // several redevelopment cycles have already elapsed. We now add the
-      // number of reset-for-reroute cycles so the rendered "Prior attempts"
-      // line tells the truth.
-      const execAttempts = (pipeStateForCtx.executionLog ?? [])
-        .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
-      const cycleAttempts = extractPriorAttempts(pipeStateForCtx.errorLog ?? []).length;
-      const priorAttemptCount = execAttempts + cycleAttempts;
-      const handoff = buildTriageHandoff({
-        failingNodeKey,
-        rawError,
-        triageRecord,
-        triageResult,
-        priorAttemptCount,
-        pipelineSummaries: ctx.pipelineSummaries,
-        errorLog: pipeStateForCtx.errorLog ?? [],
-        structuredFailure,
-        routeToKey,
-        baselineDropCounts,
-        baseline,
-        slug,
-      });
-      commands.push({
-        type: "set-pending-context",
-        itemKey: routeToKey,
-        context: { narrative: composed, handoff },
-      });
-    }
-  } catch { /* non-fatal — reroute still works without pendingContext */ }
+    commands.push({
+      type: "stage-invocation",
+      itemKey: routeToKey,
+      invocationId: newInvocationId(),
+      parentInvocationId: ctx.executionId,
+      trigger: "triage-reroute",
+      producedBy: `${ctx.itemKey}#${ctx.executionId}`,
+    });
+  } catch { /* non-fatal — reroute still happens via reset-nodes alone */ }
 
-  // 4. Re-index semantic graph if target category needs it
+  // 3. Re-index semantic graph if target category needs it
   const targetCat = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey)?.category;
   if (targetCat) {
     commands.push({ type: "reindex", categories: [targetCat] });
   }
 
-  return commands;
+  return { commands, handoff };
 }
 
 // ---------------------------------------------------------------------------
 // Handler implementation
 // ---------------------------------------------------------------------------
 
-const triageHandler: NodeHandler = {
+/**
+ * Serialise the structured `TriageHandoff` payload to the canonical
+ * `triage-handoff` artifact and attach a runtime `producedArtifacts`
+ * ref so the seal hook records it on the InvocationRecord. Best-effort:
+ * failures are swallowed so the reroute still proceeds (the dev agent
+ * will just lack the structured handoff JSON until the next cycle).
+ *
+ * The wire format is the `TriageHandoff` interface (see `src/types.ts`),
+ * not the internal `TriageRecord` — the receiving dev / debug agent
+ * needs the diagnosis + evidence, not the RAG/LLM internals.
+ */
+async function attachTriageHandoffArtifact(
+  ctx: NodeContext,
+  result: NodeResult,
+): Promise<NodeResult> {
+  if (result.outcome !== "completed") return result;
+  const handoff = (result.handlerOutput as TriageHandlerOutput | undefined)?.triageHandoff;
+  if (!handoff) return result;
+  try {
+    const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem, undefined, {
+      strict: ctx.apmContext.config?.strict_artifacts === true,
+    });
+    const ref = bus.ref(ctx.slug, "triage-handoff", {
+      nodeKey: ctx.itemKey,
+      invocationId: ctx.executionId,
+    });
+    // Session A (Item 8) — emit envelope natively (strict-compatible).
+    const envelope = buildEnvelope("triage-handoff", ctx.itemKey);
+    const body = { ...envelope, ...handoff };
+    await bus.write(ref, JSON.stringify(body, null, 2) + "\n");
+    const serialized: ArtifactRefSerialized = {
+      kind: ref.kind,
+      scope: ref.scope,
+      slug: ref.slug,
+      ...(ref.scope === "node"
+        ? { nodeKey: ref.nodeKey, invocationId: ref.invocationId }
+        : {}),
+      path: ref.path,
+    };
+    return {
+      ...result,
+      producedArtifacts: [...(result.producedArtifacts ?? []), serialized],
+    };
+  } catch {
+    // non-fatal — reroute still works without the artifact
+    return result;
+  }
+}
+
+const triageHandlerInner: NodeHandler = {
   name: "triage",
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
@@ -349,15 +401,17 @@ const triageHandler: NodeHandler = {
         });
       }
     } catch { /* non-fatal — fall through with original payload */ }
-    const contractVerdict = classifyStructuredFailure(filteredStructuredFailure, { acceptance });
+    // Session B (Item 3) — profile-driven L0 pre-classifier. Built-in
+    // patterns (browser-uncaught, contract-testid-timeout,
+    // spec-schema-violation) are prepended by the APM compiler unless the
+    // profile sets `builtin_patterns: false`. Additional patterns declared
+    // on the profile in apm.yml run in order after the built-ins.
+    const preLlmVerdict = evaluateProfilePatterns(profile, {
+      structuredFailure: filteredStructuredFailure,
+      rawError,
+      acceptance,
+    });
     const failureRoutesForContract = ctx.failureRoutes ?? {};
-    // Fall-through classifier for raw-string failures (no StructuredFailure).
-    // Currently matches `spec-compiler` schema-violation messages — route
-    // `schema-violation: spec-compiler` on the node triggers self-repair.
-    const rawVerdict = contractVerdict
-      ? null
-      : classifyRawError(rawError);
-    const preLlmVerdict = contractVerdict ?? rawVerdict;
     const triageResult: TriageResult =
       preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
         ? preLlmVerdict
@@ -571,7 +625,7 @@ const triageHandler: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const commands = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
+    const { commands, handoff } = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
 
     return {
       outcome: "completed",
@@ -583,9 +637,18 @@ const triageHandler: NodeHandler = {
         reason: triageResult.reason,
         source: triageResult.source,
         triageRecord: record,
+        ...(handoff ? { triageHandoff: handoff } : {}),
         guardResult: "passed",
       } satisfies TriageHandlerOutput,
     };
+  },
+};
+
+const triageHandler: NodeHandler = {
+  name: "triage",
+  async execute(ctx: NodeContext): Promise<NodeResult> {
+    const result = await triageHandlerInner.execute(ctx);
+    return attachTriageHandoffArtifact(ctx, result);
   },
 };
 

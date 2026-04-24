@@ -50,10 +50,12 @@ const handlerCache = new Map<string, NodeHandler>();
  *
  * Resolution order:
  * 1. Config-driven `handler_defaults` map (type:script_type → handler, then type → handler)
- * 2. Built-in fallback map (hardcoded for backward compatibility)
+ * 2. Built-in fallback map (hardcoded for backward compatibility) — skipped when `strict` is true
  *
  * To add a new node type without touching kernel code, declare it in
- * `config.handler_defaults` in your app's `apm.yml`.
+ * `config.handler_defaults` in your app's `apm.yml`. To forbid the built-in
+ * fallback entirely (and catch type typos at lint time), set
+ * `config.strict_handler_inference: true`.
  */
 
 /** Built-in fallback map — used when handler_defaults doesn't cover a type. */
@@ -70,6 +72,7 @@ export function inferHandler(
   nodeType: string,
   scriptType?: string,
   handlerDefaults?: Record<string, string>,
+  strict?: boolean,
 ): string | null {
   // Config-driven resolution: check "type:script_type" first, then "type"
   const compoundKey = scriptType ? `${nodeType}:${scriptType}` : undefined;
@@ -77,6 +80,8 @@ export function inferHandler(
     if (compoundKey && handlerDefaults[compoundKey]) return handlerDefaults[compoundKey];
     if (handlerDefaults[nodeType]) return handlerDefaults[nodeType];
   }
+  // Strict mode: no built-in fallback — force explicit handler/handler_defaults
+  if (strict) return null;
   // Built-in fallback
   if (compoundKey && BUILTIN_INFERENCE[compoundKey]) return BUILTIN_INFERENCE[compoundKey];
   if (BUILTIN_INFERENCE[nodeType]) return BUILTIN_INFERENCE[nodeType];
@@ -388,6 +393,11 @@ export async function resolveHandler(
   const declared = declaredHandlers?.[handlerRef];
   if (declared) {
     const handler = await loadLocalHandler(declared.path, appRoot, repoRoot, handlerRef);
+    // Phase 2.3 — cross-check declared metadata against runtime metadata.
+    // When BOTH sides define an input/output shape, they must match exactly.
+    // Mismatch throws `HandlerMetadataMismatchError` to prevent silent
+    // drift between the config registry and the handler implementation.
+    crossCheckHandlerMetadata(handlerRef, declared, handler.metadata);
     // Overlay config-declared metadata onto handler if handler doesn't declare its own
     if (declared.inputs || declared.outputs || declared.description) {
       const existing = handler.metadata ?? {};
@@ -432,6 +442,8 @@ export async function resolveHandler(
       appRoot,
       handlerRef,
     );
+    // Phase 2.3 — same cross-check for npm-package handlers.
+    crossCheckHandlerMetadata(handlerRef, declaration, handler.metadata);
     if (declaration.inputs || declaration.outputs || declaration.description) {
       const existing = handler.metadata ?? {};
       (handler as { metadata?: HandlerMetadata }).metadata = {
@@ -469,3 +481,77 @@ export function registerBuiltinHandler(key: string, factory: () => Promise<NodeH
 export function clearHandlerCache(): void {
   handlerCache.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2.3 — config ↔ runtime metadata cross-check
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by `resolveHandler` when a config-declared handler's metadata
+ * (inputs/outputs) does not match the runtime handler's declared metadata.
+ * The config acts as the documented contract; a mismatch indicates the
+ * handler implementation has drifted from its declaration and must be
+ * reconciled before the pipeline runs.
+ */
+export class HandlerMetadataMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HandlerMetadataMismatchError";
+  }
+}
+
+interface DeclaredMetadataLike {
+  inputs?: Record<string, "required" | "optional">;
+  outputs?: string[];
+}
+
+/**
+ * Compare declared vs. runtime metadata shape. Each side may omit fields —
+ * cross-check only applies when BOTH define the same field. Mismatch throws.
+ */
+function crossCheckHandlerMetadata(
+  handlerRef: string,
+  declared: DeclaredMetadataLike,
+  runtime: HandlerMetadata | undefined,
+): void {
+  if (!runtime) return;
+  const problems: string[] = [];
+
+  if (declared.inputs && runtime.inputs) {
+    const declaredKeys = Object.keys(declared.inputs).sort();
+    const runtimeKeys = Object.keys(runtime.inputs).sort();
+    if (declaredKeys.join(",") !== runtimeKeys.join(",")) {
+      problems.push(
+        `  inputs keys differ:\n    config:  [${declaredKeys.join(", ")}]\n    runtime: [${runtimeKeys.join(", ")}]`,
+      );
+    } else {
+      for (const k of declaredKeys) {
+        if (declared.inputs[k] !== runtime.inputs[k]) {
+          problems.push(
+            `  inputs.${k}: config="${declared.inputs[k]}" vs runtime="${runtime.inputs[k]}"`,
+          );
+        }
+      }
+    }
+  }
+
+  if (declared.outputs && runtime.outputs) {
+    const d = [...declared.outputs].sort();
+    const r = [...runtime.outputs].sort();
+    if (d.join(",") !== r.join(",")) {
+      problems.push(
+        `  outputs differ:\n    config:  [${d.join(", ")}]\n    runtime: [${r.join(", ")}]`,
+      );
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new HandlerMetadataMismatchError(
+      `Handler "${handlerRef}" metadata mismatch between config and runtime:\n` +
+        problems.join("\n") +
+        `\n\nReconcile the declaration in apm.yml config.handlers with the ` +
+        `handler's runtime \`metadata\` export. They must match exactly.`,
+    );
+  }
+}
+

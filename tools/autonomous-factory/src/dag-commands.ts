@@ -13,13 +13,12 @@
  * New command types can be added here without touching handlers.
  */
 
-import type { TriageRecord, PendingContextPayload } from "./types.js";
+import type { InvocationTrigger } from "./types.js";
 
 export type DagCommand =
   | ResetNodesCommand
   | SalvageDraftCommand
-  | SetPendingContextCommand
-  | SetTriageRecordCommand
+  | StageInvocationCommand
   | ReindexCommand;
 
 /** Reset a node + all transitive downstream dependents to pending. */
@@ -44,24 +43,34 @@ export interface SalvageDraftCommand {
   readonly reason: string;
 }
 
-/** Inject pre-built prompt context into a node's next attempt.
- *  `context` may be a plain string (legacy) or a structured
- *  `PendingContextPayload` carrying a narrative plus a typed triage
- *  handoff. Adapters render the payload to a single markdown string
- *  before persisting. */
-export interface SetPendingContextCommand {
-  readonly type: "set-pending-context";
-  /** Target node key. */
+/** Stage an unsealed `InvocationRecord` for a node's next dispatch.
+ *  Replaces the older `set-pending-context` flow: instead of decorating
+ *  `PipelineItem.pendingContext` (Phase 6 — since removed), the kernel
+ *  appends an unsealed
+ *  invocation to `state.artifacts` carrying the parent invocation pointer
+ *  and the trigger reason. The dispatcher picks up the staged record on
+ *  the next dispatch via `item.latestInvocationId` and stamps `startedAt`
+ *  when the handler begins (no second append).
+ *
+ *  Phase 6 — re-entrance prose no longer rides on the staged record.
+ *  Re-entrance context flows through file-only artifacts (e.g. the
+ *  `triage-handoff` JSON declared via `consumes_reroute`), which the
+ *  dispatch input-materialization middleware copies into
+ *  `<inv>/inputs/` before the handler runs. */
+export interface StageInvocationCommand {
+  readonly type: "stage-invocation";
+  /** Target node key whose next dispatch should consume this record. */
   readonly itemKey: string;
-  /** Context string to inject, or structured triage-handoff payload. */
-  readonly context: string | PendingContextPayload;
-}
-
-/** Persist a triage classification record for retrospective analysis. */
-export interface SetTriageRecordCommand {
-  readonly type: "set-triage-record";
-  /** Full triage record to persist. */
-  readonly record: TriageRecord;
+  /** Pre-allocated invocation id for the staged record. Will become the
+   *  next dispatch's `executionId`. */
+  readonly invocationId: string;
+  /** Triage (or other producer) invocation that emitted this stage. Lets
+   *  the lineage chain stay traversable from the staged record. */
+  readonly parentInvocationId?: string;
+  /** Why the next dispatch is happening. */
+  readonly trigger: InvocationTrigger;
+  /** Human-oriented producer label (e.g. "triage-storefront#inv_…"). */
+  readonly producedBy?: string;
 }
 
 /** Refresh the roam-code semantic graph index. */

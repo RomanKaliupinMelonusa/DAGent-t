@@ -47,7 +47,7 @@
 
    The triage layer parses these attachments deterministically via
    `tools/autonomous-factory/src/triage/playwright-report.ts` and
-   subtracts the pre-feature `<slug>_BASELINE.json` before the dev agent
+   subtracts the pre-feature `<slug>/_kickoff/baseline.json` before the dev agent
    ever sees them. **Do NOT** roll your own `page.on('console')` handlers
    — they produce non-standard attachment names the parser won't match.
 

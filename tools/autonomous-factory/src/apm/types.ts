@@ -177,6 +177,13 @@ export const ApmConfigSchema = z.object({
    *  Replaces hardcoded scope guidance. Injected by buildDownstreamFailureContext() when present. */
   ci_scope_warning: z.string().optional(),
 
+  /** App-registered Handlebars partials available in agent templates via
+   *  `{{> <name>}}`. Each value is either an inline template source (when
+   *  it contains `{{` or a newline) or a path relative to `.apm/` resolved
+   *  at compile time. Names colliding with built-in partials or helpers
+   *  (`completion`, `eq`, `artifact`) raise a fatal ApmCompileError. */
+  handlebarsPartials: z.record(z.string(), z.string()).optional(),
+
   /** Redevelopment context strategy. When `raw_mode` is true, the triage
    *  handler emits a historian-built prior-attempts block + the raw ANSI-
    *  stripped failure output (head+tail truncated at ~12 KB) instead of the
@@ -230,6 +237,24 @@ export const ApmConfigSchema = z.object({
    *  into upstream dev agents. Default: ["test"]. */
   redevelopment_categories: z.array(z.string()).default(["test"]),
 
+  /** Phase 1.3 — strict `consumes_artifacts` declaration gate.
+   *  When true, any agent-type node with `depends_on` and no explicit
+   *  `consumes_artifacts` field raises a fatal `ApmCompileError` at
+   *  validation time. When false (default), the same condition emits a
+   *  non-fatal warning nudging authors toward explicit declarations.
+   *  Kept opt-in during the migration window; flip to true once all
+   *  agent nodes declare their upstream contract (even if empty). */
+  strict_consumes_artifacts: z.boolean().default(false),
+
+  /** Session A (Items 7/8) — strict artifact envelope enforcement.
+   *  When true, the artifact bus refuses writes whose body is missing
+   *  the `schemaVersion`/`producedBy`/`producedAt` envelope (inline kinds)
+   *  and requires producers to author the envelope explicitly. When false
+   *  (default), the bus auto-stamps missing fields so legacy producers
+   *  keep working \u2014 a migration ramp, not a safety property. Flip on
+   *  per-app once every producer prompt has been updated. */
+  strict_artifacts: z.boolean().default(false),
+
   /** Pipeline-level operational hardening policy (Phase 4).
    *  All fields are optional; omitted fields retain their code-level defaults. */
   policy: z.object({
@@ -270,6 +295,12 @@ export const ApmConfigSchema = z.object({
    *    agent → copilot-agent, script:poll → github-ci-poll, script → local-exec,
    *    approval → approval, triage → triage */
   handler_defaults: z.record(z.string(), z.string()).optional(),
+
+  /** Strict handler inference. When `true`, the built-in fallback inference map
+   *  is disabled — every node must either declare `handler:` explicitly or match
+   *  a key in `handler_defaults`. Catches typos like `type: "scripts"` at
+   *  lint/compile time instead of silently at dispatch. Default: `false`. */
+  strict_handler_inference: z.boolean().default(false),
 
   /** Custom handler declarations — pre-register handlers with metadata.
    *  Keys are handler names (used in `handler_defaults` or node `handler` fields).
@@ -371,6 +402,28 @@ export const ApmConfigSchema = z.object({
      *  empty array to disable redaction entirely. */
     redact_patterns: z.array(z.string()).optional(),
   }).optional(),
+
+  /** Pinned runtime dependencies whose version the pipeline reads and
+   *  reasons about at preflight time. Used to defend against silent drift
+   *  when `npm install` bumps a package the agents quote into commits
+   *  (e.g. a PWA Kit base template). Entries are `<npm-package> → <range>`;
+   *  ranges support the tilde/caret/exact/wildcard subset understood by
+   *  `lifecycle/dependency-pinning.ts#satisfiesRange` (no full semver
+   *  grammar — keep pins explicit). When the installed version of any
+   *  declared package falls outside its range, bootstrap fails fatally.
+   *  When `reference_dir` is set, an API-surface snapshot found there is
+   *  diffed against the currently installed package and any delta is
+   *  non-fatally injected into the prompts of agents that consult the
+   *  vendored docs (see `AgentContext.pwaKitDriftReport`). */
+  dependencies: z.object({
+    pinned: z.record(z.string(), z.string()).optional(),
+    /** App-relative path to the vendored reference snapshot root (e.g.
+     *  `.apm/reference`). Each pinned package whose snapshot lives at
+     *  `<reference_dir>/<last-path-segment-of-package>/api-surface.json`
+     *  participates in the API-drift comparison. Optional; when absent the
+     *  drift check is skipped and pinning alone remains in effect. */
+    reference_dir: z.string().optional(),
+  }).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -412,11 +465,63 @@ const consumesEntrySchema = z.object({
   required: z.boolean().default(true),
 });
 
+// ---------------------------------------------------------------------------
+// Artifact Bus — declarative I/O (Phase 3)
+//
+// These schemas wire the Artifact Bus layout (`_kickoff/` + per-invocation
+// node dirs) into workflow YAML. They live alongside the existing
+// `consumes` / `produces` fields — which remain dedicated to handler-output
+// *data keys* (e.g. `lastPushedSha`). Artifact declarations reference the
+// `ArtifactKind` catalog in `apm/artifact-catalog.ts`.
+//
+// Fields are all optional with sane `[]` defaults; legacy workflows compile
+// unchanged. Topological validation is performed by `validateArtifactIO` in
+// the compiler.
+// ---------------------------------------------------------------------------
+
+const artifactConsumesEntrySchema = z.object({
+  /** Upstream node key that `produces_artifacts` this kind. */
+  from: z.string(),
+  /** Artifact kind — see `apm/artifact-catalog.ts`. Validated at compile time. */
+  kind: z.string(),
+  /** When `true`, the compiler fails if the producer doesn't declare `kind`
+   *  in its `produces_artifacts`. When `false`, missing outputs are tolerated
+   *  (useful for optional debug/diagnostic artifacts). */
+  required: z.boolean().default(true),
+  /** Pick strategy when multiple invocations of `from` exist. Phase 3 ships
+   *  `"latest"` only; `"previous"` is reserved for same-node debug chains. */
+  pick: z.enum(["latest", "previous"]).default("latest"),
+  /** Session A (Items 7/8) — optional schema-version pin. When set, the
+   *  APM compiler asserts that the producer's catalog-level
+   *  `schemaVersion` equals this value. Mismatches are fatal
+   *  `ApmCompileError`s so a breaking payload change on a producer fails
+   *  loudly at compile rather than silently corrupting the consumer. */
+  expectSchemaVersion: z.number().int().positive().optional(),
+});
+
 /** On-failure routing shape — used by both default_on_failure and per-node on_failure. */
 export const OnFailureSchema = z.object({
+  /** Session B (Item 4) — optional name of a workflow-level `routeProfiles[<key>]`
+   *  entry to inherit `triage` + `routes` from. Merge order (lowest → highest):
+   *  routeProfiles[extends] → default_on_failure → this node's on_failure.
+   *  Unknown keys and cycles fail at compile time. */
+  extends: z.string().optional(),
   /** Key of the triage node that classifies this failure. */
   triage: z.string(),
   /** Domain → target node key. "$SELF" retries the failing node; null halts the pipeline. */
+  routes: z.record(z.string(), z.string().nullable()).default({}),
+});
+
+/** Session B (Item 4) — reusable, named route profile at the workflow level.
+ *  Nodes reference a profile via `on_failure.extends: <profileKey>`. Supports
+ *  single-level inheritance (`extends` on another profile) — the compiler
+ *  flattens before node merges run, and detects cycles. */
+export const RouteProfileSchema = z.object({
+  /** Optional parent profile to inherit from. Single-level; the compiler flattens. */
+  extends: z.string().optional(),
+  /** Default triage node for consumers of this profile. Node-level `triage` still wins. */
+  triage: z.string().optional(),
+  /** Domain → target. Same semantics as `on_failure.routes`. */
   routes: z.record(z.string(), z.string().nullable()).default({}),
 });
 
@@ -452,7 +557,8 @@ const nodeBodyFields = {
   /** When true, auto-skip if feature has 0 deletions (purely additive). */
   auto_skip_if_no_deletions: z.boolean().default(false),
   /** When true, auto-skip unless the scheduler reached this node via a triage
-   *  reroute — i.e. `pipelineState.items[itemKey].pendingContext` is populated.
+   *  reroute — i.e. the item's `latestInvocationId` points at a staged
+   *  unsealed `InvocationRecord` whose `trigger` is `triage-reroute`.
    *  Use for inline "only-run-when-invoked" nodes like storefront-debug that
    *  sit between regular DAG nodes on the happy path but only perform real
    *  work when triage redirects a runtime failure to them. */
@@ -515,6 +621,33 @@ const nodeBodyFields = {
    *  `from` = upstream node key (or "*" = any). `required` defaults to true.
    *  The kernel warns/fails at dispatch if required keys are missing. */
   consumes: z.array(consumesEntrySchema).default([]),
+  /** Artifact-bus inputs (Phase 3). Kickoff-scope artifact kinds this node
+   *  reads from `in-progress/<slug>/_kickoff/`. Example: `[spec]` for the
+   *  spec-compiler. Validated against `apm/artifact-catalog.ts` at compile
+   *  time; kinds that don't support the `kickoff` scope are rejected. */
+  consumes_kickoff: z.array(z.string()).default([]),
+  /** Artifact-bus outputs (Phase 3). Artifact kinds this node writes into
+   *  its own invocation directory `in-progress/<slug>/<nodeKey>/<inv>/`.
+   *  Downstream nodes declare `consumes_artifacts: [{ from: X, kind: Y }]`
+   *  to receive them. Validated against the catalog and the DAG shape. */
+  produces_artifacts: z.array(z.string()).default([]),
+  /** Artifact-bus inputs from upstream nodes (Phase 3). Each entry:
+   *    { from: "spec-compiler", kind: "acceptance", required: true }
+   *  The compiler verifies every entry's `from` is a topological ancestor
+   *  and declares `kind` in its `produces_artifacts`. Required-missing
+   *  edges are fatal at compile; optional-missing edges are warnings. */
+  consumes_artifacts: z.array(artifactConsumesEntrySchema).default([]),
+  /** Artifact-bus inputs injected ONLY when this invocation is a triage
+   *  reroute (i.e. `trigger === "triage-reroute"`). Each entry:
+   *    { kind: "triage-handoff", required: true }
+   *  The kernel materializes these into `inputs/` only on rerouted runs;
+   *  initial/retry/redevelopment-cycle triggers ignore them.
+   *  A `required: true` reroute consumes is only enforced on reroute runs —
+   *  the initial pass treats it as absent. */
+  consumes_reroute: z.array(z.object({
+    kind: z.string(),
+    required: z.boolean().default(true),
+  })).default([]),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
   /** Approval SLA — only meaningful on `type: "approval"` nodes.
@@ -770,6 +903,43 @@ export const TriageRouteEntrySchema = z.object({
   retries: z.number().int().positive().optional(),
 });
 
+/** Session B (Item 3) — declarative L0 pre-classifier pattern. Evaluated
+ *  BEFORE the RAG/LLM layers on every triage call. Replaces the hard-coded
+ *  rules that previously lived in `triage/contract-classifier.ts`.
+ *
+ *  Two match kinds:
+ *   - `raw-regex`    — run `pattern` (with optional `flags`) against the
+ *                      raw error string (stdout/stderr concatenation).
+ *   - `structured-field` — enumerated checks against the parsed
+ *                      `StructuredFailure` shape. Extensible without
+ *                      breaking existing configs; unknown `when` values
+ *                      fail at compile time.
+ *
+ *  `reason_template` supports `${key}` placeholders:
+ *   - `${errFirstLine}` — first line of the raw error
+ *   - `${testid}`       — contract testid (structured-field only)
+ *   - `${inTest}`       — Playwright test title (structured-field only)
+ */
+export const TriagePatternSchema = z.discriminatedUnion("match_kind", [
+  z.object({
+    match_kind: z.literal("raw-regex"),
+    pattern: z.string(),
+    flags: z.string().optional(),
+    domain: z.string(),
+    reason_template: z.string().optional(),
+  }),
+  z.object({
+    match_kind: z.literal("structured-field"),
+    format: z.literal("playwright-json"),
+    when: z.enum([
+      "uncaughtErrors.nonEmpty",
+      "failedTest.timeout-on-contract-testid",
+    ]),
+    domain: z.string(),
+    reason_template: z.string().optional(),
+  }),
+]);
+
 /** Triage profile — a reusable triage configuration referenced by workflow nodes. */
 export const TriageProfileSchema = z.object({
   /** Names of triage packs (from .apm/triage-packs/<name>.json) used by the RAG layer. */
@@ -789,6 +959,20 @@ export const TriageProfileSchema = z.object({
   /** Maximum total reroutes allowed for this profile before the pipeline halts.
    *  Replaces the separate max_redevelopment_cycles / max_redeploy_cycles budgets. */
   max_reroutes: z.number().int().positive().default(5),
+  /** Session B (Item 3) — enumerated fault domain set. When set, compiler
+   *  asserts `Object.keys(routing) ⊆ domains` and every `patterns[].domain`
+   *  is a member. When omitted, the compiler derives the set from
+   *  `Object.keys(routing)` (backward compatible). `"blocked"` and `"$SELF"`
+   *  are reserved pseudo-domains and never need to be listed. */
+  domains: z.array(z.string()).optional(),
+  /** Session B (Item 3) — declarative L0 pre-classifier patterns. Evaluated
+   *  in-order before RAG/LLM. First match wins. See `TriagePatternSchema`. */
+  patterns: z.array(TriagePatternSchema).default([]),
+  /** Session B (Item 3) — prepend bundled built-in patterns
+   *  (browser-uncaught, contract-testid-timeout, spec-schema-violation)
+   *  to the resolved pattern list. Default `true`; set `false` to replace
+   *  the built-ins entirely with this profile's own `patterns`. */
+  builtin_patterns: z.boolean().default(true),
   /** Domain → routing entry. Domain keys are dynamic per-profile (no global enum). */
   routing: z.record(z.string(), TriageRouteEntrySchema),
 });
@@ -836,6 +1020,11 @@ export const ApmWorkflowSchema = z.object({
   /** Triage profiles — keyed by profile name. Nodes reference profiles via the `triage` field.
    *  Each profile declares RAG packs, LLM fallback, routing domains, and reroute budgets. */
   triage: z.record(z.string(), TriageProfileSchema).default({}),
+  /** Session B (Item 4) — named route profiles. Nodes reference a profile via
+   *  `on_failure.extends: <key>`. Single-level inheritance is supported via
+   *  each profile's own `extends` field; the compiler flattens and detects
+   *  cycles before merging into node `on_failure`. */
+  routeProfiles: z.record(z.string(), RouteProfileSchema).default({}),
 }).refine(
   (wf) => {
     // Validate: every depends_on reference is a valid node key
@@ -943,6 +1132,16 @@ export const CompiledTriageProfileSchema = z.object({
   classifier: z.string().optional(),
   max_reroutes: z.number().int().positive(),
   routing: z.record(z.string(), TriageRouteEntrySchema),
+  /** Session B (Item 3) — resolved enumerated domain set. Always populated
+   *  by the compiler: either the explicit `domains:` list from source, or
+   *  `Object.keys(routing)` when omitted. Used by route-key validation and
+   *  by the L0 pattern evaluator. Defaults to `[]` so stale caches
+   *  (pre-Session-B) still parse — next recompile repopulates. */
+  domains: z.array(z.string()).default([]),
+  /** Session B (Item 3) — resolved pattern list. Includes built-in defaults
+   *  prepended unless the source profile set `builtin_patterns: false`.
+   *  Defaults to `[]` so stale caches still parse. */
+  patterns: z.array(TriagePatternSchema).default([]),
   /** Resolved signatures from the referenced packs. */
   signatures: z.array(TriageSignatureSchema),
 });
@@ -1019,8 +1218,14 @@ export const ApmCapabilityProfileSchema = z.object({
 
 export const ApmAgentDeclSchema = z.object({
   instructions: z.array(z.string()),
-  /** Path to the Handlebars agent template relative to .apm/agents/. */
-  promptFile: z.string().describe("Path to the Handlebars agent template relative to .apm/agents/"),
+  /** Path to the Handlebars agent template relative to `.apm/agents/`, OR
+   *  an ordered list of fragment paths concatenated with `\n\n` into a
+   *  single template. All fragments must exist under `.apm/agents/`;
+   *  missing fragments fail APM compile with a path-identifying error. */
+  promptFile: z.union([
+    z.string(),
+    z.array(z.string()).min(1),
+  ]).describe("Handlebars agent template path under .apm/agents/, or an ordered array of fragment paths concatenated into one template"),
   mcp: z.array(z.string()),
   skills: z.array(z.string()).default([]),
   toolLimits: ApmToolLimitsSchema,
@@ -1119,6 +1324,7 @@ export type ApmNodeCatalogEntry = z.infer<typeof ApmNodeCatalogEntrySchema>;
 export type ApmWorkflow = z.infer<typeof ApmWorkflowSchema>;
 export type ApmManifest = z.infer<typeof ApmManifestSchema>;
 export type OnFailure = z.infer<typeof OnFailureSchema>;
+export type RouteProfile = z.infer<typeof RouteProfileSchema>;
 export type ApmMcpFile = z.infer<typeof ApmMcpFileSchema>;
 export type ApmSkillFrontmatter = z.infer<typeof ApmSkillFrontmatterSchema>;
 export type ApmGeneratedInstruction = z.infer<typeof ApmGeneratedInstructionSchema>;
@@ -1126,6 +1332,7 @@ export type TriageSignature = z.infer<typeof TriageSignatureSchema>;
 export type TriagePack = z.infer<typeof TriagePackSchema>;
 export type TriageRouteEntry = z.infer<typeof TriageRouteEntrySchema>;
 export type TriageProfile = z.infer<typeof TriageProfileSchema>;
+export type TriagePattern = z.infer<typeof TriagePatternSchema>;
 export type CompiledTriageProfile = z.infer<typeof CompiledTriageProfileSchema>;
 
 // ---------------------------------------------------------------------------

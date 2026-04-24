@@ -54,7 +54,15 @@ agents:
     skills: [test-storefront-unit, dev-local]
     toolLimits: { soft: 80, hard: 110 }
     security:
-      allowedWritePaths: ["^app/", "^config/", "^worker/", "^translations/"]
+      # Session A Item 9 \u2014 implementation-status output lands in the node's
+      # invocation outputs/ dir. Allow writes into the slot the Declared I/O
+      # block points to (any kind under the node's own outputs path).
+      allowedWritePaths:
+        - "^app/"
+        - "^config/"
+        - "^worker/"
+        - "^translations/"
+        - "(^|/)in-progress/[^/]+/storefront-dev/[^/]+/outputs/.*\\.(json|md|yml|yaml)$"
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
@@ -125,8 +133,10 @@ agents:
         - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY)\\."
         - "^e2e/"
         - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
-        # Allow reading base-template documentation (read-only learning).
-        - "^node_modules/@salesforce/retail-react-app/.*\\.(md|mdx)$"
+        # Session C — vendored PWA Kit reference snapshot. Replaces the
+        # legacy read of `node_modules/@salesforce/retail-react-app/*.md[x]`,
+        # which was unstable across patch bumps and untracked by the pin.
+        - "^\\.apm/reference/"
         # Allow reading package.json for test framework discovery.
         - "(^|/)package\\.json$"
         - "^tsconfig"
@@ -153,6 +163,11 @@ agents:
         - "(^|/)e2e/_qa_.*\\.spec\\.ts$"
       allowedReadPaths:
         - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY|VALIDATION)\\."
+        # Session A \u2014 materialized inputs land under
+        # `in-progress/<slug>/<nodeKey>/<invocationId>/inputs/<kind>.<ext>`.
+        # Allow qa-adversary to read everything the Declared I/O block
+        # points it at (acceptance, playwright-report, implementation-status).
+        - "^in-progress/.*/inputs/.*\\.(yml|yaml|json|md)$"
         - "^e2e/"
         - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
         - "(^|/)package\\.json$"
@@ -413,6 +428,12 @@ nodes:
 
 config:
   defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000, idleTimeoutLimit: 2 }
+  # Session A (Item 8) — require every inline artifact written through the
+  # bus to ship the {schemaVersion, producedBy, producedAt} envelope. Engine
+  # producers (node-report, triage-handoff) emit it natively; agent-written
+  # files bypass the bus and are unaffected. Kept off in sample-app until
+  # its producers are migrated.
+  strict_artifacts: true
   # Raw-mode redevelopment context. The storefront has repeatedly looped on
   # SSR hydration errors where the LLM-condensed "Automated Diagnosis" block
   # misdirected the dev agent. Switch to historian + raw failure output.
@@ -447,3 +468,20 @@ config:
   ciWorkflows:
     app: "Deploy Storefront"
     filePatterns: ["deploy-storefront.yml"]
+
+  # Session C — PWA Kit base-template version pinning. The spec-compiler,
+  # storefront-dev, storefront-debug, and e2e-author agents all reason about
+  # `@salesforce/retail-react-app` exports; a silent `npm install` bump
+  # would rewire their mental model with no triage signal. Bootstrap reads
+  # the installed version from package-lock.json and fails fatally if it
+  # drifts outside the declared range. When an API-surface snapshot exists
+  # under `reference_dir/pwa-kit/api-surface.json`, bootstrap also diffs
+  # the live package against it and injects any delta as an advisory
+  # "Upstream API Drift Notice" into the dev agents' prompts. To accept a
+  # deliberate bump: bump the range below, then regenerate the snapshot
+  # with `node tools/autonomous-factory/scripts/snapshot-pwa-kit-api.mjs
+  # apps/commerce-storefront`.
+  dependencies:
+    pinned:
+      "@salesforce/retail-react-app": "~9.1.1"
+    reference_dir: .apm/reference

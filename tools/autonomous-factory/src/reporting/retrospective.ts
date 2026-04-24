@@ -22,6 +22,7 @@ import path from "node:path";
 import type { PipelineEvent, PipelineBlob } from "../telemetry/index.js";
 import { formatDuration, formatUsd, computeStepCost, outcomeIcon, buildCostAnalysisLines } from "./index.js";
 import type { ItemSummary } from "../types.js";
+import { featurePath, archiveFeaturePath } from "../adapters/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // JSONL loader
@@ -546,8 +547,8 @@ function main(): void {
       candidates = [];
     }
     for (const c of candidates) {
-      const evPath = path.join(c, "in-progress", `${slug}_EVENTS.jsonl`);
-      const archivePath = path.join(c, "archive", "features", slug, `${slug}_EVENTS.jsonl`);
+      const evPath = featurePath(c, slug, "events");
+      const archivePath = archiveFeaturePath(c, slug, "events");
       if (fs.existsSync(evPath) || fs.existsSync(archivePath)) {
         appRoot = c;
         break;
@@ -561,11 +562,11 @@ function main(): void {
   }
 
   // Try in-progress first, then archived
-  let eventsPath = path.join(appRoot, "in-progress", `${slug}_EVENTS.jsonl`);
-  let blobsPath = path.join(appRoot, "in-progress", `${slug}_BLOBS.jsonl`);
+  let eventsPath = featurePath(appRoot, slug, "events");
+  let blobsPath = featurePath(appRoot, slug, "blobs");
   if (!fs.existsSync(eventsPath)) {
-    eventsPath = path.join(appRoot, "archive", "features", slug, `${slug}_EVENTS.jsonl`);
-    blobsPath = path.join(appRoot, "archive", "features", slug, `${slug}_BLOBS.jsonl`);
+    eventsPath = archiveFeaturePath(appRoot, slug, "events");
+    blobsPath = archiveFeaturePath(appRoot, slug, "blobs");
   }
 
   if (!fs.existsSync(eventsPath)) {
