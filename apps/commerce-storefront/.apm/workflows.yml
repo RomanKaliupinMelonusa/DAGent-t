@@ -254,15 +254,30 @@ storefront:
         - { kind: triage-handoff, required: true }
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
-    push-app:
-      depends_on: [doc-architect]
-
-    poll-app-ci:
-      depends_on: [push-app]
-      poll_target: push-app
+    #
+    # DISABLED — no Managed Runtime environment is provisioned yet.
+    # The `push-app` + `poll-app-ci` nodes below push to SCAPI / MRT and
+    # poll the Managed-Runtime build; without an MRT target they will
+    # fail or hang. They remain here (commented) as the reference wiring
+    # for when an environment is available.
+    #
+    # Pool definitions (hooks, timeouts, circuit breakers) are preserved
+    # in apm.yml → nodes: — the compiler tolerates unused pool entries,
+    # so restoring the deploy phase is a pure workflows.yml edit:
+    #   1. Uncomment the `push-app` and `poll-app-ci` blocks below.
+    #   2. Change `publish-pr.depends_on` back to `[poll-app-ci]`.
+    #
+    # push-app:
+    #   depends_on: [doc-architect]
+    #
+    # poll-app-ci:
+    #   depends_on: [push-app]
+    #   poll_target: push-app
 
     publish-pr:
-      depends_on: [poll-app-ci]
+      # TODO(mrt-deploy): restore `depends_on: [poll-app-ci]` once a
+      # Managed Runtime environment is wired up (see banner above).
+      depends_on: [doc-architect]
       consumes_artifacts:
         - { from: docs-archived, kind: change-manifest, required: false }
 
@@ -292,6 +307,9 @@ storefront:
     enabled: true
     threshold: 3
     excluded_keys:
+      # push-app / poll-app-ci are currently disabled (no MRT env —
+      # see the "Deploy" banner above). Keys are retained so the list
+      # is restore-ready; unknown keys are ignored by the matcher.
       - push-app
       - poll-app-ci
       - publish-pr
