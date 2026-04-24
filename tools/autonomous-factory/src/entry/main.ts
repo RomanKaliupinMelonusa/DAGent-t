@@ -23,7 +23,8 @@ import type { PipelineState } from "../types.js";
 import { PipelineKernel } from "../kernel/pipeline-kernel.js";
 import { DefaultKernelRules } from "../kernel/rules.js";
 import { createRunState } from "../kernel/types.js";
-import { compileVolatilePatterns, type VolatilePattern } from "../domain/index.js";
+import { resolveVolatilePatternsFromApmContext } from "./resolve-volatile-patterns.js";
+import { compileConsumesByNode } from "../apm/compile-node-io-contract.js";
 import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
 import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
@@ -167,20 +168,52 @@ export async function runWithKernel(
   // Compile volatile-token patterns from APM config (workflow + per-node)
   // and inject into the rules so fail/reset compute stable signatures that
   // normalize framework-specific tokens (session IDs, test UUIDs, etc).
-  const workflowPatterns = compileVolatilePatterns(
-    config.apmContext.config?.error_signature?.volatile_patterns,
+  // Resolution is extracted to a pure helper so the wiring path is testable
+  // independently of the composition root.
+  const { workflowPatterns, perNodePatterns } = resolveVolatilePatternsFromApmContext(
+    config.apmContext,
+    config.workflowName,
   );
-  const perNodePatterns = new Map<string, ReadonlyArray<VolatilePattern>>();
+  // Operational visibility: emit a one-shot telemetry event the first time
+  // each user-supplied pattern collapses a real failure message in this run.
+  // Dedupe is owned by `DefaultKernelRules` (per-instance Set). Without
+  // this, the only externally visible effect of activating new patterns is
+  // an unexplained `halt_on_identical` halt.
+  const firedPatternKeys = new Set<string>();
+  const rules = new DefaultKernelRules({
+    workflowPatterns,
+    perNodePatterns,
+    onUserPatternFired: (event) => {
+      const dedupeKey = event.scope === "workflow"
+        ? `workflow:${event.patternIndex}`
+        : `node:${event.itemKey ?? ""}:${event.patternIndex}`;
+      if (firedPatternKeys.has(dedupeKey)) return;
+      firedPatternKeys.add(dedupeKey);
+      telemetry.event(
+        "error_signature.user_pattern_fired",
+        event.itemKey,
+        {
+          scope: event.scope,
+          patternIndex: event.patternIndex,
+          replacement: event.replacement,
+        },
+      );
+    },
+  });
+  // Project per-consumer upstream artifact edges into the shape the
+  // scheduler's cycle-aware producer gate needs. Closes the window where
+  // a same-tick reroute reset dispatched the consumer against a stale
+  // producer cycle.
   const workflowNodes =
     config.apmContext.workflows?.[config.workflowName]?.nodes ?? {};
-  for (const [nodeKey, node] of Object.entries(workflowNodes)) {
-    const extras = compileVolatilePatterns(
-      node?.error_signature?.volatile_patterns,
-    );
-    if (extras.length > 0) perNodePatterns.set(nodeKey, extras);
-  }
-  const rules = new DefaultKernelRules({ workflowPatterns, perNodePatterns });
-  const kernel = new PipelineKernel(slug, initialDagState, initialRunState, rules);
+  const consumesByNode = compileConsumesByNode(workflowNodes);
+  const kernel = new PipelineKernel(
+    slug,
+    initialDagState,
+    initialRunState,
+    rules,
+    consumesByNode,
+  );
 
   // Handler resolution
   const handlerResolver = new RegistryHandlerResolver(config);

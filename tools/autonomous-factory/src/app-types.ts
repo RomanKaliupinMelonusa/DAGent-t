@@ -133,11 +133,18 @@ export type AvailableItem = NextAction & { key: string };
 /**
  * Discriminated union returned by `getNextBatch()`. Eliminates sentinel
  * detection (key === null) from the main loop.
+ *
+ * Variants optionally carry a `gateEffects` array: side-effect descriptors
+ * the kernel emitted while computing readiness (e.g. a
+ * `dispatch.gated_on_producer_cycle` telemetry event for every consumer
+ * held back by the cycle-aware producer gate). The loop drains these
+ * before executing any item-level dispatch; legacy callers that ignore
+ * them still see correct behaviour — the effects are advisory telemetry.
  */
 export type SchedulerResult =
-  | { readonly kind: "items"; readonly items: AvailableItem[] }
-  | { readonly kind: "complete" }
-  | { readonly kind: "blocked" };
+  | { readonly kind: "items"; readonly items: AvailableItem[]; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> }
+  | { readonly kind: "complete"; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> }
+  | { readonly kind: "blocked"; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> };
 
 // ---------------------------------------------------------------------------
 // BatchSignals — pure result of interpreting a batch of session outcomes

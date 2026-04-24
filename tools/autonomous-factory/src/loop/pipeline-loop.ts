@@ -340,6 +340,14 @@ export async function runPipelineLoop(
       // Step 1: Get next batch from kernel
       const batch = kernel.getNextBatch();
 
+      // Drain readiness-gate telemetry effects emitted by the scheduler
+      // (e.g. `dispatch.gated_on_producer_cycle` for consumers held back
+      // by the cycle-aware producer gate). Fire-and-forget: these are
+      // advisory telemetry, they never carry state mutations.
+      if (batch.gateEffects && batch.gateEffects.length > 0) {
+        await executeEffects(batch.gateEffects, effectPorts);
+      }
+
       if (batch.kind === "complete") {
         terminationReason = "complete";
         return { reason: "complete" };

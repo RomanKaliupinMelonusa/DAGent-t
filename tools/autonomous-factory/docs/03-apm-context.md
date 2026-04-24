@@ -571,6 +571,31 @@ All node types are first-class pool citizens — agent, script, barrier, triage,
 | `halt_on_identical` | bool | — | Identical error + identical HEAD → immediate halt on attempt 2+. For deterministic scripts |
 | `revert_warning_at` | number | `3` | Attempt count at which revert warning is injected (when `allows_revert_bypass: true`) |
 
+#### Error-signature Volatile Patterns
+
+The fingerprinter that powers `halt_on_identical.threshold` strips
+volatile tokens (timestamps, PIDs, UUIDs, paths, …) from raw error
+messages before hashing. User-supplied patterns extend the built-in
+baseline at two scopes — and **only** these two scopes are read by the
+runtime ([entry/main.ts](../src/entry/main.ts)):
+
+| Active path | Read by |
+|---|---|
+| `apm.yml` → `config.error_signature.volatile_patterns` | every node's signature |
+| `workflows.yml` → `<workflow>.nodes.<key>.error_signature.volatile_patterns` | that node only (additive on top of workflow scope) |
+
+`workflows.yml` → `<workflow>.error_signature` (the **workflow root**, no
+`nodes.` prefix) is **dead config** — the runtime does not read it. Do
+not author patterns there. The resolution is locked in by
+[entry/__tests__/resolve-volatile-patterns.test.ts](../src/entry/__tests__/resolve-volatile-patterns.test.ts).
+
+When a pattern fires for the first time in a run, the kernel emits a
+`error_signature.user_pattern_fired` telemetry event (deduped per
+`(scope, patternIndex)` per run) so operators can see which patterns
+actually collapsed signatures. `npm run pipeline:lint` warns on
+patterns that matched zero `errorLog` messages in the most recent run
+(possible dead config).
+
 #### Node Type Constraints
 
 These are enforced at compile time by the constraint system:

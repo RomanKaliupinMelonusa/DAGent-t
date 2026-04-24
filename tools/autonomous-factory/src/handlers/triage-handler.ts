@@ -418,26 +418,31 @@ const triageHandlerInner: NodeHandler = {
     } catch { /* non-fatal — fall through to classification */ }
 
     // --- L0 orchestrator-contract guard ---
-    // Error signatures of the form `missing_required_input:<kind>` /
-    // `missing_required_output:<kind>` are emitted by the dispatch
-    // middleware when an upstream artifact is absent from the ledger at
-    // materialization / seal time. Root cause is a kernel / workflow
-    // contract bug, NOT a defect in any producing agent's output.
-    // Routing these through RAG / LLM triage is actively harmful — the
-    // LLM sees "missing acceptance input" and confidently mis-blames the
-    // producer while the file sits on disk. Short-circuit to graceful
-    // degradation with an accurate diagnosis so an operator investigates
-    // the contract / ledger issue (not an agent).
+    // Error signatures of the form `missing_required_input:<kind>` are
+    // emitted by the dispatch middleware when an upstream artifact is
+    // absent from the ledger at materialization time. Root cause is a
+    // kernel / workflow contract bug, NOT a defect in any producing
+    // agent's output. Routing these through RAG / LLM triage is actively
+    // harmful — the LLM sees "missing acceptance input" and confidently
+    // mis-blames the producer while the file sits on disk. Short-circuit
+    // to graceful degradation with an accurate diagnosis so an operator
+    // investigates the contract / ledger issue (not an agent).
+    //
+    // Producer-side faults (missing_required_output, invalid_envelope_output)
+    // are NOT short-circuited here — they are genuine output-quality
+    // failures and route via the L0 `schema-violation` patterns in
+    // `triage/builtin-patterns.ts`, typically back to `$SELF` for bounded
+    // self-repair via `routeProfiles.base`.
     const contractOrigin = classifyOrchestratorContractError(errorSig);
     if (contractOrigin) {
       const reason =
         `orchestrator-contract fault: node "${failingNodeKey}" reported ` +
         `${errorSig}. This is a pipeline-layer contract error (the ` +
-        `${contractOrigin.kind === "missing-input" ? "consumer" : "producer"} ` +
-        `declared an artifact kind the ledger cannot resolve), not an agent ` +
-        `output quality issue. No reroute — halting via graceful degradation ` +
-        `so an operator can inspect the kernel↔state-store artifact sync or ` +
-        `the workflow's produces/consumes declarations.`;
+        `consumer declared an artifact kind the ledger cannot resolve), ` +
+        `not an agent output quality issue. No reroute — halting via ` +
+        `graceful degradation so an operator can inspect the kernel↔` +
+        `state-store artifact sync or the workflow's consumes ` +
+        `declarations.`;
       logger.event("triage.evaluate", failingNodeKey, {
         domain: "orchestrator-contract",
         reason,

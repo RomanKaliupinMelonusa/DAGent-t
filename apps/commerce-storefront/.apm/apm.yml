@@ -465,6 +465,15 @@ config:
   # `apmContext.config.error_signature.volatile_patterns` (see
   # `entry/main.ts`); workflow-scoped `error_signature:` blocks are
   # currently dead config.
+  #
+  # Activation note (Apr 2026): the Playwright pattern set was previously
+  # authored at the dead workflow-root path and never reached the
+  # fingerprinter. Now resolved through the active path; expect
+  # `halt_on_identical.threshold = 3` to fire on Playwright-flake loops
+  # that previously rotated through distinct signatures. The activation is
+  # observable via the `error_signature.user_pattern_fired` telemetry
+  # event (one per (scope, patternIndex) per run). Resolution path is
+  # pinned by `src/entry/__tests__/resolve-volatile-patterns.test.ts`.
   error_signature:
     volatile_patterns:
       - { pattern: '\d+ passed(?:, \d+ failed)?(?:, \d+ total)?', replacement: "<PW_TOTALS>" }
@@ -482,6 +491,11 @@ config:
       # repeated publish-pr no-op-dev failures.
       - { pattern: '\d+\s+commit\(s\)\s+ahead\s+of\s+\S+',        replacement: "<COMMITS_AHEAD>" }
       - { pattern: "branch\\s+'[^']+'\\s+set up to track\\s+'[^']+'", replacement: "<BRANCH_TRACKING>" }
+      # Defensive: collapse the entire `agent-branch.sh push` success
+      # preamble. Even with <COMMITS_AHEAD> + <BRANCH_TRACKING> in place,
+      # future drift in the `Pushed <branch> to origin` prefix would
+      # otherwise yield distinct signatures across cycles.
+      - { pattern: '✔\s+Pushed\s+\S+\s+to\s+origin', replacement: '<PUSH_OK>' }
   # Session A (Item 8) — require every inline artifact written through the
   # bus to ship the {schemaVersion, producedBy, producedAt} envelope. Engine
   # producers (node-report, triage-handoff) emit it natively; agent-written

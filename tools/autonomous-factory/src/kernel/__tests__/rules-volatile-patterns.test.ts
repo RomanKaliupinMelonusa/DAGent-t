@@ -167,4 +167,127 @@ describe("DefaultKernelRules — volatile patterns injection", () => {
       "Playwright volatile tokens must collapse to one signature",
     );
   });
+
+  it("publish-pr rotating commit-ahead counters collapse to one signature", () => {
+    // Regression for the product-quick-view-plp post-mortem: `publish-pr`
+    // failed 6 times with 6 distinct `errorSignature` values because the
+    // raw error message embedded a rotating "N commit(s) ahead of …"
+    // counter and a "branch '…' set up to track '…'" line that drifts
+    // between cycles even when the root cause is identical.
+    //
+    // Mirrors `apps/commerce-storefront/.apm/apm.yml` →
+    // config.error_signature.volatile_patterns. With these patterns
+    // active, the four rotating-counter samples below must hash to one
+    // signature so `halt_on_identical` fires on iteration 3 instead of
+    // looping past the cap.
+    const workflowPatterns = compileVolatilePatterns([
+      { pattern: "\\d+\\s+commit\\(s\\)\\s+ahead\\s+of\\s+\\S+", replacement: "<COMMITS_AHEAD>" },
+      { pattern: "branch\\s+'[^']+'\\s+set up to track\\s+'[^']+'", replacement: "<BRANCH_TRACKING>" },
+      { pattern: "✔\\s+Pushed\\s+\\S+\\s+to\\s+origin", replacement: "<PUSH_OK>" },
+    ]);
+    const rules = new DefaultKernelRules({ workflowPatterns });
+
+    // Verbatim from the real run's errorLog (cycles 1, 2, 3, 6).
+    const samples = [
+      "ℹ️  No changes to commit.\nbranch 'feature/product-quick-view-plp' set up to track 'origin/feature/product-quick-view-plp'.\n✔ Pushed feature/product-quick-view-plp to origin (3 commit(s) ahead of update/pipeline-communication-standartisation)\n  ✖ No existing Draft PR found",
+      "ℹ️  No changes to commit.\nbranch 'feature/product-quick-view-plp' set up to track 'origin/feature/product-quick-view-plp'.\n✔ Pushed feature/product-quick-view-plp to origin (4 commit(s) ahead of update/pipeline-communication-standartisation)\n  ✖ No existing Draft PR found",
+      "ℹ️  No changes to commit.\nbranch 'feature/product-quick-view-plp' set up to track 'origin/feature/product-quick-view-plp'.\n✔ Pushed feature/product-quick-view-plp to origin (5 commit(s) ahead of update/pipeline-communication-standartisation)\n  ✖ No existing Draft PR found",
+      "ℹ️  No changes to commit.\nbranch 'feature/product-quick-view-plp' set up to track 'origin/feature/product-quick-view-plp'.\n✔ Pushed feature/product-quick-view-plp to origin (8 commit(s) ahead of update/pipeline-communication-standartisation)\n  ✖ No existing Draft PR found",
+    ];
+
+    const sigs = samples.map((s) => rules.computeErrorSignature(s));
+    const unique = new Set(sigs);
+    assert.equal(
+      unique.size,
+      1,
+      `expected a single stable signature across rotating counters, got ${unique.size}: ${[...unique].join(", ")}`,
+    );
+
+    // A genuinely different root cause (envelope validation) must NOT
+    // collapse into the same bucket — distinct failures keep distinct
+    // signatures.
+    const distinct =
+      "Upstream artifact 'change-manifest' failed consumer-side validation: " +
+      "Artifact 'change-manifest' at /repo/x.json failed schema validation: " +
+      "envelope.schemaVersion: Invalid input: expected number, received undefined";
+    assert.notEqual(rules.computeErrorSignature(distinct), sigs[0]);
+  });
 });
+
+describe("DefaultKernelRules — onUserPatternFired telemetry hook", () => {
+  it("fires once per workflow-scope pattern, deduped across calls", () => {
+    const events: Array<{ scope: string; patternIndex: number; itemKey: string | null }> = [];
+    const workflowPatterns = compileVolatilePatterns([
+      { pattern: "fixture-\\w+", replacement: "<FX>" },
+      { pattern: "trace-\\d+", replacement: "<TR>" },
+    ]);
+    const rules = new DefaultKernelRules({
+      workflowPatterns,
+      onUserPatternFired: (e) => events.push({
+        scope: e.scope, patternIndex: e.patternIndex, itemKey: e.itemKey,
+      }),
+    });
+
+    rules.fail(makeState("t1"), "t1", "fixture-alpha trace-12");
+    rules.fail(makeState("t1"), "t1", "fixture-omega trace-99");
+    rules.fail(makeState("t1"), "t1", "fixture-foo trace-7");
+
+    assert.equal(events.length, 2, "expected one event per pattern, deduped across calls");
+    const indices = events.map((e) => e.patternIndex).sort();
+    assert.deepEqual(indices, [0, 1]);
+    assert.ok(events.every((e) => e.scope === "workflow"));
+  });
+
+  it("does not fire for patterns that never match", () => {
+    const events: unknown[] = [];
+    const workflowPatterns = compileVolatilePatterns([
+      { pattern: "never-matches-anything", replacement: "<X>" },
+    ]);
+    const rules = new DefaultKernelRules({
+      workflowPatterns,
+      onUserPatternFired: (e) => events.push(e),
+    });
+    rules.fail(makeState("t1"), "t1", "totally unrelated message");
+    assert.equal(events.length, 0);
+  });
+
+  it("distinguishes workflow vs node scope and applies node dedupe per item", () => {
+    const events: Array<{ scope: string; patternIndex: number; itemKey: string | null }> = [];
+    const workflowPatterns = compileVolatilePatterns([
+      { pattern: "wf-\\w+", replacement: "<WF>" },
+    ]);
+    const perNodePatterns = new Map([
+      ["t1", compileVolatilePatterns([{ pattern: "n-\\w+", replacement: "<N>" }])],
+    ]);
+    const base: TransitionState = {
+      items: [
+        { key: "t1", label: "T1", agent: null, status: "pending", error: null },
+        { key: "t2", label: "T2", agent: null, status: "pending", error: null },
+      ],
+      errorLog: [],
+      dependencies: { t1: [], t2: [] },
+      nodeTypes: { t1: "script", t2: "script" },
+      nodeCategories: { t1: "test", t2: "test" },
+      naByType: [],
+      salvageSurvivors: [],
+    };
+    const rules = new DefaultKernelRules({
+      workflowPatterns,
+      perNodePatterns,
+      onUserPatternFired: (e) => events.push({
+        scope: e.scope, patternIndex: e.patternIndex, itemKey: e.itemKey,
+      }),
+    });
+
+    rules.fail(base, "t1", "wf-foo n-bar");
+    rules.fail(base, "t2", "wf-baz");
+    rules.fail(base, "t2", "n-leak");
+    // Expected: workflow fired once (t1's first call); node fired once for t1.
+    // t2 has no node patterns, and "n-leak" must not produce a node event for t2.
+    assert.equal(events.length, 2);
+    assert.ok(events.some((e) => e.scope === "workflow" && e.itemKey === "t1"));
+    assert.ok(events.some((e) => e.scope === "node" && e.itemKey === "t1"));
+    assert.ok(!events.some((e) => e.scope === "node" && e.itemKey === "t2"));
+  });
+});
+

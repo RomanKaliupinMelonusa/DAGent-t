@@ -76,3 +76,29 @@ function assertKnownKind(nodeKey: string, field: string, kind: string): void {
     );
   }
 }
+
+/**
+ * Project a workflow's per-node upstream consumption edges into the shape
+ * the domain scheduler needs for the producer-cycle readiness gate.
+ *
+ * The kernel passes the resulting map into `schedule()` so that a consumer
+ * is held back until the latest invocation of each `consumes_artifacts.from`
+ * producer has sealed as `completed` — closing the window where a
+ * same-tick reroute would materialize a stale prior-cycle artifact.
+ *
+ * Pure data — safe to call at kernel construction time once per workflow.
+ */
+export function compileConsumesByNode(
+  nodes: Readonly<Record<string, ApmWorkflowNode>>,
+): Map<string, ReadonlyArray<{ from: string; required: boolean }>> {
+  const out = new Map<string, ReadonlyArray<{ from: string; required: boolean }>>();
+  for (const [nodeKey, node] of Object.entries(nodes)) {
+    const edges = node.consumes_artifacts ?? [];
+    if (edges.length === 0) continue;
+    out.set(
+      nodeKey,
+      edges.map((edge) => ({ from: edge.from, required: edge.required })),
+    );
+  }
+  return out;
+}

@@ -10,14 +10,20 @@
  * (effect executor) handles I/O.
  */
 
-import type { PipelineState } from "../types.js";
+import type { PipelineState, InvocationRecord } from "../types.js";
 import type { SchedulerResult, AvailableItem } from "../app-types.js";
 import type { Command } from "./commands.js";
-import type { Effect } from "./effects.js";
+import type { Effect, TelemetryEventEffect } from "./effects.js";
 import type { CommandResult, RunState, createRunState } from "./types.js";
 import type { KernelRules } from "./rules.js";
 import type { TransitionState } from "../domain/transitions.js";
 import { formatStallError, type StalledItem } from "../domain/stall-detection.js";
+import {
+  isProducerCycleReady,
+  type ConsumesEdge,
+  type ProducerCycleSummary,
+  type SchedulableItem,
+} from "../domain/scheduling.js";
 
 // ---------------------------------------------------------------------------
 // ProcessResult — command result + effects
@@ -56,17 +62,27 @@ export class PipelineKernel {
    *  duration of `process()`; a nested call throws `KernelReentryError`
    *  instead of silently corrupting state. */
   #inFlight = false;
+  /**
+   * Per-consumer upstream artifact edges, projected from the workflow's
+   * `consumes_artifacts` declarations at kernel construction. Drives the
+   * cycle-aware producer-readiness gate inside `getNextBatch()`. Absent
+   * for legacy callers (admin CLI, tests) — in which case the scheduler
+   * falls back to its structural-edge-only behaviour.
+   */
+  private readonly consumesByNode: ReadonlyMap<string, ReadonlyArray<ConsumesEdge>> | undefined;
 
   constructor(
     slug: string,
     initialDagState: PipelineState,
     initialRunState: RunState,
     rules: KernelRules,
+    consumesByNode?: ReadonlyMap<string, ReadonlyArray<ConsumesEdge>>,
   ) {
     this.slug = slug;
     this.dagState = structuredClone(initialDagState);
     this.runState = structuredClone(initialRunState);
     this.rules = rules;
+    this.consumesByNode = consumesByNode;
   }
 
   // ─── Snapshots (frozen reads) ───────────────────────────────────────
@@ -85,10 +101,27 @@ export class PipelineKernel {
 
   /** Get the next batch of dispatchable items from the DAG. */
   getNextBatch(): SchedulerResult {
+    // Project `state.artifacts` into a latest-cycle-by-producer map
+    // exactly once per tick. Cheap — O(n) over invocation records — and
+    // kept local to this call so the kernel never caches stale data.
+    const latestProducerOutcome = buildLatestProducerOutcome(this.dagState);
+    const gateOpts = this.consumesByNode
+      ? { consumesByNode: this.consumesByNode, latestProducerOutcome }
+      : undefined;
+
     const result = this.rules.schedule(
       this.dagState.items,
       this.dagState.dependencies,
+      gateOpts,
     );
+
+    // Compute telemetry effects for consumers that passed structural
+    // dependencies but were held back by the cycle-aware gate. Addresses
+    // the "implicit causal graph" observability gap from the post-mortem
+    // — operators see the wait in `pipeline.jsonl` and _TRANS.md.
+    const gateEffects = gateOpts
+      ? collectGateTelemetry(this.slug, this.dagState, gateOpts)
+      : [];
 
     if (result.kind === "items") {
       const items: AvailableItem[] = result.items.map((i) => ({
@@ -97,10 +130,12 @@ export class PipelineKernel {
         agent: i.agent,
         status: i.status,
       }));
-      return { kind: "items", items };
+      return gateEffects.length > 0
+        ? { kind: "items", items, gateEffects }
+        : { kind: "items", items };
     }
 
-    return result;
+    return gateEffects.length > 0 ? { ...result, gateEffects } : result;
   }
 
   // ─── Stall detection (DAG-level wait timeout) ───────────────────────
@@ -647,4 +682,94 @@ function applyStageInvocation(
       : it,
   );
   return { ...state, artifacts, items } as PipelineState;
+}
+
+// ---------------------------------------------------------------------------
+// Cycle-aware producer-readiness gate — helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a `latestProducerOutcome` map from the current invocation ledger.
+ * Group records by `nodeKey`, pick the record with the highest `cycleIndex`
+ * (tiebreak by lexicographic `invocationId`). The result feeds the domain
+ * scheduler's producer-cycle gate.
+ */
+function buildLatestProducerOutcome(
+  state: PipelineState,
+): Map<string, ProducerCycleSummary> {
+  const out = new Map<string, ProducerCycleSummary>();
+  const records = state.artifacts ? Object.values(state.artifacts) : [];
+  const latestByNode = new Map<string, InvocationRecord>();
+  for (const rec of records) {
+    const prior = latestByNode.get(rec.nodeKey);
+    if (!prior) {
+      latestByNode.set(rec.nodeKey, rec);
+      continue;
+    }
+    if (
+      rec.cycleIndex > prior.cycleIndex ||
+      (rec.cycleIndex === prior.cycleIndex && rec.invocationId > prior.invocationId)
+    ) {
+      latestByNode.set(rec.nodeKey, rec);
+    }
+  }
+  for (const [nodeKey, rec] of latestByNode) {
+    out.set(nodeKey, {
+      cycleIndex: rec.cycleIndex,
+      ...(rec.outcome ? { outcome: rec.outcome } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Emit a `dispatch.gated_on_producer_cycle` telemetry effect for every
+ * consumer that passed structural dependencies but is held back by the
+ * cycle-aware producer gate. One effect per gated consumer per tick;
+ * includes the producer nodeKey, its latest cycleIndex, and that
+ * invocation's outcome (or `null` when in-flight).
+ */
+function collectGateTelemetry(
+  slug: string,
+  state: PipelineState,
+  gateOpts: {
+    consumesByNode: ReadonlyMap<string, ReadonlyArray<ConsumesEdge>>;
+    latestProducerOutcome: ReadonlyMap<string, ProducerCycleSummary>;
+  },
+): TelemetryEventEffect[] {
+  const effects: TelemetryEventEffect[] = [];
+  const statusMap = new Map<string, SchedulableItem["status"]>();
+  for (const it of state.items) statusMap.set(it.key, it.status);
+
+  for (const item of state.items) {
+    if (item.status !== "pending" && item.status !== "failed") continue;
+
+    // Only consumers whose structural deps pass can be "gated only by the
+    // producer-cycle predicate" — otherwise the wait is a plain DAG wait,
+    // already visible via item.status.
+    const deps = state.dependencies?.[item.key] ?? [];
+    const depsResolved = deps.every((depKey) => {
+      const depStatus = statusMap.get(depKey);
+      return depStatus === "done" || depStatus === "na";
+    });
+    if (!depsResolved) continue;
+
+    const { ready, gatedOn } = isProducerCycleReady(item.key, statusMap, gateOpts);
+    if (ready || gatedOn.length === 0) continue;
+
+    effects.push({
+      type: "telemetry-event",
+      category: "dispatch.gated_on_producer_cycle",
+      itemKey: item.key,
+      context: {
+        slug,
+        gated_on: gatedOn.map((g) => ({
+          from: g.from,
+          latest_cycle_index: g.latestCycleIndex,
+          outcome: g.outcome,
+        })),
+      },
+    });
+  }
+  return effects;
 }

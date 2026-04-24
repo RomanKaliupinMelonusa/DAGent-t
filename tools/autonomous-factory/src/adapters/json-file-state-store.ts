@@ -29,6 +29,7 @@ import {
   salvageForDraft as salvageForDraftRule,
   type TransitionState,
 } from "../domain/transitions.js";
+import { schedule as scheduleRule } from "../domain/scheduling.js";
 import {
   applyAdminCommand,
   bumpCycleCounter,
@@ -89,36 +90,27 @@ export class JsonFileStateStore implements StateStore {
     if (!slug) throw new Error("getNextAvailable requires slug");
     const state = readStateOrThrow(slug);
 
-    const statusMap = new Map(state.items.map((i) => [i.key, i.status]));
-    const available: Array<{ key: string; label: string; agent: string | null; status: string }> = [];
+    // Delegate to the canonical domain predicate so the admin CLI view
+    // stays in lockstep with the kernel's `getNextBatch()`. The adapter
+    // deliberately does NOT pass the cycle-aware producer-gate options:
+    // admin callers (pipeline:status/next) have no APM context at hand
+    // and the CLI is inspection-only. Legacy edge-only readiness here
+    // remains a strict subset of — not a divergence from — the loop's
+    // gated view.
+    const result = scheduleRule(state.items, state.dependencies ?? {});
 
-    for (const item of state.items) {
-      if (item.status !== "pending" && item.status !== "failed") continue;
-      const deps = state.dependencies?.[item.key] ?? [];
-      const depsResolved = deps.every((depKey) => {
-        const depStatus = statusMap.get(depKey);
-        return depStatus === "done" || depStatus === "na";
-      });
-      if (depsResolved) {
-        available.push({
-          key: item.key,
-          label: item.label,
-          agent: item.agent,
-          status: item.status,
-        });
-      }
+    if (result.kind === "items") {
+      return result.items.map((i) => ({
+        key: i.key,
+        label: i.label,
+        agent: i.agent,
+        status: i.status,
+      }));
     }
-
-    if (available.length === 0) {
-      const allDone = state.items.every(
-        (i) => i.status === "done" || i.status === "na" || i.status === "dormant",
-      );
-      if (allDone) {
-        return [{ key: null, label: "Pipeline complete", agent: null, status: "complete" }];
-      }
-      return [{ key: null, label: "Pipeline blocked", agent: null, status: "blocked" }];
+    if (result.kind === "complete") {
+      return [{ key: null, label: "Pipeline complete", agent: null, status: "complete" }];
     }
-    return available;
+    return [{ key: null, label: "Pipeline blocked", agent: null, status: "blocked" }];
   }
 
   // ── DAG-shaped mutations (delegate to pure domain) ───────────────────────

@@ -25,8 +25,13 @@ export {
 
 export {
   schedule,
+  isProducerCycleReady,
   type SchedulableItem,
   type ScheduleResult,
+  type ScheduleOptions,
+  type ConsumesEdge,
+  type ProducerCycleSummary,
+  type GateDiagnosis,
 } from "./scheduling.js";
 
 export {

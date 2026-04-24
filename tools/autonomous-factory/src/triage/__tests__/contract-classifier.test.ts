@@ -142,6 +142,51 @@ describe("evaluateProfilePatterns — raw-regex built-ins (spec-schema-violation
   });
 });
 
+describe("evaluateProfilePatterns — producer-side declared-output faults", () => {
+  it("routes `missing_required_output` text to schema-violation (singular)", () => {
+    // Verbatim message shape from
+    // `loop/dispatch/item-dispatch.ts` when a node declared
+    // `produces_artifacts: [debug-notes]` but emitted nothing.
+    const msg =
+      "Node declared `produces_artifacts` kind `debug-notes` but no file " +
+      "materialised at its canonical invocation path.";
+    const r = evaluateProfilePatterns(profileWithBuiltins(), { rawError: msg });
+    assert.ok(r, "should classify");
+    assert.equal(r!.domain, "schema-violation");
+    assert.equal(r!.source, "contract");
+    assert.match(r!.reason, /did not emit/i);
+  });
+
+  it("routes `missing_required_output` text to schema-violation (plural)", () => {
+    const msg =
+      "Node declared `produces_artifacts` kinds [a, b] but none materialised " +
+      "at their canonical invocation paths.";
+    const r = evaluateProfilePatterns(profileWithBuiltins(), { rawError: msg });
+    assert.ok(r);
+    assert.equal(r!.domain, "schema-violation");
+  });
+
+  it("routes `invalid_envelope_output` text to schema-violation", () => {
+    // Verbatim shape from item-dispatch.ts envelope gate.
+    const msg =
+      "Node declared `produces_artifacts` kind `change-manifest` but its " +
+      "output is missing the envelope under strict_artifacts: " +
+      "Artifact 'change-manifest' at /repo/x.json failed schema validation: " +
+      "envelope.schemaVersion: Invalid input: expected number, received undefined";
+    const r = evaluateProfilePatterns(profileWithBuiltins(), { rawError: msg });
+    assert.ok(r);
+    assert.equal(r!.domain, "schema-violation");
+    assert.match(r!.reason, /envelope/i);
+  });
+
+  it("does NOT match unrelated mentions of `produces_artifacts`", () => {
+    // Free-text mention without the canonical "no file materialised" /
+    // "missing the envelope" phrasing should not classify.
+    const msg = "diagnostic: see produces_artifacts spec for details";
+    assert.equal(evaluateProfilePatterns(profileWithBuiltins(), { rawError: msg }), null);
+  });
+});
+
 describe("evaluateProfilePatterns — contract-testid timeout rule", () => {
   it("classifies a timeout on a contract-declared testid to frontend", () => {
     const payload: StructuredFailure = {

@@ -50,4 +50,31 @@ export const BUILTIN_TRIAGE_PATTERNS: readonly TriagePattern[] = [
       "spec-compiler produced an invalid ACCEPTANCE contract. " +
       "Repair the schema violation and re-emit: ${errFirstLine}",
   },
+  // Producer-side declared-output faults: a node listed
+  // `produces_artifacts: [<kind>]` and either emitted nothing (caught by
+  // `detectMissingRequiredOutputs`) or emitted a file missing the
+  // strict_artifacts envelope (caught by `detectInvalidEnvelopeOutputs`).
+  // Both are output-quality contract violations on the producer's side,
+  // and route via the workflow's `schema-violation` route — which under
+  // `routeProfiles.base` resolves to `$SELF` for bounded self-repair.
+  // The matching messages are emitted by `loop/dispatch/item-dispatch.ts`.
+  {
+    match_kind: "raw-regex",
+    pattern:
+      "Node declared `produces_artifacts` kind[s]?\\b.*?\\b(no file materialised at its canonical invocation path|none materialised at their canonical invocation paths)",
+    domain: "schema-violation",
+    reason_template:
+      "Producer declared an artifact it did not emit. Repair the missing " +
+      "output and re-run: ${errFirstLine}",
+  },
+  {
+    match_kind: "raw-regex",
+    pattern:
+      "Node declared `produces_artifacts` kind[s]?\\b.*?\\boutput[s]? (?:is|are) missing the envelope under strict_artifacts",
+    domain: "schema-violation",
+    reason_template:
+      "Producer emitted an artifact missing the required " +
+      "{schemaVersion, producedBy, producedAt} envelope. Re-emit with the " +
+      "envelope: ${errFirstLine}",
+  },
 ];

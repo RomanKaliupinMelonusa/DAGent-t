@@ -348,7 +348,7 @@ storefront:
         browser-runtime-error:
           description: "Uncaught JS exception in the browser context — always an impl defect. Emitted by the L0 built-in pattern on Playwright uncaughtErrors."
         schema-violation:
-          description: "spec-compiler produced an invalid ACCEPTANCE.yml (Zod schema violation, YAML parse error, missing file). Route back to spec-compiler for bounded self-repair."
+          description: "Producer-side artifact contract failure: spec-compiler produced an invalid ACCEPTANCE.yml, OR any node declared `produces_artifacts: [<kind>]` and emitted nothing / emitted with a malformed envelope. Routed via routeProfiles.base → $SELF for bounded self-repair (circuit_breaker.halt_on_identical caps the loop)."
         cicd:
           description: "GitHub Actions workflow file errors, deploy pipeline config"
         deployment-stale:

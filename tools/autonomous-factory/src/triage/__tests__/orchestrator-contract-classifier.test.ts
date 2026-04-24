@@ -20,11 +20,19 @@ describe("classifyOrchestratorContractError", () => {
     assert.equal(v!.artifact, "acceptance");
   });
 
-  it("classifies missing_required_output:<kind> as missing-output", () => {
-    const v = classifyOrchestratorContractError("missing_required_output:triage-handoff");
-    assert.ok(v, "should match");
-    assert.equal(v!.kind, "missing-output");
-    assert.equal(v!.artifact, "triage-handoff");
+  it("does NOT classify missing_required_output:<kind> — that is a producer-side fault routed via schema-violation", () => {
+    // Producer-side faults must NOT short-circuit through this guard;
+    // they are routed via L0 schema-violation patterns in
+    // `triage/builtin-patterns.ts` to the producer node's
+    // `on_failure.routes[schema-violation]` (typically `$SELF`).
+    assert.equal(
+      classifyOrchestratorContractError("missing_required_output:triage-handoff"),
+      null,
+    );
+    assert.equal(
+      classifyOrchestratorContractError("missing_required_output:debug-notes"),
+      null,
+    );
   });
 
   it("captures complex artifact names with dots and dashes", () => {

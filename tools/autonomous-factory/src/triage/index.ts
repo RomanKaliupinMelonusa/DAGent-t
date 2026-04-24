@@ -174,14 +174,14 @@ export function isOrchestratorTimeout(errorMessage: string): boolean {
  * `handlers/middlewares/materialize-inputs.ts` and
  * `loop/dispatch/item-dispatch.ts`).
  *
- * These signatures indicate a *contract-layer* fault — a node declared it
- * `consumes` / `produces` an artifact that does not exist in the ledger at
- * dispatch / seal time. The root cause is never the producing agent's
+ * These signatures indicate a *consumer-side contract-layer* fault — a
+ * node declared it `consumes` an artifact that does not exist in the
+ * ledger at dispatch time. The root cause is never the producing agent's
  * output quality — it is either:
  *   - a bug in the kernel ↔ state-store artifact ledger sync,
- *   - an APM-compiled workflow that wires a producer/consumer to a
- *     kind/scope that doesn't actually flow, or
- *   - a missing / misdeclared `produces_artifacts` on an upstream node.
+ *   - an APM-compiled workflow that wires a consumer to a producer that
+ *     doesn't actually flow that kind, or
+ *   - a missing / misdeclared `consumes_artifacts` on a downstream node.
  *
  * Routing these through RAG / LLM triage is demonstrably harmful: the LLM
  * sees an "acceptance input missing" error and confidently blames
@@ -190,15 +190,21 @@ export function isOrchestratorTimeout(errorMessage: string): boolean {
  * short-circuit to graceful degradation with an accurate diagnosis so an
  * operator (not an agent) fixes the contract / ledger bug.
  *
+ * NOTE: Producer-side faults (`missing_required_output:<kind>`,
+ * `invalid_envelope_output:<kind>`) are intentionally NOT classified here.
+ * Those are genuine output-quality failures — the producer node declared
+ * it would emit X and either emitted nothing or emitted with a malformed
+ * envelope. They are routed via the workflow's `schema-violation` route
+ * (typically `$SELF` for bounded self-repair) by L0 patterns in
+ * `triage/builtin-patterns.ts`.
+ *
  * Returns `null` when the signature is not orchestrator-contract origin.
  */
 export function classifyOrchestratorContractError(
   errorSignature: string | undefined | null,
-): { readonly kind: "missing-input" | "missing-output"; readonly artifact: string } | null {
+): { readonly kind: "missing-input"; readonly artifact: string } | null {
   if (!errorSignature) return null;
   const inMatch = /^missing_required_input:(.+)$/.exec(errorSignature);
   if (inMatch) return { kind: "missing-input", artifact: inMatch[1] };
-  const outMatch = /^missing_required_output:(.+)$/.exec(errorSignature);
-  if (outMatch) return { kind: "missing-output", artifact: outMatch[1] };
   return null;
 }

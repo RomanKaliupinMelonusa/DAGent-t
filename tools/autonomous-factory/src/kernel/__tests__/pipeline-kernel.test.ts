@@ -91,6 +91,159 @@ describe("PipelineKernel — scheduling", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cycle-aware producer-readiness gate
+// ---------------------------------------------------------------------------
+
+describe("PipelineKernel — producer-cycle gate", () => {
+  // Producer P → Consumer C. C declares an upstream artifact edge from P.
+  function makeRerouteState(): PipelineState {
+    return {
+      feature: "test",
+      workflowName: "test",
+      started: "2025-01-01T00:00:00Z",
+      deployedUrl: null,
+      implementationNotes: null,
+      items: [
+        // Both items are `pending` after `reset-for-reroute` flipped them
+        // back; structurally C's only dep (P) would resolve once P seals
+        // — the new gate is what prevents same-tick co-dispatch.
+        { key: "P", label: "P", agent: "dev", status: "pending", error: null },
+        { key: "C", label: "C", agent: "dev", status: "pending", error: null },
+      ],
+      errorLog: [],
+      dependencies: { P: [], C: ["P"] },
+      nodeTypes: { P: "agent", C: "agent" },
+      nodeCategories: { P: "dev", C: "finalize" },
+      jsonGated: {},
+      naByType: [],
+      salvageSurvivors: [],
+      // Cycle-1 sealed completed; cycle-2 dispatched but not sealed yet.
+      artifacts: {
+        "inv_P_1": {
+          invocationId: "inv_P_1",
+          nodeKey: "P",
+          cycleIndex: 1,
+          trigger: "initial",
+          startedAt: "2025-01-01T00:01:00Z",
+          finishedAt: "2025-01-01T00:02:00Z",
+          outcome: "completed",
+          inputs: [],
+          outputs: [],
+          sealed: true,
+        },
+        "inv_P_2": {
+          invocationId: "inv_P_2",
+          nodeKey: "P",
+          cycleIndex: 2,
+          trigger: "triage-reroute",
+          parentInvocationId: "inv_P_1",
+          startedAt: "2025-01-01T00:03:00Z",
+          // No `outcome`/`finishedAt`/`sealed` → still in-flight.
+          inputs: [],
+          outputs: [],
+        },
+      },
+    };
+  }
+
+  const consumesByNode = new Map([
+    ["C", [{ from: "P", required: true }]],
+  ]);
+
+  it("blocks consumer dispatch while producer's latest cycle is in-flight", () => {
+    const kernel = new PipelineKernel(
+      "test",
+      makeRerouteState(),
+      createRunState(),
+      new DefaultKernelRules(),
+      consumesByNode,
+    );
+    // P is `pending`, but C must NOT appear in the same batch even though
+    // its only structural dep (P) is the very item being scheduled. The
+    // kernel only emits P; C waits.
+    const batch = kernel.getNextBatch();
+    assert.equal(batch.kind, "items");
+    if (batch.kind === "items") {
+      assert.deepEqual(batch.items.map((i) => i.key), ["P"]);
+    }
+  });
+
+  it("emits a dispatch.gated_on_producer_cycle telemetry effect for the gated consumer", () => {
+    // To make C structurally ready (so that the cycle gate is the *only*
+    // thing blocking it), seed P as `done`. The in-flight cycle-2 record
+    // remains in `state.artifacts`.
+    const seed = makeRerouteState();
+    seed.items[0]!.status = "done";
+    const kernel = new PipelineKernel(
+      "test",
+      seed,
+      createRunState(),
+      new DefaultKernelRules(),
+      consumesByNode,
+    );
+    const batch = kernel.getNextBatch();
+    assert.equal(batch.kind, "blocked");
+    assert.ok(batch.gateEffects && batch.gateEffects.length === 1);
+    const eff = batch.gateEffects![0]!;
+    assert.equal(eff.type, "telemetry-event");
+    if (eff.type === "telemetry-event") {
+      assert.equal(eff.category, "dispatch.gated_on_producer_cycle");
+      assert.equal(eff.itemKey, "C");
+      const gatedOn = (eff.context?.gated_on as Array<{ from: string; latest_cycle_index: number; outcome: string | null }>);
+      assert.equal(gatedOn.length, 1);
+      assert.equal(gatedOn[0]!.from, "P");
+      assert.equal(gatedOn[0]!.latest_cycle_index, 2);
+      assert.equal(gatedOn[0]!.outcome, null);
+    }
+  });
+
+  it("releases the consumer once the latest producer cycle seals completed", () => {
+    const seed = makeRerouteState();
+    seed.items[0]!.status = "done";
+    seed.artifacts!["inv_P_2"] = {
+      ...seed.artifacts!["inv_P_2"]!,
+      outcome: "completed",
+      finishedAt: "2025-01-01T00:04:00Z",
+      sealed: true,
+    };
+    const kernel = new PipelineKernel(
+      "test",
+      seed,
+      createRunState(),
+      new DefaultKernelRules(),
+      consumesByNode,
+    );
+    const batch = kernel.getNextBatch();
+    assert.equal(batch.kind, "items");
+    if (batch.kind === "items") {
+      assert.deepEqual(batch.items.map((i) => i.key), ["C"]);
+    }
+    // No gate effect when nothing is gated.
+    assert.ok(!batch.gateEffects || batch.gateEffects.length === 0);
+  });
+
+  it("legacy callers without consumesByNode keep edge-only readiness", () => {
+    // Same in-flight cycle-2 ledger, but no `consumesByNode` passed →
+    // C dispatches as soon as structural deps allow. Validates the
+    // non-breaking opt-in contract.
+    const seed = makeRerouteState();
+    seed.items[0]!.status = "done"; // P done → C structurally ready
+    const kernel = new PipelineKernel(
+      "test",
+      seed,
+      createRunState(),
+      new DefaultKernelRules(),
+    );
+    const batch = kernel.getNextBatch();
+    assert.equal(batch.kind, "items");
+    if (batch.kind === "items") {
+      assert.deepEqual(batch.items.map((i) => i.key), ["C"]);
+    }
+    assert.ok(!batch.gateEffects || batch.gateEffects.length === 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // State transitions
 // ---------------------------------------------------------------------------
 
