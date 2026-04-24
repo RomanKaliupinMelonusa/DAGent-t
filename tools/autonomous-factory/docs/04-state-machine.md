@@ -1,26 +1,32 @@
 # Pipeline State Machine — DAG & Lifecycle
 
-> 19 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
-> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI)
+> 21 main pipeline items + 2 triage nodes across 7 phases (Wave 0 scaffolding, two-wave app-and-infra architecture, triage rerouting), dependency-aware parallel scheduling, workflow type variations.
+> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI) · `apps/sample-app/.apm/workflows.yml` (full-stack DAG)
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
 
-## Full DAG — 19 Pipeline Items (Two-Wave Architecture)
+## Full DAG — `full-stack` Workflow (Two-Wave + Scaffolding)
 
 > This is the **dependency-level** view — which items depend on which and what can run in parallel. For the full engine architecture see [../README.md](../README.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
 
-The pipeline is split into **two waves** separated by a **human approval gate**:
+The pipeline has three structural phases:
 
-- **Wave 1 (Infrastructure)** — Schemas, Terraform, push, Draft PR, plan CI, human approval, handoff
-- **Wave 2 (Application)** — Backend + frontend dev/test, deploy, post-deploy verification, finalize
+- **Wave 0 (Scaffolding)** — `create-branch`, `stage-spec`. Pipeline-agnostic bootstrap: creates the feature branch and materialises `_kickoff/spec.md` from the supplied `--spec-file`. Executed as regular DAG nodes (not preflight hooks) so they participate in the invocation ledger.
+- **Wave 1 (Infrastructure)** — Schemas, Terraform, push, Draft PR, plan CI, human approval, handoff.
+- **Wave 2 (Application)** — Backend + frontend dev/test, deploy, post-deploy verification, finalize.
 
-Wave 2 cannot start until the infrastructure approval gate is cleared and `infra-handoff` has written `infra-interfaces.md` with deployed resource URLs.
+Wave 2 cannot start until the infrastructure approval gate is cleared and `infra-handoff` has written `infra-interfaces.md` with deployed resource URLs. Every failure route passes through a dedicated triage node (`triage-full-stack`) which fans back into dev nodes; `deep-debug` is an optional diagnostic companion that can be scheduled by triage.
 
 ```mermaid
 flowchart LR
+    subgraph SCAFFOLD["Wave 0: Scaffolding"]
+        CB["create-branch"]
+        SS["stage-spec"]
+    end
+
     subgraph INFRA["Wave 1: Infrastructure"]
-        SD["schema-dev\n(no deps)"]
+        SD["schema-dev"]
         IA["infra-architect"]
         PI["push-infra"]
         DPR["create-draft-pr"]
@@ -56,7 +62,12 @@ flowchart LR
         PPR["publish-pr"]
     end
 
-    SD --> IA --> PI --> DPR --> PIP --> AIA --> IH
+    subgraph TRIAGE["Triage (on-failure)"]
+        TFS["triage-full-stack"]
+        DD["deep-debug (optional)"]
+    end
+
+    CB --> SS --> SD --> IA --> PI --> DPR --> PIP --> AIA --> IH
     SD & IH --> BD & FD
     BD --> BUT
     FD --> FUT
@@ -67,19 +78,28 @@ flowchart LR
     DA --> DARC
     DARC --> PPR
 
+    POST -.on failure.-> TFS
+    DEPLOY -.on failure.-> TFS
+    PRE -.on failure.-> TFS
+    TFS -.resets dev nodes.-> PRE
+
+    style SCAFFOLD fill:#f5f5f5
     style INFRA fill:#e8f5e9
     style APPROVAL fill:#fff9c4,stroke:#f9a825,stroke-width:2px
     style PRE fill:#e3f2fd
     style DEPLOY fill:#fff9c4
     style POST fill:#fff3e0
     style FINAL fill:#f3e5f5
+    style TRIAGE fill:#ffebee,stroke:#c62828,stroke-width:1px
 ```
 
 ### Dependency Table
 
 | Item | Phase | Depends On | Can Run In Parallel With |
 |------|-------|-----------|------------------------|
-| `schema-dev` | infra | — | (first) |
+| `create-branch` | scaffolding | — | (first) |
+| `stage-spec` | scaffolding | create-branch | — |
+| `schema-dev` | infra | stage-spec | — |
 | `infra-architect` | infra | schema-dev | — |
 | `push-infra` | infra | infra-architect | — |
 | `create-draft-pr` | infra | push-infra | — |
@@ -98,6 +118,8 @@ flowchart LR
 | `docs-archived` | finalize | code-cleanup | — |
 | `doc-architect` | finalize | code-cleanup, docs-archived | — |
 | `publish-pr` | finalize | doc-architect | — |
+| `triage-full-stack` | triage | (activated on `on_failure`) | — |
+| `deep-debug` | triage | (optional, scheduled by triage) | — |
 
 ---
 

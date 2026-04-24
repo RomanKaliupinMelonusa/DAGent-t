@@ -132,7 +132,8 @@ export type ArtifactKind =
   | "params"
   | "meta"
   | "node-report"
-  | "implementation-status";
+  | "implementation-status"
+  | "handler-output";
 
 // ---------------------------------------------------------------------------
 // Payload schemas (strict-validated kinds — Track B1)
@@ -419,6 +420,28 @@ export type ImplementationStatusArtifact = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// handler-output — symmetric script producer of NodeResult.handlerOutput
+// ---------------------------------------------------------------------------
+
+/**
+ * Script-side analogue of the agent `report_outcome.handoffArtifact` path.
+ *
+ * Any `local-exec` node may write `$OUTPUTS_DIR/handler-output.json` during
+ * its run; the handler probes the canonical location at completion time
+ * and merges the envelope's `output` bag into `NodeResult.handlerOutput`
+ * alongside the reserved keys (`scriptOutput`, `exitCode`, `timedOut`).
+ *
+ * The body is opaque by design (policy=`envelope-only`) so scripts can
+ * surface arbitrary structured data to downstream nodes without a schema
+ * round-trip — same ergonomics as `report_outcome` for agents.
+ */
+export const HandlerOutputArtifactSchema = EnvelopeSchema.extend({
+  output: z.record(z.string(), z.unknown()),
+});
+
+export type HandlerOutputArtifact = z.infer<typeof HandlerOutputArtifactSchema>;
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -647,6 +670,20 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
       "Producer's self-report of which acceptance flows are live vs gated vs partial. Consumed by qa-adversary so adversarial probes skip flows the dev agent admitted are non-live (e.g. shipped behind a feature flag).",
     policy: "strict",
     schema: ImplementationStatusArtifactSchema,
+    schemaVersion: 1,
+    envelope: "inline",
+  },
+  {
+    id: "handler-output",
+    ext: "json",
+    scopes: ["node"],
+    description:
+      "Script-side structured handoff — the symmetric counterpart to the agent `report_outcome.handoffArtifact` path. A `local-exec` node writes `$OUTPUTS_DIR/handler-output.json` during its run; `local-exec` probes the canonical location at completion and merges the envelope's `output` bag into `NodeResult.handlerOutput`.",
+    // Envelope-only: the envelope triplet is enforced, the `output` bag is
+    // intentionally opaque so scripts can surface arbitrary structured data
+    // to downstream nodes without schema churn.
+    policy: "envelope-only",
+    schema: HandlerOutputArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
   },

@@ -13,6 +13,7 @@ import { composeMiddleware } from "../../handlers/middleware.js";
 import { autoSkipMiddleware } from "../../handlers/middlewares/auto-skip.js";
 import { lifecycleHooksMiddleware } from "../../handlers/middlewares/lifecycle-hooks.js";
 import { materializeInputsMiddleware } from "../../handlers/middlewares/materialize-inputs.js";
+import { handlerOutputIngestionMiddleware } from "../../handlers/middlewares/handler-output-ingestion.js";
 import type { Command } from "../../kernel/commands.js";
 import type { ItemSummary, ArtifactRefSerialized } from "../../types.js";
 import { translateResult, type FailPolicy } from "./result-translator.js";
@@ -28,9 +29,11 @@ import {
 
 /** Default middleware chain applied to every handler invocation when the
  *  caller does not supply one. Mirrors ENGINE_DEFAULT_MIDDLEWARE_NAMES in
- *  the registry — keep in sync. */
+ *  the registry — keep in sync. `handler-output-ingestion` sits OUTER of
+ *  `lifecycle-hooks` so post-hook envelope writes are observable. */
 export const DEFAULT_NODE_MIDDLEWARES: ReadonlyArray<NodeMiddleware> = [
   autoSkipMiddleware,
+  handlerOutputIngestionMiddleware,
   lifecycleHooksMiddleware,
   materializeInputsMiddleware,
 ];

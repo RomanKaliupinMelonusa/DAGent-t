@@ -14,10 +14,13 @@
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ShellExecError } from "../ports/shell.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
-import { parsePlaywrightReport, type StructuredFailure } from "../triage/playwright-report.js";
 import path from "node:path";
 // Script output condensation lives in the `result-processor` middleware —
 // handlers return raw output and the middleware chain sanitizes on failure.
+// Structured payloads (e.g. Playwright JSON reports) flow through the
+// `handler-output-ingestion` middleware: a post-hook writes
+// `$OUTPUTS_DIR/handler-output.json` with the parsed `structuredFailure`,
+// the middleware merges it into `NodeResult.handlerOutput`.
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB — Playwright output can be large
 const DEFAULT_TIMEOUT_MINUTES = 15;
@@ -33,7 +36,6 @@ const localExecHandler: NodeHandler = {
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch, specFile } = ctx;
-
     const node = getWorkflowNode(apmContext, ctx.pipelineState.workflowName, itemKey);
     let command = node?.command;
     if (!command) {
@@ -64,6 +66,17 @@ const localExecHandler: NodeHandler = {
     // directory layout owned by the Artifact Bus — scripts consume them to
     // read declared inputs / write declared outputs / append logs without
     // reconstructing paths from slug + node key + invocation id.
+    //
+    // Symmetric handler-output channel: scripts or their `post:` hooks may
+    // write `$OUTPUTS_DIR/handler-output.json` following the `handler-output`
+    // artifact envelope (`{ schemaVersion, producedBy, producedAt, output: {...} }`)
+    // to surface structured data into `NodeResult.handlerOutput`. This is
+    // the script analog of the agent `report_outcome.handoffArtifact`
+    // path. Reserved keys (`scriptOutput`, `exitCode`, `timedOut`) are
+    // owned by the handler and dropped from the envelope's `output` bag
+    // if present. Ingestion is performed by the
+    // `handler-output-ingestion` middleware so post-hook writes are
+    // observable.
     const invocationDir = path.join(appRoot, "in-progress", slug, itemKey, ctx.executionId);
     const execEnv: Record<string, string | undefined> = {
       ...process.env,
@@ -82,20 +95,19 @@ const localExecHandler: NodeHandler = {
       LOGS_DIR: path.join(invocationDir, "logs"),
     };
 
-    // Structured-failure extractor — when declared on the node, resolve the
-    // artifact path now (with ${featureSlug} interpolation) and, for the
-    // playwright-json format, expose PLAYWRIGHT_JSON_OUTPUT_NAME so the
-    // json reporter writes to the canonical location.
+    // Backwards-compatibility: when a node still declares
+    // `structured_failure: { format: playwright-json, path: ... }`, expose
+    // `PLAYWRIGHT_JSON_OUTPUT_NAME` so Playwright writes its JSON report
+    // at the canonical location. Parsing is now the responsibility of a
+    // post-hook that emits `$OUTPUTS_DIR/handler-output.json` (see
+    // `tools/autonomous-factory/hooks/emit-playwright-handler-output.mjs`).
     const structuredFailureCfg = node?.structured_failure;
-    let structuredArtifactAbsPath: string | null = null;
-    if (structuredFailureCfg) {
+    if (structuredFailureCfg?.format === "playwright-json") {
       const interpolated = structuredFailureCfg.path.replace(/\$\{featureSlug\}/g, slug);
-      structuredArtifactAbsPath = path.isAbsolute(interpolated)
+      const absPath = path.isAbsolute(interpolated)
         ? interpolated
         : path.join(appRoot, interpolated);
-      if (structuredFailureCfg.format === "playwright-json") {
-        execEnv.PLAYWRIGHT_JSON_OUTPUT_NAME = structuredArtifactAbsPath;
-      }
+      execEnv.PLAYWRIGHT_JSON_OUTPUT_NAME = absPath;
     }
 
     // --- Pre-hook / Post-hook ---
@@ -127,6 +139,10 @@ const localExecHandler: NodeHandler = {
 
       ctx.logger.event("item.end", itemKey, { outcome: "completed", note: "local-exec" });
 
+      // Envelope ingestion now lives in the `handler-output-ingestion`
+      // middleware so post-hook writes are observable. The handler just
+      // emits its canonical `scriptOutput`; the middleware merges any
+      // structured `output` bag from `$OUTPUTS_DIR/handler-output.json`.
       return {
         outcome: "completed",
         summary: { intents: ["Native script execution"] },
@@ -154,7 +170,10 @@ const localExecHandler: NodeHandler = {
       if (execErr.timedOut) {
         const timeoutMsg = `local-exec: Process killed after ${timeoutMinutes}m timeout (SIGTERM). ` +
           `Command: "${command}". Partial output:\n${combinedOutput.slice(-4096)}`;
-      ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `Process killed after ${timeoutMinutes}m timeout` });
+        ctx.logger.event("item.end", itemKey, {
+          outcome: "failed",
+          error_preview: `Process killed after ${timeoutMinutes}m timeout`,
+        });
         return {
           outcome: "failed",
           errorMessage: timeoutMsg,
@@ -168,30 +187,15 @@ const localExecHandler: NodeHandler = {
 
       ctx.logger.event("item.end", itemKey, { outcome: "failed", error_preview: `exit code ${exitCode}` });
 
-      // Best-effort structured-failure extraction. A missing or malformed
-      // artifact yields `null`; triage falls back to the raw scriptOutput.
-      let structuredFailure: StructuredFailure | null = null;
-      if (structuredFailureCfg && structuredArtifactAbsPath) {
-        if (structuredFailureCfg.format === "playwright-json") {
-          const redactPatterns = apmContext.config?.evidence?.redact_patterns;
-          structuredFailure = parsePlaywrightReport(structuredArtifactAbsPath, {
-            appRoot,
-            slug,
-            ...(redactPatterns !== undefined ? { redactPatterns } : {}),
-          });
-        }
-      }
-
       // errorMessage is left unset — the `result-processor` middleware
-      // sanitizes scriptOutput into a bounded triage message.
+      // sanitizes scriptOutput into a bounded triage message. Structured
+      // payloads (e.g. Playwright JSON → `handlerOutput.structuredFailure`)
+      // flow through the `handler-output-ingestion` middleware after any
+      // declared `post:` hook runs.
       return {
         outcome: "failed",
         summary: { intents: ["Native script execution — failed"] },
-        handlerOutput: {
-          scriptOutput: output,
-          exitCode,
-          ...(structuredFailure ? { structuredFailure } : {}),
-        },
+        handlerOutput: { scriptOutput: output, exitCode },
       };
     }
   },

@@ -15,7 +15,7 @@ Handlers are **observers**: they never mutate pipeline state. They return a `Nod
 | [types.ts](types.ts) | `NodeHandler` contract, `NodeContext` (everything a handler needs), `NodeResult` / `SkipResult`, `HandlerMetadata`. |
 | [registry.ts](registry.ts) | `resolveHandler(node, …)` — dispatches to built-in handlers or dynamically imports a custom one. Built-in handler map: `copilot-agent`, `github-ci-poll`, `local-exec`, `approval`, `triage`. |
 | [copilot-agent.ts](copilot-agent.ts) | Runs an LLM agent session via the `CopilotSessionRunner` port. Handles prompt assembly, harness wiring, outcome classification from the `report_outcome` SDK tool. |
-| [local-exec.ts](local-exec.ts) | Runs a shell script declared in `workflows.yml` (e.g. `push-app`, `publish-pr`). Uses `Shell` port. |
+| [local-exec.ts](local-exec.ts) | Runs a shell script declared in `workflows.yml` (e.g. `push-app`, `publish-pr`). Uses `Shell` port. Scripts may emit structured data to downstream nodes by writing `$OUTPUTS_DIR/handler-output.json` — see "Script → `handlerOutput` envelope" below. |
 | [github-ci-poll.ts](github-ci-poll.ts) | Polls a GitHub Actions run pinned to a specific SHA via `CiGateway`. |
 | [approval.ts](approval.ts) | Human approval gate — records state, emits command to wait; kernel holds until resumed. |
 | [triage-handler.ts](triage-handler.ts) | Classifies a prior failure by invoking [src/triage/](../triage/README.md), emits `reset-nodes` + `stage-invocation` (with `trigger: "triage-reroute"` and a `parentInvocationId`); the triage handoff payload is written as the declared `triage-handoff` artifact under `outputs/`. |
@@ -76,6 +76,44 @@ export interface NodeResult {
 1. Create a file under [middlewares/](middlewares/).
 2. Register via `registerMiddlewares()` (called from [bootstrap.ts](../entry/bootstrap.ts)).
 3. Middlewares compose around `handler.execute()` and receive the same `NodeContext`.
+
+## Script → `handlerOutput` envelope
+
+_Symmetric counterpart to the agent `report_outcome.handoffArtifact` path._
+
+Script nodes (`local-exec`) can surface structured data to downstream
+nodes through the same `NodeResult.handlerOutput` channel agents use.
+The script writes a JSON file to the per-invocation outputs directory
+exposed via the `$OUTPUTS_DIR` environment variable:
+
+```bash
+# inside a local-exec script
+jq -n \
+  --arg sha "$(git rev-parse HEAD)" \
+  '{
+    schemaVersion: 1,
+    producedBy: "push-app",
+    producedAt: (now | todate),
+    output: { lastPushedSha: $sha }
+  }' > "$OUTPUTS_DIR/handler-output.json"
+```
+
+The `local-exec` handler probes the canonical path at completion,
+validates the envelope against `HandlerOutputArtifactSchema` (registered
+as the `handler-output` artifact kind), and merges the envelope's
+`output` bag into `NodeResult.handlerOutput`. Downstream nodes then see
+the values on `ctx.handlerData`.
+
+**Reserved keys** — `scriptOutput`, `exitCode`, `timedOut`, and
+`structuredFailure` are owned by the handler. If a script includes one
+of them in its `output` bag it is dropped with a `handler-output.reserved_key`
+telemetry warning.
+
+**Advisory validation** — a missing or malformed `handler-output.json`
+never changes the script's outcome. Failures emit a `handler-output.invalid`
+telemetry event and the handler proceeds with `scriptOutput` / `exitCode`
+only. Ingestion runs on both the happy path and the failure path so
+downstream consumers still see structured data after a non-zero exit.
 
 ## Gotchas
 

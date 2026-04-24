@@ -17,6 +17,7 @@ import { resultProcessorMiddleware } from "./result-processor.js";
 import { metricsMiddleware } from "./metrics.js";
 import { acceptanceIntegrityMiddleware } from "./acceptance-integrity.js";
 import { materializeInputsMiddleware } from "./materialize-inputs.js";
+import { handlerOutputIngestionMiddleware } from "./handler-output-ingestion.js";
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -29,6 +30,7 @@ const BUILT_IN_MIDDLEWARES: Record<string, NodeMiddleware> = {
   [metricsMiddleware.name]: metricsMiddleware,
   [acceptanceIntegrityMiddleware.name]: acceptanceIntegrityMiddleware,
   [materializeInputsMiddleware.name]: materializeInputsMiddleware,
+  [handlerOutputIngestionMiddleware.name]: handlerOutputIngestionMiddleware,
 };
 
 const USER_MIDDLEWARES: Record<string, NodeMiddleware> = {};
@@ -73,10 +75,17 @@ function getMiddleware(name: string): NodeMiddleware {
 // Resolver
 // ---------------------------------------------------------------------------
 
-/** The engine's fallback chain when apm.yml does not set `config.node_middleware.default`. */
+/** The engine's fallback chain when apm.yml does not set `config.node_middleware.default`.
+ *
+ *  Ordering note: `handler-output-ingestion` sits OUTER of `lifecycle-hooks`
+ *  so it runs AFTER the node's `post:` hook; this lets post-hooks produce
+ *  the `$OUTPUTS_DIR/handler-output.json` envelope and have it merged into
+ *  the returned `NodeResult.handlerOutput`. Keep this order unless you've
+ *  thought through the timing carefully. */
 export const ENGINE_DEFAULT_MIDDLEWARE_NAMES: ReadonlyArray<string> = [
   "auto-skip",
   "acceptance-integrity",
+  "handler-output-ingestion",
   "lifecycle-hooks",
   "materialize-inputs",
   "result-processor",

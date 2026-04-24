@@ -69,7 +69,15 @@ export type EventKind =
   | "node.start"
   | "node.end"
   | "node.artifact.write"
-  | "node.artifact.seal";
+  | "node.artifact.seal"
+  // Script handler-output envelope (symmetric counterpart to handoff.emit
+  // for the agent path). Fired by local-exec when a script writes
+  // `$OUTPUTS_DIR/handler-output.json` and the envelope is ingested.
+  // `handler-output.invalid` / `handler-output.reserved_key` are advisory
+  // warnings that never fail the script.
+  | "node.handler_output"
+  | "handler-output.invalid"
+  | "handler-output.reserved_key";
 
 // ---------------------------------------------------------------------------
 // Core types

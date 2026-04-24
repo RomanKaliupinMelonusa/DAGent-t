@@ -59,7 +59,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/` |
 | Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/loop/dispatch/` |
-| Handler plugins (agent, poll, local-exec, triage, approval, barrier) | `tools/autonomous-factory/src/handlers/` |
+| Handler plugins (copilot-agent, local-exec, github-ci-poll, approval, triage) | `tools/autonomous-factory/src/handlers/` |
 | Copilot-agent support helpers (context, limits, post-session) | `tools/autonomous-factory/src/handlers/support/` |
 | Workflow node helpers (shared, dag-utils) | `tools/autonomous-factory/src/session/` |
 | Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
@@ -116,7 +116,7 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | Adapters (state store, git, CI, FS, SDK runner, telemetry) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/pipeline-loop.ts` |
 | Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/loop/dispatch/` |
-| Handler plugins (agent, push, poll, PR, local-exec, triage) | `tools/autonomous-factory/src/handlers/` |
+| Handler plugins (copilot-agent, local-exec, github-ci-poll, approval, triage) | `tools/autonomous-factory/src/handlers/` |
 | Copilot agent support helpers | `tools/autonomous-factory/src/handlers/support/` |
 | Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/apm/agents.ts` |

@@ -345,7 +345,14 @@ nodes:
     # can front-load the real verdict instead of the raw ANSI log.
     # The trailing `|| true` is critical: the oracle augments artifacts —
     # it must never mask the underlying e2e failure that triggered it.
-    post: "bash .apm/hooks/e2e-runner-post.sh && (node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs \"${APP_ROOT}\" \"${SLUG}\" || true)"
+    #
+    # `emit-playwright-handler-output.ts` is the Phase 4 bridge that
+    # parses `$PLAYWRIGHT_JSON_OUTPUT_NAME` and emits
+    # `$OUTPUTS_DIR/handler-output.json` so the `handler-output-ingestion`
+    # middleware can merge `structuredFailure` into
+    # `NodeResult.handlerOutput` (drop-in compatible with the pre-refactor
+    # path). No-op when the report file is absent (= Playwright never ran).
+    post: "bash .apm/hooks/e2e-runner-post.sh && (${REPO_ROOT}/tools/autonomous-factory/hooks/emit-playwright-handler-output.ts || true) && (node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs \"${APP_ROOT}\" \"${SLUG}\" || true)"
     # Dev server boot polls up to 120 s; give the hook 5 minutes headroom
     # (default 30 s would kill the hook before it could succeed).
     timeout_minutes: 10

@@ -1,10 +1,10 @@
 /**
  * artifact-catalog-policy.test.ts — Session R8 body-schema coverage audit.
  *
- * Locks in the 7/9/5… correction 6/10/5 policy classification of the 21
- * built-in artifact kinds:
+ * Locks in the 6/11/5 policy classification of the 22 built-in artifact
+ * kinds:
  *   - 6 STRICT kinds (typed contract, schema required)
- *   - 10 ENVELOPE-ONLY kinds (envelope enforced, body free-form)
+ *   - 11 ENVELOPE-ONLY kinds (envelope enforced, body free-form)
  *   - 5 INTERNAL kinds (handler/kernel-private, no cross-node contract)
  *
  * Plus the two derived lint invariants:
@@ -52,6 +52,7 @@ const EXPECTED_POLICY: Record<ArtifactKind, "strict" | "envelope-only" | "intern
   summary: "envelope-only",
   "terminal-log": "envelope-only",
   "novel-triage": "envelope-only",
+  "handler-output": "envelope-only",
 
   // INTERNAL (5) — handler/kernel-private, never on declared edges.
   "summary-data": "internal",
@@ -78,16 +79,16 @@ describe("artifact-catalog policy classification", () => {
     }
   });
 
-  it("classification counts are 6 strict / 10 envelope-only / 5 internal = 21 total", () => {
+  it("classification counts are 6 strict / 11 envelope-only / 5 internal = 22 total", () => {
     const defs = listArtifactKinds();
     const counts = defs.reduce<Record<string, number>>((acc, d) => {
       acc[d.policy] = (acc[d.policy] ?? 0) + 1;
       return acc;
     }, {});
     assert.equal(counts.strict, 6);
-    assert.equal(counts["envelope-only"], 10);
+    assert.equal(counts["envelope-only"], 11);
     assert.equal(counts.internal, 5);
-    assert.equal(defs.length, 21);
+    assert.equal(defs.length, 22);
   });
 
   it("every STRICT kind declares a schema", () => {

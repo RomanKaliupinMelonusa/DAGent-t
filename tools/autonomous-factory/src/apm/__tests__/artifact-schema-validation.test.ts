@@ -19,6 +19,7 @@ import { join } from "node:path";
 
 import {
   ArtifactValidationError,
+  HandlerOutputArtifactSchema,
   TriageHandoffArtifactSchema,
   getArtifactKind,
   validateArtifactPayload,
@@ -46,6 +47,15 @@ describe("Artifact registry — schema attachments (Track B1)", () => {
   it("`acceptance` carries the AcceptanceContractSchema", () => {
     const def = getArtifactKind("acceptance");
     assert.equal(def.schema, AcceptanceContractSchema);
+  });
+
+  it("`handler-output` carries the HandlerOutputArtifactSchema", () => {
+    const def = getArtifactKind("handler-output");
+    assert.equal(def.schema, HandlerOutputArtifactSchema);
+    assert.equal(def.policy, "envelope-only");
+    assert.equal(def.envelope, "inline");
+    assert.equal(def.ext, "json");
+    assert.deepEqual([...def.scopes], ["node"]);
   });
 
   it("prose kinds remain schema-free (AK-47 scope: opt-in only)", () => {
@@ -133,6 +143,37 @@ describe("validateArtifactPayload (Track B1)", () => {
       assert.ok(err instanceof ArtifactValidationError);
       assert.match(err.message, /\/tmp\/x\.json/);
     }
+  });
+
+  it("accepts a conforming handler-output envelope", () => {
+    const body = JSON.stringify({
+      schemaVersion: 1,
+      producedBy: "my-script",
+      producedAt: new Date().toISOString(),
+      output: { foo: "bar", count: 3 },
+    });
+    assert.doesNotThrow(() => validateArtifactPayload("handler-output", body));
+  });
+
+  it("rejects a handler-output missing the envelope", () => {
+    const body = JSON.stringify({ output: { foo: "bar" } });
+    assert.throws(
+      () => validateArtifactPayload("handler-output", body),
+      (err: unknown) => err instanceof ArtifactValidationError && err.kind === "handler-output",
+    );
+  });
+
+  it("rejects a handler-output whose `output` is not an object", () => {
+    const body = JSON.stringify({
+      schemaVersion: 1,
+      producedBy: "my-script",
+      producedAt: new Date().toISOString(),
+      output: "not-an-object",
+    });
+    assert.throws(
+      () => validateArtifactPayload("handler-output", body),
+      (err: unknown) => err instanceof ArtifactValidationError && /output/.test(err.message),
+    );
   });
 });
 

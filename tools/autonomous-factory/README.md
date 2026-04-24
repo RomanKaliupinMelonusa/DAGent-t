@@ -206,7 +206,7 @@ Candid tech-debt notes based on a code audit. These are real; each cites a file 
 ### Layering
 
 - **`loop/dispatch/` location drift.** Historically referenced as `src/dispatch/` (see the older project docs). It currently lives nested under [src/loop/dispatch/](src/loop/dispatch/), which makes the dependency arrow "loop → dispatch" implicit rather than explicit. Candidate for promotion to a sibling folder.
-- **Dual supervisor entry points.** Both [entry/supervise.ts](src/entry/supervise.ts) and [entry/supervisor.ts](src/entry/supervisor.ts) exist alongside [entry/watchdog.ts](src/entry/watchdog.ts). At least one is legacy; consolidating would clarify the composition-root story.
+- **Two entry points, two scopes.** [entry/watchdog.ts](src/entry/watchdog.ts) runs one feature per process (`npm run agent:run`). [entry/supervise.ts](src/entry/supervise.ts) + [entry/supervisor.ts](src/entry/supervisor.ts) run multiple features in parallel by spawning child orchestrators (`npm run agent:supervise`, used by `.github/workflows/agentic-supervisor.yml`). Both are active; no consolidation planned. The supervisor uses [adapters/subprocess-feature-runner.ts](src/adapters/subprocess-feature-runner.ts) to isolate `APP_ROOT` and the middleware registry per-slug.
 - **`src/agents.ts` lives in [src/apm/agents.ts](src/apm/agents.ts).** The top-level `agents.ts` referenced in older docs has moved; external docs still point to the old path.
 
 ### Adapter boundary leaks
