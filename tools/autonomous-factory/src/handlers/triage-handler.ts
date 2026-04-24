@@ -225,8 +225,25 @@ async function attachTriageHandoffArtifact(
   ctx: NodeContext,
   result: NodeResult,
 ): Promise<NodeResult> {
-  if (result.outcome !== "completed") return result;
   const handoff = (result.handlerOutput as TriageHandlerOutput | undefined)?.triageHandoff;
+  // Invariant: a written triage-handoff implies a completed triage. If the
+  // inner handler ever attaches a handoff while also returning a non-
+  // completed outcome (today unreachable — guard/salvage/error paths all
+  // omit `triageHandoff`), emit telemetry so the anomaly is visible and
+  // skip the write. The reroute resolver in
+  // `loop/dispatch/invocation-builder.ts` no longer filters producers by
+  // outcome, so a handoff written here would still be resolvable — but
+  // the cleaner contract is to refuse the write and surface the bug.
+  if (result.outcome !== "completed") {
+    if (handoff) {
+      ctx.logger.event("triage.handoff.skipped_non_completed", ctx.itemKey, {
+        invocationId: ctx.executionId,
+        outcome: result.outcome,
+        errorMessage: result.errorMessage,
+      });
+    }
+    return result;
+  }
   if (!handoff) return result;
   try {
     const bus = ctx.artifactBus;

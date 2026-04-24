@@ -296,4 +296,157 @@ describe("materializeInputs", () => {
     assert.equal(result.inputs.length, 1);
     assert.equal(result.inputs[0].kind, "spec");
   });
+
+  it("resolves a reroute artifact even when the producing invocation was sealed with outcome='error'", async () => {
+    // Regression guard for the reroute-unrecoverable edge case: a triage
+    // node writes the `triage-handoff` artifact (bytes on disk + ref in
+    // the ledger's `outputs`) but the invocation is later sealed with
+    // outcome='error'. The reroute resolver must still pick it up —
+    // otherwise the rerouted dev node wedges on MissingRequiredInputError
+    // while the handoff file sits on disk.
+    const appRoot = mkdtempSync(join(tmpdir(), "matin-rt-err-"));
+    const fs = new LocalFilesystem();
+    const bus = new FileArtifactBus(appRoot, fs);
+    const ifs = new FileInvocationFilesystem(appRoot, fs, bus);
+    const slug = "feat";
+    const triageNode = "triage-storefront";
+    const triageInv = newInvocationId();
+    const downstreamNode = "storefront-dev";
+    const downstreamInv = newInvocationId();
+
+    // Lay down the triage-handoff bytes via the bus (authoritative path).
+    const handoffRef = bus.ref(slug, "triage-handoff", {
+      nodeKey: triageNode,
+      invocationId: triageInv,
+    });
+    await bus.write(handoffRef, JSON.stringify({
+      schemaVersion: 1,
+      failingItem: "storefront-dev",
+      errorExcerpt: "boom",
+      errorSignature: "sig",
+      triageDomain: "frontend",
+      triageReason: "demo",
+      priorAttemptCount: 1,
+    }) + "\n");
+
+    // Seed the ledger with a *failed* triage invocation that still
+    // references the emitted handoff on its `outputs` list.
+    const state: PipelineState = {
+      ...emptyState(),
+      artifacts: {
+        [triageInv]: {
+          invocationId: triageInv,
+          nodeKey: triageNode,
+          cycleIndex: 1,
+          trigger: "initial",
+          outcome: "error",
+          inputs: [],
+          outputs: [
+            {
+              kind: "triage-handoff",
+              scope: "node",
+              slug,
+              nodeKey: triageNode,
+              invocationId: triageInv,
+              path: handoffRef.path,
+            },
+          ],
+        } satisfies InvocationRecord,
+      },
+    };
+
+    const contract = makeNodeIOContract({
+      nodeKey: downstreamNode,
+      consumes: {
+        kickoff: [], upstream: [],
+        reroute: [{ kind: "triage-handoff", required: true }],
+      },
+      produces: [],
+    });
+
+    const result = await materializeInputs({
+      contract, slug, nodeKey: downstreamNode, invocationId: downstreamInv,
+      trigger: "triage-reroute", state,
+      bus, invocation: ifs, fs,
+    });
+
+    assert.equal(result.inputs.length, 1);
+    assert.equal(result.inputs[0].kind, "triage-handoff");
+    const handles = await ifs.ensureInvocationDir(slug, downstreamNode, downstreamInv);
+    const copied = readFileSync(join(handles.inputsDir, "triage-handoff.json"), "utf8");
+    assert.match(copied, /"failingItem": "storefront-dev"/);
+  });
+
+  it("reroute latest-wins: a later completed producer supersedes an earlier error-sealed one", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "matin-rt-latest-"));
+    const fs = new LocalFilesystem();
+    const bus = new FileArtifactBus(appRoot, fs);
+    const ifs = new FileInvocationFilesystem(appRoot, fs, bus);
+    const slug = "feat";
+    const triageNode = "triage-storefront";
+    // Generate two valid ids; sort lexicographically so "new" > "old".
+    const ids = [newInvocationId(), newInvocationId()].sort();
+    const oldInv = ids[0];
+    const newInv = ids[1];
+    const downstreamNode = "storefront-dev";
+    const downstreamInv = newInvocationId();
+
+    const oldRef = bus.ref(slug, "triage-handoff", { nodeKey: triageNode, invocationId: oldInv });
+    const newRef = bus.ref(slug, "triage-handoff", { nodeKey: triageNode, invocationId: newInv });
+    const mkBody = (gen: string) => JSON.stringify({
+      schemaVersion: 1,
+      failingItem: "storefront-dev",
+      errorExcerpt: gen,
+      errorSignature: "sig",
+      triageDomain: "frontend",
+      triageReason: gen,
+      priorAttemptCount: 1,
+    }) + "\n";
+    await bus.write(oldRef, mkBody("old"));
+    await bus.write(newRef, mkBody("new"));
+
+    const mkRecord = (
+      invocationId: string,
+      outcome: "completed" | "error",
+      path: string,
+    ): InvocationRecord => ({
+      invocationId,
+      nodeKey: triageNode,
+      cycleIndex: 1,
+      trigger: "initial",
+      outcome,
+      inputs: [],
+      outputs: [
+        { kind: "triage-handoff", scope: "node", slug, nodeKey: triageNode, invocationId, path },
+      ],
+    });
+
+    const state: PipelineState = {
+      ...emptyState(),
+      artifacts: {
+        [oldInv]: mkRecord(oldInv, "completed", oldRef.path),
+        [newInv]: mkRecord(newInv, "error", newRef.path),
+      },
+    };
+
+    const contract = makeNodeIOContract({
+      nodeKey: downstreamNode,
+      consumes: {
+        kickoff: [], upstream: [],
+        reroute: [{ kind: "triage-handoff", required: true }],
+      },
+      produces: [],
+    });
+
+    const result = await materializeInputs({
+      contract, slug, nodeKey: downstreamNode, invocationId: downstreamInv,
+      trigger: "triage-reroute", state,
+      bus, invocation: ifs, fs,
+    });
+
+    assert.equal(result.inputs.length, 1);
+    const handles = await ifs.ensureInvocationDir(slug, downstreamNode, downstreamInv);
+    const copied = readFileSync(join(handles.inputsDir, "triage-handoff.json"), "utf8");
+    assert.match(copied, /"triageReason": "new"/, "should pick the newer invocation regardless of outcome");
+  });
 });

@@ -256,13 +256,25 @@ async function materializeReroute(
   inputsDir: string,
   strictArtifacts?: boolean,
 ): Promise<{ ref: ArtifactRefSerialized; manifest: ParamsInManifest["artifacts"][number] } | null> {
-  // Reroute payloads come from the most recent completed invocation that
-  // PRODUCED an artifact of `decl.kind` (typically the triage handler's
+  // Reroute payloads come from the most recent invocation that PRODUCED
+  // an artifact of `decl.kind` (typically the triage handler's
   // `triage-handoff`). Search across all nodes — the kind itself is the
   // discriminator, not the source nodeKey.
+  //
+  // Unlike kickoff/upstream resolution, we intentionally do NOT filter by
+  // `outcome === "completed"`. A reroute artifact present in the ledger
+  // (with its bytes still on disk, gated by `bus.exists` below) is
+  // authoritative by virtue of being emitted — even if the producing
+  // invocation was later sealed as `error` (e.g. a triage node that
+  // wrote a handoff but then crashed in a post-classification command).
+  // Filtering by completed-only here would make such a state
+  // unrecoverable — the downstream dev node would wedge on
+  // `MissingRequiredInputError` while the handoff file sits on disk.
+  // Latest-wins ordering via `invocationId` still means a subsequent
+  // completed producer supersedes an earlier error-sealed one.
   const records = state.artifacts ? Object.values(state.artifacts) : [];
   const sorted = records
-    .filter((r) => r.outcome === "completed")
+    .slice()
     .sort((a, b) => (a.invocationId < b.invocationId ? -1 : 1));
   let producer: InvocationRecord | undefined;
   let producedRef: ArtifactRefSerialized | undefined;

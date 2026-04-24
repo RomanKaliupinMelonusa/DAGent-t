@@ -38,6 +38,7 @@ export type EventKind =
   | "triage.evaluate"
   | "triage.enqueue"
   | "triage.dispatch"
+  | "triage.handoff.skipped_non_completed"
   // Handoff
   | "handoff.emit"
   | "handoff.inject"
