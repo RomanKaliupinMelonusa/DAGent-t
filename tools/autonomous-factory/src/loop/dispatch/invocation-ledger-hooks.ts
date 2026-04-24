@@ -64,10 +64,18 @@ export async function recordInvocationDispatch(
   pairs: ReadonlyArray<DispatchTuple>,
   logger: PipelineLogger,
   kernel?: PipelineKernel,
-): Promise<void> {
+): Promise<Map<string, string>> {
+  // Bug B (Session 3) — the seal hook needs `startedAt` to compute
+  // `durationMs` for the `node-report` artifact. Fresh invocations have
+  // no `ctx.currentInvocation`, so the seal hook used to fall back to
+  // `finishedAt`, producing `durationMs: 0`. We now return a per-item
+  // map keyed by `itemKey` so the seal hook can read the authoritative
+  // start timestamp it just persisted.
+  const startedAtByItem = new Map<string, string>();
   for (const pair of pairs) {
     const ctx = pair[1];
     const startedAt = new Date().toISOString();
+    startedAtByItem.set(ctx.itemKey, startedAt);
     // When the dispatcher adopted a staged `InvocationRecord` (e.g. one
     // pre-allocated by the triage handler via `stage-invocation`), the
     // record already exists in `state.artifacts` (staged by triage)
@@ -145,6 +153,7 @@ export async function recordInvocationDispatch(
       startedAt: input.startedAt,
     });
   }
+  return startedAtByItem;
 }
 
 /**
@@ -238,6 +247,12 @@ export interface RecordInvocationSealOptions {
    *  from the node's declared `produces_artifacts`. Optional so existing call
    *  sites keep their simpler signature. */
   readonly resolveNode?: (itemKey: string) => ApmWorkflowNode | undefined;
+  /** Bug B (Session 3) — start-timestamp map returned from
+   *  `recordInvocationDispatch`. When supplied, the seal hook uses it as
+   *  the authoritative `startedAt` for fresh invocations (no
+   *  `ctx.currentInvocation` available). Without this, `durationMs` for
+   *  scaffold/script nodes silently collapsed to `0`. */
+  readonly startedAtByItem?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -259,22 +274,51 @@ export async function recordInvocationSeal(
   const summaryByItem = new Map<string, Partial<import("../../types.js").ItemSummary>>();
   const handlerByItem = new Map<string, string>();
   for (const r of batchResult.itemResults) {
-    // The authoritative outcome is the top-level `NodeResult.outcome`
-    // (see handlers/types.ts). `summary.outcome` is a legacy secondary
-    // source that not every handler populates — reading only from it
-    // caused every handler that didn't duplicate the field into summary
-    // (e.g. triage-handler, local-exec) to seal as "error" in the ledger
-    // even when the top-level outcome was "completed".
-    const top = (r.result as { outcome?: string }).outcome;
-    const summaryRaw = (r.result.summary as { outcome?: string } | undefined)?.outcome;
-    const raw = top ?? summaryRaw;
-    if (raw === "completed" || raw === "failed" || raw === "error") {
-      outcomeByItem.set(r.itemKey, raw);
+    // The authoritative outcome is the dispatch-layer `ItemDispatchResult.outcome`
+    // (see `src/loop/dispatch/item-dispatch.ts`). This is the top-level
+    // `NodeResult.outcome` AFTER any dispatch-layer overrides (the
+    // `produces_artifacts` presence gate, the strict-envelope gate) have
+    // been applied, so the ledger records what the dispatcher actually
+    // decided — not what the handler self-reported.
+    //
+    // Historical note: the seal hook used to fall back to
+    // `r.result.summary.outcome` when the top-level was absent. That
+    // fallback masked the plumbing bug where `ItemDispatchResult` dropped
+    // the top-level outcome entirely, so handlers that didn't duplicate
+    // the field into their summary (triage-handler, local-exec) silently
+    // sealed every invocation as `"error"` in the ledger. The field is
+    // now populated uniformly by `dispatchItem`, so the summary fallback
+    // was removed; its continued absence would mean `dispatchItem` has
+    // regressed, which we surface via a telemetry event below rather
+    // than by silently reading a different field.
+    const outcome = r.result.outcome;
+    if (outcome === "completed" || outcome === "failed" || outcome === "error") {
+      outcomeByItem.set(r.itemKey, outcome);
+    } else {
+      // Bug B (Session 3) — surface dispatch-result plumbing breakage
+      // with a stable `errorSignature` so triage / dashboards can dedup
+      // and route. The seal proceeds with `outcome: "error"` (we cannot
+      // un-dispatch the item), but this is now an auditable event, not
+      // a silent fallback.
+      logger.event("invocation.seal.outcome_missing", r.itemKey, {
+        invocationId: r.itemKey,
+        errorSignature: "ledger:dispatch-result-missing",
+        note:
+          "ItemDispatchResult.outcome absent — dispatchItem must populate it " +
+          "(see src/loop/dispatch/item-dispatch.ts). Sealing as 'error'.",
+      });
     }
     // Phase A — handler-reported runtime refs (e.g. `params` written from
-    // `report_outcome.handoffArtifact`). Merged into the declared-and-resolved
+    // `report_outcome.handoffArtifact`, `triage-handoff.json` written by
+    // `attachTriageHandoffArtifact`). Merged into the declared-and-resolved
     // list below so the ledger reflects both sources without dedup gaps.
-    const runtime = (r.result as { producedArtifacts?: ArtifactRefSerialized[] }).producedArtifacts;
+    // Now read from the typed `ItemDispatchResult.producedArtifacts` field;
+    // the legacy cast-through-`unknown` still tolerates stub fixtures in
+    // tests that construct partial results.
+    const runtime =
+      r.result.producedArtifacts ??
+      (r.result as { producedArtifacts?: ArtifactRefSerialized[] })
+        .producedArtifacts;
     if (runtime && runtime.length > 0) {
       producedByItem.set(r.itemKey, runtime);
     }
@@ -286,6 +330,18 @@ export async function recordInvocationSeal(
     if (typeof handlerName === "string" && handlerName.length > 0) {
       handlerByItem.set(r.itemKey, handlerName);
     }
+  }
+
+  // Bug B (Session 3) — fallback handler resolution from the dispatched
+  // pair's `NodeHandler.name`. Most handlers (local-exec, copilot-agent,
+  // approval, github-ci-poll, barrier) don't stamp `handlerName` on
+  // their NodeResult. Without this fallback, the synthesized
+  // `node-report.json` recorded `handler: "unknown"` for every script
+  // node — an audit-trail lie since `pair[0].name` is the actual
+  // handler that ran.
+  const handlerByPair = new Map<string, string>();
+  for (const pair of pairs) {
+    handlerByPair.set(pair[1].itemKey, pair[0].name);
   }
 
   for (const pair of pairs) {
@@ -313,11 +369,29 @@ export async function recordInvocationSeal(
     const finishedAt = new Date().toISOString();
     try {
       const trigger = classifyInvocationTrigger(ctx);
-      const startedAt = ctx.currentInvocation?.startedAt ?? finishedAt;
+      // Bug B (Session 3) — startedAt resolution priority:
+      //   1. explicit `startedAtByItem` map from `recordInvocationDispatch`
+      //      (authoritative for fresh invocations of this batch),
+      //   2. `ctx.currentInvocation.startedAt` (staged/adopted invocations),
+      //   3. `finishedAt` as last-resort floor (renders durationMs: 0 — a
+      //      visible canary that the start stamp was lost upstream).
+      const startedAt =
+        opts?.startedAtByItem?.get(ctx.itemKey)
+        ?? ctx.currentInvocation?.startedAt
+        ?? finishedAt;
       const report = synthesizeNodeReport({
         nodeKey: ctx.itemKey,
         invocationId: ctx.executionId,
-        handler: handlerByItem.get(ctx.itemKey) ?? (node?.handler ?? "unknown"),
+        // Bug B (Session 3) — handler resolution priority:
+        //   1. handler-stamped `r.result.handlerName` (triage),
+        //   2. dispatched `pair[0].name` (the actual NodeHandler),
+        //   3. workflows.yml `node.handler` config,
+        //   4. literal "unknown" (only if both DAG resolver and pair are absent).
+        handler:
+          handlerByItem.get(ctx.itemKey)
+          ?? handlerByPair.get(ctx.itemKey)
+          ?? node?.handler
+          ?? "unknown",
         trigger,
         attempt: ctx.attempt,
         startedAt,

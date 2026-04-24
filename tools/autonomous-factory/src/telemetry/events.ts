@@ -59,6 +59,7 @@ export type EventKind =
   // Artifact bus / invocation ledger (Phase 4)
   | "invocation.append_failed"
   | "invocation.seal_failed"
+  | "invocation.seal.outcome_missing"
   | "invocation.params_write_failed"
   | "invocation.meta_write_failed"
   | "invocation.meta_seal_failed"

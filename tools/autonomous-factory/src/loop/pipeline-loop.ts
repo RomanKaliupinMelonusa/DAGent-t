@@ -305,7 +305,7 @@ export async function runPipelineLoop(
             console.log(`    · ${a.triageNodeKey} ← ${a.failingKey}`);
           }
           console.log(`${"─".repeat(70)}`);
-          await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger, kernel);
+          const triageStartedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger, kernel);
           const triageResult = await dispatchBatch(triagePairs);
           await recordInvocationSeal(
             effectPorts.stateStore,
@@ -313,7 +313,10 @@ export async function runPipelineLoop(
             triagePairs,
             triageResult,
             logger,
-            { resolveNode: (key) => lifecycle.getWorkflowNode(key) },
+            {
+              resolveNode: (key) => lifecycle.getWorkflowNode(key),
+              startedAtByItem: triageStartedAtByItem,
+            },
             kernel,
           );
           const triageEffects: Effect[] = [];
@@ -396,7 +399,7 @@ export async function runPipelineLoop(
       }
 
       // Step 5: Dispatch batch
-      await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger, kernel);
+      const startedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger, kernel);
       const batchResult = await dispatchBatch(dispatchPairs);
       await recordInvocationSeal(
         effectPorts.stateStore,
@@ -404,7 +407,10 @@ export async function runPipelineLoop(
         dispatchPairs,
         batchResult,
         logger,
-        { resolveNode: (key) => lifecycle.getWorkflowNode(key) },
+        {
+          resolveNode: (key) => lifecycle.getWorkflowNode(key),
+          startedAtByItem,
+        },
         kernel,
       );
 

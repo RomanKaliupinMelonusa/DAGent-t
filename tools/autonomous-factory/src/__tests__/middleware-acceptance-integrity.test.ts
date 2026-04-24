@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { acceptanceIntegrityMiddleware } from "../handlers/middlewares/acceptance-integrity.js";
 import type { NodeContext, NodeResult } from "../handlers/types.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { newInvocationId } from "../kernel/invocation-id.js";
 
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   const logger = {
@@ -23,7 +24,7 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   };
   const ctx: NodeContext = {
     itemKey: "storefront-dev",
-    executionId: "exec-1",
+    executionId: newInvocationId(),
     slug: "feat-x",
     appRoot: "/app",
     repoRoot: "/repo",

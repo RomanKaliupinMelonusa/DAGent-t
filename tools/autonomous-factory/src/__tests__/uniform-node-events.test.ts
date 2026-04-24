@@ -85,7 +85,7 @@ describe("Phase B — uniform node.* events", () => {
     const ctx = makeCtx(appRoot, "my-node", newInvocationId());
     const batchResult: BatchDispatchResult = {
       commands: [],
-      itemResults: [{ itemKey: "my-node", result: { summary: { outcome: "completed" } } as never }],
+      itemResults: [{ itemKey: "my-node", result: { outcome: "completed", summary: {} } as never }],
       errors: [],
     };
 

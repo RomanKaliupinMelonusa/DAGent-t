@@ -25,7 +25,7 @@ import type {
   ArtifactRefSerialized,
   InvocationTrigger,
 } from "../../types.js";
-import { getArtifactKind, validateArtifactPayload, validateEnvelope } from "../../apm/artifact-catalog.js";
+import { getArtifactKind, stampEnvelope, validateArtifactPayload, validateEnvelope } from "../../apm/artifact-catalog.js";
 
 export class MissingRequiredInputError extends Error {
   constructor(
@@ -261,7 +261,7 @@ async function materializeReroute(
   // `triage-handoff`). Search across all nodes — the kind itself is the
   // discriminator, not the source nodeKey.
   //
-  // Unlike kickoff/upstream resolution, we intentionally do NOT filter by
+  // Unlike kickoff/upstream resolution, we intentionally do NOT require
   // `outcome === "completed"`. A reroute artifact present in the ledger
   // (with its bytes still on disk, gated by `bus.exists` below) is
   // authoritative by virtue of being emitted — even if the producing
@@ -270,8 +270,12 @@ async function materializeReroute(
   // Filtering by completed-only here would make such a state
   // unrecoverable — the downstream dev node would wedge on
   // `MissingRequiredInputError` while the handoff file sits on disk.
-  // Latest-wins ordering via `invocationId` still means a subsequent
-  // completed producer supersedes an earlier error-sealed one.
+  //
+  // Completed-preference tiebreaker: when both a newer error-sealed and
+  // an older completed producer emitted the kind, prefer the completed
+  // one. Eliminates the Bug B class where a late error-sealed producer
+  // would override a freshly-completed one. The fallback to latest-any-
+  // outcome still protects the write-then-crash wedge described above.
   const records = state.artifacts ? Object.values(state.artifacts) : [];
   const sorted = records
     .slice()
@@ -280,11 +284,23 @@ async function materializeReroute(
   let producedRef: ArtifactRefSerialized | undefined;
   for (let i = sorted.length - 1; i >= 0; i--) {
     const rec = sorted[i]!;
+    if (rec.outcome !== "completed") continue;
     const out = rec.outputs.find((o) => o.kind === decl.kind);
     if (out) {
       producer = rec;
       producedRef = out;
       break;
+    }
+  }
+  if (!producer) {
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const rec = sorted[i]!;
+      const out = rec.outputs.find((o) => o.kind === decl.kind);
+      if (out) {
+        producer = rec;
+        producedRef = out;
+        break;
+      }
     }
   }
   if (!producer || !producedRef) {
@@ -341,6 +357,7 @@ async function copyIntoInputs(
   // Complements the producer-side gate in `item-dispatch.ts` so agents or
   // hooks that bypass `bus.write` still have their envelope validated
   // before their output flows into a downstream agent's prompt.
+  let effectiveBody = body;
   if (strictArtifacts && def.envelope) {
     if (def.envelope === "sidecar") {
       const sidecar = `${ref.path}.meta.json`;
@@ -352,10 +369,24 @@ async function copyIntoInputs(
       }
       validateEnvelope(kind, body, { path: ref.path, sidecarBody });
     } else {
-      validateEnvelope(kind, body, { path: ref.path });
+      // Auto-stamp missing envelope for `policy: "envelope-only"` inline
+      // JSON kinds — symmetric with the producer-side gate in
+      // `item-dispatch.ts`. Closes the case where an upstream was written
+      // in a prior cycle (before the producer gate auto-stamped) and
+      // would otherwise perma-block the consumer. No-op when envelope
+      // already present; strict-policy kinds keep their body-schema
+      // contract enforced via validateArtifactPayload above.
+      if (def.policy === "envelope-only" && def.ext === "json") {
+        const stamped = stampEnvelope(kind, body, ref.scope === "node" ? ref.nodeKey : "kickoff");
+        if (stamped !== body) {
+          await fs.writeFile(ref.path, stamped);
+          effectiveBody = stamped;
+        }
+      }
+      validateEnvelope(kind, effectiveBody, { path: ref.path });
     }
   }
-  await fs.writeFile(inputPath, body);
+  await fs.writeFile(inputPath, effectiveBody);
   return inputPath;
 }
 

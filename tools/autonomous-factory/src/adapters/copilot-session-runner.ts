@@ -22,6 +22,7 @@ import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events.js";
+import { captureGitFilesSnapshot, diffGitFilesSnapshots } from "../session/git-files-snapshot.js";
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
 import { isFatalSdkError } from "../domain/error-classification.js";
 import { writeFlightData } from "../reporting/index.js";
@@ -144,6 +145,10 @@ export async function runCopilotSession(
 
   let sessionError: string | undefined;
   let fatalError = false;
+  // Boundary-snapshot the working tree so we can attribute shell-driven
+  // writes (heredocs, sed, tee, …) without parsing arbitrary bash. The
+  // delta is merged into telemetry.filesChanged after disconnect.
+  const snapshotBefore = captureGitFilesSnapshot(params.repoRoot);
   try {
     await session.sendAndWait({ prompt: params.taskPrompt }, params.timeout);
   } catch (err: unknown) {
@@ -170,6 +175,11 @@ export async function runCopilotSession(
   } finally {
     isSessionActive = false;
     await session.disconnect();
+    const snapshotAfter = captureGitFilesSnapshot(params.repoRoot);
+    const touched = diffGitFilesSnapshots(snapshotBefore, snapshotAfter, params.repoRoot);
+    for (const f of touched) {
+      if (!telemetry.filesChanged.includes(f)) telemetry.filesChanged.push(f);
+    }
   }
 
   return { sessionError, fatalError, reportedOutcome: telemetry.reportedOutcome };

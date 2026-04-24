@@ -91,7 +91,7 @@ describe("Phase 4 — <inv>/logs/events.jsonl populated end-to-end", () => {
       commands: [],
       itemResults: [{
         itemKey: nodeKey,
-        result: { summary: { outcome: "completed" } } as never,
+        result: { outcome: "completed", summary: {} } as never,
       }],
       errors: [],
     };

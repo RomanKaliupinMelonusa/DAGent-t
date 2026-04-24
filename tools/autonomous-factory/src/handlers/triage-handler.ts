@@ -808,7 +808,13 @@ const triageHandler: NodeHandler = {
   name: "triage",
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const result = await triageHandlerInner.execute(ctx);
-    return attachTriageHandoffArtifact(ctx, result);
+    const stamped = attachTriageHandoffArtifact(ctx, result);
+    // Stamp `handlerName` on every outcome path (guard, reroute,
+    // degradation, error) so the synthesized node-report writes
+    // `handler: "triage"` instead of falling through to "unknown".
+    // The field is read structurally in `loop/dispatch/invocation-ledger-hooks.ts`;
+    // it is not part of the typed `NodeResult` shape.
+    return { ...(await stamped), handlerName: "triage" } as NodeResult;
   },
 };
 

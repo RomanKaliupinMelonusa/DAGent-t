@@ -455,6 +455,33 @@ nodes:
 
 config:
   defaultToolLimits: { soft: 60, hard: 80, fileReadLineLimit: 500, shellOutputLimit: 64000, shellTimeoutMs: 600000, idleTimeoutLimit: 2 }
+  # ── Error-signature fingerprinter: framework-specific volatile tokens.
+  # Stripped in addition to the built-in stack-agnostic defaults before
+  # hashing. Without these, rotating per-run tokens (Playwright totals,
+  # commit-ahead counters, durations) produce a different signature every
+  # cycle and defeat halt_on_identical.
+  #
+  # Lives at top-level `config:` because the runtime reads
+  # `apmContext.config.error_signature.volatile_patterns` (see
+  # `entry/main.ts`); workflow-scoped `error_signature:` blocks are
+  # currently dead config.
+  error_signature:
+    volatile_patterns:
+      - { pattern: '\d+ passed(?:, \d+ failed)?(?:, \d+ total)?', replacement: "<PW_TOTALS>" }
+      - { pattern: 'Running \d+ tests? using \d+ workers?',      replacement: "<PW_RUN>" }
+      - { pattern: '\[\d+/\d+\]',                                 replacement: "<PW_PROGRESS>" }
+      - { pattern: '\(\d+(?:\.\d+)?\s*(?:ms|m|s)\)',              replacement: "<DUR>" }
+      - { pattern: 'Timeout \d+ms exceeded',                      replacement: "Timeout <MS>ms exceeded" }
+      - { pattern: 'test-results/[^\s)"''`]+',                    replacement: "<TEST_RESULT>" }
+      - { pattern: 'attachment #\d+',                             replacement: "attachment #<N>" }
+      - { pattern: '\d+ did not run',                             replacement: "<PW_NOTRUN>" }
+      # publish-pr / agent-commit.sh — the rotating "N commit(s) ahead of
+      # <upstream>" counter and the "branch '...' set up to track '...'"
+      # line both drift between cycles even when the underlying root cause
+      # is identical. Without these, halt_on_identical never fires for
+      # repeated publish-pr no-op-dev failures.
+      - { pattern: '\d+\s+commit\(s\)\s+ahead\s+of\s+\S+',        replacement: "<COMMITS_AHEAD>" }
+      - { pattern: "branch\\s+'[^']+'\\s+set up to track\\s+'[^']+'", replacement: "<BRANCH_TRACKING>" }
   # Session A (Item 8) — require every inline artifact written through the
   # bus to ship the {schemaVersion, producedBy, producedAt} envelope. Engine
   # producers (node-report, triage-handoff) emit it natively; agent-written

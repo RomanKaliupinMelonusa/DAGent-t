@@ -81,7 +81,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
 
     const batchResult: BatchDispatchResult = {
       commands: [],
-      itemResults: [{ itemKey: nodeKey, result: { summary: { outcome: "completed" } } as never }],
+      itemResults: [{ itemKey: nodeKey, result: { outcome: "completed", summary: {} } as never }],
       errors: [],
     };
 
@@ -126,7 +126,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
 
     const batchResult: BatchDispatchResult = {
       commands: [],
-      itemResults: [{ itemKey: nodeKey, result: { summary: { outcome: "failed", errorMessage: "x" } } as never }],
+      itemResults: [{ itemKey: nodeKey, result: { outcome: "failed", errorMessage: "x", summary: {} } as never }],
       errors: [],
     };
 
@@ -166,7 +166,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
 
     const batchResult: BatchDispatchResult = {
       commands: [],
-      itemResults: [{ itemKey: nodeKey, result: { summary: { outcome: "completed" } } as never }],
+      itemResults: [{ itemKey: nodeKey, result: { outcome: "completed", summary: {} } as never }],
       errors: [],
     };
 
@@ -202,7 +202,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
 
     const batchResult: BatchDispatchResult = {
       commands: [],
-      itemResults: [{ itemKey: "noop-node", result: { summary: { outcome: "completed" } } as never }],
+      itemResults: [{ itemKey: "noop-node", result: { outcome: "completed", summary: {} } as never }],
       errors: [],
     };
 
@@ -218,5 +218,147 @@ describe("recordInvocationSeal — outputs auto-population", () => {
     assert.equal(seals.length, 1);
     const outputs = (seals[0] as { outputs?: unknown[] }).outputs;
     assert.equal(outputs, undefined);
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Regression: dispatch-layer outcome plumbing (Bugs A & B root cause)
+  //
+  // Before the fix, `recordInvocationSeal` read the handler-reported
+  // `result.summary.outcome`, which meant handlers that didn't duplicate
+  // the field into their summary (triage-handler, local-exec) silently
+  // sealed every invocation as `"error"` and the consumer-side
+  // `pickUpstreamInvocation` / `materializeReroute` filters skipped the
+  // artifact. The fix surfaces the dispatch-layer outcome (after any
+  // presence / envelope overrides) on `ItemDispatchResult.outcome`; this
+  // test pins the contract.
+  // ─────────────────────────────────────────────────────────────────
+  it("honours top-level ItemDispatchResult.outcome (summary.outcome absent)", async () => {
+    const appRoot = makeAppRoot();
+    const slug = "demo";
+    const nodeKey = "triage-storefront";
+    const invocationId = newInvocationId();
+    const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "triage-handoff.json"), "{}", "utf8");
+
+    const seals: Array<{ outcome?: unknown; outputs?: unknown }> = [];
+    const stateStore: StateStore = {
+      sealInvocation: async (_slug: string, input: unknown) => {
+        seals.push(input as { outcome?: unknown; outputs?: unknown });
+      },
+    } as unknown as StateStore;
+
+    const logger = { event: () => "" } as unknown as PipelineLogger;
+    const fs: FeatureFilesystem = new LocalFilesystem();
+    const ctx = {
+      itemKey: nodeKey,
+      executionId: invocationId,
+      appRoot,
+      filesystem: fs,
+      pipelineState: { items: [] } as unknown as PipelineState,
+    } as unknown as NodeContext;
+
+    // Handler returned top-level outcome "completed" but summary is empty
+    // (the triage handler's shape pre-Bug-A fix).
+    const runtimeRef = {
+      kind: "triage-handoff",
+      scope: "node",
+      slug,
+      nodeKey,
+      invocationId,
+      path: join(dir, "triage-handoff.json"),
+    };
+    const batchResult: BatchDispatchResult = {
+      commands: [],
+      itemResults: [
+        {
+          itemKey: nodeKey,
+          result: {
+            outcome: "completed",
+            summary: {},
+            producedArtifacts: [runtimeRef],
+          } as never,
+        },
+      ],
+      errors: [],
+    };
+
+    await recordInvocationSeal(
+      stateStore,
+      slug,
+      [[{} as NodeHandler, ctx]],
+      batchResult,
+      logger,
+      { resolveNode: () => stubNode(["triage-handoff"]) },
+    );
+
+    assert.equal(seals.length, 1);
+    assert.equal((seals[0] as { outcome: string }).outcome, "completed");
+    const outputs = (seals[0] as { outputs?: Array<{ kind: string }> }).outputs ?? [];
+    const kinds = outputs.map((o) => o.kind).sort();
+    // Both the canonical disk-probed ref and the runtime ref land on the
+    // sealed record. The runtime ref dedup (same kind, same path) collapses
+    // to a single entry; `node-report` is injected by the seal hook for
+    // every invocation.
+    assert.ok(kinds.includes("triage-handoff"), "triage-handoff missing from outputs");
+  });
+
+  // Regression guard: when the dispatch layer flipped a handler-reported
+  // "completed" to "failed" (strict envelope or missing-output override),
+  // the seal hook must record "failed" so downstream consumers don't pick
+  // the corrupt invocation. Reproduces the docs-archived cycle-1 case
+  // from Bug B where the ledger falsely said outcome: "completed" because
+  // the seal fell back to summary.outcome.
+  it("records dispatch-layer override when outcome flips to failed", async () => {
+    const appRoot = makeAppRoot();
+    const seals: Array<{ outcome?: unknown; outputs?: unknown }> = [];
+    const stateStore: StateStore = {
+      sealInvocation: async (_slug: string, input: unknown) => {
+        seals.push(input as { outcome?: unknown; outputs?: unknown });
+      },
+    } as unknown as StateStore;
+    const logger = { event: () => "" } as unknown as PipelineLogger;
+    const fs: FeatureFilesystem = new LocalFilesystem();
+    const ctx = {
+      itemKey: "docs-archived",
+      executionId: newInvocationId(),
+      appRoot,
+      filesystem: fs,
+      pipelineState: { items: [] } as unknown as PipelineState,
+    } as unknown as NodeContext;
+
+    const batchResult: BatchDispatchResult = {
+      commands: [],
+      itemResults: [
+        {
+          itemKey: "docs-archived",
+          result: {
+            outcome: "failed",
+            // Simulate the pre-fix footgun: handler self-reported completed
+            // in its summary, dispatch flipped top-level to failed.
+            summary: { outcome: "completed" },
+            errorMessage: "envelope gate",
+          } as never,
+        },
+      ],
+      errors: [],
+    };
+
+    await recordInvocationSeal(
+      stateStore,
+      "demo",
+      [[{} as NodeHandler, ctx]],
+      batchResult,
+      logger,
+      { resolveNode: () => stubNode(["change-manifest"]) },
+    );
+
+    assert.equal(seals.length, 1);
+    assert.equal((seals[0] as { outcome: string }).outcome, "failed");
+    // Failed invocations must not claim any canonical outputs (skips
+    // `resolveProducedOutputs`). Only the synthesized node-report lands.
+    const outputs = (seals[0] as { outputs?: Array<{ kind: string }> }).outputs ?? [];
+    const kinds = outputs.map((o) => o.kind);
+    assert.ok(!kinds.includes("change-manifest"), "change-manifest must not be claimed on failure");
   });
 });

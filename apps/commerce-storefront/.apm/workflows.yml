@@ -229,12 +229,18 @@ storefront:
         - { from: qa-adversary, kind: qa-report, required: false }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        extends: base
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       depends_on: [e2e-runner, qa-adversary, create-draft-pr]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        extends: base
 
     docs-archived:
       depends_on: [code-cleanup]
@@ -244,6 +250,9 @@ storefront:
       produces_artifacts: [change-manifest]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        extends: base
 
     doc-architect:
       depends_on: [code-cleanup, docs-archived]
@@ -252,6 +261,9 @@ storefront:
         - { from: docs-archived, kind: change-manifest, required: false }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        extends: base
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
     #
@@ -280,6 +292,9 @@ storefront:
       depends_on: [doc-architect]
       consumes_artifacts:
         - { from: docs-archived, kind: change-manifest, required: false }
+      on_failure:
+        triage: triage-storefront
+        extends: base
 
     # ── Triage ────────────────────────────────────────────────
     triage-storefront:
@@ -314,21 +329,11 @@ storefront:
       - poll-app-ci
       - publish-pr
 
-  # ── Error-signature fingerprinter: Playwright volatile tokens ──────
-  # Stripped in addition to the built-in stack-agnostic defaults before
-  # hashing. Prevents rotating run totals, progress counters, durations,
-  # and per-run test-result paths from producing a different signature
-  # every cycle (which would defeat halt_on_identical).
-  error_signature:
-    volatile_patterns:
-      - { pattern: '\d+ passed(?:, \d+ failed)?(?:, \d+ total)?', replacement: "<PW_TOTALS>" }
-      - { pattern: 'Running \d+ tests? using \d+ workers?',      replacement: "<PW_RUN>" }
-      - { pattern: '\[\d+/\d+\]',                                 replacement: "<PW_PROGRESS>" }
-      - { pattern: '\(\d+(?:\.\d+)?\s*(?:ms|m|s)\)',              replacement: "<DUR>" }
-      - { pattern: 'Timeout \d+ms exceeded',                      replacement: "Timeout <MS>ms exceeded" }
-      - { pattern: 'test-results/[^\s)"''`]+',                    replacement: "<TEST_RESULT>" }
-      - { pattern: 'attachment #\d+',                             replacement: "attachment #<N>" }
-      - { pattern: '\d+ did not run',                             replacement: "<PW_NOTRUN>" }
+  # ── Error-signature fingerprinter ──────────────────────────────────
+  # Workflow-scoped `error_signature:` blocks are NOT read by the runtime —
+  # `entry/main.ts` resolves volatile_patterns from `apm.yml` top-level
+  # `config.error_signature` (and per-node overrides on workflow nodes).
+  # See `apps/commerce-storefront/.apm/apm.yml` → config.error_signature.
 
   # ── Triage Profiles ─────────────────────────────────────────────────
   triage:
@@ -413,10 +418,15 @@ storefront:
   # chains and cycles fail at compile time with ApmCompileError (🆁4).
   routeProfiles:
     # Shared baseline: transient env glitches retry the failing node;
-    # unfixable conditions halt gracefully.
+    # unfixable conditions halt gracefully. `schema-violation` self-heals
+    # at the producing node — the node that declared an artifact it didn't
+    # emit (or emitted without the required envelope) is the only actor
+    # with the original context to repair the output. Bounded by
+    # halt_on_identical for script nodes that can't actually self-repair.
     base:
       routes:
         environment: "$SELF"
+        schema-violation: "$SELF"
         blocked: null
 
     # Runtime-defect fan-in to the live-browser debugger. Used by all

@@ -24,6 +24,7 @@ import {
   getArtifactKind,
   isArtifactKind,
   sidecarPath,
+  stampEnvelope,
   validateEnvelope,
 } from "../../apm/artifact-catalog.js";
 
@@ -39,6 +40,24 @@ export const DEFAULT_NODE_MIDDLEWARES: ReadonlyArray<NodeMiddleware> = [
 ];
 
 export interface ItemDispatchResult {
+  /**
+   * Authoritative dispatch-layer outcome. Carries any overrides applied
+   * after the handler returned — e.g. the `produces_artifacts` presence
+   * gate or the strict envelope gate in `dispatchItem` that flip a
+   * handler-reported "completed" to "failed". The ledger seal hook
+   * (`recordInvocationSeal`) reads this field as the single source of
+   * truth so `state.artifacts[invId].outcome` reflects what the dispatch
+   * layer ultimately decided, not what the handler self-reported.
+   */
+  outcome: NodeResult["outcome"];
+  /**
+   * Handler-reported runtime artifact refs (e.g. `triage-handoff.json`
+   * written by `attachTriageHandoffArtifact`, `params.json` written via
+   * `report_outcome.handoffArtifact`). Propagated so the seal hook can
+   * merge these into `InvocationRecord.outputs` alongside canonical
+   * disk-probed refs resolved from `produces_artifacts`.
+   */
+  producedArtifacts?: ArtifactRefSerialized[];
   /** Commands to send to the kernel. */
   commands: Command[];
   /** The handler's raw signal (for loop-level handling). */
@@ -168,6 +187,10 @@ export async function dispatchItem(
   });
 
   return {
+    outcome: result.outcome,
+    ...(result.producedArtifacts && result.producedArtifacts.length > 0
+      ? { producedArtifacts: result.producedArtifacts }
+      : {}),
     commands,
     signal: result.signal,
     signals: result.signals,
@@ -352,13 +375,18 @@ async function detectInvalidEnvelopeOutputs(
         try {
           sidecarBody = await ctx.filesystem.readFile(sidecar);
         } catch {
-          // Auto-stamp the sidecar. The envelope fields (schemaVersion,
-          // producedBy, producedAt) are pure kernel-known metadata — the
-          // producing node and time are unambiguous here — so requiring
-          // the agent/hook to write them adds no safety, just breakage.
-          // Strict mode still enforces the envelope shape on inline kinds
-          // (where the body IS the envelope) and still rejects sidecars
-          // whose contents parse but violate the schema (see catch below).
+          // Auto-stamp missing sidecar — but only for `policy:
+          // "envelope-only"` kinds. Strict-policy kinds (e.g.
+          // `acceptance`) deliberately keep envelope absence as a
+          // hard-fail so producers can't accidentally bypass the body
+          // schema contract by forgetting their `.meta.json`.
+          if (def.policy !== "envelope-only") {
+            invalid.push({
+              kind: kindStr,
+              reason: `sidecar not found at ${sidecar}`,
+            });
+            continue;
+          }
           try {
             const envelopeBody = JSON.stringify(
               {
@@ -389,7 +417,36 @@ async function detectInvalidEnvelopeOutputs(
         validateEnvelope(kindStr, "", { path: ref.path, sidecarBody });
       } else {
         const body = await ctx.filesystem.readFile(ref.path);
-        validateEnvelope(kindStr, body, { path: ref.path });
+        // Auto-stamp missing envelope for `policy: "envelope-only"` JSON
+        // kinds — the envelope triplet is plumbing metadata, not a
+        // contract, and the producing node + time are unambiguous here.
+        // Writes that already carry the envelope are a no-op (stampEnvelope
+        // returns the body verbatim). Strict-policy kinds (`qa-report`,
+        // `triage-handoff`, `summary`, etc.) fall through to the original
+        // validation path so their body-schema contracts stay enforced.
+        let effectiveBody = body;
+        if (def.policy === "envelope-only" && def.ext === "json") {
+          const stamped = stampEnvelope(kindStr, body, ctx.itemKey);
+          if (stamped !== body) {
+            try {
+              await ctx.filesystem.writeFile(ref.path, stamped);
+              effectiveBody = stamped;
+              ctx.logger.event("node.artifact.write", ctx.itemKey, {
+                kind: kindStr,
+                path: ref.path,
+                auto_stamped: true,
+              });
+            } catch (writeErr) {
+              invalid.push({
+                kind: kindStr,
+                reason:
+                  `inline envelope auto-stamp failed: ${(writeErr as Error).message}`,
+              });
+              continue;
+            }
+          }
+        }
+        validateEnvelope(kindStr, effectiveBody, { path: ref.path });
       }
     } catch (err) {
       const msg = err instanceof ArtifactValidationError

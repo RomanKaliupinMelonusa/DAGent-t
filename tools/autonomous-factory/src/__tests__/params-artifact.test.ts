@@ -107,7 +107,7 @@ describe("Phase A — params artifact end-to-end", () => {
       commands: [],
       itemResults: [{
         itemKey: nodeKey,
-        result: { summary: { outcome: "completed" }, producedArtifacts: [runtimeRef] } as never,
+        result: { outcome: "completed", summary: {}, producedArtifacts: [runtimeRef] } as never,
       }],
       errors: [],
     };

@@ -421,6 +421,12 @@ describe("materializeInputs", () => {
       ],
     });
 
+    // Completed-preference tiebreaker: an older completed producer wins
+    // over a newer error-sealed one. This is the Bug B regression path —
+    // pre-fix, a late error-sealed producer (e.g. a triage invocation that
+    // wrote a handoff and then crashed post-classification) would override
+    // a valid completed producer. The error-seal-only fallback still
+    // covers the "write-then-crash with no completed sibling" wedge.
     const state: PipelineState = {
       ...emptyState(),
       artifacts: {
@@ -447,6 +453,78 @@ describe("materializeInputs", () => {
     assert.equal(result.inputs.length, 1);
     const handles = await ifs.ensureInvocationDir(slug, downstreamNode, downstreamInv);
     const copied = readFileSync(join(handles.inputsDir, "triage-handoff.json"), "utf8");
-    assert.match(copied, /"triageReason": "new"/, "should pick the newer invocation regardless of outcome");
+    assert.match(copied, /"triageReason": "old"/, "completed producer wins over later error-sealed");
+  });
+
+  it("reroute latest-wins: when both producers are completed, the newer one wins", async () => {
+    // Guard against regression: completed-preference must not flatten the
+    // two-completed case. The redevelopment-cycle path stages a second
+    // triage invocation that also seals as completed; the downstream
+    // reroute must consume the fresher handoff.
+    const appRoot = mkdtempSync(join(tmpdir(), "matin-rt-both-done-"));
+    const fs = new LocalFilesystem();
+    const bus = new FileArtifactBus(appRoot, fs);
+    const ifs = new FileInvocationFilesystem(appRoot, fs, bus);
+    const slug = "feat";
+    const triageNode = "triage-storefront";
+    const ids = [newInvocationId(), newInvocationId()].sort();
+    const oldInv = ids[0];
+    const newInv = ids[1];
+    const downstreamNode = "storefront-dev";
+    const downstreamInv = newInvocationId();
+
+    const oldRef = bus.ref(slug, "triage-handoff", { nodeKey: triageNode, invocationId: oldInv });
+    const newRef = bus.ref(slug, "triage-handoff", { nodeKey: triageNode, invocationId: newInv });
+    const mkBody = (gen: string) => JSON.stringify({
+      schemaVersion: 1,
+      failingItem: "storefront-dev",
+      errorExcerpt: gen,
+      errorSignature: "sig",
+      triageDomain: "frontend",
+      triageReason: gen,
+      priorAttemptCount: 1,
+    }) + "\n";
+    await bus.write(oldRef, mkBody("old"));
+    await bus.write(newRef, mkBody("new"));
+
+    const mkRecord = (invocationId: string, path: string): InvocationRecord => ({
+      invocationId,
+      nodeKey: triageNode,
+      cycleIndex: 1,
+      trigger: "initial",
+      outcome: "completed",
+      inputs: [],
+      outputs: [
+        { kind: "triage-handoff", scope: "node", slug, nodeKey: triageNode, invocationId, path },
+      ],
+    });
+
+    const state: PipelineState = {
+      ...emptyState(),
+      artifacts: {
+        [oldInv]: mkRecord(oldInv, oldRef.path),
+        [newInv]: mkRecord(newInv, newRef.path),
+      },
+    };
+
+    const contract = makeNodeIOContract({
+      nodeKey: downstreamNode,
+      consumes: {
+        kickoff: [], upstream: [],
+        reroute: [{ kind: "triage-handoff", required: true }],
+      },
+      produces: [],
+    });
+
+    const result = await materializeInputs({
+      contract, slug, nodeKey: downstreamNode, invocationId: downstreamInv,
+      trigger: "triage-reroute", state,
+      bus, invocation: ifs, fs,
+    });
+
+    assert.equal(result.inputs.length, 1);
+    const handles = await ifs.ensureInvocationDir(slug, downstreamNode, downstreamInv);
+    const copied = readFileSync(join(handles.inputsDir, "triage-handoff.json"), "utf8");
+    assert.match(copied, /"triageReason": "new"/, "newer completed producer wins over older completed");
   });
 });

@@ -35,8 +35,18 @@ for the completed feature pipeline.
 
 ## Change Manifest Structure
 
+> **REQUIRED envelope fields.** Every artifact body written under this
+> feature's `produces_artifacts` contract must carry the three envelope
+> keys at the top level: `schemaVersion` (number, use `1`), `producedBy`
+> (string, use `"docs-archived"`), `producedAt` (ISO-8601 string, current
+> timestamp). Under `strict_artifacts: true` the dispatch-layer gate
+> rejects any `change-manifest` missing them and fails the node.
+
 ```json
 {
+  "schemaVersion": 1,
+  "producedBy": "docs-archived",
+  "producedAt": "<ISO timestamp>",
   "feature": "{{featureSlug}}",
   "timestamp": "<ISO timestamp>",
   "changes": [
