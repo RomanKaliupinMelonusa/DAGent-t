@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-24T04:04:43.946Z",
+  "compiledAt": "2026-04-24T04:21:33.603Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -465,7 +465,7 @@
         },
         "playwright": {
           "type": "local",
-          "command": "{repoRoot}/tools/autonomous-factory/node_modules/.bin/playwright-mcp",
+          "command": "{repoRoot}/node_modules/.bin/playwright-mcp",
           "args": [
             "--headless",
             "--no-sandbox",

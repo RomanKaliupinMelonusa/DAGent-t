@@ -1,7 +1,10 @@
 name: playwright
 description: "Playwright browser automation for live-ui E2E testing"
 type: local
-command: "{repoRoot}/tools/autonomous-factory/node_modules/.bin/playwright-mcp"
+# @playwright/mcp is a devDependency of tools/autonomous-factory, but npm
+# workspace hoisting installs the binary at {repoRoot}/node_modules/.bin
+# (tools/autonomous-factory has no private node_modules for it).
+command: "{repoRoot}/node_modules/.bin/playwright-mcp"
 args:
   - "--headless"
   - "--no-sandbox"
