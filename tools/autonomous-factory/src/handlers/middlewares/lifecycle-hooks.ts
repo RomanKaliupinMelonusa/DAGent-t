@@ -22,9 +22,7 @@
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
 import { executeHook } from "../../lifecycle/hooks.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { featurePath } from "../../adapters/feature-paths.js";
+import { featurePath } from "../../paths/feature-paths.js";
 
 /** Resolve the workflow node definition for the current item, if any. */
 function getNode(ctx: NodeContext) {
@@ -37,9 +35,9 @@ function getNode(ctx: NodeContext) {
  *  or empty string when no baseline was captured. */
 function readBaselineValidation(ctx: NodeContext): string {
   const flightPath = featurePath(ctx.appRoot, ctx.slug, "flight-data");
-  if (!fs.existsSync(flightPath)) return "";
+  if (!ctx.filesystem.existsSync(flightPath)) return "";
   try {
-    const parsed = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
+    const parsed = JSON.parse(ctx.filesystem.readFileSync(flightPath)) as Record<string, unknown>;
     const baseline = parsed["baselineValidation"];
     if (!baseline || typeof baseline !== "object") return "";
     return JSON.stringify(baseline);
@@ -54,7 +52,7 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
   // layout owned by the Artifact Bus. Hook scripts consume them to read
   // declared inputs / write declared outputs / append logs without
   // reconstructing paths from slug + node key + invocation id.
-  const invocationDir = path.join(ctx.appRoot, "in-progress", ctx.slug, ctx.itemKey, ctx.executionId);
+  const invocationDir = ctx.filesystem.joinPath(ctx.appRoot, "in-progress", ctx.slug, ctx.itemKey, ctx.executionId);
   const env: Record<string, string> = {
     ...ctx.environment,
     SLUG: ctx.slug,
@@ -65,9 +63,9 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
     NODE_KEY: ctx.itemKey,
     INVOCATION_ID: ctx.executionId,
     INVOCATION_DIR: invocationDir,
-    INPUTS_DIR: path.join(invocationDir, "inputs"),
-    OUTPUTS_DIR: path.join(invocationDir, "outputs"),
-    LOGS_DIR: path.join(invocationDir, "logs"),
+    INPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "inputs"),
+    OUTPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "outputs"),
+    LOGS_DIR: ctx.filesystem.joinPath(invocationDir, "logs"),
   };
   const baseline = readBaselineValidation(ctx);
   if (baseline) env.BASELINE_VALIDATION = baseline;

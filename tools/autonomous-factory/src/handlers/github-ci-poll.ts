@@ -22,7 +22,7 @@ import {
   runPollWithRetries,
 } from "../session/transient-poll.js";
 import { postCiArtifactToPr } from "../session/ci-artifact-poster.js";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helper

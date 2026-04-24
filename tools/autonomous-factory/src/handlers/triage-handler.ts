@@ -27,7 +27,6 @@ import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.j
 import type { CompiledTriageProfile } from "../apm/types.js";
 import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
 import { RESET_OPS } from "../types.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { newInvocationId } from "../kernel/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
@@ -36,7 +35,6 @@ import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.j
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
-import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";
 import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
@@ -231,9 +229,7 @@ async function attachTriageHandoffArtifact(
   const handoff = (result.handlerOutput as TriageHandlerOutput | undefined)?.triageHandoff;
   if (!handoff) return result;
   try {
-    const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem, undefined, {
-      strict: ctx.apmContext.config?.strict_artifacts === true,
-    });
+    const bus = ctx.artifactBus;
     const ref = bus.ref(ctx.slug, "triage-handoff", {
       nodeKey: ctx.itemKey,
       invocationId: ctx.executionId,
@@ -353,8 +349,7 @@ const triageHandlerInner: NodeHandler = {
     // the artifacts exist. Both RAG and LLM layers then see the structured
     // verdict first, instead of a 30 KB ANSI Playwright blob. No-op when
     // no oracle artifacts are present (pre-Phase-B features).
-    const artifacts: TriageArtifactLoader =
-      ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
+    const artifacts: TriageArtifactLoader = ctx.triageArtifacts;
     const { trace: enrichedError, sources: evidenceSources } =
       artifacts.loadContractEvidence(slug, rawError);
     if (evidenceSources.length > 0) {

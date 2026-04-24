@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-24T04:21:33.603Z",
+  "compiledAt": "2026-04-24T04:45:21.741Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -952,7 +952,7 @@
         "create-draft-pr": {
           "type": "agent",
           "category": "deploy",
-          "agent": "@pr-creator",
+          "agent": "@create-draft-pr",
           "timeout_minutes": 15,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
@@ -1206,7 +1206,7 @@
         "backend-unit-test": {
           "type": "agent",
           "category": "test",
-          "agent": "@backend-test",
+          "agent": "@backend-unit-test",
           "timeout_minutes": 10,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [
@@ -1264,7 +1264,7 @@
         "frontend-unit-test": {
           "type": "agent",
           "category": "test",
-          "agent": "@frontend-ui-test",
+          "agent": "@frontend-unit-test",
           "timeout_minutes": 10,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [
@@ -1402,7 +1402,7 @@
         "integration-test": {
           "type": "agent",
           "category": "test",
-          "agent": "@backend-test",
+          "agent": "@integration-test",
           "timeout_minutes": 20,
           "requires_data_plane_ready": true,
           "auto_skip_if_no_changes_in": [
@@ -1466,7 +1466,7 @@
         "live-ui": {
           "type": "agent",
           "category": "test",
-          "agent": "@frontend-ui-test",
+          "agent": "@live-ui",
           "timeout_minutes": 20,
           "requires_data_plane_ready": true,
           "auto_skip_if_no_changes_in": [
@@ -1573,7 +1573,7 @@
         "docs-archived": {
           "type": "agent",
           "category": "finalize",
-          "agent": "@docs-expert",
+          "agent": "@docs-archived",
           "timeout_minutes": 20,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
@@ -2058,7 +2058,7 @@
         "create-draft-pr": {
           "type": "agent",
           "category": "deploy",
-          "agent": "@pr-creator",
+          "agent": "@create-draft-pr",
           "timeout_minutes": 15,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],
@@ -2261,7 +2261,7 @@
         "backend-unit-test": {
           "type": "agent",
           "category": "test",
-          "agent": "@backend-test",
+          "agent": "@backend-unit-test",
           "timeout_minutes": 10,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [
@@ -2399,7 +2399,7 @@
         "integration-test": {
           "type": "agent",
           "category": "test",
-          "agent": "@backend-test",
+          "agent": "@integration-test",
           "timeout_minutes": 20,
           "requires_data_plane_ready": true,
           "auto_skip_if_no_changes_in": [
@@ -2498,7 +2498,7 @@
         "docs-archived": {
           "type": "agent",
           "category": "finalize",
-          "agent": "@docs-expert",
+          "agent": "@docs-archived",
           "timeout_minutes": 20,
           "requires_data_plane_ready": false,
           "auto_skip_if_no_changes_in": [],

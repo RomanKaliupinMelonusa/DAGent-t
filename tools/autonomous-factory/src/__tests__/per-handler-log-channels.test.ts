@@ -132,6 +132,8 @@ async function makeHarness(opts: {
     invocation,
     invocationLogger,
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
   } as NodeContext;
 
   return {

@@ -548,6 +548,29 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     }
   }
 
+  // --- 5d. Validate `node.agent` labels against declared agent keys. ---
+  // For every `type: "agent"` node across all workflows, require that
+  // stripping the leading "@" from `agent` yields a key present in
+  // `manifest.agents`. Catches cosmetic drift (e.g. `@sdet-expert` on an
+  // `e2e-author` node when the agents pool only declares `e2e-author`).
+  const agentKeys = Object.keys(manifest.agents);
+  for (const [workflowName, workflow] of Object.entries(workflows)) {
+    for (const [nodeKey, node] of Object.entries(workflow.nodes ?? {})) {
+      if ((node as { type?: string }).type !== "agent") continue;
+      const agentLabel = (node as { agent?: string }).agent;
+      if (typeof agentLabel !== "string" || agentLabel.length === 0) continue;
+      const stripped = agentLabel.startsWith("@") ? agentLabel.slice(1) : agentLabel;
+      if (agentKeys.includes(stripped)) continue;
+      const hint = nearestNeighbor(stripped, agentKeys);
+      throw new ApmCompileError(
+        `workflow "${workflowName}" node "${nodeKey}": agent label "${agentLabel}" ` +
+        `does not match any declared agent key.` +
+        (hint ? ` Did you mean "@${hint}"?` : "") +
+        ` Declared agents: ${agentKeys.join(", ")}.`,
+      );
+    }
+  }
+
   // --- 6. For each agent: resolve includes, validate budget, load template, build compiled entry ---
   const agents: Record<string, ApmCompiledAgent> = {};
   const agentsDir = path.join(apmDir, "agents");

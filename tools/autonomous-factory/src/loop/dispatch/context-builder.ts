@@ -24,6 +24,7 @@ import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js
 import type { TriageLlm } from "../../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../../ports/baseline-loader.js";
+import type { ArtifactBus } from "../../ports/artifact-bus.js";
 import { newInvocationId } from "../../kernel/invocation-id.js";
 
 export interface ContextBuilderConfig {
@@ -36,12 +37,13 @@ export interface ContextBuilderConfig {
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
   readonly triageLlm?: TriageLlm;
-  readonly triageArtifacts?: TriageArtifactLoader;
+  readonly triageArtifacts: TriageArtifactLoader;
   readonly baselineLoader?: BaselineLoader;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
   readonly shell: Shell;
   readonly filesystem: FeatureFilesystem;
+  readonly artifactBus: ArtifactBus;
   readonly invocation: InvocationFilesystem;
   readonly copilotSessionRunner: CopilotSessionRunner;
   /**
@@ -160,6 +162,7 @@ export function buildNodeContext(
     stateReader: config.stateReader,
     shell: config.shell,
     filesystem: config.filesystem,
+    artifactBus: config.artifactBus,
     invocation: config.invocation,
     invocationLogger,
     copilotSessionRunner: config.copilotSessionRunner,

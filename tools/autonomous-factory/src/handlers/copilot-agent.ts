@@ -26,8 +26,6 @@ import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
 import { formatDerivedTargetsMarkdown } from "../triage/derive-baseline-targets.js";
-import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
@@ -147,9 +145,7 @@ const copilotAgentHandler: NodeHandler = {
 
     // ── 3. Build task prompt ───────────────────────────────────────────────
     const node = getWorkflowNode(ctx);
-    const artifactBus = new FileArtifactBus(appRoot, ctx.filesystem, undefined, {
-      strict: apmContext.config?.strict_artifacts === true,
-    });
+    const artifactBus = ctx.artifactBus;
     let taskPrompt = buildTaskPrompt(
       { key: itemKey, label: (ctx.pipelineState.items.find((i) => i.key === itemKey) as { label?: string })?.label ?? itemKey },
       slug,
@@ -174,7 +170,7 @@ const copilotAgentHandler: NodeHandler = {
     // inject as an authoritative list so the agent doesn't have to
     // re-interpret the YAML and potentially miss targets.
     if (itemKey === "baseline-analyzer") {
-      const artifacts = ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
+      const artifacts = ctx.triageArtifacts;
       try {
         const contract = artifacts.loadAcceptance(slug);
         if (contract) {

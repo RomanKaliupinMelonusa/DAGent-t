@@ -25,11 +25,10 @@
  * entries, changed testids, changed flow steps) all change the hash.
  */
 
-import fs from "node:fs";
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
 import { hashAcceptanceContract, loadAcceptanceContract } from "../../apm/acceptance-schema.js";
-import { featurePath } from "../../adapters/feature-paths.js";
+import { featurePath } from "../../paths/feature-paths.js";
 
 export const SPEC_COMPILER_KEY = "spec-compiler";
 
@@ -63,7 +62,7 @@ export const acceptanceIntegrityMiddleware: NodeMiddleware = {
       if (recorded) {
         // Re-hash the on-disk file. If it's missing, this is a defect —
         // something deleted the contract mid-run.
-        if (!fs.existsSync(recorded.path)) {
+        if (!ctx.filesystem.existsSync(recorded.path)) {
           return {
             outcome: "failed",
             signal: "halt",
@@ -114,7 +113,7 @@ export const acceptanceIntegrityMiddleware: NodeMiddleware = {
     // we fail the node — completion without the artifact is a contract
     // violation against the agent's job description.
     const acceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
-    if (!fs.existsSync(acceptancePath)) {
+    if (!ctx.filesystem.existsSync(acceptancePath)) {
       return {
         outcome: "failed",
         errorMessage:

@@ -31,6 +31,7 @@ import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
+import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { DagCommand } from "../dag-commands.js";
 
 // Re-export for backwards compatibility — the authoritative types live in
@@ -136,7 +137,7 @@ export interface NodeContext {
    * filesystem convention from the triage handler so the handler stays a
    * pure classifier + command builder.
    */
-  readonly triageArtifacts?: TriageArtifactLoader;
+  readonly triageArtifacts: TriageArtifactLoader;
   /**
    * Baseline loader port. Optional, advisory — supplies a pre-feature
    * page-error baseline (console / network / uncaught) that the triage
@@ -169,6 +170,14 @@ export interface NodeContext {
    * this port rather than importing `node:fs` / `node:path` directly.
    */
   readonly filesystem: FeatureFilesystem;
+  /**
+   * Artifact Bus — canonical port for reading/writing declared feature
+   * artifacts (kickoff-scope and per-invocation node-scope). Handlers
+   * must route artifact I/O through this port rather than constructing
+   * a `FileArtifactBus` directly, which would reach across the
+   * handlers→adapters layer boundary.
+   */
+  readonly artifactBus: ArtifactBus;
   /**
    * Per-invocation directory port (Phase 1). Owns the `<inv>/`,
    * `<inv>/inputs/`, `<inv>/outputs/`, `<inv>/logs/` layout + meta mirror.

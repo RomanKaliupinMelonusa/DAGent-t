@@ -305,7 +305,7 @@ nodes:
   storefront-unit-test:
     type: agent
     category: test
-    agent: "@storefront-test"
+    agent: "@storefront-unit-test"
     timeout_minutes: 15
     auto_skip_if_no_changes_in: [storefront]
     commit_scope: all
@@ -314,14 +314,14 @@ nodes:
   create-draft-pr:
     type: agent
     category: deploy
-    agent: "@pr-creator"
+    agent: "@create-draft-pr"
     timeout_minutes: 15
     commit_scope: pipeline
 
   e2e-author:
     type: agent
     category: test
-    agent: "@sdet-expert"
+    agent: "@e2e-author"
     timeout_minutes: 10
     auto_skip_if_no_changes_in: [storefront, e2e]
     commit_scope: all
@@ -393,7 +393,7 @@ nodes:
   docs-archived:
     type: agent
     category: finalize
-    agent: "@docs-expert"
+    agent: "@docs-archived"
     timeout_minutes: 15
     commit_scope: docs
     generates_change_manifest: true
@@ -412,6 +412,7 @@ nodes:
     timeout_minutes: 15
     script_type: local-exec
     command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/push-and-sentinel.sh"
+    pre: "bash .apm/hooks/push-app-pre.sh"
     post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/write-deploy-sentinels.sh"
     captures_head_sha: true
     circuit_breaker:

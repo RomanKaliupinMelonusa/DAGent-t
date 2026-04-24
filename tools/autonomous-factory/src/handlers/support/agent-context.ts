@@ -9,7 +9,7 @@ import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
 import type { InvocationRecord, PipelineState } from "../../types.js";
 import type { ApmWorkflow } from "../../apm/types.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
-import { featurePath } from "../../adapters/feature-paths.js";
+import { featurePath } from "../../paths/feature-paths.js";
 
 /**
  * Pure predicate: does any node in this workflow declare

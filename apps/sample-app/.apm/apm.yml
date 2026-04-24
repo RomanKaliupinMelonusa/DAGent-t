@@ -226,7 +226,7 @@ nodes:
   create-draft-pr:
     type: agent
     category: deploy
-    agent: "@pr-creator"
+    agent: "@create-draft-pr"
     timeout_minutes: 15
     commit_scope: pipeline
 
@@ -284,7 +284,7 @@ nodes:
   backend-unit-test:
     type: agent
     category: test
-    agent: "@backend-test"
+    agent: "@backend-unit-test"
     timeout_minutes: 10
     auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
     commit_scope: backend
@@ -293,7 +293,7 @@ nodes:
   frontend-unit-test:
     type: agent
     category: test
-    agent: "@frontend-ui-test"
+    agent: "@frontend-unit-test"
     timeout_minutes: 10
     auto_skip_if_no_changes_in: [frontend, e2e]
     commit_scope: frontend
@@ -324,7 +324,7 @@ nodes:
   integration-test:
     type: agent
     category: test
-    agent: "@backend-test"
+    agent: "@integration-test"
     timeout_minutes: 20
     requires_data_plane_ready: true
     auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
@@ -335,7 +335,7 @@ nodes:
   live-ui:
     type: agent
     category: test
-    agent: "@frontend-ui-test"
+    agent: "@live-ui"
     timeout_minutes: 20
     requires_data_plane_ready: true
     auto_skip_if_no_changes_in: [frontend, infra, e2e]
@@ -355,7 +355,7 @@ nodes:
   docs-archived:
     type: agent
     category: finalize
-    agent: "@docs-expert"
+    agent: "@docs-archived"
     timeout_minutes: 20
     commit_scope: docs
     generates_change_manifest: true

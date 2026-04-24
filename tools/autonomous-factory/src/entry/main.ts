@@ -232,6 +232,7 @@ export async function runWithKernel(
     stateReader: stateStore,
     shell,
     filesystem,
+    artifactBus,
     invocation,
     copilotSessionRunner,
     ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),

@@ -31,6 +31,8 @@ function makeCtx(key: string): NodeContext {
     filesystem: {} as NodeContext["filesystem"],
     invocation: {} as NodeContext["invocation"],
     invocationLogger: {} as NodeContext["invocationLogger"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
   };
 }

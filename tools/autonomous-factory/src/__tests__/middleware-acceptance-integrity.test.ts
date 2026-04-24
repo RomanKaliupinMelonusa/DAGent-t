@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptanceIntegrityMiddleware } from "../handlers/middlewares/acceptance-integrity.js";
 import type { NodeContext, NodeResult } from "../handlers/types.js";
+import { LocalFilesystem } from "../adapters/local-filesystem.js";
 
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   const logger = {
@@ -41,10 +42,12 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
     shell: {} as NodeContext["shell"],
-    filesystem: {} as NodeContext["filesystem"],
+    filesystem: new LocalFilesystem(),
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
     invocation: {} as NodeContext["invocation"],
     invocationLogger: {} as NodeContext["invocationLogger"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
     ...overrides,
   };
   return ctx;

@@ -75,6 +75,8 @@ function makeCtx(
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
     invocation: {} as NodeContext["invocation"],
     invocationLogger: {} as NodeContext["invocationLogger"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
     ...overrides,
   };
 }
