@@ -27,6 +27,12 @@ export interface PipelineRunConfig {
   readonly roamAvailable: boolean;
   readonly logger: PipelineLogger;
   /**
+   * Absolute path to the user-supplied feature spec markdown. Forwarded
+   * to local-exec handlers as the `SPEC_FILE` env var so scripts like
+   * `stage-spec.sh` can copy it into `_kickoff/spec.md`.
+   */
+  readonly specFile: string;
+  /**
    * Optional advisory markdown produced by the pinned-dependency preflight
    * (see `lifecycle/dependency-pinning.ts`). When present, the context
    * builder forwards it to the `AgentContext` of agents that consult the

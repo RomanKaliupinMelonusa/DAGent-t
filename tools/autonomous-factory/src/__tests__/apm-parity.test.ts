@@ -287,6 +287,7 @@ report_outcome({ status: "failed", message: "<detailed reason>" })
         appRoot: "/workspaces/test/apps/sample-app",
         itemKey: agentKey,
         baseBranch: "main",
+        specFile: "/tmp/spec.md",
         forceRunChanges: false,
         deployedUrl: "https://example.com",
         apimUrl: "https://apim.example.com",

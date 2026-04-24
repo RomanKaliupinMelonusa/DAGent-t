@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-24T02:28:53.469Z",
+  "compiledAt": "2026-04-24T03:18:04.036Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -754,6 +754,68 @@
     "full-stack": {
       "description": "Full-stack pipeline: infra → backend + frontend → test → deploy → finalize",
       "nodes": {
+        "create-branch": {
+          "type": "script",
+          "category": "scaffold",
+          "timeout_minutes": 2,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": []
+        },
+        "stage-spec": {
+          "type": "script",
+          "category": "scaffold",
+          "timeout_minutes": 2,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": [
+            "create-branch"
+          ]
+        },
         "schema-dev": {
           "type": "agent",
           "category": "dev",
@@ -797,7 +859,9 @@
           "triggers": [
             "schedule"
           ],
-          "depends_on": []
+          "depends_on": [
+            "stage-spec"
+          ]
         },
         "infra-architect": {
           "type": "agent",
@@ -1796,6 +1860,68 @@
     "backend": {
       "description": "Backend-only pipeline: schema → backend → test → deploy → finalize",
       "nodes": {
+        "create-branch": {
+          "type": "script",
+          "category": "scaffold",
+          "timeout_minutes": 2,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": []
+        },
+        "stage-spec": {
+          "type": "script",
+          "category": "scaffold",
+          "timeout_minutes": 2,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": [
+            "create-branch"
+          ]
+        },
         "schema-dev": {
           "type": "agent",
           "category": "dev",
@@ -1839,7 +1965,9 @@
           "triggers": [
             "schedule"
           ],
-          "depends_on": []
+          "depends_on": [
+            "stage-spec"
+          ]
         },
         "infra-architect": {
           "type": "agent",

@@ -31,6 +31,7 @@ export interface ContextBuilderConfig {
   readonly appRoot: string;
   readonly repoRoot: string;
   readonly baseBranch: string;
+  readonly specFile: string;
   readonly apmContext: ApmCompiledOutput;
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
@@ -137,6 +138,7 @@ export function buildNodeContext(
     appRoot: config.appRoot,
     repoRoot: config.repoRoot,
     baseBranch: config.baseBranch,
+    specFile: config.specFile,
     attempt,
     effectiveAttempts,
     environment: config.apmContext.config?.environment ?? {},

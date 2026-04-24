@@ -15,7 +15,7 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 | [json-file-state-store.ts](json-file-state-store.ts) | `StateStore` | Persists `PipelineState` to `in-progress/<slug>/_state.json` (nested layout) behind a POSIX `mkdirSync` lock ([file-state/lock.ts](file-state/lock.ts)). Also owns the invocation ledger (`state.artifacts`) and re-renders `_trans.md` on every write. |
 | [file-state/](file-state/) | — | Internal helpers for `JsonFileStateStore`: `io.ts` (read/write), `lock.ts` (mkdir mutex), `init.ts` (state bootstrap from workflows.yml). |
 | [git-shell-adapter.ts](git-shell-adapter.ts) | `VersionControl` | Runs `git` subprocesses via the `Shell` port. Never shells out directly; composes with `node-shell-adapter`. |
-| [git-ops.ts](git-ops.ts) | — | Higher-level helpers (`createFeatureBranch`, branch checks) used at bootstrap. |
+| [git-ops.ts](git-ops.ts) | — | Higher-level helpers (`createFeatureBranch`, branch checks) consumed by `GitShellAdapter` and the `create-branch` DAG node. |
 | [github-ci-adapter.ts](github-ci-adapter.ts) | `CiGateway` | Polls GitHub Actions runs via `gh` CLI; tracks run status per SHA. |
 | [shell-hook-executor.ts](shell-hook-executor.ts) | `HookExecutor` | Executes `.apm/hooks/*.sh` with orchestrator env + APM environment dict; captures stdout/stderr/exit. |
 | [node-shell-adapter.ts](node-shell-adapter.ts) | `Shell` | Thin wrapper over `child_process.spawn` with timeout + stderr/stdout capture. Every subprocess in the engine transits this adapter. |

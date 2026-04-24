@@ -12,7 +12,6 @@ import type { PipelineRunConfig } from "../app-types.js";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import { ApmCompileError, ApmBudgetExceededError } from "../apm/types.js";
 import { BootstrapError } from "../errors.js";
-import { createFeatureBranch } from "../adapters/git-ops.js";
 import { loadApmContext } from "../apm/context-loader.js";
 import { loadAppPlugins } from "../apm/plugin-loader.js";
 import { registerMiddlewares } from "../handlers/middlewares/registry.js";
@@ -22,7 +21,7 @@ import { runResolveEnvironment } from "../lifecycle/hooks.js";
 // directly keeps the dependency explicit without threading the StateStore
 // port through preflight checks.
 import type { PipelineState } from "../types.js";
-import { readStateOrThrow } from "../adapters/file-state/io.js";
+import { readStateOrThrow, readStateOrNull } from "../adapters/file-state/io.js";
 import {
   checkJunkFiles,
   checkInProgressArtifacts,
@@ -56,27 +55,28 @@ export interface BootstrapResult {
 /**
  * Run all preflight checks and assemble the pipeline run config.
  *
+ * Pipeline-specific side-effects (feature-branch creation, spec staging,
+ * `_STATE.json` seeding) have been extracted out of bootstrap:
+ *   - Branch creation & spec staging are now DAG nodes (`create-branch`,
+ *     `stage-spec`) declared in each app's `.apm/workflows.yml`.
+ *   - Fresh `_STATE.json` seeding is performed by [watchdog.ts](./watchdog.ts)
+ *     immediately before kernel start, using `--workflow` from the CLI.
+ *
  * Phase order:
- *   1. Create feature branch
- *   2. CLI auth checks (GitHub, cloud)
- *   3. APM context compilation + validation
- *   4. Environment resolution from infrastructure outputs
- *   5. In-progress artifact scan
- *   6. State-context drift check
- *   7. Roam semantic graph build
- *   8. Logger instantiation
+ *   1. CLI auth checks (GitHub, cloud)
+ *   2. APM context compilation + validation
+ *   3. Environment resolution from infrastructure outputs
+ *   4. In-progress artifact scan
+ *   5. State-context drift check (auto-heals fresh state)
+ *   6. Roam semantic graph build
+ *   7. Logger instantiation
  *
  * @throws {BootstrapError} on any fatal preflight failure
  */
 export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
-  const { slug, appRoot, repoRoot, baseBranch } = cli;
+  const { slug, appRoot, repoRoot, baseBranch, workflowName, specFile } = cli;
 
-  // --- 1. Create feature branch ---
-  console.log(`\n  🌿 Creating feature branch feature/${slug} from ${baseBranch}...`);
-  createFeatureBranch(repoRoot, slug, baseBranch);
-  console.log(`  ✔ Working on branch feature/${slug}\n`);
-
-  // --- 2. CLI auth ---
+  // --- 1. CLI auth ---
   console.log("\n  🔐 CLI Authentication Status:");
   checkGitHubLogin();
   console.log("");
@@ -189,16 +189,25 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // --- 9. Logger ---
   const logger = createPipelineLogger(appRoot, slug);
 
-  // --- 10. Read workflow name from persisted state ---
-  let initialState: PipelineState;
-  try {
-    initialState = readStateOrThrow(slug);
-  } catch {
+  // --- 10. Seed state if absent; validate workflow matches on resume ---
+  // State seeding is the one genesis step the kernel cannot run without —
+  // it cannot dispatch a DAG it hasn't yet materialized. We fold it into
+  // the single `agent:run` entry point (no separate `pipeline:init`
+  // required on the happy path) by seeding here when no state file exists.
+  const existingState: PipelineState | null = readStateOrNull(slug);
+  if (!existingState) {
+    console.log(`\n  🌱 Seeding fresh pipeline state for "${slug}" (workflow: ${workflowName})...`);
+    await bootstrapStore.initState(slug, workflowName);
+    readStateOrThrow(slug); // post-condition: state file exists
+    console.log(`  ✔ Pipeline state initialized\n`);
+  } else if (existingState.workflowName !== workflowName) {
     throw new BootstrapError(
-      `Pipeline state not found for slug "${slug}". Run \`npm run pipeline:init ${slug} <workflow>\` first.`,
+      `Workflow mismatch for "${slug}": persisted state uses "${existingState.workflowName}", ` +
+      `but --workflow was "${workflowName}". ` +
+      `Either pass --workflow ${existingState.workflowName} to resume, or re-init with ` +
+      `\`npm run pipeline:init ${slug} ${workflowName}\` to start a new pipeline.`,
     );
   }
-  const workflowName = initialState.workflowName;
 
   // --- Boot-time telemetry ---
   const baseTelemetry = loadPreviousSummary(appRoot, slug);
@@ -222,6 +231,7 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
       appRoot,
       repoRoot,
       baseBranch,
+      specFile,
       apmContext,
       roamAvailable,
       logger,

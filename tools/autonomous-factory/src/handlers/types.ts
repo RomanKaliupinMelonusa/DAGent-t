@@ -67,6 +67,12 @@ export interface NodeContext {
   readonly repoRoot: string;
   /** Target branch for PRs (e.g. "main") */
   readonly baseBranch: string;
+  /**
+   * Absolute path to the user-supplied feature spec markdown. Exposed
+   * to `local-exec` handlers as the `SPEC_FILE` env var so scaffolding
+   * scripts (e.g. `stage-spec.sh`) can copy it into `_kickoff/spec.md`.
+   */
+  readonly specFile: string;
   /** Current in-memory attempt number (1-based) */
   readonly attempt: number;
   /** Combined in-memory + persisted redevelopment cycle count */

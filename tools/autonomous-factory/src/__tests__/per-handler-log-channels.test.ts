@@ -114,6 +114,7 @@ async function makeHarness(opts: {
     appRoot: tmp,
     repoRoot: tmp,
     baseBranch: "main",
+    specFile: "/tmp/spec.md",
     attempt: 1,
     effectiveAttempts: 1,
     environment: {},

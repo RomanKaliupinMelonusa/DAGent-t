@@ -24,6 +24,17 @@ storefront:
   default_triage: triage-storefront
 
   nodes:
+    # ── Wave 0: Scaffolding (pipeline-agnostic kernel → pipeline-specific nodes) ─
+    # `create-branch` materializes feature/<slug>; `stage-spec` copies the
+    # user-supplied spec (--spec-file) into `_kickoff/spec.md` so every
+    # `consumes_kickoff: [spec]` node below receives it via the
+    # materialize-inputs middleware.
+    create-branch:
+      depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
     # ── Acceptance contract compilation ───────────────────────────────
     # Runs first. Produces the machine-checkable ACCEPTANCE.yml that
     # storefront-dev, e2e-author, validate-acceptance (Phase B), and
@@ -31,7 +42,7 @@ storefront:
     # authoring from implementation prevents the dev agent from rewriting
     # its own acceptance criteria during redevelopment cycles.
     spec-compiler:
-      depends_on: []
+      depends_on: [stage-spec]
       consumes_kickoff: [spec]
       produces_artifacts: [acceptance]
       # Spec-compiler self-heals schema violations via on_failure.schema-violation=$SELF,

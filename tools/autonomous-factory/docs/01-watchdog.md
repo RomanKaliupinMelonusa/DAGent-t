@@ -22,12 +22,10 @@
 
 ```mermaid
 flowchart TD
-    START(["npm run agent:run &lt;slug&gt;"])
+    START(["npm run agent:run --workflow ... --spec-file ... &lt;slug&gt;"])
 
-    START --> PARSE["Parse CLI args\nslug, --app path"]
-    PARSE --> BRANCH["Create feature branch\n(agent-branch.sh create slug)"]
-
-    BRANCH --> PREFLIGHT["Pre-flight Checks"]
+    START --> PARSE["Parse CLI args\nslug, --app, --workflow, --spec-file"]
+    PARSE --> PREFLIGHT["Pre-flight Checks"]
 
     subgraph PF["Pre-flight Checks"]
         direction LR

@@ -209,18 +209,17 @@ The orchestration engine is generic — the watchdog, state machine, APM compile
 ```bash
 # 1. Clone and open in DevContainer (VS Code / Codespaces)
 
-# 2. Create a feature spec
-mkdir -p apps/sample-app/in-progress
-vim apps/sample-app/in-progress/my-feature_SPEC.md
+# 2. Write a feature spec (anywhere readable by the process)
+vim /tmp/my-feature-spec.md
 
-# 3. Initialize pipeline state
-export APP_ROOT=apps/sample-app
-npm run pipeline:init my-feature Full-Stack
+# 3. Run the orchestrator — single command
+npm run agent:run -- \
+  --app apps/sample-app \
+  --workflow full-stack \
+  --spec-file /tmp/my-feature-spec.md \
+  my-feature
 
-# 4. Run the orchestrator
-npm run agent:run -- --app apps/sample-app my-feature
-
-# 5. Review the PR when the pipeline completes
+# 4. Review the PR when the pipeline completes
 ```
 
 Prerequisites: GitHub CLI auth (`gh auth status`), Azure CLI auth (for live deploy/test), DevContainer with `--shm-size=2gb`, and an `apm.yml` config.

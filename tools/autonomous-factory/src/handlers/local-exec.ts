@@ -32,7 +32,7 @@ const localExecHandler: NodeHandler = {
   },
 
   async execute(ctx: NodeContext): Promise<NodeResult> {
-    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch } = ctx;
+    const { itemKey, appRoot, apmContext, environment, onHeartbeat, slug, repoRoot, baseBranch, specFile } = ctx;
 
     const node = getWorkflowNode(apmContext, ctx.pipelineState.workflowName, itemKey);
     let command = node?.command;
@@ -44,9 +44,17 @@ const localExecHandler: NodeHandler = {
       };
     }
 
-    // Template interpolation: replace ${featureSlug} with the pipeline's feature slug.
-    // Enables workflow commands like: npx playwright test e2e/${featureSlug}.spec.ts
-    command = command.replace(/\$\{featureSlug\}/g, slug);
+    // Template interpolation. `${featureSlug}` is the canonical slug token
+    // (e.g. `npx playwright test e2e/${featureSlug}.spec.ts`). `${SPEC_FILE}`,
+    // `${REPO_ROOT}`, and `${APP_ROOT}` are also interpolated so scaffolding
+    // nodes can reference the user-supplied spec path without relying on
+    // env-var expansion inside the shell (which `node-shell-adapter` does
+    // not perform consistently across platforms).
+    command = command
+      .replace(/\$\{featureSlug\}/g, slug)
+      .replace(/\$\{SPEC_FILE\}/g, specFile)
+      .replace(/\$\{REPO_ROOT\}/g, repoRoot)
+      .replace(/\$\{APP_ROOT\}/g, appRoot);
 
     const timeoutMinutes = node?.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
@@ -61,9 +69,11 @@ const localExecHandler: NodeHandler = {
       ...process.env,
       ...environment,
       SLUG: slug,
+      featureSlug: slug,
       APP_ROOT: appRoot,
       REPO_ROOT: repoRoot,
       BASE_BRANCH: baseBranch,
+      SPEC_FILE: specFile,
       NODE_KEY: itemKey,
       INVOCATION_ID: ctx.executionId,
       INVOCATION_DIR: invocationDir,

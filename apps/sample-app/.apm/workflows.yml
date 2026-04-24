@@ -30,9 +30,16 @@ full-stack:
       blocked: null
 
   nodes:
+    # ── Wave 0: Scaffolding (pipeline-agnostic kernel → pipeline-specific nodes) ─
+    create-branch:
+      depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
     schema-dev:
-      depends_on: []
+      depends_on: [stage-spec]
       consumes_kickoff: [spec]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
@@ -244,8 +251,15 @@ backend:
       blocked: null
 
   nodes:
-    schema-dev:
+    # ── Wave 0: Scaffolding ────────────────────────────────────────────
+    create-branch:
       depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
+    schema-dev:
+      depends_on: [stage-spec]
       consumes_kickoff: [spec]
       consumes_reroute:
         - { kind: triage-handoff, required: true }

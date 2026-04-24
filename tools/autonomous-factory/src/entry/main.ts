@@ -220,6 +220,7 @@ export async function runWithKernel(
     appRoot,
     repoRoot,
     baseBranch,
+    specFile: config.specFile,
     apmContext: config.apmContext,
     logger,
     client,

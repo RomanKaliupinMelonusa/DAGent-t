@@ -216,6 +216,25 @@ agents:
 # Nodes define WHAT to execute; workflows define HOW to connect them.
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
+  # ── Scaffolding ────────────────────────────────────────────────────
+  # Pipeline-specific side-effects the kernel must not own. `create-branch`
+  # materializes the feature branch; `stage-spec` copies the user-supplied
+  # spec (SPEC_FILE) into `_kickoff/spec.md` so spec-compiler / dev agents
+  # consume it via their declared `consumes_kickoff: [spec]`.
+  create-branch:
+    type: script
+    category: scaffold
+    timeout_minutes: 2
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}"
+
+  stage-spec:
+    type: script
+    category: scaffold
+    timeout_minutes: 2
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh"
+
   spec-compiler:
     type: agent
     category: dev

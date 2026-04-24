@@ -12,7 +12,7 @@ DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents hand o
 
 ## What it does
 
-- **Takes a feature spec** (`in-progress/<slug>_SPEC.md`) and delivers a Pull Request.
+- **Takes a feature spec** (passed to `agent:run --spec-file <path>`) and delivers a Pull Request.
 - **A roster of specialist agents per app** — schema, backend, frontend/storefront, unit tests, E2E author, QA adversary, infra, docs, triage — runs concurrently when their dependencies allow it. The storefront pipeline adds a spec-compiler that emits a machine-checkable `ACCEPTANCE.yml`, a baseline-analyzer for noise filtering, and a blind-to-impl test author that cannot read feature source.
 - **Self-heals production failures** — when live integration or browser tests fail, the pipeline classifies the error, resets the responsible agents, and feeds them the exact failure evidence.
 - **Human-in-the-loop only when necessary** — infra requiring elevated privileges pauses for a PR-comment approval (`/dagent apply-elevated`).
@@ -60,20 +60,27 @@ gh auth login
 az login --scope https://graph.microsoft.com/.default   # Graph scope required by azuread Terraform provider
 az account set --subscription "<your-subscription-id>"
 
+# Write your spec anywhere — it'll be staged into `_kickoff/spec.md` by the pipeline.
+$EDITOR /tmp/my-feature-spec.md
+
 # ---- storefront (PWA Kit) ----
-mkdir -p apps/commerce-storefront/in-progress
-$EDITOR apps/commerce-storefront/in-progress/my-feature_SPEC.md
-APP_ROOT=apps/commerce-storefront npm run pipeline:init my-feature storefront
-npm run agent:run -- --app apps/commerce-storefront my-feature
+npm run agent:run -- \
+  --app apps/commerce-storefront \
+  --workflow storefront \
+  --spec-file /tmp/my-feature-spec.md \
+  my-feature
 
 # ---- sample-app (Azure) ----
-mkdir -p apps/sample-app/in-progress
-$EDITOR apps/sample-app/in-progress/my-feature_SPEC.md
-APP_ROOT=apps/sample-app npm run pipeline:init my-feature Full-Stack
-npm run agent:run -- --app apps/sample-app my-feature
+npm run agent:run -- \
+  --app apps/sample-app \
+  --workflow full-stack \
+  --spec-file /tmp/my-feature-spec.md \
+  my-feature
 
 # Review the PR when the pipeline completes
 ```
+
+One command per feature. Branch creation and spec staging are the first two DAG nodes (`create-branch`, `stage-spec`); `_STATE.json` is seeded in-process when absent. Resuming an interrupted run is the same command — both scaffolding nodes are idempotent.
 
 ### Use with your own project
 
@@ -81,7 +88,7 @@ npm run agent:run -- --app apps/sample-app my-feature
 2. Edit `.apm/apm.yml` — URLs, resource names, agent instructions, deploy targets, per-agent write-path sandboxes.
 3. Customise instruction fragments under `.apm/instructions/` and the workflow DAG under `.apm/workflows.yml`.
 4. Point CI workflows at your app path.
-5. `npm run agent:run -- --app apps/your-app my-feature`.
+5. `npm run agent:run -- --app apps/your-app --workflow <name> --spec-file /path/to/spec.md my-feature`.
 
 For a fundamentally different stack (AWS, GCP, on-prem), swap the lifecycle hooks in `.apm/hooks/*.sh` and the identity files in `.apm/instructions/`. Engine source requires zero changes — see [tools/autonomous-factory/README.md — Evolution Notes](tools/autonomous-factory/README.md#evolution-notes).
 

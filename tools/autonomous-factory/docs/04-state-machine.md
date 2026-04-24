@@ -103,7 +103,7 @@ flowchart LR
 
 ## Workflow Types
 
-Each workflow type prunes irrelevant items at `pipeline:init`. All types run Wave 1 (infra), approval gate, and finalize phases — the pruning targets Wave 2 app items.
+Each workflow type prunes irrelevant items when `_STATE.json` is seeded — either by `agent:run --workflow <name>` on the happy path or by `pipeline:init` as an admin escape hatch. All types run Wave 1 (infra), approval gate, and finalize phases; pruning targets Wave 2 app items.
 
 ```mermaid
 flowchart TB
@@ -380,7 +380,7 @@ classDiagram
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
-> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_state.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_state.json` when the state is first seeded (either by `agent:run --workflow <name>` or the admin `pipeline:init` command). The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
 
 ---
 
@@ -413,7 +413,7 @@ flowchart TD
 
 | Command | Purpose |
 |---------|---------|
-| `npm run pipeline:init <slug> <type>` | Initialize state for a new feature |
+| `npm run pipeline:init <slug> <workflow>` | **Admin escape hatch.** Seed `_STATE.json` + `_TRANS.md` without running the orchestrator. Not needed on the happy path — `agent:run --workflow <name>` seeds state in-process when absent |
 | `npm run pipeline:complete <slug> <key>` | Mark item as done |
 | `npm run pipeline:fail <slug> <key> <msg>` | Mark item as failed |
 | `npm run pipeline:reset-ci <slug>` | Reset deploy items (`push-app` + `poll-app-ci`) for CI retry |
