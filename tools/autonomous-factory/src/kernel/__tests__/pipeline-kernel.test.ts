@@ -412,6 +412,161 @@ describe("PipelineKernel — stage-invocation", () => {
       assert.equal(eff.input.startedAt, undefined);
     }
   });
+
+  it("populates dagState.artifacts so downstream context-builder sees staged record", () => {
+    const kernel = makeKernel();
+    const cmds = wrapDagCommands([{
+      type: "stage-invocation",
+      itemKey: "A",
+      invocationId: "inv_01H000000000000000000004",
+      trigger: "triage-reroute",
+      parentInvocationId: "inv_01H00000000000000000PAR",
+    }]);
+    kernel.process(cmds[0]);
+    const snap = kernel.dagSnapshot();
+    const rec = snap.artifacts?.["inv_01H000000000000000000004"];
+    assert.ok(rec, "staged record must appear in dagSnapshot.artifacts");
+    assert.equal(rec.nodeKey, "A");
+    assert.equal(rec.trigger, "triage-reroute");
+    assert.equal(rec.parentInvocationId, "inv_01H00000000000000000PAR");
+    assert.equal(rec.startedAt, undefined);
+    assert.equal(rec.sealed, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artifact ledger sync — register / seal / ingest must surface records
+// in the in-memory snapshot so the next batch's context-builder sees them.
+// ---------------------------------------------------------------------------
+
+describe("PipelineKernel — artifact ledger sync", () => {
+  const inv = "inv_01H000000000000000000010";
+
+  it("register-invocation populates dagState.artifacts with a running record", () => {
+    const kernel = makeKernel();
+    kernel.process({
+      type: "register-invocation",
+      input: {
+        invocationId: inv,
+        nodeKey: "A",
+        trigger: "initial",
+        startedAt: "2025-01-01T00:00:01Z",
+      },
+    });
+    const rec = kernel.dagSnapshot().artifacts?.[inv];
+    assert.ok(rec, "register-invocation must upsert into artifacts");
+    assert.equal(rec.nodeKey, "A");
+    assert.equal(rec.startedAt, "2025-01-01T00:00:01Z");
+    assert.equal(rec.sealed, undefined);
+    assert.equal(rec.cycleIndex, 1);
+    const item = kernel.dagSnapshot().items.find((i) => i.key === "A");
+    assert.equal(item?.latestInvocationId, inv);
+  });
+
+  it("register-invocation on an existing staged record merges startedAt", () => {
+    const kernel = makeKernel();
+    kernel.process(wrapDagCommands([{
+      type: "stage-invocation",
+      itemKey: "A",
+      invocationId: inv,
+      trigger: "triage-reroute",
+    }])[0]);
+    kernel.process({
+      type: "register-invocation",
+      input: {
+        invocationId: inv,
+        nodeKey: "A",
+        trigger: "triage-reroute",
+        startedAt: "2025-01-01T00:00:02Z",
+      },
+    });
+    const rec = kernel.dagSnapshot().artifacts?.[inv];
+    assert.equal(rec?.startedAt, "2025-01-01T00:00:02Z");
+    assert.equal(rec?.trigger, "triage-reroute");
+  });
+
+  it("seal-invocation writes outcome + outputs onto the in-memory record", () => {
+    const kernel = makeKernel();
+    kernel.process({
+      type: "register-invocation",
+      input: {
+        invocationId: inv,
+        nodeKey: "A",
+        trigger: "initial",
+        startedAt: "2025-01-01T00:00:01Z",
+      },
+    });
+    kernel.process({
+      type: "seal-invocation",
+      input: {
+        invocationId: inv,
+        outcome: "completed",
+        finishedAt: "2025-01-01T00:00:05Z",
+        outputs: [{
+          kind: "acceptance",
+          scope: "node",
+          slug: "test-feature",
+          path: "/tmp/acceptance.yml",
+          nodeKey: "A",
+          invocationId: inv,
+        }],
+      },
+    });
+    const rec = kernel.dagSnapshot().artifacts?.[inv];
+    assert.equal(rec?.outcome, "completed");
+    assert.equal(rec?.sealed, true);
+    assert.equal(rec?.finishedAt, "2025-01-01T00:00:05Z");
+    assert.equal(rec?.outputs.length, 1);
+    assert.equal(rec?.outputs[0]?.kind, "acceptance");
+  });
+
+  it("seal-invocation is idempotent (second seal is a no-op)", () => {
+    const kernel = makeKernel();
+    kernel.process({
+      type: "register-invocation",
+      input: { invocationId: inv, nodeKey: "A", trigger: "initial" },
+    });
+    kernel.process({
+      type: "seal-invocation",
+      input: { invocationId: inv, outcome: "completed", finishedAt: "t1" },
+    });
+    kernel.process({
+      type: "seal-invocation",
+      input: { invocationId: inv, outcome: "failed", finishedAt: "t2" },
+    });
+    const rec = kernel.dagSnapshot().artifacts?.[inv];
+    assert.equal(rec?.outcome, "completed");
+    assert.equal(rec?.finishedAt, "t1");
+  });
+
+  it("ingestInvocationRecord overwrites in-memory entry for direct-write paths", () => {
+    const kernel = makeKernel();
+    kernel.ingestInvocationRecord({
+      invocationId: inv,
+      nodeKey: "A",
+      cycleIndex: 1,
+      trigger: "initial",
+      startedAt: "2025-01-01T00:00:01Z",
+      finishedAt: "2025-01-01T00:00:02Z",
+      outcome: "completed",
+      inputs: [],
+      outputs: [{
+        kind: "acceptance",
+        scope: "node",
+        slug: "test-feature",
+        path: "/tmp/acc.yml",
+        nodeKey: "A",
+        invocationId: inv,
+      }],
+      sealed: true,
+    });
+    const snap = kernel.dagSnapshot();
+    const rec = snap.artifacts?.[inv];
+    assert.equal(rec?.outcome, "completed");
+    assert.equal(rec?.sealed, true);
+    assert.equal(rec?.outputs[0]?.kind, "acceptance");
+    assert.equal(snap.items.find((i) => i.key === "A")?.latestInvocationId, inv);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import { RESET_OPS } from "../types.js";
 import { newInvocationId } from "../kernel/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
+import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
 import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
@@ -94,6 +95,54 @@ function buildSalvageCommands(
   return [
     { type: "salvage-draft", failedItemKey: failingKey, reason: errorMsg },
   ];
+}
+
+/**
+ * Build a minimal `TriageHandoff` for a degradation exit (no reroute).
+ *
+ * The triage node declares `triage-handoff` in its `produces_artifacts`,
+ * so every completed invocation owes the ledger a handoff file — even
+ * when the classification resolved to graceful degradation and no
+ * downstream dev agent will consume it. Writing the artifact also
+ * preserves the diagnosis on disk for post-mortem inspection and
+ * satisfies the `missing_required_output:triage-handoff` contract
+ * check in the seal path.
+ *
+ * The handoff is tagged `degraded: true` (via the optional field on
+ * `TriageHandoff`) so any future consumer can tell apart a
+ * reroute-carrying handoff from a record-only degradation handoff.
+ */
+function buildDegradationHandoff(args: {
+  readonly failingNodeKey: string;
+  readonly rawError: string;
+  readonly errorSignature: string;
+  readonly domain: string;
+  readonly reason: string;
+  readonly triageInvocationId?: string;
+}): TriageHandoff {
+  return {
+    schemaVersion: 1,
+    failingItem: args.failingNodeKey,
+    errorExcerpt: truncateErrorExcerpt(args.rawError),
+    errorSignature: args.errorSignature,
+    triageDomain: args.domain,
+    triageReason: args.reason,
+    priorAttemptCount: 0,
+    degraded: true,
+    ...(args.triageInvocationId
+      ? { triageInvocationId: args.triageInvocationId }
+      : {}),
+  };
+}
+
+/** Trim a raw error trace to at most 40 lines for the degradation handoff.
+ *  Mirrors `triage/handoff-builder.ts#truncateError` without taking a
+ *  dependency on it — the degradation path doesn't need touched-files,
+ *  advisories, or evidence projection. */
+function truncateErrorExcerpt(raw: string, maxLines = 40): string {
+  const lines = raw.split(/\r?\n/);
+  if (lines.length <= maxLines) return raw.trimEnd();
+  return `${lines.slice(0, maxLines).join("\n")}\n… (${lines.length - maxLines} more lines)`;
 }
 
 /**
@@ -355,10 +404,85 @@ const triageHandlerInner: NodeHandler = {
             source: "fallback",
             triageRecord: record,
             guardResult: "session_idle_exhausted",
+            triageHandoff: buildDegradationHandoff({
+              failingNodeKey,
+              rawError,
+              errorSignature: errorSig,
+              domain: "$GUARD",
+              reason: guardReason,
+              triageInvocationId: ctx.executionId,
+            }),
           } satisfies TriageHandlerOutput,
         };
       }
     } catch { /* non-fatal — fall through to classification */ }
+
+    // --- L0 orchestrator-contract guard ---
+    // Error signatures of the form `missing_required_input:<kind>` /
+    // `missing_required_output:<kind>` are emitted by the dispatch
+    // middleware when an upstream artifact is absent from the ledger at
+    // materialization / seal time. Root cause is a kernel / workflow
+    // contract bug, NOT a defect in any producing agent's output.
+    // Routing these through RAG / LLM triage is actively harmful — the
+    // LLM sees "missing acceptance input" and confidently mis-blames the
+    // producer while the file sits on disk. Short-circuit to graceful
+    // degradation with an accurate diagnosis so an operator investigates
+    // the contract / ledger issue (not an agent).
+    const contractOrigin = classifyOrchestratorContractError(errorSig);
+    if (contractOrigin) {
+      const reason =
+        `orchestrator-contract fault: node "${failingNodeKey}" reported ` +
+        `${errorSig}. This is a pipeline-layer contract error (the ` +
+        `${contractOrigin.kind === "missing-input" ? "consumer" : "producer"} ` +
+        `declared an artifact kind the ledger cannot resolve), not an agent ` +
+        `output quality issue. No reroute — halting via graceful degradation ` +
+        `so an operator can inspect the kernel↔state-store artifact sync or ` +
+        `the workflow's produces/consumes declarations.`;
+      logger.event("triage.evaluate", failingNodeKey, {
+        domain: "orchestrator-contract",
+        reason,
+        source: "contract",
+        route_to: "$BLOCKED",
+        errorSignature: errorSig,
+      });
+      const record: TriageRecord = {
+        failing_item: failingNodeKey,
+        error_signature: errorSig,
+        guard_result: "passed",
+        rag_matches: [],
+        rag_selected: null,
+        llm_invoked: false,
+        domain: "orchestrator-contract",
+        reason,
+        source: "contract",
+        route_to: "$BLOCKED",
+        cascade: [],
+        cycle_count: 0,
+        domain_retry_count: 0,
+      };
+      return {
+        outcome: "completed",
+        summary: { intents: [`triage: orchestrator-contract (${errorSig}) → degradation`] },
+        signals: { halt: false },
+        commands: buildSalvageCommands(failingNodeKey, rawError, record),
+        handlerOutput: {
+          routeToKey: null,
+          domain: "orchestrator-contract",
+          reason,
+          source: "contract",
+          triageRecord: record,
+          guardResult: "passed",
+          triageHandoff: buildDegradationHandoff({
+            failingNodeKey,
+            rawError,
+            errorSignature: errorSig,
+            domain: "orchestrator-contract",
+            reason,
+            triageInvocationId: ctx.executionId,
+          }),
+        } satisfies TriageHandlerOutput,
+      };
+    }
 
     // --- 2-layer triage classification (RAG → LLM → fallback) ---
     const triageLlm = ctx.triageLlm;
@@ -484,6 +608,14 @@ const triageHandlerInner: NodeHandler = {
             source: triageResult.source,
             triageRecord: record,
             guardResult: "passed",
+            triageHandoff: buildDegradationHandoff({
+              failingNodeKey,
+              rawError,
+              errorSignature: errorSig,
+              domain: triageResult.domain,
+              reason: triageResult.reason,
+              triageInvocationId: ctx.executionId,
+            }),
           } satisfies TriageHandlerOutput,
         };
       }
@@ -533,6 +665,14 @@ const triageHandlerInner: NodeHandler = {
               source: triageResult.source,
               triageRecord: record,
               guardResult: "passed",
+              triageHandoff: buildDegradationHandoff({
+                failingNodeKey,
+                rawError,
+                errorSignature: errorSig,
+                domain: triageResult.domain,
+                reason: `route_to "${routeToKey}" is salvaged`,
+                triageInvocationId: ctx.executionId,
+              }),
             } satisfies TriageHandlerOutput,
           };
         }
@@ -586,6 +726,14 @@ const triageHandlerInner: NodeHandler = {
                 source: triageResult.source,
                 triageRecord: record,
                 guardResult: "passed",
+                triageHandoff: buildDegradationHandoff({
+                  failingNodeKey,
+                  rawError,
+                  errorSignature: errorSig,
+                  domain: triageResult.domain,
+                  reason: `domain retry cap reached (${consecutiveCount}/${routeEntry.retries})`,
+                  triageInvocationId: ctx.executionId,
+                }),
               } satisfies TriageHandlerOutput,
             };
           }

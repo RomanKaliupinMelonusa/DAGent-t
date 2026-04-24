@@ -163,3 +163,42 @@ export function isOrchestratorTimeout(errorMessage: string): boolean {
   return /timeout after \d+ms/i.test(errorMessage)
       && /waiting for session\.idle/i.test(errorMessage);
 }
+
+// ---------------------------------------------------------------------------
+// Orchestrator-contract errors — deterministic L0 short-circuit
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect error signatures emitted by the orchestrator's own input /
+ * output materialization middleware (see
+ * `handlers/middlewares/materialize-inputs.ts` and
+ * `loop/dispatch/item-dispatch.ts`).
+ *
+ * These signatures indicate a *contract-layer* fault — a node declared it
+ * `consumes` / `produces` an artifact that does not exist in the ledger at
+ * dispatch / seal time. The root cause is never the producing agent's
+ * output quality — it is either:
+ *   - a bug in the kernel ↔ state-store artifact ledger sync,
+ *   - an APM-compiled workflow that wires a producer/consumer to a
+ *     kind/scope that doesn't actually flow, or
+ *   - a missing / misdeclared `produces_artifacts` on an upstream node.
+ *
+ * Routing these through RAG / LLM triage is demonstrably harmful: the LLM
+ * sees an "acceptance input missing" error and confidently blames
+ * `spec-compiler`, when in fact spec-compiler did everything right and the
+ * bytes are sitting on disk. This helper lets the triage handler
+ * short-circuit to graceful degradation with an accurate diagnosis so an
+ * operator (not an agent) fixes the contract / ledger bug.
+ *
+ * Returns `null` when the signature is not orchestrator-contract origin.
+ */
+export function classifyOrchestratorContractError(
+  errorSignature: string | undefined | null,
+): { readonly kind: "missing-input" | "missing-output"; readonly artifact: string } | null {
+  if (!errorSignature) return null;
+  const inMatch = /^missing_required_input:(.+)$/.exec(errorSignature);
+  if (inMatch) return { kind: "missing-input", artifact: inMatch[1] };
+  const outMatch = /^missing_required_output:(.+)$/.exec(errorSignature);
+  if (outMatch) return { kind: "missing-output", artifact: outMatch[1] };
+  return null;
+}

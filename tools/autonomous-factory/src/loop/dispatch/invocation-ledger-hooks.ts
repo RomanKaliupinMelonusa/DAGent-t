@@ -24,6 +24,7 @@ import type {
 } from "../../types.js";
 import type { PipelineLogger } from "../../telemetry/index.js";
 import type { ApmWorkflowNode } from "../../apm/types.js";
+import type { PipelineKernel } from "../../kernel/pipeline-kernel.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { isArtifactKind } from "../../apm/artifact-catalog.js";
 import { synthesizeNodeReport, writeNodeReport } from "../../reporting/node-report.js";
@@ -62,6 +63,7 @@ export async function recordInvocationDispatch(
   slug: string,
   pairs: ReadonlyArray<DispatchTuple>,
   logger: PipelineLogger,
+  kernel?: PipelineKernel,
 ): Promise<void> {
   for (const pair of pairs) {
     const ctx = pair[1];
@@ -76,7 +78,15 @@ export async function recordInvocationDispatch(
       const trigger = ctx.currentInvocation.trigger;
       const parentInvocationId = ctx.currentInvocation.parentInvocationId;
       try {
-        await stateStore.stampInvocationStart(slug, ctx.executionId, startedAt);
+        const stamped = await stateStore.stampInvocationStart(
+          slug,
+          ctx.executionId,
+          startedAt,
+        );
+        // Sync kernel's in-memory artifacts map so the next batch's
+        // `buildNodeContext` / `materializeInputs` middleware sees the
+        // stamped record. Safe no-op when kernel is omitted (tests).
+        kernel?.ingestInvocationRecord(stamped);
       } catch (err) {
         logger.event("invocation.append_failed", ctx.itemKey, {
           invocationId: ctx.executionId,
@@ -105,7 +115,8 @@ export async function recordInvocationDispatch(
       startedAt,
     };
     try {
-      await stateStore.appendInvocationRecord(slug, input);
+      const appended = await stateStore.appendInvocationRecord(slug, input);
+      kernel?.ingestInvocationRecord(appended);
     } catch (err) {
       logger.event("invocation.append_failed", ctx.itemKey, {
         invocationId: ctx.executionId,
@@ -241,6 +252,7 @@ export async function recordInvocationSeal(
   batchResult: BatchDispatchResult,
   logger: PipelineLogger,
   opts?: RecordInvocationSealOptions,
+  kernel?: PipelineKernel,
 ): Promise<void> {
   const outcomeByItem = new Map<string, "completed" | "failed" | "error">();
   const producedByItem = new Map<string, ArtifactRefSerialized[]>();
@@ -330,7 +342,8 @@ export async function recordInvocationSeal(
       ...(outputs.length > 0 ? { outputs } : {}),
     };
     try {
-      await stateStore.sealInvocation(slug, input);
+      const sealed = await stateStore.sealInvocation(slug, input);
+      kernel?.ingestInvocationRecord(sealed);
     } catch (err) {
       logger.event("invocation.seal_failed", ctx.itemKey, {
         invocationId: ctx.executionId,

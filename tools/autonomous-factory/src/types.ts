@@ -461,6 +461,13 @@ export interface TriageHandoff {
    *  the original failure through every reroute. Absent during the Phase 5
    *  rollout window — consumers must treat this as optional. */
   readonly triageInvocationId?: string;
+  /** True when this handoff was emitted from a graceful-degradation exit
+   *  (no reroute target). The triage node still owes the ledger a
+   *  `triage-handoff` artifact because it declares
+   *  `produces_artifacts: [triage-handoff]`, so we write one for the
+   *  record even when no downstream dev agent will consume it. Absent /
+   *  false means the handoff is carrying a live reroute target. */
+  readonly degraded?: boolean;
 }
 
 /**

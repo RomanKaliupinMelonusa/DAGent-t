@@ -361,6 +361,7 @@ export class PipelineKernel {
     input: import("../types.js").AppendInvocationInput,
     effects: Effect[],
   ): ProcessResult {
+    this.dagState = applyRegisterInvocation(this.dagState, input);
     effects.push({
       type: "append-invocation-record",
       slug: this.slug,
@@ -373,12 +374,43 @@ export class PipelineKernel {
     input: import("../types.js").SealInvocationInput,
     effects: Effect[],
   ): ProcessResult {
+    this.dagState = applySealInvocation(this.dagState, input);
     effects.push({
       type: "seal-invocation",
       slug: this.slug,
       input,
     });
     return { result: { ok: true }, effects };
+  }
+
+  /**
+   * External-write sync: used by code paths that mutate the `state.artifacts`
+   * ledger via the `StateStore` directly (the batch ledger hooks in
+   * `loop/dispatch/invocation-ledger-hooks.ts`) rather than through Commands.
+   * Mirrors the final record into the kernel's in-memory snapshot so
+   * downstream `dagSnapshot()` readers — notably the input-materialization
+   * middleware — see freshly sealed outputs without a disk reload.
+   *
+   * The method is idempotent and accepts any `InvocationRecord` shape: it
+   * upserts by `invocationId`, preferring the provided record as the
+   * authoritative version. No effects are emitted — the disk write that
+   * preceded this call is the persistence.
+   */
+  ingestInvocationRecord(record: import("../types.js").InvocationRecord): void {
+    if (this.#inFlight) {
+      throw new KernelReentryError(
+        `PipelineKernel.ingestInvocationRecord() must not be called from ` +
+          `inside a kernel command handler.`,
+      );
+    }
+    const artifacts = { ...(this.dagState.artifacts ?? {}) };
+    artifacts[record.invocationId] = record;
+    const items = this.dagState.items.map((it) =>
+      it.key === record.nodeKey
+        ? { ...it, latestInvocationId: record.invocationId }
+        : it,
+    );
+    this.dagState = { ...this.dagState, artifacts, items } as PipelineState;
   }
 
   private processDagCommand(
@@ -458,12 +490,7 @@ export class PipelineKernel {
         // artifact (declared via `consumes_reroute`) which Phase 3's
         // `materializeInputsMiddleware` copies into `<inv>/inputs/`
         // before the dev agent runs.
-        const stagedItems = this.dagState.items.map((it) =>
-          it.key === inner.itemKey
-            ? { ...it, latestInvocationId: inner.invocationId }
-            : it,
-        );
-        this.dagState = { ...this.dagState, items: stagedItems } as PipelineState;
+        this.dagState = applyStageInvocation(this.dagState, inner);
         effects.push({
           type: "append-invocation-record",
           slug: this.slug,
@@ -493,4 +520,131 @@ export class PipelineKernel {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Artifact ledger reducers — keep `dagState.artifacts` in sync with the
+// persisted `_STATE.json` so `dagSnapshot()` consumers (notably the
+// input-materialization middleware and context-builder) see invocation
+// records without a disk reload. All three helpers are pure: they take the
+// current state and return a new state with the artifacts map + affected
+// item's `latestInvocationId` pointer updated functionally.
+//
+// These mirror the write behaviour of `adapters/file-state/artifacts.ts`
+// (`appendInvocationRecord`, `stampInvocationStart`, `sealInvocationRecord`).
+// The adapter remains the on-disk writer; these reducers are the in-memory
+// counterpart.
+// ---------------------------------------------------------------------------
+
+function applyRegisterInvocation(
+  state: PipelineState,
+  input: import("../types.js").AppendInvocationInput,
+): PipelineState {
+  const artifacts = { ...(state.artifacts ?? {}) };
+  const existing = artifacts[input.invocationId];
+  if (existing && existing.sealed) {
+    // Sealed record is immutable — register is a no-op.
+    return state;
+  }
+  if (existing) {
+    // Upsert: merge startedAt and any newly-known metadata. Preserve
+    // pre-existing inputs/outputs/parent/producedBy that the caller may
+    // not have re-supplied.
+    artifacts[input.invocationId] = {
+      ...existing,
+      ...(input.trigger ? { trigger: input.trigger } : {}),
+      ...(input.parentInvocationId
+        ? { parentInvocationId: input.parentInvocationId }
+        : {}),
+      ...(input.producedBy ? { producedBy: input.producedBy } : {}),
+      ...(input.startedAt ? { startedAt: input.startedAt } : {}),
+      ...(input.inputs ? { inputs: input.inputs } : {}),
+    };
+  } else {
+    const cycleIndex =
+      input.cycleIndex ??
+      Object.values(artifacts).filter((r) => r.nodeKey === input.nodeKey)
+        .length + 1;
+    artifacts[input.invocationId] = {
+      invocationId: input.invocationId,
+      nodeKey: input.nodeKey,
+      cycleIndex,
+      trigger: input.trigger,
+      ...(input.parentInvocationId
+        ? { parentInvocationId: input.parentInvocationId }
+        : {}),
+      ...(input.producedBy ? { producedBy: input.producedBy } : {}),
+      ...(input.startedAt ? { startedAt: input.startedAt } : {}),
+      inputs: input.inputs ?? [],
+      outputs: [],
+    };
+  }
+  const items = state.items.map((it) =>
+    it.key === input.nodeKey
+      ? { ...it, latestInvocationId: input.invocationId }
+      : it,
+  );
+  return { ...state, artifacts, items } as PipelineState;
+}
+
+function applySealInvocation(
+  state: PipelineState,
+  input: import("../types.js").SealInvocationInput,
+): PipelineState {
+  const artifacts = { ...(state.artifacts ?? {}) };
+  const existing = artifacts[input.invocationId];
+  if (!existing) {
+    // Unknown invocation — nothing to mutate in-memory. The effect executor
+    // will still call the StateStore, which owns its own idempotency.
+    return state;
+  }
+  if (existing.sealed) {
+    // Idempotent — already sealed.
+    return state;
+  }
+  const mergedOutputs = [
+    ...(existing.outputs ?? []),
+    ...(input.outputs ?? []),
+  ];
+  artifacts[input.invocationId] = {
+    ...existing,
+    outcome: input.outcome,
+    finishedAt: input.finishedAt ?? new Date().toISOString(),
+    outputs: mergedOutputs,
+    sealed: true,
+  };
+  return { ...state, artifacts } as PipelineState;
+}
+
+function applyStageInvocation(
+  state: PipelineState,
+  inner: Extract<
+    import("../handlers/types.js").DagCommand,
+    { type: "stage-invocation" }
+  >,
+): PipelineState {
+  const artifacts = { ...(state.artifacts ?? {}) };
+  if (!artifacts[inner.invocationId]) {
+    const cycleIndex =
+      Object.values(artifacts).filter((r) => r.nodeKey === inner.itemKey)
+        .length + 1;
+    artifacts[inner.invocationId] = {
+      invocationId: inner.invocationId,
+      nodeKey: inner.itemKey,
+      cycleIndex,
+      trigger: inner.trigger,
+      ...(inner.parentInvocationId
+        ? { parentInvocationId: inner.parentInvocationId }
+        : {}),
+      ...(inner.producedBy ? { producedBy: inner.producedBy } : {}),
+      inputs: [],
+      outputs: [],
+    };
+  }
+  const items = state.items.map((it) =>
+    it.key === inner.itemKey
+      ? { ...it, latestInvocationId: inner.invocationId }
+      : it,
+  );
+  return { ...state, artifacts, items } as PipelineState;
 }
