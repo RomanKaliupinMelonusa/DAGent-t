@@ -497,17 +497,18 @@ export class PipelineKernel {
 
       case "salvage-draft": {
         const asTransition = this.dagState as unknown as TransitionState;
-        const { state, skippedKeys } = this.rules.salvage(asTransition, inner.failedItemKey);
+        const { state, skippedKeys, demotedKeys } = this.rules.salvage(asTransition, inner.failedItemKey);
         this.dagState = {
           ...this.dagState,
           items: state.items,
           errorLog: state.errorLog,
+          ...(state.naBySalvage !== undefined ? { naBySalvage: state.naBySalvage } : {}),
         } as PipelineState;
         effects.push({
           type: "telemetry-event",
           category: "state.salvage",
           itemKey: inner.failedItemKey,
-          context: { skippedKeys },
+          context: { skippedKeys, demotedKeys },
         });
         return { result: { ok: true }, effects };
       }
@@ -553,6 +554,39 @@ export class PipelineKernel {
           categories: inner.categories,
         });
         return { result: { ok: true }, effects };
+
+      case "note-triage-blocked": {
+        // A4 — append a sentinel errorLog entry so the triage handler can
+        // count repeat $BLOCKED outcomes per failing item across the run.
+        // Pure log append; no item mutation, no scheduler-visible effect.
+        // The literal `"triage-blocked"` MUST stay in sync with
+        // `RESET_OPS.TRIAGE_BLOCKED` in src/types.ts (the handler reads it
+        // via that constant). Avoiding a value-import here to keep the
+        // kernel free of runtime coupling to the shared types module.
+        const newEntry = {
+          timestamp: new Date().toISOString(),
+          itemKey: "triage-blocked",
+          message: `[failing:${inner.failedItemKey}] [domain:${inner.domain}] ${inner.reason}`,
+          ...(inner.errorSignature !== undefined && inner.errorSignature !== null
+            ? { errorSignature: inner.errorSignature }
+            : {}),
+        };
+        this.dagState = {
+          ...this.dagState,
+          errorLog: [...this.dagState.errorLog, newEntry],
+        } as PipelineState;
+        effects.push({
+          type: "telemetry-event",
+          category: "triage.blocked",
+          itemKey: inner.failedItemKey,
+          context: {
+            domain: inner.domain,
+            reason: inner.reason,
+            ...(inner.errorSignature ? { errorSignature: inner.errorSignature } : {}),
+          },
+        });
+        return { result: { ok: true }, effects };
+      }
 
       default: {
         const _exhaustive: never = inner;

@@ -32,7 +32,7 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag } from "../triage/handoff-builder.js";
+import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
@@ -95,6 +95,15 @@ function resolveProfile(ctx: NodeContext): CompiledTriageProfile | undefined {
  * Build DagCommands for graceful degradation (salvage to Draft PR).
  * Replaces the old `executeSalvage()` helper that called state APIs directly.
  */
+/**
+ * Build DagCommands for graceful degradation (salvage to Draft PR).
+ *
+ * A4 — every $BLOCKED outcome also emits a `note-triage-blocked` entry
+ * so the blocked-verdict circuit breaker can count repeats per failing
+ * item across the run. The triage record carries the domain, reason,
+ * and error signature; this helper threads them onto the command so the
+ * kernel reducer can record them on the errorLog without re-deriving.
+ */
 function buildSalvageCommands(
   failingKey: string,
   errorMsg: string,
@@ -102,9 +111,15 @@ function buildSalvageCommands(
 ): DagCommand[] {
   // The triage record itself is serialised to the `triage-handoff` artifact
   // by the outer execute wrapper; no kernel command is needed for persistence.
-  void triageRecord;
   return [
     { type: "salvage-draft", failedItemKey: failingKey, reason: errorMsg },
+    {
+      type: "note-triage-blocked",
+      failedItemKey: failingKey,
+      domain: triageRecord.domain,
+      reason: triageRecord.reason,
+      ...(triageRecord.error_signature ? { errorSignature: triageRecord.error_signature } : {}),
+    },
   ];
 }
 
@@ -373,6 +388,105 @@ const triageHandlerInner: NodeHandler = {
 
     const errorSig = ctx.errorSignature ?? computeErrorSignature(rawError);
 
+    // --- A4 blocked-verdict circuit breaker ---
+    // Count prior $BLOCKED outcomes for this same failing item from
+    // errorLog. On the 2nd, halt the run instead of issuing another
+    // salvage-draft. Reuses `buildConsecutiveDomainAdvisory` so the
+    // halt reason carries the existing `agent-branch.sh revert`
+    // advisory text — no duplication.
+    try {
+      const pipeStateForCb = await ctx.stateReader.getStatus(slug);
+      const blockedFailingPrefix = `[failing:${failingNodeKey}]`;
+      const priorBlockedCount = (pipeStateForCb.errorLog ?? []).filter(
+        (e) => e.itemKey === RESET_OPS.TRIAGE_BLOCKED && e.message?.startsWith(blockedFailingPrefix),
+      ).length;
+      if (priorBlockedCount >= 1) {
+        // Last-blocked domain — derive from the most recent matching
+        // sentinel so the advisory consults the same domain history.
+        let lastDomain = "$BLOCKED";
+        for (let i = (pipeStateForCb.errorLog ?? []).length - 1; i >= 0; i--) {
+          const e = pipeStateForCb.errorLog[i];
+          if (e.itemKey === RESET_OPS.TRIAGE_BLOCKED && e.message?.startsWith(blockedFailingPrefix)) {
+            const m = /\[domain:([^\]]+)\]/.exec(e.message);
+            if (m) lastDomain = m[1];
+            break;
+          }
+        }
+        const advisory = buildConsecutiveDomainAdvisory(
+          pipeStateForCb.errorLog ?? [],
+          lastDomain,
+        );
+        const reason =
+          `blocked-verdict circuit breaker: ${priorBlockedCount + 1} consecutive $BLOCKED ` +
+          `triage outcomes for "${failingNodeKey}" — halting the run instead of cascading ` +
+          `another salvage. ${advisory ?? `Run \`bash tools/autonomous-factory/agent-branch.sh revert\` ` +
+            `to reset the feature branch and rebuild from scratch.`}`;
+        logger.event("triage.evaluate", failingNodeKey, {
+          domain: "$BLOCKED-CIRCUIT-BREAKER",
+          reason,
+          source: "fallback",
+          route_to: "$BLOCKED",
+          guard_result: "blocked_repeat",
+          prior_blocked_count: priorBlockedCount,
+        });
+        const record: TriageRecord = {
+          failing_item: failingNodeKey,
+          error_signature: errorSig,
+          guard_result: "blocked_repeat",
+          guard_detail: `priorBlockedCount=${priorBlockedCount} lastDomain=${lastDomain}`,
+          rag_matches: [],
+          rag_selected: null,
+          llm_invoked: false,
+          domain: "$BLOCKED-CIRCUIT-BREAKER",
+          reason,
+          source: "fallback",
+          route_to: "$BLOCKED",
+          cascade: [],
+          cycle_count: 0,
+          domain_retry_count: 0,
+        };
+        return {
+          outcome: "completed",
+          summary: { intents: [`triage: repeat $BLOCKED for ${failingNodeKey} → halt`] },
+          signals: { halt: true },
+          // No salvage-draft — the run is halting. Note-triage-blocked is
+          // still recorded so retrospective tooling sees the second hit.
+          commands: [
+            {
+              type: "note-triage-blocked",
+              failedItemKey: failingNodeKey,
+              domain: "$BLOCKED-CIRCUIT-BREAKER",
+              reason,
+              errorSignature: errorSig,
+            },
+          ],
+          handlerOutput: {
+            routeToKey: null,
+            domain: "$BLOCKED-CIRCUIT-BREAKER",
+            reason,
+            source: "fallback",
+            triageRecord: record,
+            guardResult: "blocked_repeat",
+            triageHandoff: buildDegradationHandoff({
+              failingNodeKey,
+              rawError,
+              errorSignature: errorSig,
+              domain: "$BLOCKED-CIRCUIT-BREAKER",
+              reason,
+              triageInvocationId: ctx.executionId,
+            }),
+          } satisfies TriageHandlerOutput,
+        };
+      }
+    } catch (err) {
+      // Non-fatal — a missing/corrupt state read just means we cannot
+      // count prior $BLOCKED sentinels, so we fall through to normal
+      // triage. Emit a warning so operators see the breaker degraded.
+      console.warn(
+        `  ⚠ A4 circuit-breaker state read failed for "${slug}": ${err instanceof Error ? err.message : String(err)} — falling through`,
+      );
+    }
+
     // NOTE: Pre-triage guards (timeout, unfixable, dedup, death spiral) have
     // been moved to the kernel's stepTriageGuard dispatch step. If we reach
     // here, all guards have already passed.
@@ -602,7 +716,7 @@ const triageHandlerInner: NodeHandler = {
         ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
-            undefined, baseline, errorLogForRouter,
+            undefined, baseline, errorLogForRouter, failingNodeKey,
           );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---

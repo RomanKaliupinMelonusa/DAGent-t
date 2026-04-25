@@ -26,13 +26,73 @@ IN_PROGRESS="${APP_ROOT}/in-progress"
 bash "$COMMIT_SCRIPT" all "chore(${SLUG}): finalize phase artifacts" 2>/dev/null || true
 bash "$BRANCH_SCRIPT" push 2>/dev/null || echo "  ℹ No pending artifacts to push"
 
-# 1. Get existing PR
+# 1. Get existing PR — self-heal when missing.
+#
+# When salvage marked `create-draft-pr` as N/A, no PR was ever opened.
+# Rather than halting the pipeline at the publish step, create the PR here
+# (draft if salvaged, ready otherwise) and continue with the appendix +
+# ready-promote flow below.
+STATE_FILE="${APP_ROOT}/in-progress/${SLUG}/_state.json"
+SALVAGED_STATUS=""
+if [[ -f "$STATE_FILE" ]] && command -v jq >/dev/null 2>&1; then
+  SALVAGED_STATUS=$(jq -r '(.items // []) | map(select(.key=="create-draft-pr")) | (.[0].status // "")' "$STATE_FILE" 2>/dev/null || echo "")
+fi
+
 PR_NUMBER=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
 if [[ -z "$PR_NUMBER" ]]; then
-  echo "  ✖ No existing Draft PR found"
-  exit 1
+  echo "  ℹ No existing PR for current branch — creating one"
+
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  BASE="${BASE_BRANCH:-main}"
+
+  if [[ "$CURRENT_BRANCH" == "$BASE" ]]; then
+    echo "  ✖ Cannot create PR: currently on base branch '${BASE}'"
+    exit 1
+  fi
+
+  # Ensure the branch is on origin before opening the PR.
+  bash "$BRANCH_SCRIPT" push 2>/dev/null || true
+
+  # Pick a body source: prefer SUMMARY, fall back to SPEC, then a one-liner.
+  BODY_SRC=""
+  for candidate in "${IN_PROGRESS}/${SLUG}_SUMMARY.md" "${IN_PROGRESS}/${SLUG}_SPEC.md"; do
+    if [[ -f "$candidate" ]]; then
+      BODY_SRC="$candidate"
+      break
+    fi
+  done
+  BODY_TMP=$(mktemp)
+  if [[ -n "$BODY_SRC" ]]; then
+    cat "$BODY_SRC" > "$BODY_TMP"
+  else
+    echo "Auto-generated PR for feature ${SLUG}." > "$BODY_TMP"
+  fi
+
+  PR_TITLE="chore(${SLUG}): ${SLUG}"
+  CREATE_ARGS=(pr create --base "$BASE" --head "$CURRENT_BRANCH" --title "$PR_TITLE" --body-file "$BODY_TMP")
+  if [[ "$SALVAGED_STATUS" == "na" ]]; then
+    CREATE_ARGS+=(--draft)
+    echo "  📝 Salvage detected (create-draft-pr=na) — opening as Draft"
+  else
+    echo "  📝 Opening as Ready for Review"
+  fi
+
+  if ! gh "${CREATE_ARGS[@]}"; then
+    rm -f "$BODY_TMP"
+    echo "  ✖ Failed to create PR"
+    exit 1
+  fi
+  rm -f "$BODY_TMP"
+
+  PR_NUMBER=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
+  if [[ -z "$PR_NUMBER" ]]; then
+    echo "  ✖ PR was created but could not be re-fetched"
+    exit 1
+  fi
+  echo "  ✅ Created PR #${PR_NUMBER}"
+else
+  echo "  📋 Found existing PR #${PR_NUMBER}"
 fi
-echo "  📋 Found existing PR #${PR_NUMBER}"
 
 # 2. Fetch existing body
 EXISTING_BODY=$(gh pr view "$PR_NUMBER" --json body -q '.body')

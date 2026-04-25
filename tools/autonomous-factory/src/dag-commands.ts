@@ -19,7 +19,8 @@ export type DagCommand =
   | ResetNodesCommand
   | SalvageDraftCommand
   | StageInvocationCommand
-  | ReindexCommand;
+  | ReindexCommand
+  | NoteTriageBlockedCommand;
 
 /** Reset a node + all transitive downstream dependents to pending. */
 export interface ResetNodesCommand {
@@ -79,4 +80,23 @@ export interface ReindexCommand {
   /** Only reindex if the target node's category is in this list.
    *  If omitted, always reindex. */
   readonly categories?: string[];
+}
+
+/** A4 — record a $BLOCKED triage outcome on the errorLog so the
+ *  blocked-verdict circuit breaker can count repeat blocks per failing
+ *  item across the run. Reuses the existing `ErrorLogEntry` shape — the
+ *  kernel reducer just appends one entry, no item mutation. The triage
+ *  handler emits this alongside `salvage-draft` on every $BLOCKED
+ *  outcome so a second block for the same failing item flips the run to
+ *  halt instead of cascading another salvage. */
+export interface NoteTriageBlockedCommand {
+  readonly type: "note-triage-blocked";
+  /** The failing node key whose triage resolved to $BLOCKED. */
+  readonly failedItemKey: string;
+  /** Classified fault domain. */
+  readonly domain: string;
+  /** Human-readable reason. */
+  readonly reason: string;
+  /** Optional structurally-stable signature of the underlying failure. */
+  readonly errorSignature?: string | null;
 }

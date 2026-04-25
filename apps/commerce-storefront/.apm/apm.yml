@@ -1,7 +1,14 @@
 name: commerce-storefront
 version: 1.0.0
 description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless React + SCAPI"
-tokenBudget: 13000
+# Bumped 13000 → 15000 (Apr 2026) to accommodate e2e-guidelines.md §19–§21
+# (overlay dismissal, strict-mode locator discipline, redev-cycle handoff
+# rules) plus restored ~10% headroom. The `storefront` shorthand pulls all
+# fragments under instructions/storefront/, so additions land on
+# storefront-dev (~92%) and storefront-debug (~96% pre-bump → ~85% post)
+# as well as e2e-author. The shared-fragment fan-out is the dominant
+# budget pressure here, not e2e-author itself.
+tokenBudget: 15000
 
 agents:
   spec-compiler:

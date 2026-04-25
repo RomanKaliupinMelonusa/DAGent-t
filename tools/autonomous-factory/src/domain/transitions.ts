@@ -38,6 +38,10 @@ export interface TransitionState {
   nodeTypes: Record<string, string>;
   nodeCategories: Record<string, string>;
   naByType: string[];
+  /** Item keys demoted to N/A by `salvageForDraft` (A5) — populated when a
+   *  deploy-category salvage survivor's entire dependency chain is N/A
+   *  after a salvage pass. Distinct from `naByType` (workflow-shape). */
+  naBySalvage?: string[];
   salvageSurvivors: string[];
   dormantByActivation?: string[];
   [key: string]: unknown; // allow pass-through of other fields
@@ -293,11 +297,21 @@ export function resetNodes(
 export interface SalvageResult {
   state: TransitionState;
   skippedKeys: string[];
+  /** Keys demoted from "force-pending salvage survivor" to N/A by the
+   *  deploy-orphan invariant sweep. Subset of `skippedKeys`. */
+  demotedKeys: string[];
 }
 
 /**
  * Graceful degradation — skip downstream nodes and jump to finalization
  * for a Draft PR. Returns the list of keys that were marked N/A.
+ *
+ * A5 invariant — deploy-category survivors whose entire dependency chain
+ * is N/A after this salvage pass are themselves demoted to N/A. This
+ * prevents the `publish-pr`-without-`create-draft-pr` shape, where a
+ * promotion-only deploy node is left "force-pending" with no upstream
+ * producer to promote. Scaffold/finalize survivors are never demoted —
+ * by contract they are loss-tolerant and self-contained.
  */
 export function salvageForDraft(
   state: TransitionState,
@@ -305,7 +319,7 @@ export function salvageForDraft(
 ): SalvageResult {
   // Idempotency guard
   if (state.errorLog.some((e) => e.itemKey === "salvage-draft")) {
-    return { state, skippedKeys: [] };
+    return { state, skippedKeys: [], demotedKeys: [] };
   }
 
   const skipKeys = new Set(getDownstream(state.dependencies, [failedItemKey]));
@@ -318,7 +332,7 @@ export function salvageForDraft(
   );
 
   const skippedKeys: string[] = [];
-  const newItems = state.items.map((i) => {
+  let newItems = state.items.map((i) => {
     if (forcePendingKeys.has(i.key)) {
       return { ...i, status: "pending" as const, error: null };
     }
@@ -332,15 +346,54 @@ export function salvageForDraft(
     return i;
   });
 
+  // A5 — deploy-orphan demotion sweep. Iterate to fixed point: a deploy
+  // survivor whose deps are all N/A becomes N/A, which may make a further
+  // deploy survivor an orphan in turn. Bounded by items.length.
+  const demotedKeys: string[] = [];
+  const naSet = new Set(newItems.filter((i) => i.status === "na").map((i) => i.key));
+  for (let pass = 0; pass < newItems.length; pass++) {
+    let changed = false;
+    newItems = newItems.map((i) => {
+      if (!forcePendingKeys.has(i.key)) return i;
+      if (state.nodeCategories[i.key] !== "deploy") return i;
+      if (i.status !== "pending") return i;
+      const deps = state.dependencies[i.key] ?? [];
+      if (deps.length === 0) return i;
+      const allDepsNa = deps.every((d) => naSet.has(d));
+      if (!allDepsNa) return i;
+      changed = true;
+      demotedKeys.push(i.key);
+      naSet.add(i.key);
+      return { ...i, status: "na" as const, salvaged: true, error: null };
+    });
+    if (!changed) break;
+  }
+
+  // Append demoted keys to skippedKeys for caller-visible accounting.
+  for (const k of demotedKeys) skippedKeys.push(k);
+
+  const demotionSuffix = demotedKeys.length > 0
+    ? ` (deploy-orphans demoted: ${demotedKeys.join(", ")})`
+    : "";
   const newEntry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     itemKey: "salvage-draft",
-    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.`,
+    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.${demotionSuffix}`,
   };
 
+  const nextNaBySalvage = demotedKeys.length > 0
+    ? [...(state.naBySalvage ?? []), ...demotedKeys]
+    : state.naBySalvage;
+
   return {
-    state: { ...state, items: newItems, errorLog: [...state.errorLog, newEntry] },
+    state: {
+      ...state,
+      items: newItems,
+      errorLog: [...state.errorLog, newEntry],
+      ...(nextNaBySalvage !== undefined ? { naBySalvage: nextNaBySalvage } : {}),
+    },
     skippedKeys,
+    demotedKeys,
   };
 }
 

@@ -21,6 +21,18 @@ import type { PriorAttempt } from "./historian.js";
 import { parseDomainTag } from "./handoff-builder.js";
 import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 
+// ---------------------------------------------------------------------------
+// Internal classification outcome — used by `tryClassifyOnce` to distinguish
+// transient/recoverable failure modes (no-json, hallucinated, transport error)
+// from a successful parse so the resilient `askLlmRouter` can decide whether
+// to retry, inherit from a prior cycle's verdict, or hard-fall-through to
+// `blocked`.
+// ---------------------------------------------------------------------------
+
+type ClassifyOutcome =
+  | { ok: true; fault_domain: string; reason: string }
+  | { ok: false; kind: "no-json" | "hallucinated" | "error"; detail: string };
+
 export interface LlmTriageResult {
   fault_domain: string;
   reason: string;
@@ -140,12 +152,95 @@ function appendNovelTriageLog(
 }
 
 /**
+ * One round-trip to the LLM port + JSON extraction + domain validation.
+ * Returns a tagged outcome the caller uses to decide whether to retry,
+ * inherit, or fall through. Throws are caught here and reported as
+ * `{ ok: false, kind: "error" }`.
+ */
+async function tryClassifyOnce(
+  llm: TriageLlm,
+  systemMessage: string,
+  prompt: string,
+  domains: string[],
+  timeoutMs: number,
+): Promise<ClassifyOutcome> {
+  try {
+    const text = await llm.classify({ systemMessage, prompt, timeoutMs });
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) {
+      return { ok: false, kind: "no-json", detail: "no JSON object found in response" };
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    } catch (err) {
+      return {
+        ok: false,
+        kind: "no-json",
+        detail: `JSON.parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+    const faultDomain = String(parsed.fault_domain ?? "");
+    const reason = String(parsed.reason ?? "");
+    if (!domains.includes(faultDomain)) {
+      return {
+        ok: false,
+        kind: "hallucinated",
+        detail: `domain "${faultDomain}" not in allowed list`,
+      };
+    }
+    return { ok: true, fault_domain: faultDomain, reason };
+  } catch (err) {
+    return {
+      ok: false,
+      kind: "error",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Walk `priorAttempts` newest-first and return the most recent attempt
+ * whose `failingItemKey` matches the current node and whose
+ * `[domain:X]` tag resolves to a domain still in the allowed list.
+ * Returns `null` when nothing inheritable exists — caller should fall
+ * through to the hard `blocked` fallback.
+ */
+function inheritPriorVerdict(
+  priorAttempts: readonly PriorAttempt[],
+  failingNodeKey: string | undefined,
+  domains: string[],
+): { fault_domain: string; cycle: number } | null {
+  if (!failingNodeKey || priorAttempts.length === 0) return null;
+  for (let i = priorAttempts.length - 1; i >= 0; i--) {
+    const a = priorAttempts[i];
+    if (a.failingItemKey !== failingNodeKey) continue;
+    const dom = parseDomainTag(a.resetReason);
+    if (!dom || !domains.includes(dom)) continue;
+    return { fault_domain: dom, cycle: a.cycle };
+  }
+  return null;
+}
+
+/**
  * Ask the LLM to classify a novel error trace into a fault domain.
  *
- * `baseline` and `priorAttempts` are optional context that, when supplied,
- * are rendered into dedicated prompt sections with explicit anti-mis-
- * classification rules. Both default to "absent" so callers without the
- * data (and existing tests) need no changes.
+ * Resilience contract (post-A3):
+ *   1. First call uses the standard prompt + 60s budget.
+ *   2. On parse failure / hallucinated domain / transport error, retry
+ *      ONCE with a stricter system+user prompt and a halved budget so
+ *      the retry cannot double-stall a node's wall-clock budget.
+ *   3. If the retry also fails AND `failingNodeKey` is supplied, look
+ *      up the most recent same-item entry in `priorAttempts` whose
+ *      `[domain:X]` tag still resolves to an allowed domain; inherit
+ *      that classification with an annotated reason.
+ *   4. Only when neither retry nor inheritance works does the router
+ *      hard-fall-through to `{ fault_domain: "blocked" }`.
+ *
+ * `baseline` and `priorAttempts` default to "absent" so callers without
+ * the data (and existing tests) need no changes. `failingNodeKey` is
+ * appended last so prior call sites compile unchanged; absent
+ * `failingNodeKey` skips the inheritance step.
  */
 export async function askLlmRouter(
   llm: TriageLlm,
@@ -157,51 +252,78 @@ export async function askLlmRouter(
   faultRouting: Record<string, { description?: string }>,
   baseline: BaselineProfile | null = null,
   priorAttempts: readonly PriorAttempt[] = [],
+  failingNodeKey?: string,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
     reason: "LLM classification failed — halting for human review",
   };
 
-  try {
-    const prompt = buildTriagePrompt(
-      trace, domains, topMatches, faultRouting, baseline, priorAttempts,
-    );
-    const text = await llm.classify({
-      systemMessage: "You are a JSON-only fault-domain classifier. Output exactly one JSON object, no markdown.",
-      prompt,
-      timeoutMs: 60_000,
-    });
+  const prompt = buildTriagePrompt(
+    trace, domains, topMatches, faultRouting, baseline, priorAttempts,
+  );
+  const baseSystem =
+    "You are a JSON-only fault-domain classifier. " +
+    "Output exactly one JSON object, no markdown.";
 
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) {
-      console.warn("  ⚠ LLM triage router: no JSON found in response");
-      return FALLBACK;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    const faultDomain = String(parsed.fault_domain ?? "");
-    const reason = String(parsed.reason ?? "");
-
-    if (!domains.includes(faultDomain)) {
-      console.warn(`  ⚠ LLM triage router: hallucinated domain "${faultDomain}" — not in allowed list`);
-      return FALLBACK;
-    }
-
-    const result: LlmTriageResult = { fault_domain: faultDomain, reason };
-
+  // Step 1 — primary attempt.
+  const first = await tryClassifyOnce(llm, baseSystem, prompt, domains, 60_000);
+  if (first.ok) {
+    const result: LlmTriageResult = { fault_domain: first.fault_domain, reason: first.reason };
     appendNovelTriageLog(slug, appRoot, {
       timestamp: new Date().toISOString(),
-      fault_domain: faultDomain,
-      reason,
+      fault_domain: result.fault_domain,
+      reason: result.reason,
       trace_excerpt: trace.slice(0, 2000),
     });
-
     return result;
-  } catch (err) {
-    console.warn(`  ⚠ LLM triage router error: ${err instanceof Error ? err.message : String(err)}`);
-    return FALLBACK;
   }
+  console.warn(`  ⚠ LLM triage router: ${first.kind} — ${first.detail}; retrying with stricter prompt`);
+
+  // Step 2 — stricter retry. The system prompt cites the prior failure
+  // mode so the model can self-correct; the user prompt re-asserts the
+  // allowed-domain list inline. Halved timeout caps total LLM wall time
+  // at the original 60s budget.
+  const retrySystem =
+    `${baseSystem} Your previous response was rejected (${first.kind}: ${first.detail}). ` +
+    `Output ONLY a single JSON object with fields fault_domain and reason. ` +
+    `No prose, no markdown, no code fences.`;
+  const retryPrompt =
+    `${prompt}\n\nAllowed domains: ${JSON.stringify(domains)}. Pick exactly one.`;
+  const second = await tryClassifyOnce(llm, retrySystem, retryPrompt, domains, 30_000);
+  if (second.ok) {
+    const result: LlmTriageResult = { fault_domain: second.fault_domain, reason: second.reason };
+    appendNovelTriageLog(slug, appRoot, {
+      timestamp: new Date().toISOString(),
+      fault_domain: result.fault_domain,
+      reason: result.reason,
+      trace_excerpt: trace.slice(0, 2000),
+    });
+    return result;
+  }
+  console.warn(`  ⚠ LLM triage router: retry also failed (${second.kind}: ${second.detail})`);
+
+  // Step 3 — inherit the prior cycle's verdict if one exists for this
+  // failing node and points to a still-allowed domain.
+  const inherited = inheritPriorVerdict(priorAttempts, failingNodeKey, domains);
+  if (inherited) {
+    const result: LlmTriageResult = {
+      fault_domain: inherited.fault_domain,
+      reason:
+        `inherited from cycle ${inherited.cycle} — LLM classification unavailable ` +
+        `(${first.kind} → ${second.kind})`,
+    };
+    appendNovelTriageLog(slug, appRoot, {
+      timestamp: new Date().toISOString(),
+      fault_domain: result.fault_domain,
+      reason: result.reason,
+      trace_excerpt: trace.slice(0, 2000),
+    });
+    return result;
+  }
+
+  // Step 4 — neither retry nor inheritance worked.
+  return FALLBACK;
 }
 
-export const __test = { buildTriagePrompt };
+export const __test = { buildTriagePrompt, tryClassifyOnce, inheritPriorVerdict };

@@ -22,6 +22,11 @@ export const RESET_OPS = {
   RESET_FOR_REROUTE: "reset-for-reroute",
   /** Legacy error-log marker — kept for backward compat with old state files. */
   RESET_PHASES: "reset-phases",
+  /** A4 — sentinel itemKey used by the blocked-verdict circuit breaker.
+   *  Each $BLOCKED triage outcome appends one entry tagged with this
+   *  itemKey + a `[failing:<nodeKey>] [domain:<domain>] reason` message.
+   *  Counted per-failing-node by the triage handler to halt on repeat. */
+  TRIAGE_BLOCKED: "triage-blocked",
 } as const;
 
 /** All reset-operation keys that indicate a redevelopment cycle */
@@ -247,6 +252,11 @@ export interface PipelineState {
   jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
+  /** Item keys demoted to N/A by the salvage scheduler (A5) — distinct from
+   *  `naByType` (workflow-shape elision) so retrospective tooling can tell
+   *  the two apart. Populated by `salvageForDraft` when a deploy-category
+   *  salvage survivor's full dependency chain is N/A. */
+  naBySalvage?: string[];
   /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
   salvageSurvivors: string[];
   /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
@@ -336,7 +346,7 @@ export interface TriageRecord {
   error_signature: string;
 
   /** Pre-guard result (set by triage handler, not evaluateTriage). */
-  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted";
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted" | "blocked_repeat";
   guard_detail?: string;
 
   /** RAG layer matches (up to 3, ranked by specificity). */

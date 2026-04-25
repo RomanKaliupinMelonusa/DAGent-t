@@ -45,6 +45,10 @@ export type EventKind =
   // Git
   | "git.commit"
   | "git.push"
+  // Terminal flush — best-effort push of stranded local commits in the
+  // orchestrator's outer `finally` (see lifecycle/flush-branch.ts).
+  // Fires for every termination path: completed / halted / blocked / crash / SIGINT.
+  | "pipeline.flush.push"
   // Breaker
   | "breaker.fire"
   // Retry backoff (loop-level exponential sleep between failed batches)

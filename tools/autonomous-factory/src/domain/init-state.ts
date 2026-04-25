@@ -61,6 +61,7 @@ export interface InitialState {
   nodeCategories: Record<string, string>;
   jsonGated: Record<string, boolean>;
   naByType: string[];
+  naBySalvage: string[];
   dormantByActivation: string[];
   salvageSurvivors: string[];
 }
@@ -130,6 +131,7 @@ export function buildInitialState(inputs: InitInputs): InitialState {
     nodeCategories,
     jsonGated: {},
     naByType: [],
+    naBySalvage: [],
     dormantByActivation,
     salvageSurvivors,
   };

@@ -54,6 +54,7 @@ export async function evaluateTriage(
   repoRoot?: string,
   baseline?: BaselineProfile | null,
   errorLog?: readonly TriageErrorLogEntry[],
+  failingNodeKey?: string,
 ): Promise<TriageResult> {
   // Resolve classifier strategy.
   // - Built-in strategy keywords are the canonical enum + friendly aliases.
@@ -135,7 +136,7 @@ export async function evaluateTriage(
     const t0 = Date.now();
     const result = await askLlmRouter(
       triageLlm, errorTrace, domains, topMatches, slug, appRoot,
-      routingDescriptions, baseline ?? null, priorAttempts,
+      routingDescriptions, baseline ?? null, priorAttempts, failingNodeKey,
     );
     const llmResponseMs = Date.now() - t0;
     return {

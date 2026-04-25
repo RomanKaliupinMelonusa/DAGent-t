@@ -298,9 +298,89 @@ describe("salvageForDraft", () => {
 
   it("forces salvage survivors to pending", () => {
     const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("C", "na"), makeItem("D", "na")];
-    const state = makeState(items, { salvageSurvivors: ["D"] });
+    // D is recategorized as finalize here — finalize survivors are
+    // unconditionally force-pending. Deploy-category survivors with
+    // all-N/A deps are demoted by A5 (covered separately below).
+    const state = makeState(items, {
+      salvageSurvivors: ["D"],
+      nodeCategories: { A: "dev", B: "dev", C: "test", D: "finalize" },
+    });
     const result = salvageForDraft(state, "B");
     assert.equal(result.state.items.find((i) => i.key === "D")?.status, "pending");
+  });
+
+  it("(A5) demotes a deploy-category survivor when all its deps are N/A", () => {
+    // Failing seed B → downstream C, D na (C depends on B; D depends
+    // on C). D is deploy-category + salvage survivor; with B and C
+    // both na, D has no producer to promote so it must be demoted to
+    // na rather than left pending.
+    const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("C", "pending"), makeItem("D", "pending")];
+    const state = makeState(items, {
+      salvageSurvivors: ["D"],
+      dependencies: { A: [], B: ["A"], C: ["B"], D: ["C"] },
+    });
+    const result = salvageForDraft(state, "B");
+    const d = result.state.items.find((i) => i.key === "D")!;
+    assert.equal(d.status, "na", "deploy survivor with all-N/A deps must be demoted");
+    assert.equal(d.salvaged, true, "demoted node must carry sticky salvaged flag");
+    assert.deepEqual(result.demotedKeys, ["D"]);
+    assert.deepEqual(result.state.naBySalvage, ["D"]);
+    assert.match(
+      result.state.errorLog.find((e) => e.itemKey === "salvage-draft")!.message,
+      /deploy-orphans demoted: D/,
+    );
+  });
+
+  it("(A5) does NOT demote a deploy-category survivor when one dep is still pending", () => {
+    // C is independent of B (deps: only on A which is done). D depends
+    // on [B, C]: B becomes na, but C remains done — D still has a
+    // producer chain so it stays force-pending.
+    const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("C", "done"), makeItem("D", "pending")];
+    const state = makeState(items, {
+      salvageSurvivors: ["D"],
+      dependencies: { A: [], B: ["A"], C: ["A"], D: ["B", "C"] },
+    });
+    const result = salvageForDraft(state, "B");
+    const d = result.state.items.find((i) => i.key === "D")!;
+    assert.equal(d.status, "pending", "deploy survivor with a non-N/A dep must stay pending");
+    assert.deepEqual(result.demotedKeys, []);
+  });
+
+  it("(A5) cascades demotion through a chain of deploy survivors", () => {
+    // E (deploy survivor) depends on D (deploy survivor) depends on B.
+    // Failing B → D demoted → E demoted (its only dep is now N/A).
+    const items = [
+      makeItem("A", "done"),
+      makeItem("B", "pending"),
+      makeItem("D", "pending"),
+      makeItem("E", "pending"),
+    ];
+    const state = makeState(items, {
+      items: items as never,
+      salvageSurvivors: ["D", "E"],
+      dependencies: { A: [], B: ["A"], D: ["B"], E: ["D"] },
+      nodeCategories: { A: "dev", B: "dev", D: "deploy", E: "deploy" },
+      nodeTypes: { A: "agent", B: "agent", D: "script", E: "script" },
+    });
+    const result = salvageForDraft(state, "B");
+    assert.equal(result.state.items.find((i) => i.key === "D")?.status, "na");
+    assert.equal(result.state.items.find((i) => i.key === "E")?.status, "na");
+    assert.deepEqual(result.demotedKeys.sort(), ["D", "E"]);
+  });
+
+  it("(A5) leaves finalize-category survivors pending even with all-N/A deps", () => {
+    // X is a finalize survivor that depends on B; salvage demotes B.
+    // Finalize survivors are by contract loss-tolerant — no demotion.
+    const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("X", "pending")];
+    const state = makeState(items, {
+      salvageSurvivors: ["X"],
+      dependencies: { A: [], B: ["A"], X: ["B"] },
+      nodeCategories: { A: "dev", B: "dev", X: "finalize" },
+      nodeTypes: { A: "agent", B: "agent", X: "agent" },
+    });
+    const result = salvageForDraft(state, "B");
+    assert.equal(result.state.items.find((i) => i.key === "X")?.status, "pending");
+    assert.deepEqual(result.demotedKeys, []);
   });
 
   it("marks salvaged items with sticky salvaged flag", () => {
