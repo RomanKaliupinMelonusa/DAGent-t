@@ -12,7 +12,7 @@ args:
   - "chromium"
   - "--save-session"
   - "--output-dir"
-  - "{appRoot}/in-progress/screenshots"
+  - "{invocationDir}/outputs/screenshots"
   - "--caps"
   - "vision"
 cwd: "{appRoot}"

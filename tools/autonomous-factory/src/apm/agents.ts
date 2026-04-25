@@ -57,6 +57,13 @@ export interface AgentContext {
    *  `{{{pwa_kit_drift_report}}}`; agents that do not mention the variable
    *  simply ignore it. */
   pwaKitDriftReport?: string;
+  /** Absolute path to this dispatch's per-invocation directory
+   *  (`<appRoot>/in-progress/<slug>/<itemKey>/<invocationId>/`). Used by
+   *  `resolveMcpPlaceholders` to slug- and invocation-scope MCP server
+   *  arguments (e.g. Playwright `--output-dir`). Optional so unit tests
+   *  that build a minimal AgentContext continue to work; callers that
+   *  declare MCP configs referencing `{invocationDir}` MUST populate it. */
+  invocationDir?: string;
 }
 
 export interface McpLocalServerConfig {
@@ -226,33 +233,59 @@ function validateRuntimePath(label: string, p: string): void {
 }
 
 /**
- * Resolves APM MCP configs by replacing {repoRoot} and {appRoot} placeholders
- * with actual runtime paths. Returns undefined if the agent has no MCP servers.
+ * Resolves APM MCP configs by replacing `{repoRoot}`, `{appRoot}`, `{slug}`,
+ * and `{invocationDir}` placeholders with actual runtime paths. The slug and
+ * invocation directory let MCP servers (e.g. Playwright) write under the
+ * per-invocation tree (`<inv>/outputs/...`) so their artefacts archive with
+ * the feature instead of leaking into a shared `in-progress/screenshots/`.
+ *
+ * Returns undefined if the agent has no MCP servers.
+ *
+ * NOTE: per-MCP env-var injection (e.g. `INVOCATION_DIR`, `OUTPUTS_DIR`) is
+ * intentionally deferred — the SDK's `MCPLocalServerConfig` supports `env`
+ * but no current MCP consumer needs it. Argument-level templating is
+ * sufficient for screenshots.
  */
 function resolveMcpPlaceholders(
   mcp: Record<string, ApmMcpConfig>,
   repoRoot: string,
   appRoot: string,
+  slug: string,
+  invocationDir: string | undefined,
 ): Record<string, McpServerConfig> | undefined {
   const entries = Object.entries(mcp);
   if (entries.length === 0) return undefined;
   validateRuntimePath("repoRoot", repoRoot);
   validateRuntimePath("appRoot", appRoot);
+  validateRuntimePath("slug", slug);
+  if (invocationDir !== undefined) validateRuntimePath("invocationDir", invocationDir);
   const resolved: Record<string, McpServerConfig> = {};
   for (const [name, config] of entries) {
     if (config.type === "remote") {
       resolved[name] = { type: "remote", url: config.url, tools: config.tools };
-    } else {
-      const resolve = (s: string) =>
-        s.replace(/\{repoRoot\}/g, repoRoot).replace(/\{appRoot\}/g, appRoot);
-      resolved[name] = {
-        type: config.type,
-        command: resolve(config.command),
-        args: config.args.map(resolve),
-        tools: config.tools,
-        ...(config.cwd ? { cwd: resolve(config.cwd) } : {}),
-      };
+      continue;
     }
+    const resolve = (s: string) => {
+      const out = s
+        .replace(/\{repoRoot\}/g, repoRoot)
+        .replace(/\{appRoot\}/g, appRoot)
+        .replace(/\{slug\}/g, slug)
+        .replace(/\{invocationDir\}/g, invocationDir ?? "");
+      if (invocationDir === undefined && /\{invocationDir\}/.test(s)) {
+        throw new Error(
+          `MCP server "${name}" references {invocationDir} but no invocationDir was provided ` +
+          `in the agent context. Ensure the dispatcher populates AgentContext.invocationDir.`,
+        );
+      }
+      return out;
+    };
+    resolved[name] = {
+      type: config.type,
+      command: resolve(config.command),
+      args: config.args.map(resolve),
+      tools: config.tools,
+      ...(config.cwd ? { cwd: resolve(config.cwd) } : {}),
+    };
   }
   return resolved;
 }
@@ -393,8 +426,16 @@ export function getAgentConfig(
   const data = buildTemplateData(context, apmContext);
   let systemMessage = template(data);
 
-  // Resolve MCP server placeholders
-  const mcpServers = resolveMcpPlaceholders(agentEntry.mcp, context.repoRoot, context.appRoot);
+  // Resolve MCP server placeholders (slug + invocationDir let MCP-side
+  // artefacts like Playwright screenshots land under the per-invocation
+  // tree instead of a shared scratch dir).
+  const mcpServers = resolveMcpPlaceholders(
+    agentEntry.mcp,
+    context.repoRoot,
+    context.appRoot,
+    context.featureSlug,
+    context.invocationDir,
+  );
 
   // Inject tool budget into system message — resolved from apm.yml
   // Resolution order: per-agent toolLimits → config.defaultToolLimits

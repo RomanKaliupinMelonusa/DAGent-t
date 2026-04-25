@@ -157,6 +157,7 @@ apps/<app>/in-progress/<slug>/
       <kind>.<ext>                 # one file per resolved input (copied, not symlinked)
     outputs/                       # one file per declared produces_artifacts
       <kind>.<ext>                 # e.g. summary.md, deployment-url.json, ci-result.json, triage-handoff.json
+      screenshots/                 # MCP-side scratch evidence (e.g. Playwright `--output-dir`); slug-scoped via `{invocationDir}` placeholder, archived with the feature
     logs/
       events.jsonl · tool-calls.jsonl · messages.jsonl · stdout.log · stderr.log
 ```

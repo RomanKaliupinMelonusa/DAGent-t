@@ -1,0 +1,11 @@
+# Pipeline working directory — every file under in-progress/ is transient
+# telemetry/state. archiveFeatureFiles() moves the keepers to
+# archive/features/<slug>/ at publish-pr time. Only README.md is tracked.
+in-progress/*
+!in-progress/README.md
+
+# Playwright test runner output (per-test screenshots, traces, videos).
+# MCP screenshots are slug-scoped under in-progress/<slug>/<node>/<inv>/
+# and ignored by the rule above.
+test-results/
+playwright-report/

@@ -45,6 +45,16 @@ for app_dir in "$REPO_ROOT"/apps/*/; do
   echo "── ${app} ──"
   for entry in "${entries[@]}"; do
     name="$(basename "$entry")"
+    # Pre-fix orphan: a top-level `screenshots/` dir is leftover scratch
+    # from before MCP screenshots were slug-scoped (now written under
+    # `<slug>/<nodeKey>/<inv>/outputs/screenshots/`). Always purge — it
+    # has no slug attribution, so neither archive nor delete-by-slug
+    # makes sense.
+    if [ "$name" = "screenshots" ]; then
+      echo "  delete $name (orphaned pre-slug-scope screenshots dir)"
+      rm -rf -- "$entry"
+      continue
+    fi
     case "$MODE" in
       force)
         echo "  delete $name"

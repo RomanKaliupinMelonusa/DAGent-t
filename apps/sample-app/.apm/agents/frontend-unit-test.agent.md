@@ -208,7 +208,7 @@ Read the feature spec (`{{specPath}}`) and check the git diff (`git diff {{baseB
 2. Log in via demo mode (Username: `demo`, Password: `YOUR_DEMO_PASSWORD`).
 3. Navigate to the relevant pages based on your scope.
 4. Test interactive elements to ensure full-stack integration (Frontend -> APIM -> Backend -> Infra).
-5. **Verify Playwright Screenshots Exist:** Playwright is configured to auto-capture screenshots for every test (`screenshot: "on"`) into `{{appRoot}}/in-progress/screenshots/`. After the Phase 4 test run, verify screenshots were captured: `ls {{appRoot}}/in-progress/screenshots/**/*.png 2>/dev/null | head -10`. These are automatically linked in the PR by the `@pr-creator` agent as visual proof of functionality. You do NOT need to manually take screenshots via MCP browser tools — Playwright handles this at zero token cost.
+5. **Verify Playwright Screenshots Exist:** Playwright is configured to auto-capture screenshots for every test (`screenshot: "on"`) into `{{appRoot}}/test-results/` (Playwright's default output dir). After the Phase 4 test run, verify screenshots were captured: `ls {{appRoot}}/test-results/**/*.png 2>/dev/null | head -10`. These are automatically linked in the PR by the `@pr-creator` agent as visual proof of functionality. You do NOT need to manually take screenshots via MCP browser tools — Playwright handles this at zero token cost.
 6. Watch for `data-testid="error-banner"` or empty data states. If found, FAIL the pipeline.
 
 #### Output Manual Results to PR:
@@ -222,7 +222,7 @@ cat << 'EOF' >> "$PLAYWRIGHT_LOG"
 - **Pages Visited:** [List the pages you navigated to]
 - **Actions Performed:** [Describe the forms submitted, buttons clicked, or data verified]
 - **Observations:** [Describe the visual results, confirming infra permissions are intact and no errors appeared]
-- **Screenshots Captured:** [List Playwright auto-captured screenshot paths from in-progress/screenshots/, e.g. profile.spec.ts-loads-profile/test-finished-1.png]
+- **Screenshots Captured:** [List Playwright auto-captured screenshot paths from test-results/, e.g. profile.spec.ts-loads-profile/test-finished-1.png]
 - **Verdict:** PASS
 EOF
 ```
@@ -320,7 +320,7 @@ Do NOT recommend or execute CI/CD provider-specific commands (e.g., `gh workflow
 
 **`diagnostic_trace` must include:**
 - Exact error details (status codes, response bodies, element selectors that failed)
-- **Visual triage from failure screenshots:** If a Playwright test failed, locate the failure screenshot in `{{appRoot}}/in-progress/screenshots/`. Describe exactly what is visible on the screen (e.g., "The profile form shows a 404 error message where the display name field should be", "The save button is overlapping the input field"). Include this visual description in your `diagnostic_trace` — it enables the `@frontend-dev` agent to fix CSS, layout, and rendering issues precisely.
+- **Visual triage from failure screenshots:** If a Playwright test failed, locate the failure screenshot in `{{appRoot}}/test-results/` (Playwright test runner output). Describe exactly what is visible on the screen (e.g., "The profile form shows a 404 error message where the display name field should be", "The save button is overlapping the input field"). Include this visual description in your `diagnostic_trace` — it enables the `@frontend-dev` agent to fix CSS, layout, and rendering issues precisely.
 - App Insights telemetry output (if you queried it)
 - Network dump (URL, method, status, response body) for any API failures
 

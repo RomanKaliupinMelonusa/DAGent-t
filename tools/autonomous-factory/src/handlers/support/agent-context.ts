@@ -138,6 +138,13 @@ export async function buildAgentContext(ctx: NodeContext): Promise<{
     ? featurePath(appRoot, slug, "acceptance")
     : undefined;
 
+  // Compute the per-invocation directory path so MCP server configs that
+  // template `{invocationDir}` (e.g. Playwright `--output-dir`) resolve
+  // to `<inv>/outputs/...` instead of a shared scratch dir. `pathsFor`
+  // is sync and pure (no fs touch); the directory itself is created by
+  // the dispatcher's invocation-ledger hook before this handler runs.
+  const invocationDir = ctx.invocation.pathsFor(slug, itemKey, ctx.executionId).invocationDir;
+
   const agentContext: AgentContext = {
     featureSlug: slug,
     specPath: featurePath(appRoot, slug, "spec"),
@@ -148,6 +155,7 @@ export async function buildAgentContext(ctx: NodeContext): Promise<{
     appRoot,
     itemKey,
     baseBranch,
+    invocationDir,
     ...(ctx.forceRunChanges && { forceRunChanges: true }),
     environment: apmContext.config?.environment as Record<string, string> | undefined,
     testCommands: apmContext.config?.testCommands as Record<string, string | null> | undefined,
