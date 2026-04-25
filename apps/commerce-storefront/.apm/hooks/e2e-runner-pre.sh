@@ -74,25 +74,51 @@ SERVER_PID=$!
 echo "$SERVER_PID" >"$PID_FILE"
 echo "Pre: started dev server (PID $SERVER_PID), log $SERVER_LOG"
 
-# ─── 3. Poll the PLP until it returns 200 (max 120 s) ────────────────────
-for i in $(seq 1 24); do
-  sleep 5
+# ─── 3. Probe the PLP with a body-aware readiness check ─────────────────
+# A shallow `curl -sf` HTTP-200 poll incorrectly reports "ready" while
+# pwa-kit-dev is still streaming its "Building your app" splash. We
+# delegate to the shared probe at
+# `tools/autonomous-factory/scripts/wait-for-app-ready.sh`, which gates
+# on status + body length + deny-regex + body-length stability.
+#
+# The probe runs as a background subprocess so this hook can keep
+# watching SERVER_PID and surface a server-died-early diagnostic with
+# the same log-tail behaviour as the previous loop.
+READINESS_URL="${E2E_READINESS_URL:-$PLP_URL}"
+PROBE="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}/tools/autonomous-factory/scripts/wait-for-app-ready.sh"
+if [[ ! -x "$PROBE" ]]; then
+  echo "Pre: readiness probe not found or not executable at $PROBE"
+  kill "$SERVER_PID" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  exit 1
+fi
+
+bash "$PROBE" "$READINESS_URL" &
+PROBE_PID=$!
+
+while :; do
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "Pre: dev server (PID $SERVER_PID) exited prematurely"
     echo "Server log tail:"
     tail -60 "$SERVER_LOG" 2>/dev/null || true
+    kill "$PROBE_PID" 2>/dev/null || true
+    wait "$PROBE_PID" 2>/dev/null || true
     rm -f "$PID_FILE"
     exit 1
   fi
-  if curl -sf -o /dev/null --max-time 5 "$PLP_URL" 2>/dev/null; then
-    echo "Pre: $PLP_URL returned HTTP 200 after $((i * 5))s — SSR is healthy"
-    exit 0
+  if ! kill -0 "$PROBE_PID" 2>/dev/null; then
+    wait "$PROBE_PID"
+    PROBE_RC=$?
+    if [[ "$PROBE_RC" -eq 0 ]]; then
+      echo "Pre: $READINESS_URL is ready — SSR is healthy"
+      exit 0
+    fi
+    echo "Pre: readiness probe failed (rc=$PROBE_RC) for $READINESS_URL"
+    echo "Server log tail:"
+    tail -60 "$SERVER_LOG" 2>/dev/null || true
+    kill "$SERVER_PID" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    exit 1
   fi
+  sleep 2
 done
-
-echo "Pre: $PLP_URL failed to return HTTP 200 after 120s — SSR is broken"
-echo "Server log tail:"
-tail -60 "$SERVER_LOG" 2>/dev/null || true
-kill "$SERVER_PID" 2>/dev/null || true
-rm -f "$PID_FILE"
-exit 1
