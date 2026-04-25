@@ -81,6 +81,13 @@ export const SUBPATHS: Readonly<Record<FeatureFileKind, string>> = Object.freeze
   "debug-notes": "_debug-notes.md",
   spec: "_kickoff/spec.md",
   acceptance: "_kickoff/acceptance.yml",
+  /**
+   * @deprecated Manual-staging compatibility only. Primary source for the
+   * baseline profile is the artifact catalog (the latest sealed
+   * `baseline` artifact produced by `baseline-analyzer`, resolved via
+   * `FileArtifactBus.findLatestArtifact`). `FileBaselineLoader` reads
+   * this kickoff path only as a fallback when the analyzer hasn't run.
+   */
   baseline: "_kickoff/baseline.json",
   "flight-data": "_kickoff/flight-data.json",
 });

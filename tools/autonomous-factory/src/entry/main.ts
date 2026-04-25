@@ -154,7 +154,7 @@ export async function runWithKernel(
   const telemetry = new JsonlTelemetry(logger);
   const triageLlm = new CopilotTriageLlm(client);
   const triageArtifacts = new FileTriageArtifactLoader({ appRoot });
-  const baselineLoader = new FileBaselineLoader({ appRoot });
+  const baselineLoader = new FileBaselineLoader({ appRoot, bus: artifactBus });
   const effectPorts = { stateStore, telemetry };
 
   // Load initial DAG state from the persisted _STATE.json

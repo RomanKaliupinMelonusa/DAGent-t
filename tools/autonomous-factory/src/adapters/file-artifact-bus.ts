@@ -271,6 +271,91 @@ export class FileArtifactBus implements ArtifactBus {
       .sort(); // lexicographic = chronological (ULID prefix)
   }
 
+  /**
+   * Locate the most recent successfully-produced artifact of `kind` emitted
+   * by `producerNodeKey` for `slug`. Reads the append-only
+   * `<slug>/_invocations.jsonl` ledger, keeps the last entry per
+   * `invocationId` (later writes — e.g. seal — supersede earlier ones),
+   * filters to sealed records whose `outcome === "completed"` and whose
+   * `outputs[]` contains the requested `kind`, and picks the record with the
+   * greatest `finishedAt` (lex-sortable ISO timestamp; tiebreak by
+   * lex-greatest `invocationId` for determinism).
+   *
+   * Pure read. Returns `null` on missing ledger, parse failures, or no
+   * matching record — never throws. Intended for advisory consumers
+   * (e.g. baseline loader) that must not block the pipeline.
+   */
+  findLatestArtifact(
+    slug: string,
+    producerNodeKey: string,
+    kind: ArtifactKind,
+  ): { absolutePath: string; producedAt: string } | null {
+    let raw: string;
+    try {
+      const ledgerPath = this.fs.joinPath(this.slugRoot(slug), "_invocations.jsonl");
+      if (!this.fs.existsSync(ledgerPath)) return null;
+      raw = this.fs.readFileSync(ledgerPath);
+    } catch {
+      return null;
+    }
+    const latestById = new Map<string, {
+      invocationId: string;
+      nodeKey?: string;
+      outcome?: string;
+      sealed?: boolean;
+      finishedAt?: string;
+      outputs?: Array<{ kind?: string; path?: string }>;
+    }>();
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const rec = JSON.parse(trimmed) as {
+          invocationId?: string;
+          nodeKey?: string;
+          outcome?: string;
+          sealed?: boolean;
+          finishedAt?: string;
+          outputs?: Array<{ kind?: string; path?: string }>;
+        };
+        if (typeof rec.invocationId === "string" && rec.invocationId.length > 0) {
+          latestById.set(rec.invocationId, { ...rec, invocationId: rec.invocationId });
+        }
+      } catch {
+        // skip malformed line
+      }
+    }
+    let best: {
+      absolutePath: string;
+      producedAt: string;
+      invocationId: string;
+    } | null = null;
+    for (const rec of latestById.values()) {
+      if (rec.nodeKey !== producerNodeKey) continue;
+      if (rec.sealed !== true) continue;
+      if (rec.outcome !== "completed") continue;
+      const finishedAt = rec.finishedAt;
+      if (typeof finishedAt !== "string" || finishedAt.length === 0) continue;
+      const out = (rec.outputs ?? []).find(
+        (o) => o && o.kind === kind && typeof o.path === "string" && o.path.length > 0,
+      );
+      if (!out || typeof out.path !== "string") continue;
+      if (
+        !best
+        || finishedAt > best.producedAt
+        || (finishedAt === best.producedAt && rec.invocationId > best.invocationId)
+      ) {
+        best = {
+          absolutePath: out.path,
+          producedAt: finishedAt,
+          invocationId: rec.invocationId,
+        };
+      }
+    }
+    if (!best) return null;
+    return { absolutePath: best.absolutePath, producedAt: best.producedAt };
+  }
+
   async listForSlug(slug: string): Promise<Array<{ nodeKey: string; invocationId: string }>> {
     const root = this.slugRoot(slug);
     if (!(await this.fs.exists(root))) return [];
