@@ -329,6 +329,22 @@ export const NodeReportArtifactSchema = z.object({
   errorMessage: z.string().nullable(),
   errorSignature: z.string().nullable(),
   exitCode: z.number().int().nullable(),
+  /** Causality envelope: which invocation caused this dispatch. */
+  triggeredBy: z
+    .object({
+      nodeKey: z.string(),
+      invocationId: z.string(),
+      reason: z.enum(["initial", "retry", "triage-reroute", "redevelopment-cycle"]),
+    })
+    .optional(),
+  /** Inverse of `triggeredBy` — set on triage records that decided a
+   *  successful reroute. Names the staged downstream invocation. */
+  routedTo: z
+    .object({
+      nodeKey: z.string(),
+      invocationId: z.string(),
+    })
+    .optional(),
 });
 
 export type NodeReport = z.infer<typeof NodeReportArtifactSchema>;

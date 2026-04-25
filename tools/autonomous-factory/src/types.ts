@@ -114,6 +114,28 @@ export interface InvocationRecord {
   /** Item key that produced this invocation's pending context, if any.
    *  Human-oriented convenience ("triage-storefront#inv_01H…"). */
   readonly producedBy?: string;
+  /** Uniform causality envelope: which invocation caused this one to be
+   *  dispatched, and why. Populated for every dispatch flavour:
+   *    - `initial`: the most recent upstream completion among `depends_on`
+   *      whose seal unblocked this item.
+   *    - `retry`: the most recent failed invocation of THIS node.
+   *    - `redevelopment-cycle`: the failing invocation in a previous cycle
+   *      that triggered the reset (often a `publish-pr` or `live-ui` fail).
+   *    - `triage-reroute`: the triage invocation that routed here.
+   *  Optional for back-compat with archived runs. */
+  readonly triggeredBy?: {
+    readonly nodeKey: string;
+    readonly invocationId: string;
+    readonly reason: InvocationTrigger;
+  };
+  /** Inverse of `triggeredBy` — when this invocation dispatched a child
+   *  (currently only triage handlers do this when they reroute). Lets the
+   *  triage record self-describe its callee instead of forcing readers to
+   *  scan the staged downstream invocation for `parentInvocationId`. */
+  readonly routedTo?: {
+    readonly nodeKey: string;
+    readonly invocationId: string;
+  };
   /** ISO timestamp at dispatch. May be absent for staged records that have
    *  not yet been picked up — the dispatch hook stamps this when the
    *  handler actually starts. */
@@ -141,6 +163,7 @@ export interface AppendInvocationInput {
   readonly trigger: InvocationTrigger;
   readonly parentInvocationId?: string;
   readonly producedBy?: string;
+  readonly triggeredBy?: InvocationRecord["triggeredBy"];
   readonly startedAt?: string;
   readonly inputs?: ArtifactRefSerialized[];
   /** Optional cycleIndex override. Defaults to the current count of
@@ -153,6 +176,9 @@ export interface SealInvocationInput {
   readonly outcome: "completed" | "failed" | "error";
   readonly finishedAt?: string;
   readonly outputs?: ArtifactRefSerialized[];
+  /** Optional update to the `routedTo` field (used by the triage handler
+   *  on a successful reroute to record its callee). */
+  readonly routedTo?: InvocationRecord["routedTo"];
 }
 
 // ---------------------------------------------------------------------------

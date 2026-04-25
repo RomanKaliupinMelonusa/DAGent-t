@@ -159,6 +159,21 @@ export interface NodeContext {
    */
   readonly stateReader: Pick<StateStore, "getStatus">;
   /**
+   * Narrow ledger-mutation port. Lets middleware / handlers attach
+   * lineage metadata onto an in-flight invocation record without taking
+   * a dependency on the full StateStore surface. Two operations only:
+   *   - `attachInvocationInputs` — called by the `materialize-inputs`
+   *     middleware after it has resolved the declared `consumes_*`
+   *     against the on-disk artifact tree, so the persisted record
+   *     carries the producer (`nodeKey`+`invocationId`) lineage.
+   *   - `attachInvocationRoutedTo` — called by the triage handler when
+   *     it reroutes, so the triage record self-describes its callee.
+   */
+  readonly ledger: Pick<
+    StateStore,
+    "attachInvocationInputs" | "attachInvocationRoutedTo"
+  >;
+  /**
    * Shell port — handlers that need to shell out (local-exec, CI poll,
    * artifact download) must go through this port rather than importing
    * `node:child_process` directly.
@@ -206,6 +221,10 @@ export interface NodeContext {
 
   /** Key of the node that failed and triggered this dispatch (on_failure only). */
   readonly failingNodeKey?: string;
+  /** InvocationId of the failing node's most recent attempt (on_failure
+   *  only). Lets the triage handler stamp `triggeredBy` and the staged
+   *  reroute's `routedTo` without scanning state. */
+  readonly failingInvocationId?: string;
   /** Raw error message from the failing node (on_failure only). */
   readonly rawError?: string;
   /** Computed error signature from the failing node (on_failure only). */

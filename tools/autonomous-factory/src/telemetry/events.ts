@@ -64,6 +64,14 @@ export type EventKind =
   | "invocation.meta_write_failed"
   | "invocation.meta_seal_failed"
   | "invocation.node_report_failed"
+  | "invocation.attach_inputs_failed"
+  | "invocation.attach_routed_to_failed"
+  // Lineage hop emitted by the triage handler when a successful reroute
+  // is decided. Carries { triageInvocationId, failingNodeKey,
+  // failingInvocationId, routedToNodeKey, routedToInvocationId, domain,
+  // source, handoffPath } — single event that fully describes the
+  // failing-node → triage → routed-to-node hop.
+  | "triage.routed"
   // Uniform per-invocation lifecycle (Phase B — fires for every handler type
   // regardless of whether the handler itself emits item.start/item.end).
   // Stamped with { invocationId, nodeKey, trigger, parentInvocationId,

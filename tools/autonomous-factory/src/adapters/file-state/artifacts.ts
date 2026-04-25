@@ -81,6 +81,7 @@ export function appendInvocationRecord(
     trigger: input.trigger,
     parentInvocationId: input.parentInvocationId,
     producedBy: input.producedBy,
+    ...(input.triggeredBy ? { triggeredBy: input.triggeredBy } : {}),
     // `startedAt` may legitimately be undefined for staged records (e.g.
     // a triage-staged reroute slot). The dispatch hook stamps it via
     // `stampInvocationStart` when the handler actually begins.
@@ -173,10 +174,66 @@ export function sealInvocationRecord(
     finishedAt: input.finishedAt ?? new Date().toISOString(),
     outputs: mergedOutputs,
     sealed: true,
+    ...(input.routedTo ? { routedTo: input.routedTo } : {}),
   };
   state.artifacts[input.invocationId] = sealed;
   appendInvocationJsonl(slug, sealed);
   return sealed;
+}
+
+// ─── Mid-run mutators ───────────────────────────────────────────────────────
+
+/**
+ * Attach resolved input refs onto a (still unsealed) invocation record.
+ * Called by the `materialize-inputs` middleware after it has resolved the
+ * declared `consumes_*` against the on-disk artifact tree, so the persisted
+ * record carries the producer (`nodeKey`+`invocationId`) lineage rather
+ * than the empty `inputs:[]` it was appended with.
+ *
+ * Idempotent — second calls overwrite, matching the materialize semantics
+ * (re-runs overwrite the `<inv>/inputs/` copies).
+ */
+export function attachInvocationInputs(
+  state: PipelineState,
+  slug: string,
+  invocationId: string,
+  inputs: InvocationRecord["inputs"],
+): InvocationRecord {
+  ensureArtifactsIndex(state);
+  const existing = state.artifacts[invocationId];
+  if (!existing) {
+    throw new Error(`attachInvocationInputs: unknown invocationId '${invocationId}'`);
+  }
+  if (existing.sealed) {
+    throw new Error(`attachInvocationInputs: invocationId '${invocationId}' is already sealed`);
+  }
+  const updated: InvocationRecord = { ...existing, inputs };
+  state.artifacts[invocationId] = updated;
+  appendInvocationJsonl(slug, updated);
+  return updated;
+}
+
+/**
+ * Attach a `routedTo` field onto an invocation record. Called by the
+ * triage handler when it decides to reroute, so the triage record
+ * self-describes its callee (the inverse of the staged child's
+ * `parentInvocationId` pointer).
+ */
+export function attachInvocationRoutedTo(
+  state: PipelineState,
+  slug: string,
+  invocationId: string,
+  routedTo: NonNullable<InvocationRecord["routedTo"]>,
+): InvocationRecord {
+  ensureArtifactsIndex(state);
+  const existing = state.artifacts[invocationId];
+  if (!existing) {
+    throw new Error(`attachInvocationRoutedTo: unknown invocationId '${invocationId}'`);
+  }
+  const updated: InvocationRecord = { ...existing, routedTo };
+  state.artifacts[invocationId] = updated;
+  appendInvocationJsonl(slug, updated);
+  return updated;
 }
 
 // ─── JSONL tail ─────────────────────────────────────────────────────────────

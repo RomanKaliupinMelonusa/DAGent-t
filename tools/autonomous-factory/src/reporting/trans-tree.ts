@@ -102,14 +102,25 @@ function renderInvocationLine(
 ): void {
   const indent = "  ".repeat(depth);
   const badge = rec.outcome ? (STATUS_BADGE[rec.outcome] ?? "·") : "…";
-  const parentSuffix = rec.parentInvocationId
-    ? ` ← ${rec.parentInvocationId}`
-    : "";
+  // Lineage suffixes (Phase G): backward via `parentInvocationId` (legacy
+  // triage staging) or `triggeredBy` (Phase C), forward via `routedTo`
+  // (Phase D, triage rerouting). When both `parentInvocationId` and
+  // `triggeredBy` are present they describe the same edge — prefer the
+  // richer triggeredBy stamp. Forward edges show as `→`.
+  let lineageSuffix = "";
+  if (rec.parentInvocationId) {
+    lineageSuffix += ` ← ${rec.parentInvocationId}`;
+  } else if (rec.triggeredBy) {
+    lineageSuffix += ` ← ${rec.triggeredBy.nodeKey}/${rec.triggeredBy.invocationId} (${rec.triggeredBy.reason})`;
+  }
+  if (rec.routedTo) {
+    lineageSuffix += ` → ${rec.routedTo.nodeKey}/${rec.routedTo.invocationId}`;
+  }
   const statusSuffix = rec.outcome
     ? ` [${rec.outcome}${rec.finishedAt ? ` @ ${rec.finishedAt}` : ""}]`
     : ` [pending${rec.startedAt ? ` @ ${rec.startedAt}` : ""}]`;
   out.push(
-    `${indent}- ${badge} #${rec.cycleIndex} \`${rec.invocationId}\` (${rec.trigger}${parentSuffix})${statusSuffix}`,
+    `${indent}- ${badge} #${rec.cycleIndex} \`${rec.invocationId}\` (${rec.trigger}${lineageSuffix})${statusSuffix}`,
   );
   if (options.includeArtifacts) {
     const artifactIndent = "  ".repeat(depth + 1);

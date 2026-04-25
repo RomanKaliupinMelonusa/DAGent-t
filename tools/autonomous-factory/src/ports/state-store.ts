@@ -113,6 +113,30 @@ export interface StateStore {
    */
   sealInvocation(slug: string, input: SealInvocationInput): Promise<InvocationRecord>;
 
+  /**
+   * Attach resolved `inputs[]` onto an unsealed invocation record. Called
+   * by the `materialize-inputs` middleware so the persisted ledger carries
+   * the producer (`nodeKey`+`invocationId`) lineage of every artifact the
+   * invocation consumed. Idempotent — re-runs overwrite.
+   */
+  attachInvocationInputs(
+    slug: string,
+    invocationId: string,
+    inputs: InvocationRecord["inputs"],
+  ): Promise<InvocationRecord>;
+
+  /**
+   * Attach a `routedTo` field onto an invocation record. Used by the
+   * triage handler when it reroutes so the triage record self-describes
+   * its callee (inverse of the staged downstream record's
+   * `parentInvocationId`).
+   */
+  attachInvocationRoutedTo(
+    slug: string,
+    invocationId: string,
+    routedTo: NonNullable<InvocationRecord["routedTo"]>,
+  ): Promise<InvocationRecord>;
+
   /** Read a single invocation record (returns `null` when absent). */
   getInvocationRecord(slug: string, invocationId: string): Promise<InvocationRecord | null>;
 

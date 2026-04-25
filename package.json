@@ -17,6 +17,7 @@
     "pipeline:resume": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts resume",
     "pipeline:recover-elevated": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts recover-elevated",
     "pipeline:lineage": "npx tsx tools/autonomous-factory/src/cli/pipeline-lineage.ts",
+    "pipeline:trace": "npx tsx tools/autonomous-factory/src/cli/pipeline-lineage.ts",
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "cd tools/autonomous-factory && npx tsx src/entry/watchdog.ts",

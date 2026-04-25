@@ -99,6 +99,23 @@ export const materializeInputsMiddleware: NodeMiddleware = {
       } catch {
         // Mirror writes are best-effort; ignore.
       }
+
+      // Persist resolved inputs onto the kernel ledger so
+      // `_invocations.jsonl` carries the producer (`nodeKey`+`invocationId`)
+      // lineage — the canonical "who fed me" link for non-triage edges.
+      // Best-effort: a failed ledger write must not block dispatch
+      // (the ledger is a side-table; the canonical artifact bytes are on
+      // disk and `params.in.json` already records them).
+      if (inputs.length > 0) {
+        try {
+          await ctx.ledger.attachInvocationInputs(ctx.slug, ctx.executionId, inputs);
+        } catch (lerr) {
+          ctx.logger.event("invocation.attach_inputs_failed", ctx.itemKey, {
+            invocationId: ctx.executionId,
+            error: lerr instanceof Error ? lerr.message : String(lerr),
+          });
+        }
+      }
     } catch (err) {
       if (err instanceof MissingRequiredInputError) {
         const signature = err.signature();

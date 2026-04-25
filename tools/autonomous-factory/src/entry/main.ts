@@ -263,6 +263,7 @@ export async function runWithKernel(
     lifecycle,
     vcs,
     stateReader: stateStore,
+    ledger: stateStore,
     shell,
     filesystem,
     artifactBus,

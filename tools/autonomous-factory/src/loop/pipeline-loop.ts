@@ -121,6 +121,10 @@ export interface PipelineLoopConfig {
   readonly lifecycle: LoopLifecycle;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
+  readonly ledger: Pick<
+    StateStore,
+    "attachInvocationInputs" | "attachInvocationRoutedTo"
+  >;
   readonly shell: Shell;
   readonly filesystem: FeatureFilesystem;
   readonly artifactBus: ArtifactBus;
@@ -182,6 +186,7 @@ export async function runPipelineLoop(
     baselineLoader: config.baselineLoader,
     vcs: config.vcs,
     stateReader: config.stateReader,
+    ledger: config.ledger,
     shell: config.shell,
     filesystem: config.filesystem,
     artifactBus: config.artifactBus,

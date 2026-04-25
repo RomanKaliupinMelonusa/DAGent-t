@@ -57,6 +57,7 @@ function makeCtx(appRoot: string, overrides: Partial<NodeContext> = {}): NodeCon
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    ledger: {} as NodeContext["ledger"],
     shell: {} as NodeContext["shell"],
     filesystem: new LocalFilesystem() as unknown as NodeContext["filesystem"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],

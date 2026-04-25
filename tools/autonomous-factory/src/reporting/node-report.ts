@@ -33,6 +33,10 @@ export interface SynthesizeNodeReportArgs {
   readonly outcome: "completed" | "failed" | "error";
   /** Partial summary reported by the handler. May be absent (crash path). */
   readonly summary?: Partial<ItemSummary>;
+  /** Causality envelope copied from the sealed `InvocationRecord`. */
+  readonly triggeredBy?: NodeReport["triggeredBy"];
+  /** Inverse of `triggeredBy` (triage records on a successful reroute). */
+  readonly routedTo?: NodeReport["routedTo"];
 }
 
 /**
@@ -102,6 +106,8 @@ export function synthesizeNodeReport(args: SynthesizeNodeReportArgs): NodeReport
     errorMessage,
     errorSignature,
     exitCode,
+    ...(args.triggeredBy ? { triggeredBy: args.triggeredBy } : {}),
+    ...(args.routedTo ? { routedTo: args.routedTo } : {}),
   };
 }
 

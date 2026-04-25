@@ -41,6 +41,8 @@ import {
   appendInvocationRecord as appendInvocationRecordImpl,
   sealInvocationRecord as sealInvocationRecordImpl,
   stampInvocationStart as stampInvocationStartImpl,
+  attachInvocationInputs as attachInvocationInputsImpl,
+  attachInvocationRoutedTo as attachInvocationRoutedToImpl,
 } from "./file-state/artifacts.js";
 import { withLock } from "./file-state/lock.js";
 
@@ -400,6 +402,36 @@ export class JsonFileStateStore implements StateStore {
     return withLock(slug, () => {
       const state = readStateOrThrow(slug);
       const rec = sealInvocationRecordImpl(state, slug, input);
+      writeState(slug, state);
+      return rec;
+    });
+  }
+
+  async attachInvocationInputs(
+    slug: string,
+    invocationId: string,
+    inputs: InvocationRecord["inputs"],
+  ): Promise<InvocationRecord> {
+    if (!slug) throw new Error("attachInvocationInputs requires slug");
+    if (!invocationId) throw new Error("attachInvocationInputs requires invocationId");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const rec = attachInvocationInputsImpl(state, slug, invocationId, inputs);
+      writeState(slug, state);
+      return rec;
+    });
+  }
+
+  async attachInvocationRoutedTo(
+    slug: string,
+    invocationId: string,
+    routedTo: NonNullable<InvocationRecord["routedTo"]>,
+  ): Promise<InvocationRecord> {
+    if (!slug) throw new Error("attachInvocationRoutedTo requires slug");
+    if (!invocationId) throw new Error("attachInvocationRoutedTo requires invocationId");
+    return withLock(slug, () => {
+      const state = readStateOrThrow(slug);
+      const rec = attachInvocationRoutedToImpl(state, slug, invocationId, routedTo);
       writeState(slug, state);
       return rec;
     });

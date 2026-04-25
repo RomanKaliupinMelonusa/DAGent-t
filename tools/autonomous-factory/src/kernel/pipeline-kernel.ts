@@ -526,6 +526,10 @@ export class PipelineKernel {
         // `materializeInputsMiddleware` copies into `<inv>/inputs/`
         // before the dev agent runs.
         this.dagState = applyStageInvocation(this.dagState, inner);
+        // The reducer just computed `triggeredBy` from the parent record;
+        // mirror it on the persisted append so the on-disk ledger entry
+        // matches the in-memory copy.
+        const stagedRecord = this.dagState.artifacts?.[inner.invocationId];
         effects.push({
           type: "append-invocation-record",
           slug: this.slug,
@@ -535,6 +539,7 @@ export class PipelineKernel {
             trigger: inner.trigger,
             ...(inner.parentInvocationId ? { parentInvocationId: inner.parentInvocationId } : {}),
             ...(inner.producedBy ? { producedBy: inner.producedBy } : {}),
+            ...(stagedRecord?.triggeredBy ? { triggeredBy: stagedRecord.triggeredBy } : {}),
             // No `startedAt` — the staged record has no run time yet; the
             // dispatch hook stamps it when the handler begins.
           },
@@ -592,6 +597,7 @@ function applyRegisterInvocation(
         ? { parentInvocationId: input.parentInvocationId }
         : {}),
       ...(input.producedBy ? { producedBy: input.producedBy } : {}),
+      ...(input.triggeredBy ? { triggeredBy: input.triggeredBy } : {}),
       ...(input.startedAt ? { startedAt: input.startedAt } : {}),
       ...(input.inputs ? { inputs: input.inputs } : {}),
     };
@@ -609,6 +615,7 @@ function applyRegisterInvocation(
         ? { parentInvocationId: input.parentInvocationId }
         : {}),
       ...(input.producedBy ? { producedBy: input.producedBy } : {}),
+      ...(input.triggeredBy ? { triggeredBy: input.triggeredBy } : {}),
       ...(input.startedAt ? { startedAt: input.startedAt } : {}),
       inputs: input.inputs ?? [],
       outputs: [],
@@ -647,6 +654,7 @@ function applySealInvocation(
     finishedAt: input.finishedAt ?? new Date().toISOString(),
     outputs: mergedOutputs,
     sealed: true,
+    ...(input.routedTo ? { routedTo: input.routedTo } : {}),
   };
   return { ...state, artifacts } as PipelineState;
 }
@@ -663,6 +671,20 @@ function applyStageInvocation(
     const cycleIndex =
       Object.values(artifacts).filter((r) => r.nodeKey === inner.itemKey)
         .length + 1;
+    // Derive `triggeredBy` from the parent invocation referenced by the
+    // staged record's `parentInvocationId`. This makes the staged record
+    // self-describe its cause uniformly with non-staged dispatches that
+    // get `triggeredBy` stamped at append time by the dispatch hook.
+    const parent = inner.parentInvocationId
+      ? artifacts[inner.parentInvocationId]
+      : undefined;
+    const triggeredBy = parent
+      ? {
+          nodeKey: parent.nodeKey,
+          invocationId: parent.invocationId,
+          reason: inner.trigger,
+        }
+      : undefined;
     artifacts[inner.invocationId] = {
       invocationId: inner.invocationId,
       nodeKey: inner.itemKey,
@@ -672,6 +694,7 @@ function applyStageInvocation(
         ? { parentInvocationId: inner.parentInvocationId }
         : {}),
       ...(inner.producedBy ? { producedBy: inner.producedBy } : {}),
+      ...(triggeredBy ? { triggeredBy } : {}),
       inputs: [],
       outputs: [],
     };

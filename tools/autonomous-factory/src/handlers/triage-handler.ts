@@ -66,6 +66,17 @@ export interface TriageHandlerOutput {
   triageHandoff?: TriageHandoff;
   /** Pre-triage guard outcome — "passed" if guards did not intercept. */
   guardResult: TriageRecord["guard_result"];
+  /** When the triage decision was a reroute, the routed-to node + the
+   *  pre-allocated invocationId of the staged downstream record. Used by
+   *  the outer execute wrapper to:
+   *    (a) attach a `routedTo` field on the triage InvocationRecord so
+   *        it self-describes its callee, and
+   *    (b) emit a `triage.routed` telemetry event linking failing →
+   *        triage → routed-to in a single line. */
+  routedTo?: {
+    readonly nodeKey: string;
+    readonly invocationId: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +165,10 @@ function truncateErrorExcerpt(raw: string, maxLines = 40): string {
 interface RerouteBuildResult {
   readonly commands: DagCommand[];
   readonly handoff?: TriageHandoff;
+  /** Pre-allocated invocationId of the staged downstream record. Returned
+   *  so the outer execute wrapper can stamp it on `handlerOutput.routedTo`
+   *  and use it for the `triage.routed` event. */
+  readonly routedToInvocationId?: string;
 }
 
 /**
@@ -189,6 +204,7 @@ async function buildRerouteCommands(
   const { slug } = ctx;
   const commands: DagCommand[] = [];
   let handoff: TriageHandoff | undefined;
+  let routedToInvocationId: string | undefined;
 
   // 1. Reset target node + all downstream dependents
   //    (the structured handoff is serialised to the `triage-handoff`
@@ -210,6 +226,10 @@ async function buildRerouteCommands(
   //    `materializeInputsMiddleware` copies it into `<inv>/inputs/`
   //    before the dev agent runs. No prose `pendingContext` is built or
   //    persisted anymore.
+  // Pre-allocate the staged invocationId outside the try so we can carry
+  // it on `RerouteBuildResult.routedToInvocationId` even if the handoff
+  // assembly fails (the reset-nodes + reindex path still went through).
+  const stagedInvocationId = newInvocationId();
   try {
     const pipeStateForCtx = await ctx.stateReader.getStatus(slug);
     // Build the structured handoff so the outer `attachTriageHandoffArtifact`
@@ -239,11 +259,12 @@ async function buildRerouteCommands(
     commands.push({
       type: "stage-invocation",
       itemKey: routeToKey,
-      invocationId: newInvocationId(),
+      invocationId: stagedInvocationId,
       parentInvocationId: ctx.executionId,
       trigger: "triage-reroute",
       producedBy: `${ctx.itemKey}#${ctx.executionId}`,
     });
+    routedToInvocationId = stagedInvocationId;
   } catch { /* non-fatal — reroute still happens via reset-nodes alone */ }
 
   // 3. Re-index semantic graph if target category needs it
@@ -252,7 +273,7 @@ async function buildRerouteCommands(
     commands.push({ type: "reindex", categories: [targetCat] });
   }
 
-  return { commands, handoff };
+  return { commands, handoff, ...(routedToInvocationId ? { routedToInvocationId } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -790,7 +811,7 @@ const triageHandlerInner: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const { commands, handoff } = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
+    const { commands, handoff, routedToInvocationId } = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
 
     return {
       outcome: "completed",
@@ -803,6 +824,9 @@ const triageHandlerInner: NodeHandler = {
         source: triageResult.source,
         triageRecord: record,
         ...(handoff ? { triageHandoff: handoff } : {}),
+        ...(routedToInvocationId
+          ? { routedTo: { nodeKey: routeToKey, invocationId: routedToInvocationId } }
+          : {}),
         guardResult: "passed",
       } satisfies TriageHandlerOutput,
     };
@@ -813,13 +837,48 @@ const triageHandler: NodeHandler = {
   name: "triage",
   async execute(ctx: NodeContext): Promise<NodeResult> {
     const result = await triageHandlerInner.execute(ctx);
-    const stamped = attachTriageHandoffArtifact(ctx, result);
+    const stamped = await attachTriageHandoffArtifact(ctx, result);
+    const out = stamped.handlerOutput as TriageHandlerOutput | undefined;
+    // Lineage: when triage decided a reroute, attach `routedTo` on the
+    // triage InvocationRecord and emit a single `triage.routed` event
+    // describing failing → triage → routed-to. Both are best-effort —
+    // a failure here must not undo the reroute itself.
+    if (stamped.outcome === "completed" && out?.routedTo) {
+      try {
+        await ctx.ledger.attachInvocationRoutedTo(
+          ctx.slug,
+          ctx.executionId,
+          out.routedTo,
+        );
+      } catch (err) {
+        ctx.logger.event("invocation.attach_routed_to_failed", ctx.itemKey, {
+          invocationId: ctx.executionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      const handoffPath = (stamped.producedArtifacts ?? []).find(
+        (r) => r.kind === "triage-handoff",
+      )?.path;
+      ctx.logger.event("triage.routed", ctx.itemKey, {
+        triageInvocationId: ctx.executionId,
+        triageNodeKey: ctx.itemKey,
+        ...(ctx.failingNodeKey ? { failingNodeKey: ctx.failingNodeKey } : {}),
+        ...(ctx.failingInvocationId
+          ? { failingInvocationId: ctx.failingInvocationId }
+          : {}),
+        routedToNodeKey: out.routedTo.nodeKey,
+        routedToInvocationId: out.routedTo.invocationId,
+        domain: out.domain,
+        source: out.source,
+        ...(handoffPath ? { handoffPath } : {}),
+      });
+    }
     // Stamp `handlerName` on every outcome path (guard, reroute,
     // degradation, error) so the synthesized node-report writes
     // `handler: "triage"` instead of falling through to "unknown".
     // The field is read structurally in `loop/dispatch/invocation-ledger-hooks.ts`;
     // it is not part of the typed `NodeResult` shape.
-    return { ...(await stamped), handlerName: "triage" } as NodeResult;
+    return { ...stamped, handlerName: "triage" } as NodeResult;
   },
 };
 

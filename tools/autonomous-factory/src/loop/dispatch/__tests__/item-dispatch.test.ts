@@ -29,6 +29,7 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    ledger: {} as NodeContext["ledger"],
     shell: {} as NodeContext["shell"],
     filesystem: {} as NodeContext["filesystem"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],

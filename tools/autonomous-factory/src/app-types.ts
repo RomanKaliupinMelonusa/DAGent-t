@@ -173,6 +173,11 @@ export interface TriageActivation {
   triageNodeKey: string;
   /** Key of the node that failed. */
   failingKey: string;
+  /** InvocationId of the failing node's most-recent attempt. Lets the
+   *  triage handler stamp its `triggeredBy` lineage envelope without
+   *  scanning state. Optional for back-compat with older activation
+   *  call sites and fixtures. */
+  failingInvocationId?: string;
   /** Raw error message from the failing node. */
   rawError: string;
   /** Stable error fingerprint (SHA-256 prefix). */

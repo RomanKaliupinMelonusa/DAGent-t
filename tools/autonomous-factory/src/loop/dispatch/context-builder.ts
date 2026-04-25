@@ -41,6 +41,16 @@ export interface ContextBuilderConfig {
   readonly baselineLoader?: BaselineLoader;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
+  /**
+   * Narrow ledger-mutation port forwarded into `NodeContext.ledger`. The
+   * composition root passes the same `StateStore` instance it uses for
+   * append/seal so middleware-side lineage writes hit the same lock and
+   * JSONL tail as the dispatch hook.
+   */
+  readonly ledger: Pick<
+    StateStore,
+    "attachInvocationInputs" | "attachInvocationRoutedTo"
+  >;
   readonly shell: Shell;
   readonly filesystem: FeatureFilesystem;
   readonly artifactBus: ArtifactBus;
@@ -160,6 +170,7 @@ export function buildNodeContext(
     logger: teedLogger,
     vcs: config.vcs,
     stateReader: config.stateReader,
+    ledger: config.ledger,
     shell: config.shell,
     filesystem: config.filesystem,
     artifactBus: config.artifactBus,
@@ -170,6 +181,9 @@ export function buildNodeContext(
     // activation, so the triage handler can classify without re-reading
     // state. Undefined for regular handlers.
     failingNodeKey: triageActivation?.failingKey,
+    ...(triageActivation?.failingInvocationId
+      ? { failingInvocationId: triageActivation.failingInvocationId }
+      : {}),
     rawError: triageActivation?.rawError,
     errorSignature: triageActivation?.errorSignature,
     failingNodeSummary: triageActivation?.failingNodeSummary,

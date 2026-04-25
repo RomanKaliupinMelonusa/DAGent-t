@@ -30,20 +30,27 @@ const APP_ROOT = process.env.APP_ROOT
   : path.resolve("apps/sample-app");
 
 function usage(): never {
-  console.error("Usage: pipeline-lineage <slug> [--json] [--tree] [--kind <artifact-kind>]");
+  console.error("Usage: pipeline-lineage <slug> [--json] [--tree] [--trace <invocationId>] [--kind <artifact-kind>]");
   process.exit(2);
 }
 
-function parseArgs(argv: string[]): { slug: string; json: boolean; tree: boolean; kind?: ArtifactKind } {
+function parseArgs(argv: string[]): { slug: string; json: boolean; tree: boolean; kind?: ArtifactKind; trace?: string } {
   if (argv.length === 0) usage();
   let slug: string | undefined;
   let json = false;
   let tree = false;
   let kind: ArtifactKind | undefined;
+  let trace: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") { json = true; continue; }
     if (a === "--tree") { tree = true; continue; }
+    if (a === "--trace") {
+      const v = argv[++i];
+      if (!v) usage();
+      trace = v;
+      continue;
+    }
     if (a === "--kind") {
       const v = argv[++i];
       if (!v) usage();
@@ -58,7 +65,7 @@ function parseArgs(argv: string[]): { slug: string; json: boolean; tree: boolean
     usage();
   }
   if (!slug) usage();
-  return { slug, json, tree, kind };
+  return { slug, json, tree, kind, ...(trace ? { trace } : {}) };
 }
 
 function readLedger(slug: string): readonly InvocationRecord[] {
@@ -100,6 +107,16 @@ function printPretty(slug: string, records: readonly InvocationRecord[]): void {
     if (rec.parentInvocationId) {
       console.log(`    parent:  ${rec.parentInvocationId}${rec.producedBy ? ` (${rec.producedBy})` : ""}`);
     }
+    if (rec.triggeredBy) {
+      console.log(
+        `    triggeredBy: ${rec.triggeredBy.nodeKey}/${rec.triggeredBy.invocationId} (${rec.triggeredBy.reason})`,
+      );
+    }
+    if (rec.routedTo) {
+      console.log(
+        `    routedTo: ${rec.routedTo.nodeKey}/${rec.routedTo.invocationId}`,
+      );
+    }
     const inputs = rec.inputs ?? [];
     if (inputs.length > 0) {
       console.log(`    inputs:  ${inputs.length}`);
@@ -138,7 +155,10 @@ function printTree(slug: string, records: readonly InvocationRecord[]): void {
   const children = new Map<string, InvocationRecord[]>();
   const roots: InvocationRecord[] = [];
   for (const r of records) {
-    const parent = r.parentInvocationId;
+    // Phase D — prefer the richer `triggeredBy` causality stamp over
+    // the legacy `parentInvocationId` (which only triage-staging set).
+    // Fall back to `parentInvocationId` for backward compatibility.
+    const parent = r.triggeredBy?.invocationId ?? r.parentInvocationId;
     if (parent && byId.has(parent)) {
       const bucket = children.get(parent) ?? [];
       bucket.push(r);
@@ -158,8 +178,11 @@ function printTree(slug: string, records: readonly InvocationRecord[]): void {
     const invShort = rec.invocationId.slice(0, 16);
     const outCount = (rec.outputs ?? []).length;
     const outBadge = outCount > 0 ? ` · ${outCount} output${outCount === 1 ? "" : "s"}` : "";
+    const routedBadge = rec.routedTo
+      ? ` → ${rec.routedTo.nodeKey}/${rec.routedTo.invocationId.slice(0, 16)}…`
+      : "";
     console.log(
-      `${prefix}${branch}${rec.nodeKey}#${rec.cycleIndex} [${outcome}] ${rec.trigger} (${invShort}…)${outBadge}`,
+      `${prefix}${branch}${rec.nodeKey}#${rec.cycleIndex} [${outcome}] ${rec.trigger} (${invShort}…)${outBadge}${routedBadge}`,
     );
     const kids = children.get(rec.invocationId) ?? [];
     const nextPrefix = isRoot ? "" : prefix + (isLast ? "    " : "│   ");
@@ -169,11 +192,80 @@ function printTree(slug: string, records: readonly InvocationRecord[]): void {
   roots.forEach((r, i) => renderNode(r, "", i === roots.length - 1, true));
 }
 
+/**
+ * Walk the chain backward from a target invocation via `triggeredBy` /
+ * `parentInvocationId` to a root, then forward via `routedTo`. Renders
+ * the full causal trace as a single linear chain — useful for debugging
+ * "what node called this triage and what did the triage decide".
+ */
+function printTrace(slug: string, records: readonly InvocationRecord[], target: string): void {
+  const byId = new Map<string, InvocationRecord>();
+  for (const r of records) byId.set(r.invocationId, r);
+  const focus = byId.get(target);
+  if (!focus) {
+    console.error(`Invocation '${target}' not found in ledger for slug '${slug}'.`);
+    process.exit(1);
+  }
+  const ancestors: InvocationRecord[] = [];
+  const seen = new Set<string>();
+  let cur: InvocationRecord | undefined = focus;
+  while (cur) {
+    if (seen.has(cur.invocationId)) break;
+    seen.add(cur.invocationId);
+    ancestors.unshift(cur);
+    const parentId: string | undefined = cur.triggeredBy?.invocationId ?? cur.parentInvocationId;
+    cur = parentId ? byId.get(parentId) : undefined;
+  }
+  const descendants: InvocationRecord[] = [];
+  let cursor: InvocationRecord | undefined = focus;
+  seen.clear();
+  seen.add(focus.invocationId);
+  while (cursor?.routedTo) {
+    const next = byId.get(cursor.routedTo.invocationId);
+    if (!next || seen.has(next.invocationId)) break;
+    seen.add(next.invocationId);
+    descendants.push(next);
+    cursor = next;
+  }
+  const chain = [...ancestors, ...descendants];
+  console.log(`Causal trace — feature '${slug}', focus '${target}'`);
+  console.log("─".repeat(72));
+  for (let i = 0; i < chain.length; i++) {
+    const rec = chain[i];
+    const isFocus = rec.invocationId === target;
+    const marker = isFocus ? "►" : " ";
+    const arrow = i < chain.length - 1 ? "  │" : "";
+    console.log(
+      `${marker} ${rec.nodeKey}#${rec.cycleIndex} [${rec.outcome ?? "pending"}] ${rec.trigger}`,
+    );
+    console.log(`    ${rec.invocationId}`);
+    if (rec.triggeredBy) {
+      console.log(`    triggeredBy: ${rec.triggeredBy.nodeKey}/${rec.triggeredBy.invocationId} (${rec.triggeredBy.reason})`);
+    }
+    if (rec.routedTo) {
+      console.log(`    routedTo:    ${rec.routedTo.nodeKey}/${rec.routedTo.invocationId}`);
+    }
+    const inputs = rec.inputs ?? [];
+    if (inputs.length > 0) {
+      console.log(`    inputs:  ${inputs.map((x) => x.kind).join(", ")}`);
+    }
+    const outputs = rec.outputs ?? [];
+    if (outputs.length > 0) {
+      console.log(`    outputs: ${outputs.map((x) => x.kind).join(", ")}`);
+    }
+    if (arrow) console.log(arrow);
+  }
+}
+
 async function main(): Promise<void> {
-  const { slug, json, tree, kind } = parseArgs(process.argv.slice(2));
+  const { slug, json, tree, kind, trace } = parseArgs(process.argv.slice(2));
   const records = filterByKind(readLedger(slug), kind);
   if (json) {
     console.log(JSON.stringify(records, null, 2));
+    return;
+  }
+  if (trace) {
+    printTrace(slug, records, trace);
     return;
   }
   if (tree) {

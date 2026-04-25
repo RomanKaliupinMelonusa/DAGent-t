@@ -28,6 +28,8 @@ import type { PipelineKernel } from "../../kernel/pipeline-kernel.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { isArtifactKind } from "../../apm/artifact-catalog.js";
 import { synthesizeNodeReport, writeNodeReport } from "../../reporting/node-report.js";
+import { computeTriggeredBy, triggeredByFromStaged } from "./triggered-by.js";
+import { getWorkflowNode } from "../../session/dag-utils.js";
 
 export type DispatchTuple =
   | readonly [NodeHandler, NodeContext]
@@ -85,6 +87,13 @@ export async function recordInvocationDispatch(
     if (ctx.currentInvocation && !ctx.currentInvocation.startedAt) {
       const trigger = ctx.currentInvocation.trigger;
       const parentInvocationId = ctx.currentInvocation.parentInvocationId;
+      // Resolve `triggeredBy` for the staged record from the parent
+      // pointer the triage handler set when it emitted `stage-invocation`.
+      // Falls back to undefined when the parent record is no longer in
+      // the ledger (degraded path — back-compat with sparse fixtures).
+      const triggeredByForLog =
+        ctx.currentInvocation.triggeredBy
+        ?? triggeredByFromStaged(ctx.pipelineState, parentInvocationId);
       try {
         const stamped = await stateStore.stampInvocationStart(
           slug,
@@ -110,17 +119,41 @@ export async function recordInvocationDispatch(
         nodeKey: ctx.itemKey,
         trigger,
         ...(parentInvocationId ? { parentInvocationId } : {}),
+        ...(triggeredByForLog ? { triggeredBy: triggeredByForLog } : {}),
         attempt: ctx.attempt,
         effectiveAttempts: ctx.effectiveAttempts,
         startedAt,
       });
       continue;
     }
+    const trigger = classifyInvocationTrigger(ctx);
+    const workflowName = ctx.pipelineState.workflowName;
+    const node = workflowName
+      ? getWorkflowNode(ctx.apmContext, workflowName, ctx.itemKey)
+      : undefined;
+    // Triage nodes carry the failing-node lineage on `ctx.failingNodeKey` /
+    // `ctx.failingInvocationId` (set by the activation builder). Prefer
+    // that as the `triggeredBy` source so the triage record self-describes
+    // its caller, regardless of the trigger flavour assigned to its own
+    // dispatch (`initial` for first activation, `redevelopment-cycle`
+    // for re-runs).
+    const triggeredBy =
+      ctx.failingNodeKey && ctx.failingInvocationId
+        ? {
+            nodeKey: ctx.failingNodeKey,
+            invocationId: ctx.failingInvocationId,
+            reason: trigger,
+          }
+        : computeTriggeredBy(
+            { itemKey: ctx.itemKey, trigger, dependsOn: node?.depends_on },
+            ctx.pipelineState,
+          );
     const input: AppendInvocationInput = {
       invocationId: ctx.executionId,
       nodeKey: ctx.itemKey,
-      trigger: classifyInvocationTrigger(ctx),
+      trigger,
       startedAt,
+      ...(triggeredBy ? { triggeredBy } : {}),
     };
     try {
       const appended = await stateStore.appendInvocationRecord(slug, input);
@@ -136,6 +169,7 @@ export async function recordInvocationDispatch(
       nodeKey: ctx.itemKey,
       cycleIndex: ctx.attempt,
       trigger: input.trigger,
+      ...(triggeredBy ? { triggeredBy } : {}),
       startedAt,
       inputs: [],
       outputs: [],
@@ -148,6 +182,7 @@ export async function recordInvocationDispatch(
       invocationId: ctx.executionId,
       nodeKey: ctx.itemKey,
       trigger: input.trigger,
+      ...(triggeredBy ? { triggeredBy } : {}),
       attempt: ctx.attempt,
       effectiveAttempts: ctx.effectiveAttempts,
       startedAt: input.startedAt,
@@ -273,6 +308,9 @@ export async function recordInvocationSeal(
   const producedByItem = new Map<string, ArtifactRefSerialized[]>();
   const summaryByItem = new Map<string, Partial<import("../../types.js").ItemSummary>>();
   const handlerByItem = new Map<string, string>();
+  /** Phase D — handler-stamped `routedTo` (triage). Read from the
+   *  generic handler-output bag; non-triage handlers don't populate it. */
+  const routedToByItem = new Map<string, { nodeKey: string; invocationId: string }>();
   for (const r of batchResult.itemResults) {
     // The authoritative outcome is the dispatch-layer `ItemDispatchResult.outcome`
     // (see `src/loop/dispatch/item-dispatch.ts`). This is the top-level
@@ -330,6 +368,11 @@ export async function recordInvocationSeal(
     if (typeof handlerName === "string" && handlerName.length > 0) {
       handlerByItem.set(r.itemKey, handlerName);
     }
+    const handlerOutput = (r.result as { handlerOutput?: { routedTo?: { nodeKey?: unknown; invocationId?: unknown } } }).handlerOutput;
+    const ro = handlerOutput?.routedTo;
+    if (ro && typeof ro.nodeKey === "string" && typeof ro.invocationId === "string") {
+      routedToByItem.set(r.itemKey, { nodeKey: ro.nodeKey, invocationId: ro.invocationId });
+    }
   }
 
   // Bug B (Session 3) — fallback handler resolution from the dispatched
@@ -379,6 +422,14 @@ export async function recordInvocationSeal(
         opts?.startedAtByItem?.get(ctx.itemKey)
         ?? ctx.currentInvocation?.startedAt
         ?? finishedAt;
+      // Phase D — pull `triggeredBy` from the kernel's in-memory state
+      // (stamped by the dispatch hook); pull `routedTo` from the handler
+      // output (stamped by the triage handler). Both are best-effort —
+      // their absence does not block the report.
+      const liveState = kernel?.dagSnapshot();
+      const liveRecord = liveState?.artifacts?.[ctx.executionId];
+      const triggeredByForReport = liveRecord?.triggeredBy;
+      const routedToForReport = routedToByItem.get(ctx.itemKey);
       const report = synthesizeNodeReport({
         nodeKey: ctx.itemKey,
         invocationId: ctx.executionId,
@@ -398,6 +449,8 @@ export async function recordInvocationSeal(
         finishedAt,
         outcome,
         summary: summaryByItem.get(ctx.itemKey),
+        ...(triggeredByForReport ? { triggeredBy: triggeredByForReport } : {}),
+        ...(routedToForReport ? { routedTo: routedToForReport } : {}),
       });
       const reportBus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
       const reportRef = await writeNodeReport(reportBus, ctx, report);
@@ -415,8 +468,10 @@ export async function recordInvocationSeal(
       finishedAt,
       ...(outputs.length > 0 ? { outputs } : {}),
     };
+    let sealedRecord: InvocationRecord | undefined;
     try {
       const sealed = await stateStore.sealInvocation(slug, input);
+      sealedRecord = sealed;
       kernel?.ingestInvocationRecord(sealed);
     } catch (err) {
       logger.event("invocation.seal_failed", ctx.itemKey, {
@@ -431,7 +486,7 @@ export async function recordInvocationSeal(
     try {
       await ctx.invocation.sealInvocation(slug, ctx.itemKey, ctx.executionId);
       const priorMeta = await ctx.invocation.readMeta(slug, ctx.itemKey, ctx.executionId);
-      const sealedRecord: InvocationRecord = {
+      const sealedMeta: InvocationRecord = {
         invocationId: ctx.executionId,
         nodeKey: ctx.itemKey,
         cycleIndex: priorMeta?.cycleIndex ?? ctx.attempt,
@@ -440,6 +495,12 @@ export async function recordInvocationSeal(
           ? { parentInvocationId: priorMeta.parentInvocationId }
           : {}),
         ...(priorMeta?.producedBy ? { producedBy: priorMeta.producedBy } : {}),
+        ...(sealedRecord?.triggeredBy ?? priorMeta?.triggeredBy
+          ? { triggeredBy: sealedRecord?.triggeredBy ?? priorMeta?.triggeredBy }
+          : {}),
+        ...(sealedRecord?.routedTo
+          ? { routedTo: sealedRecord.routedTo }
+          : {}),
         ...(priorMeta?.startedAt ? { startedAt: priorMeta.startedAt } : {}),
         finishedAt: input.finishedAt,
         outcome,
@@ -447,7 +508,7 @@ export async function recordInvocationSeal(
         outputs,
         sealed: true,
       };
-      await ctx.invocation.writeMeta(slug, ctx.itemKey, ctx.executionId, sealedRecord);
+      await ctx.invocation.writeMeta(slug, ctx.itemKey, ctx.executionId, sealedMeta);
     } catch (err) {
       logger.event("invocation.meta_seal_failed", ctx.itemKey, {
         invocationId: ctx.executionId,
@@ -478,6 +539,8 @@ export async function recordInvocationSeal(
       outcome,
       finishedAt: input.finishedAt,
       outputKinds: outputs.map((o) => o.kind),
+      ...(sealedRecord?.routedTo ? { routedTo: sealedRecord.routedTo } : {}),
+      ...(sealedRecord?.triggeredBy ? { triggeredBy: sealedRecord.triggeredBy } : {}),
     });
     // Phase B — artifact seal event (one per invocation, even when no
     // outputs were produced — the invocation dir is still sealed).

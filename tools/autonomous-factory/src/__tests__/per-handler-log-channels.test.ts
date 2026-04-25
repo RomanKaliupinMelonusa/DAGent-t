@@ -127,6 +127,7 @@ async function makeHarness(opts: {
     logger,
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    ledger: {} as NodeContext["ledger"],
     shell: opts.shell,
     filesystem: fs,
     invocation,
