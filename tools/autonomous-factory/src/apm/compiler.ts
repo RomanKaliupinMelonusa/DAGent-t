@@ -887,6 +887,8 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
         routing: profile.routing,
         domains: [...domainSet],
         patterns,
+        evidence_enrichment: profile.evidence_enrichment,
+        baseline_noise_filter: profile.baseline_noise_filter,
         signatures,
       };
     }

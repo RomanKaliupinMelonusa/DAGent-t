@@ -104,9 +104,11 @@ If the MCP run is green but the CLI run still fails, the test itself is
 probably wrong (timing, selectors). Report failure with
 `fault_domain: test-code` rather than chasing ghosts.
 
-## SSR / Hydration Specifics
+## SSR / Hydration Recipe
 
-When the handoff names `ssr-hydration`:
+If the failure looks like a hydration mismatch or server-render crash
+(symptoms: blank page after load, "Text content does not match" warnings,
+stack traces from `react-dom/server`):
 
 1. Diff server-render HTML vs client-render output for mismatches.
 2. Look for `useEffect`-less browser-only API access (`window`, `document`,
@@ -117,14 +119,22 @@ When the handoff names `ssr-hydration`:
    warnings in server logs).
 5. Check `/tmp/smoke-server.log` for server-side render errors.
 
+## Pre-Feature Baseline
+
+The `baseline-analyzer` node captures the console / network / uncaught
+errors that exist on the target pages **before** any feature code is
+written. The DAG materializes that artifact at `inputs/baseline.json`
+when this node runs. Read it and subtract those patterns from the live
+failure you reproduce — a console error that appears in the baseline is
+platform noise, not a feature regression.
+
 ## When You Cannot Fix It
 
 If after up to 3 Playwright MCP reproductions you cannot identify a fix:
 
 1. Commit your investigation notes (`$OUTPUTS_DIR/debug-notes.md`).
 2. `report_outcome` failed with a detailed diagnosis and the
-   `fault_domain` you believe is correct (`frontend`,
-   `browser-runtime-error`, `ssr-hydration`, `test-code`, or
+   `fault_domain` you believe is correct (`code-defect`, `test-code`, or
    `blocked`).
 3. The triage handler will either retry you once (bounded by
    `circuit_breaker.max_item_failures`) or escalate to `blocked`.

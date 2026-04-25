@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-25T04:05:40.928Z",
+  "compiledAt": "2026-04-25T17:43:06.776Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1814,6 +1814,8 @@
           "max_reroutes": 5,
           "patterns": [],
           "builtin_patterns": true,
+          "evidence_enrichment": true,
+          "baseline_noise_filter": true,
           "routing": {
             "backend": {
               "description": "Application logic errors, 500s, import failures, API bugs"
@@ -2702,6 +2704,8 @@
           "max_reroutes": 5,
           "patterns": [],
           "builtin_patterns": true,
+          "evidence_enrichment": true,
+          "baseline_noise_filter": true,
           "routing": {
             "backend": {
               "description": "Application logic errors, 500s, import failures, API bugs"
@@ -2804,6 +2808,8 @@
           "reason_template": "Contract locator '${testid}' declared in ACCEPTANCE.yml never rendered — this is a frontend implementation defect, not a test/SSR/infra issue. Failing test: \"${inTest}\"."
         }
       ],
+      "evidence_enrichment": true,
+      "baseline_noise_filter": true,
       "signatures": [
         {
           "error_snippet": "FUNCTIONS_WORKER_RUNTIME",
@@ -2918,6 +2924,8 @@
         "blocked"
       ],
       "patterns": [],
+      "evidence_enrichment": true,
+      "baseline_noise_filter": true,
       "signatures": [
         {
           "error_snippet": "FUNCTIONS_WORKER_RUNTIME",

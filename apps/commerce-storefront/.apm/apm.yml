@@ -23,9 +23,10 @@ agents:
     # Phase-A sibling of spec-compiler. Runs right after acceptance
     # compilation to capture a pre-feature baseline of console /
     # network / uncaught errors on the pages and modals the feature
-    # targets. Output is advisory: triage subtracts the baseline from
-    # structured Playwright failures so platform noise never
-    # misclassifies as an impl-defect.
+    # targets. Output is advisory: `storefront-debug` consumes the
+    # baseline directly via `consumes_artifacts` (declared in
+    # workflows.yml) and uses it to subtract platform noise from a
+    # Playwright failure during reproduction.
     #
     # Uses the existing Playwright MCP server (same pattern as
     # e2e-author / qa-adversary). No roam-code — baseline capture is
@@ -71,10 +72,13 @@ agents:
   storefront-debug:
     # Runtime-defect debugger. Same write scope as storefront-dev, plus the
     # Playwright MCP for live-browser reproduction against the local dev
-    # server. Only activated when triage reroutes a runtime failure
-    # (frontend / ssr-hydration / browser-runtime-error / test-code-from-dev)
-    # to this node. Sits inline between storefront-dev and
-    # storefront-unit-test; auto-skips on the happy path.
+    # server. Only activated when triage reroutes a `code-defect`
+    # classification (any storefront code failure surfaced by the unit-
+    # test, e2e-runner, or qa-adversary nodes). Sits inline between
+    # storefront-dev and storefront-unit-test; auto-skips on the happy
+    # path. Consumes the pre-feature baseline (kind: `baseline`,
+    # required: false) from `baseline-analyzer` so it can subtract
+    # platform noise from the failure during reproduction.
     instructions: [always, storefront, storefront/debugging.md, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
     promptFile: storefront-debug.agent.md
     mcp: [roam-code, playwright]
@@ -254,9 +258,10 @@ nodes:
     # Pre-feature page baseline. Runs a live browser against the target
     # pages (PLP, PDP, modals, etc.) named in the spec/acceptance and
     # captures the console / network / uncaught errors that are present
-    # BEFORE any feature code is written. Result is consumed by the
-    # triage handler as a noise filter so unrelated platform errors
-    # never misclassify as feature defects.
+    # BEFORE any feature code is written. Result is consumed by
+    # `storefront-debug` via `consumes_artifacts` (declared in
+    # workflows.yml) so the debug agent can subtract pre-feature platform
+    # noise from a Playwright failure during reproduction.
     #
     # Graceful by design — a failed baseline must not block the pipeline
     # (see workflows.yml on_failure: blocked → null).

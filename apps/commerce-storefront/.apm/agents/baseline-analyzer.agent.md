@@ -1,5 +1,5 @@
 ---
-description: "Baseline page analyzer — captures console/network/uncaught errors on the feature's target pages BEFORE code is written, emits an advisory BASELINE.json that the triage engine uses as a noise filter"
+description: "Baseline page analyzer — captures console/network/uncaught errors on the feature's target pages BEFORE code is written, emits an advisory BASELINE.json that the storefront-debug agent uses to subtract pre-feature platform noise during failure reproduction"
 ---
 
 # Baseline Page Analyzer
@@ -57,7 +57,7 @@ Shape (all fields REQUIRED unless marked optional):
 }
 ```
 
-The first three fields (`schemaVersion`, `producedBy`, `producedAt`) are the **artifact envelope** and are MANDATORY under strict artifact mode — the downstream triage consumer will reject a `baseline` body that omits them. `captured_at` is a separate domain field (same value is fine for both — it's kept distinct from the envelope so downstream code that diffs baselines on capture time doesn't get coupled to envelope mechanics).
+The first three fields (`schemaVersion`, `producedBy`, `producedAt`) are the **artifact envelope** and are MANDATORY under strict artifact mode — the artifact registry will reject a `baseline` body that omits them, and the downstream `storefront-debug` consumer cannot materialize it. `captured_at` is a separate domain field (same value is fine for both — it's kept distinct from the envelope so downstream code that diffs baselines on capture time doesn't get coupled to envelope mechanics).
 
 Entry semantics:
 - `pattern` — A **stable substring** the triage filter will match against
@@ -148,14 +148,15 @@ Entry semantics:
 
 ## Why This Exists
 
-The triage engine's contract classifier treats any `uncaughtErrors[]`
-entry in a Playwright failure as a `browser-runtime-error` → routes
-back to the dev agent. When a **pre-existing** platform error (a legacy
-Chakra warning, an upstream recommendations-API 500, a localisation
-race) is present on the target page, the dev agent is repeatedly blamed
-for errors it did not introduce. Your baseline tells the filter:
-"these errors existed before we touched anything — ignore them when
-deciding whether the feature broke the page."
+When a Playwright failure surfaces a console error or uncaught exception,
+the `storefront-debug` agent reproduces the failure live and decides
+whether it represents a real feature regression. If a **pre-existing**
+platform error (a legacy Chakra warning, an upstream recommendations-API
+500, a localisation race) is present on the target page, the debugger
+can be misled into chasing noise the feature did not introduce. Your
+baseline tells the debugger: "these errors existed before we touched
+anything — ignore them when deciding whether the feature broke the
+page."
 
 Keep patterns specific. A baseline entry of `"Warning"` would swallow
 genuine feature defects. A baseline entry of

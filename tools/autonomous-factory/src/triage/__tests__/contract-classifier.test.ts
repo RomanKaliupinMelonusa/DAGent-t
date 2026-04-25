@@ -38,6 +38,8 @@ function profileWithBuiltins(extraRoutingKeys: string[] = []): CompiledTriagePro
     routing,
     domains: routingKeys,
     patterns: [...BUILTIN_TRIAGE_PATTERNS],
+    evidence_enrichment: true,
+    baseline_noise_filter: true,
     signatures: [],
   };
 }
@@ -250,6 +252,8 @@ describe("evaluateProfilePatterns — custom patterns", () => {
           domain: "mrt-deploy-auth",
         },
       ],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
     const r = evaluateProfilePatterns(profile, {
@@ -267,6 +271,8 @@ describe("evaluateProfilePatterns — custom patterns", () => {
       routing: {},
       domains: [],
       patterns: [],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
     assert.equal(
@@ -301,6 +307,8 @@ describe("evaluateProfilePatterns — json-path arm", () => {
           },
         },
       ],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
     const payload: StructuredFailure = {
@@ -337,6 +345,8 @@ describe("evaluateProfilePatterns — json-path arm", () => {
           },
         },
       ],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
     const payload: StructuredFailure = {
@@ -375,6 +385,8 @@ describe("evaluateProfilePatterns — json-path arm", () => {
           domain: "mrt-runtime",
         },
       ],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
     const payload: StructuredFailure = {
@@ -414,6 +426,8 @@ describe("evaluateProfilePatterns — json-path arm", () => {
           domain: "frontend",
         },
       ],
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
     };
 

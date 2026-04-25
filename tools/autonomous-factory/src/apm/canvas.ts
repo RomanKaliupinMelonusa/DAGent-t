@@ -283,6 +283,8 @@ export function fromCanvas(canvas: ApmCanvas): {
         routing,
         domains: Object.keys(routing),
         patterns: [],
+        evidence_enrichment: true,
+        baseline_noise_filter: true,
         signatures: [],
       };
     }

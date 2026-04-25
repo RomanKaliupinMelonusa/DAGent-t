@@ -45,6 +45,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
         frontend: { description: "UI errors" },
         environment: { description: "Transient infra glitches" },
       },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [
         {
           error_snippet: "net::ERR_NAME_NOT_RESOLVED",
@@ -75,6 +77,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
       llm_fallback: true, // should be ignored — classifier wins
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
       domains: ["frontend"],
       patterns: [],
@@ -92,6 +96,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
       llm_fallback: true,
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
       domains: ["frontend"],
       patterns: [],

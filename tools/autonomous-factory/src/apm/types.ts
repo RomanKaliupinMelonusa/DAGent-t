@@ -1016,6 +1016,19 @@ export const TriageProfileSchema = z.object({
    *  to the resolved pattern list. Default `true`; set `false` to replace
    *  the built-ins entirely with this profile's own `patterns`. */
   builtin_patterns: z.boolean().default(true),
+  /** When `false`, the triage handler skips loading ACCEPTANCE / QA-REPORT
+   *  evidence and feeding it as a prepended block to the classifier. Use
+   *  this when a profile relies on a single-shot LLM classification of the
+   *  raw error and the structured contract evidence adds noise rather than
+   *  signal. Default `true` preserves the original enrichment behaviour. */
+  evidence_enrichment: z.boolean().default(true),
+  /** When `false`, the triage handler skips the `_BASELINE.json`
+   *  noise-filter pass over the structured failure and does not pass the
+   *  baseline profile to the LLM router. Use this when the baseline
+   *  travels directly to a downstream node via `consumes_artifacts` and
+   *  triage no longer needs to subtract pre-feature noise itself. Default
+   *  `true` preserves the original filtering behaviour. */
+  baseline_noise_filter: z.boolean().default(true),
   /** Domain → routing entry. Domain keys are dynamic per-profile (no global enum). */
   routing: z.record(z.string(), TriageRouteEntrySchema),
 });
@@ -1185,6 +1198,10 @@ export const CompiledTriageProfileSchema = z.object({
    *  prepended unless the source profile set `builtin_patterns: false`.
    *  Defaults to `[]` so stale caches still parse. */
   patterns: z.array(TriagePatternSchema).default([]),
+  /** Resolved evidence_enrichment toggle (default `true`). */
+  evidence_enrichment: z.boolean().default(true),
+  /** Resolved baseline_noise_filter toggle (default `true`). */
+  baseline_noise_filter: z.boolean().default(true),
   /** Resolved signatures from the referenced packs. */
   signatures: z.array(TriageSignatureSchema),
 });

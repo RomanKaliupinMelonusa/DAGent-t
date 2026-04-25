@@ -335,3 +335,37 @@ describe("built-in pattern filtering", () => {
     assert.equal(r.triage_profiles["default.main"].patterns.length, 0);
   });
 });
+
+describe("triage profile enrichment toggles", () => {
+  it("defaults evidence_enrichment and baseline_noise_filter to true", async () => {
+    const root = writeFixture({
+      triageProfile: {
+        classifier: "rag-only",
+        llm_fallback: false,
+        max_reroutes: 3,
+        routing: { frontend: { description: "UI" } },
+      },
+    });
+    const r = await compileApm(root);
+    const compiled = r.triage_profiles["default.main"];
+    assert.equal(compiled.evidence_enrichment, true);
+    assert.equal(compiled.baseline_noise_filter, true);
+  });
+
+  it("propagates evidence_enrichment:false and baseline_noise_filter:false", async () => {
+    const root = writeFixture({
+      triageProfile: {
+        classifier: "llm-only",
+        llm_fallback: true,
+        max_reroutes: 3,
+        routing: { frontend: { description: "UI" } },
+        evidence_enrichment: false,
+        baseline_noise_filter: false,
+      },
+    });
+    const r = await compileApm(root);
+    const compiled = r.triage_profiles["default.main"];
+    assert.equal(compiled.evidence_enrichment, false);
+    assert.equal(compiled.baseline_noise_filter, false);
+  });
+});

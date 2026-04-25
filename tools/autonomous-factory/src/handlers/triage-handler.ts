@@ -516,9 +516,16 @@ const triageHandlerInner: NodeHandler = {
     // the artifacts exist. Both RAG and LLM layers then see the structured
     // verdict first, instead of a 30 KB ANSI Playwright blob. No-op when
     // no oracle artifacts are present (pre-Phase-B features).
+    //
+    // Profiles with `evidence_enrichment: false` opt out entirely — the
+    // raw error is fed directly to the classifier without contract
+    // prepend. Used by single-shot LLM profiles where structured evidence
+    // adds noise rather than signal.
     const artifacts: TriageArtifactLoader = ctx.triageArtifacts;
-    const { trace: enrichedError, sources: evidenceSources } =
-      artifacts.loadContractEvidence(slug, rawError);
+    const evidenceEnabled = profile.evidence_enrichment !== false;
+    const { trace: enrichedError, sources: evidenceSources } = evidenceEnabled
+      ? artifacts.loadContractEvidence(slug, rawError)
+      : { trace: rawError, sources: [] as readonly string[] };
     if (evidenceSources.length > 0) {
       logger.event("triage.evaluate", failingNodeKey, {
         source: "contract-evidence",
@@ -548,21 +555,28 @@ const triageHandlerInner: NodeHandler = {
     // tripping on unrelated platform/legacy errors that exist regardless
     // of the feature under test. Best-effort — a missing or malformed
     // baseline is an identity no-op (filterNoise handles the null case).
+    //
+    // Profiles with `baseline_noise_filter: false` skip both the filter
+    // pass and baseline injection into the LLM router. Use this when the
+    // baseline travels directly to a downstream node via
+    // `consumes_artifacts` and triage no longer needs to inspect it.
     let filteredStructuredFailure: unknown = ctx.structuredFailure;
     let baseline: Awaited<ReturnType<NonNullable<typeof ctx.baselineLoader>["loadBaseline"]>> | null = null;
     let baselineDropCounts: { console: number; network: number; uncaught: number } | undefined;
-    try {
-      baseline = ctx.baselineLoader?.loadBaseline(slug) ?? null;
-      filteredStructuredFailure = filterNoise(ctx.structuredFailure, baseline);
-      if (baseline && filteredStructuredFailure !== ctx.structuredFailure) {
-        baselineDropCounts = getLastDropCounts();
-        logger.event("triage.evaluate", failingNodeKey, {
-          source: "baseline-filter",
-          baseline_feature: baseline.feature,
-          drop_counts: baselineDropCounts,
-        });
-      }
-    } catch { /* non-fatal — fall through with original payload */ }
+    if (profile.baseline_noise_filter !== false) {
+      try {
+        baseline = ctx.baselineLoader?.loadBaseline(slug) ?? null;
+        filteredStructuredFailure = filterNoise(ctx.structuredFailure, baseline);
+        if (baseline && filteredStructuredFailure !== ctx.structuredFailure) {
+          baselineDropCounts = getLastDropCounts();
+          logger.event("triage.evaluate", failingNodeKey, {
+            source: "baseline-filter",
+            baseline_feature: baseline.feature,
+            drop_counts: baselineDropCounts,
+          });
+        }
+      } catch { /* non-fatal — fall through with original payload */ }
+    }
     // Session B (Item 3) — profile-driven L0 pre-classifier. Built-in
     // patterns (browser-uncaught, contract-testid-timeout,
     // spec-schema-violation) are prepended by the APM compiler unless the

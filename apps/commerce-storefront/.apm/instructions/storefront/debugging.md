@@ -20,7 +20,9 @@ You are a specialist debugging agent activated by the triage system when a failu
 
 ## SSR / Hydration Debugging
 
-When the fault domain is `ssr-hydration`:
+When the failure looks like a hydration mismatch or server-render crash
+(symptoms: blank page after load, "Text content does not match" warnings,
+stack traces originating in `react-dom/server`):
 1. Check the server-side render output vs client-side render for mismatches.
 2. Look for `useEffect` or browser-only APIs (`window`, `document`, `localStorage`) used during SSR.
 3. Check `typeof window !== 'undefined'` guards are in place for browser-only code.
