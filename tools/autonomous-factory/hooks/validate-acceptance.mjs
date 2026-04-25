@@ -8,17 +8,26 @@
  *
  * Inputs (env / argv):
  *   APP_ROOT        — absolute path to the app (contains `e2e/`, `playwright.config.ts`, `in-progress/`)
- *   SLUG            — feature slug (resolves <APP_ROOT>/in-progress/<SLUG>_ACCEPTANCE.yml)
+ *   SLUG            — feature slug (used for output naming and CLI fallback paths)
  *   STOREFRONT_URL  — base URL to run Playwright against (optional; falls back to localhost:3000)
+ *   OUTPUTS_DIR     — per-invocation outputs directory (set by `local-exec`).
+ *                     When present, `validation.json` and `validation-report.json`
+ *                     are written here. When absent, the legacy flat path
+ *                     `<APP_ROOT>/in-progress/<SLUG>_VALIDATION.json` is used.
+ *   INPUTS_DIR      — per-invocation inputs directory. When present,
+ *                     `acceptance.yml` is read from here (materialized by
+ *                     the `materialize-inputs` middleware via the node's
+ *                     `consumes_artifacts` declaration). Falls back to
+ *                     `<APP_ROOT>/in-progress/<SLUG>_ACCEPTANCE.yml`.
  *
  * Outputs:
  *   stdout          — human-readable summary (one line per flow + a verdict).
- *   <APP_ROOT>/in-progress/<SLUG>_VALIDATION.json — structured outcome:
+ *   <OUTPUTS_DIR>/validation.json (or legacy flat path) — structured outcome:
  *                     { outcome: "pass"|"fail"|"skipped", reason?, violations[] }
  *   Exit code       — 0 on pass (or skipped due to missing contract), 1 on any fail.
  *
  * Behaviour:
- *   1. Load and validate `_ACCEPTANCE.yml`. If missing, exit 0 with outcome=skipped.
+ *   1. Load and validate the acceptance contract. If missing, exit 0 with outcome=skipped.
  *   2. Synthesize a Playwright spec materializing every `required_flow` +
  *      `required_dom` entry + forbidden console / network asserts.
  *   3. Write the spec to `<APP_ROOT>/e2e/_acceptance_<slug>.spec.ts` (a
@@ -27,7 +36,7 @@
  *      `PLAYWRIGHT_JSON_OUTPUT_NAME=<abs path to VALIDATION reporter json>`.
  *   5. Parse the JSON reporter output and the Playwright process exit code,
  *      reduce to a minimal `{ outcome, violations[] }` record, write it
- *      to `_VALIDATION.json`, and exit with the mapped code.
+ *      to the resolved validation path, and exit with the mapped code.
  *
  * The spec is intentionally small, deterministic, and written from the
  * CONTRACT only — it does not read or try to infer anything from the app's
@@ -62,9 +71,29 @@ if (!APP_ROOT || !SLUG) {
   }
 }
 
-const ACCEPTANCE_PATH = APP_ROOT && SLUG ? path.join(APP_ROOT, "in-progress", `${SLUG}_ACCEPTANCE.yml`) : "";
-const VALIDATION_PATH = APP_ROOT && SLUG ? path.join(APP_ROOT, "in-progress", `${SLUG}_VALIDATION.json`) : "";
-const REPORTER_JSON = APP_ROOT && SLUG ? path.join(APP_ROOT, "in-progress", `${SLUG}_VALIDATION_REPORT.json`) : "";
+// Per-invocation directories exported by `local-exec` when this script
+// runs as a `post:` hook. When present, write outputs into the canonical
+// `<slug>/<nodeKey>/<invocationId>/outputs/` tree and read the materialized
+// acceptance contract from `inputs/`. When absent (e.g. invoked from the
+// CLI for a one-off check), fall back to the legacy flat-namespace paths
+// so existing diagnostic workflows keep working.
+const OUTPUTS_DIR = process.env.OUTPUTS_DIR || "";
+const INPUTS_DIR = process.env.INPUTS_DIR || "";
+
+const LEGACY_FLAT_DIR = APP_ROOT && SLUG ? path.join(APP_ROOT, "in-progress") : "";
+
+const ACCEPTANCE_PATH = INPUTS_DIR
+  ? path.join(INPUTS_DIR, "acceptance.yml")
+  : (LEGACY_FLAT_DIR ? path.join(LEGACY_FLAT_DIR, `${SLUG}_ACCEPTANCE.yml`) : "");
+const VALIDATION_PATH = OUTPUTS_DIR
+  ? path.join(OUTPUTS_DIR, "validation.json")
+  : (LEGACY_FLAT_DIR ? path.join(LEGACY_FLAT_DIR, `${SLUG}_VALIDATION.json`) : "");
+const REPORTER_JSON = OUTPUTS_DIR
+  ? path.join(OUTPUTS_DIR, "validation-report.json")
+  : (LEGACY_FLAT_DIR ? path.join(LEGACY_FLAT_DIR, `${SLUG}_VALIDATION_REPORT.json`) : "");
+// SPEC_PATH stays under `<APP_ROOT>/e2e/` because Playwright's `testDir`
+// is rooted there. The file is transient and unconditionally removed in
+// the `finally` block below.
 const SPEC_PATH = APP_ROOT && SLUG ? path.join(APP_ROOT, "e2e", `_acceptance_${SLUG}.spec.ts`) : "";
 
 // ---------------------------------------------------------------------------

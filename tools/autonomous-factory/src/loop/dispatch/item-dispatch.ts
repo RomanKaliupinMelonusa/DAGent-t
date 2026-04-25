@@ -137,7 +137,12 @@ export async function dispatchItem(
   // path OR be surfaced via the handler's runtime `producedArtifacts`.
   // Missing required outputs override the outcome to `failed` with a
   // stable errorSignature so triage can route deterministically.
-  if (result.outcome === "completed") {
+  //
+  // Auto-skipped invocations (`signals.skipped === true`) are exempt:
+  // a no-op never wrote its declared outputs, and demanding them would
+  // flip the outcome to `failed:missing_required_output:<kind>` and
+  // trigger an infinite triage loop.
+  if (result.outcome === "completed" && result.signals?.skipped !== true) {
     const missing = await detectMissingRequiredOutputs(ctx, result);
     if (missing.length > 0) {
       const signature = `missing_required_output:${missing[0]}`;

@@ -103,7 +103,14 @@ const localExecHandler: NodeHandler = {
     // `tools/autonomous-factory/hooks/emit-playwright-handler-output.mjs`).
     const structuredFailureCfg = node?.structured_failure;
     if (structuredFailureCfg?.format === "playwright-json") {
-      const interpolated = structuredFailureCfg.path.replace(/\$\{featureSlug\}/g, slug);
+      // Supported placeholders: ${featureSlug}, ${OUTPUTS_DIR},
+      // ${INVOCATION_DIR}. The latter two let workflows pin Playwright's
+      // JSON reporter inside the per-invocation outputs tree instead of
+      // the legacy flat `in-progress/<slug>_*` namespace.
+      const interpolated = structuredFailureCfg.path
+        .replace(/\$\{featureSlug\}/g, slug)
+        .replace(/\$\{OUTPUTS_DIR\}/g, execEnv.OUTPUTS_DIR ?? "")
+        .replace(/\$\{INVOCATION_DIR\}/g, execEnv.INVOCATION_DIR ?? "");
       const absPath = path.isAbsolute(interpolated)
         ? interpolated
         : path.join(appRoot, interpolated);

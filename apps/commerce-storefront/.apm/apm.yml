@@ -87,7 +87,13 @@ agents:
       # actions; path guards here prevent accidental writes even if the
       # prompt is ignored.
       allowedWritePaths: ["^app/", "^config/", "^worker/", "^translations/", "(^|/)in-progress/.*_DEBUG-NOTES\\.md$"]
-      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
+      # Match storefront-dev / qa-adversary / baseline-analyzer: block CLI
+      # Playwright and `npm start`. Debug reproduction must go through the
+      # declared Playwright MCP and the prior `e2e-runner` evidence,
+      # otherwise the agent will pollute the app root with a stray
+      # `playwright-report.json` (Playwright's default reporter location
+      # when PLAYWRIGHT_JSON_OUTPUT_NAME is unset).
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
@@ -362,7 +368,7 @@ nodes:
     # structured payloads over raw stdout for classification.
     structured_failure:
       format: playwright-json
-      path: "in-progress/${featureSlug}_PW-REPORT.json"
+      path: "${OUTPUTS_DIR}/playwright-report.json"
     circuit_breaker:
       halt_on_identical: true
 

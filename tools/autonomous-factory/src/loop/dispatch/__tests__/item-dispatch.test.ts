@@ -268,3 +268,108 @@ describe("dispatchItem — HandlerMetadata required inputs", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// produces_artifacts gate vs. auto-skip exemption
+// ---------------------------------------------------------------------------
+
+import { newInvocationId } from "../../../kernel/invocation-id.js";
+import type { FeatureFilesystem } from "../../../ports/feature-filesystem.js";
+
+/** Minimal FeatureFilesystem that always reports paths as missing. */
+function makeMissingFs(): FeatureFilesystem {
+  const stub: Partial<FeatureFilesystem> = {
+    exists: async () => false,
+    existsSync: () => false,
+    joinPath: (...segs: string[]) => segs.filter(Boolean).join("/"),
+  };
+  return stub as FeatureFilesystem;
+}
+
+/** Build a ctx pre-wired for the produces_artifacts gate. */
+function makeArtifactCtx(): NodeContext {
+  const itemKey = "storefront-debug";
+  return makeCtx({
+    itemKey,
+    executionId: newInvocationId(),
+    appRoot: "/app",
+    apmContext: {
+      agents: {},
+      workflows: {
+        wf: {
+          nodes: {
+            [itemKey]: { produces_artifacts: ["debug-notes"] },
+          },
+        },
+      },
+    } as unknown as NodeContext["apmContext"],
+    pipelineState: {
+      items: {},
+      deps: {},
+      metadata: {},
+      workflowName: "wf",
+      feature: "feat-1",
+    } as unknown as NodeContext["pipelineState"],
+    filesystem: makeMissingFs(),
+  });
+}
+
+describe("dispatchItem — produces_artifacts gate vs. auto-skip", () => {
+  it("exempts auto-skipped invocations (signals.skipped=true) from the missing-output gate", async () => {
+    // Middleware short-circuits as auto-skip does, tagging the result
+    // with `signals.skipped: true`. Even though `produces_artifacts`
+    // declares `debug-notes` and no file exists on disk, the dispatcher
+    // must NOT flip the outcome to failed.
+    const skipMiddleware: NodeMiddleware = {
+      name: "test-auto-skip",
+      async run(_ctx, _next) {
+        return {
+          outcome: "completed",
+          errorMessage: "Skipped: no relevant changes",
+          signals: { skipped: true },
+          summary: { outcome: "completed", errorMessage: "Skipped: no relevant changes" },
+        };
+      },
+    };
+    // Handler should never run, but must be present.
+    const handler = makeHandler({ outcome: "completed", summary: {} });
+    const ctx = makeArtifactCtx();
+    const res = await dispatchItem(handler, ctx, [skipMiddleware]);
+
+    assert.equal(res.outcome, "completed", "skipped invocation must remain completed");
+    const completeCmd = res.commands.find((c) => c.type === "complete-item");
+    assert.ok(completeCmd, "expected complete-item command");
+    const failCmd = res.commands.find((c) => c.type === "fail-item");
+    assert.equal(failCmd, undefined, "must not emit fail-item for a skipped node");
+    const summaryCmd = res.commands.find((c) => c.type === "record-summary") as
+      | { type: "record-summary"; summary: Record<string, unknown> } | undefined;
+    assert.ok(summaryCmd);
+    assert.notEqual(
+      summaryCmd!.summary.errorSignature,
+      "missing_required_output:debug-notes",
+      "skipped invocation must not be tagged with the missing-output signature",
+    );
+  });
+
+  it("still flips to failed when a non-skipped completion omits a declared produces_artifacts file (regression guard)", async () => {
+    // Handler reports completed without `signals.skipped` and writes
+    // nothing. The presence gate must fire and override outcome to
+    // failed with the deterministic errorSignature.
+    const handler = makeHandler({ outcome: "completed", summary: {} });
+    const ctx = makeArtifactCtx();
+    const res = await dispatchItem(handler, ctx, []);
+
+    assert.equal(res.outcome, "failed", "missing declared output must flip outcome to failed");
+    const failCmd = res.commands.find((c) => c.type === "fail-item") as
+      | { type: "fail-item"; message?: string } | undefined;
+    assert.ok(failCmd, "expected fail-item command");
+    const summaryCmd = res.commands.find((c) => c.type === "record-summary") as
+      | { type: "record-summary"; summary: Record<string, unknown> } | undefined;
+    assert.ok(summaryCmd);
+    assert.equal(
+      summaryCmd!.summary.errorSignature,
+      "missing_required_output:debug-notes",
+      "expected stable errorSignature for missing declared output",
+    );
+  });
+});
+

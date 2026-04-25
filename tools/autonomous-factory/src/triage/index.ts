@@ -15,9 +15,21 @@ import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageResult } from "../types.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
+import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { retrieveTopMatches } from "./retriever.js";
 import { askLlmRouter } from "./llm-router.js";
+import { extractPriorAttempts } from "./historian.js";
 import { loadCustomClassifier } from "./custom-classifier.js";
+
+/** Minimal errorLog shape consumed by `extractPriorAttempts`. Matches the
+ *  shape on `PipelineState.errorLog` without importing the full state
+ *  module here. */
+interface TriageErrorLogEntry {
+  readonly timestamp: string;
+  readonly itemKey: string;
+  readonly message: string;
+  readonly errorSignature?: string | null;
+}
 
 export { computeErrorSignature, normalizeError } from "./error-fingerprint.js";
 
@@ -40,6 +52,8 @@ export async function evaluateTriage(
   appRoot?: string,
   logger?: PipelineLogger,
   repoRoot?: string,
+  baseline?: BaselineProfile | null,
+  errorLog?: readonly TriageErrorLogEntry[],
 ): Promise<TriageResult> {
   // Resolve classifier strategy.
   // - Built-in strategy keywords are the canonical enum + friendly aliases.
@@ -117,8 +131,12 @@ export async function evaluateTriage(
     for (const [d, entry] of Object.entries(profile.routing)) {
       if (entry.description) routingDescriptions[d] = { description: entry.description };
     }
+    const priorAttempts = errorLog ? extractPriorAttempts(errorLog) : [];
     const t0 = Date.now();
-    const result = await askLlmRouter(triageLlm, errorTrace, domains, topMatches, slug, appRoot, routingDescriptions);
+    const result = await askLlmRouter(
+      triageLlm, errorTrace, domains, topMatches, slug, appRoot,
+      routingDescriptions, baseline ?? null, priorAttempts,
+    );
     const llmResponseMs = Date.now() - t0;
     return {
       domain: result.fault_domain,

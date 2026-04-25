@@ -574,11 +574,21 @@ const triageHandlerInner: NodeHandler = {
       acceptance,
     });
     const failureRoutesForContract = ctx.failureRoutes ?? {};
+    // Fetch errorLog once so the LLM router can include prior-attempt
+    // classifications in its prompt (anti-misclassification context).
+    // Best-effort — a failure here just means the LLM gets a slightly
+    // less informed prompt, not a triage failure.
+    let errorLogForRouter: readonly { timestamp: string; itemKey: string; message: string; errorSignature?: string | null }[] = [];
+    try {
+      const ps = await ctx.stateReader.getStatus(slug);
+      errorLogForRouter = ps.errorLog ?? [];
+    } catch { /* non-fatal */ }
     const triageResult: TriageResult =
       preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
         ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
+            undefined, baseline, errorLogForRouter,
           );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---
