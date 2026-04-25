@@ -45,9 +45,12 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
 ## Operating Model
 
 1. **Read the triage handoff** — the `inputs/triage-handoff.json` materialized into this
-   prompt already contains the classified fault domain, error signature,
-   Playwright report excerpt, and baseline-filtered console/network/uncaught
-   signals. **Start there.** Do not re-investigate from scratch.
+   prompt already contains the classified fault domain (`code-defect` —
+   the only domain that routes here), the LLM classifier rationale, the
+   error signature, and a Playwright report excerpt. **Start there.** Do
+   not re-investigate from scratch. The handoff does **not** filter
+   baseline noise — read `inputs/baseline.json` separately (see
+   "Pre-Feature Baseline" below) and subtract those patterns yourself.
 2. **Reproduce the failure** in a real browser via the Playwright MCP.
    - Launch the already-running dev server at `http://localhost:3000` (the
      node's `pre:` hook guarantees it is up).
@@ -77,8 +80,10 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
 `@storefront-unit-test`. Do not do their work:
 
 - **Do NOT edit `{{acceptancePath}}` or `SPEC.md`.** If the acceptance
-  contract appears wrong, report failure with `fault_domain: schema-violation`
-  so the spec-compiler repairs it.
+  contract appears wrong, `report_outcome` failed with a diagnosis
+  explaining the contract defect — do **not** invent a fault domain
+  outside `{test-code, code-defect}`. The `circuit_breaker` will halt the
+  loop and surface the issue for operator review.
 - **Do NOT edit files under `e2e/`.** If the Playwright spec is the actual
   bug (bad locator, race condition, contradicts acceptance), report failure
   with `fault_domain: test-code` so triage reroutes to `@e2e-author`.
@@ -134,9 +139,11 @@ If after up to 3 Playwright MCP reproductions you cannot identify a fix:
 
 1. Commit your investigation notes (`$OUTPUTS_DIR/debug-notes.md`).
 2. `report_outcome` failed with a detailed diagnosis and the
-   `fault_domain` you believe is correct (`code-defect`, `test-code`, or
-   `blocked`).
+   `fault_domain` you believe is correct — only `code-defect` or
+   `test-code` are valid (the storefront classifier accepts no other
+   domains).
 3. The triage handler will either retry you once (bounded by
-   `circuit_breaker.max_item_failures`) or escalate to `blocked`.
+   `circuit_breaker.max_item_failures`) or the kernel will halt the loop
+   when retries are exhausted (the workflow's `blocked: null` route).
 
 {{> completion}}

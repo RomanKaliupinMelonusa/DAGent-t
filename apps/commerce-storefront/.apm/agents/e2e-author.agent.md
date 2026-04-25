@@ -92,7 +92,7 @@ test.beforeEach(async ({ page }) => {
 });
 ```
 
-This evidence is critical — when the `e2e-runner` node executes your tests and they fail, the triage engine uses this output to classify the fault domain.
+This evidence is critical — when the `e2e-runner` node executes your tests and they fail, the triage engine uses this output to classify the fault domain into one of two buckets: `test-code` (your spec is wrong — reroutes back to you) or `code-defect` (the storefront is broken — reroutes to `@storefront-debug`). Vague stack traces or silent timeouts force the classifier to guess; explicit failure-mode detection (rule #12 in the e2e guidelines) is what makes routing accurate.
 
 ## Critical Rules
 

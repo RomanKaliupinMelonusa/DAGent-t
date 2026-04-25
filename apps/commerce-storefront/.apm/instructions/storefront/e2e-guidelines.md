@@ -98,7 +98,7 @@
     }
     // Outcome 1 or 2 are both valid — test logic decides which is expected
     ```
-    An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode.
+    An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode so the LLM classifier can decide between `test-code` (route back to the SDET) and `code-defect` (route to `@storefront-debug`).
 
 ## Anti-Tautology Rules (MANDATORY — tests that cannot fail are forbidden)
 
