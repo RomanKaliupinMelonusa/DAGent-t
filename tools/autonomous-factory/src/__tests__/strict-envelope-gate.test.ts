@@ -165,11 +165,15 @@ describe("Session A — producer-side strict envelope gate", () => {
     assert.ok(!res.commands.some((c) => c.type === "fail-item"));
   });
 
-  it("strict ON → sidecar kind without .meta.json is hard-failed", async () => {
-    const appRoot = mkdtempSync(join(tmpdir(), "strict-sidecar-bad-"));
+  it("strict ON → sidecar kind without .meta.json is auto-stamped (envelope-only policy)", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "strict-sidecar-autostamp-"));
     const invocationId = newInvocationId();
-    // `acceptance` is a sidecar-envelope kind — primary YAML without a
-    // neighboring `acceptance.yml.meta.json` must fail under strict.
+    // `acceptance` is a sidecar-envelope kind under `policy: "envelope-only"`
+    // — the dispatch gate's auto-stamp branch must synthesize the missing
+    // `acceptance.yml.meta.json` rather than hard-fail. After the flip from
+    // strict→envelope-only, no registered kind is both STRICT and sidecar,
+    // so the hard-fail branch in `detectInvalidEnvelopeOutputs` is dead-code
+    // by policy (kept as a guard for future kinds).
     writeArtifact(
       appRoot, "feat-s", "qa-adversary", invocationId, "acceptance.yml",
       "required_flows: []\nforbidden_console_patterns: []\n",
@@ -183,12 +187,20 @@ describe("Session A — producer-side strict envelope gate", () => {
     );
     const res = await dispatchItem(handler, ctx, []);
 
-    const sum = res.commands.find((c) => c.type === "record-summary") as
-      | { summary: Record<string, unknown> } | undefined;
-    assert.equal(
-      (sum!.summary as { errorSignature?: string }).errorSignature,
-      "invalid_envelope_output:acceptance",
+    assert.ok(res.commands.some((c) => c.type === "complete-item"));
+    assert.ok(!res.commands.some((c) => c.type === "fail-item"));
+
+    // Sidecar should have materialized via auto-stamp.
+    const sidecarPath = join(
+      appRoot, "in-progress", "feat-s", "qa-adversary", invocationId,
+      "outputs", "acceptance.yml.meta.json",
     );
+    const { readFileSync, existsSync } = await import("node:fs");
+    assert.ok(existsSync(sidecarPath), "auto-stamped sidecar must exist");
+    const env = JSON.parse(readFileSync(sidecarPath, "utf8")) as Record<string, unknown>;
+    assert.equal(env.schemaVersion, 1);
+    assert.equal(env.producedBy, "qa-adversary");
+    assert.equal(typeof env.producedAt, "string");
   });
 
   it("strict ON → sidecar kind with valid .meta.json passes", async () => {

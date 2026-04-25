@@ -375,11 +375,14 @@ async function detectInvalidEnvelopeOutputs(
         try {
           sidecarBody = await ctx.filesystem.readFile(sidecar);
         } catch {
-          // Auto-stamp missing sidecar — but only for `policy:
-          // "envelope-only"` kinds. Strict-policy kinds (e.g.
-          // `acceptance`) deliberately keep envelope absence as a
-          // hard-fail so producers can't accidentally bypass the body
-          // schema contract by forgetting their `.meta.json`.
+          // Auto-stamp missing sidecar — only for `policy: "envelope-only"`
+          // kinds. STRICT-policy sidecar kinds would hard-fail here, but
+          // no kind currently combines `policy: "strict"` with
+          // `envelope: "sidecar"` (the catalog deliberately keeps the
+          // STRICT bucket on inline-envelope kinds where the body schema
+          // and envelope live in the same file). This branch is therefore
+          // dead-code-by-policy today; it remains as a guard for future
+          // STRICT+sidecar kinds.
           if (def.policy !== "envelope-only") {
             invalid.push({
               kind: kindStr,

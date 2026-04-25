@@ -1,10 +1,10 @@
 /**
  * artifact-catalog-policy.test.ts — Session R8 body-schema coverage audit.
  *
- * Locks in the 6/11/5 policy classification of the 22 built-in artifact
+ * Locks in the 5/12/5 policy classification of the 22 built-in artifact
  * kinds:
- *   - 6 STRICT kinds (typed contract, schema required)
- *   - 11 ENVELOPE-ONLY kinds (envelope enforced, body free-form)
+ *   - 5 STRICT kinds (typed contract, schema required)
+ *   - 12 ENVELOPE-ONLY kinds (envelope enforced, body free-form)
  *   - 5 INTERNAL kinds (handler/kernel-private, no cross-node contract)
  *
  * Plus the two derived lint invariants:
@@ -33,15 +33,18 @@ import { validateArtifactIO } from "../artifact-io-validator.js";
 // ---------------------------------------------------------------------------
 
 const EXPECTED_POLICY: Record<ArtifactKind, "strict" | "envelope-only" | "internal"> = {
-  // STRICT (6) — typed contracts, each already carries a schema.
-  acceptance: "strict",
+  // STRICT (5) — typed contracts, each already carries a schema.
   validation: "strict",
   "qa-report": "strict",
   "triage-handoff": "strict",
   "deployment-url": "strict",
   "implementation-status": "strict",
 
-  // ENVELOPE-ONLY (10) — envelope enforced, body free-form or externally owned.
+  // ENVELOPE-ONLY (12) — envelope enforced, body free-form or externally owned.
+  // `acceptance` lives here even though it carries a schema: the body schema
+  // is validated on read/write, but its sidecar envelope is auto-stamped by
+  // the dispatch gate when the spec-compiler agent forgets it.
+  acceptance: "envelope-only",
   spec: "envelope-only",
   baseline: "envelope-only",
   "debug-notes": "envelope-only",
@@ -79,14 +82,14 @@ describe("artifact-catalog policy classification", () => {
     }
   });
 
-  it("classification counts are 6 strict / 11 envelope-only / 5 internal = 22 total", () => {
+  it("classification counts are 5 strict / 12 envelope-only / 5 internal = 22 total", () => {
     const defs = listArtifactKinds();
     const counts = defs.reduce<Record<string, number>>((acc, d) => {
       acc[d.policy] = (acc[d.policy] ?? 0) + 1;
       return acc;
     }, {});
-    assert.equal(counts.strict, 6);
-    assert.equal(counts["envelope-only"], 11);
+    assert.equal(counts.strict, 5);
+    assert.equal(counts["envelope-only"], 12);
     assert.equal(counts.internal, 5);
     assert.equal(defs.length, 22);
   });

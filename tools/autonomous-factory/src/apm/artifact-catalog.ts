@@ -479,7 +479,13 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
     scopes: ["node"],
     description:
       "Machine-readable acceptance contract emitted by the spec-compiler. The single source of truth for pass/fail evaluation downstream.",
-    policy: "strict",
+    // envelope-only (not strict): the body schema (AcceptanceContractSchema)
+    // is still validated on read/write via `validateArtifactPayload`, but the
+    // sidecar envelope is auto-stamped by the dispatch gate when the producer
+    // (spec-compiler agent's `write_file` tool) skips it. Producer-side
+    // sidecar compliance is not worth a hard-fail when the engine already
+    // has every value it needs to synthesize the envelope.
+    policy: "envelope-only",
     schema: AcceptanceContractSchema,
     schemaVersion: 1,
     // YAML consumed by a bash oracle (validate-acceptance.mjs) — keep the
