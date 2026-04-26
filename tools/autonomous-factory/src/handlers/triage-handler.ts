@@ -32,7 +32,7 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory } from "../triage/handoff-builder.js";
+import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory, parseDebugRecommendation } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
@@ -171,6 +171,86 @@ function truncateErrorExcerpt(raw: string, maxLines = 40): string {
   return `${lines.slice(0, maxLines).join("\n")}\n… (${lines.length - maxLines} more lines)`;
 }
 
+// ---------------------------------------------------------------------------
+// Prior debug-notes recommendation lookup
+// ---------------------------------------------------------------------------
+
+/** Producer node whose `debug-notes` artifact carries the
+ *  `## Remaining Test-Code Issue` / `## Unit Test Follow-ups` heading we
+ *  surface to the next triage cycle. Storefront-only by design — sample-app
+ *  parity is deferred. */
+const DEBUG_NOTES_PRODUCER = "storefront-debug";
+
+interface LoadedDebugRecommendation {
+  readonly debugNotesText: string;
+  readonly cycleIndex: number;
+  readonly recommendation: { domain: string; note: string };
+}
+
+/**
+ * Find the most recent completed + sealed `storefront-debug` invocation
+ * whose outputs include a `debug-notes` artifact, read the file via the
+ * artifact bus, and parse it for a domain recommendation. Returns `null`
+ * when no eligible invocation exists, the file cannot be read, or the
+ * body carries no recognised heading routable to `allowedDomains`.
+ *
+ * Best-effort — every failure is swallowed and treated as "no
+ * recommendation". The recommendation is advisory; it must never block
+ * a reroute.
+ */
+async function loadDebugRecommendation(
+  ctx: NodeContext,
+  artifacts: Record<string, { nodeKey: string; cycleIndex: number; outcome?: string; sealed?: boolean; finishedAt?: string; outputs: ArtifactRefSerialized[]; invocationId: string }> | undefined,
+  allowedDomains: readonly string[],
+): Promise<LoadedDebugRecommendation | null> {
+  if (!artifacts) return null;
+  if (allowedDomains.length === 0) return null;
+
+  // Walk artifacts → keep records for the producer that completed +
+  // sealed and emitted a `debug-notes` output. Pick the one with the
+  // greatest `finishedAt` (lex-sortable ISO), tiebreak by lex-greatest
+  // invocationId — same selector as `FileArtifactBus.findLatestArtifact`.
+  let best: { rec: typeof artifacts[string]; output: ArtifactRefSerialized } | null = null;
+  for (const rec of Object.values(artifacts)) {
+    if (rec.nodeKey !== DEBUG_NOTES_PRODUCER) continue;
+    if (rec.sealed !== true) continue;
+    if (rec.outcome !== "completed") continue;
+    if (!rec.finishedAt) continue;
+    const out = rec.outputs.find((o) => o.kind === "debug-notes" && typeof o.path === "string" && o.path.length > 0);
+    if (!out) continue;
+    if (
+      !best
+      || (rec.finishedAt > (best.rec.finishedAt ?? ""))
+      || (rec.finishedAt === best.rec.finishedAt && rec.invocationId > best.rec.invocationId)
+    ) {
+      best = { rec, output: out };
+    }
+  }
+  if (!best) return null;
+
+  let text: string;
+  try {
+    // Build a typed ref via the bus so we don't depend on the kind union
+    // typing on the serialised form. The bus path resolver is identical
+    // across both code paths.
+    const ref = ctx.artifactBus.ref(ctx.slug, "debug-notes", {
+      nodeKey: DEBUG_NOTES_PRODUCER,
+      invocationId: best.rec.invocationId,
+    });
+    text = await ctx.artifactBus.read(ref);
+  } catch {
+    return null;
+  }
+
+  const parsed = parseDebugRecommendation(text, allowedDomains);
+  if (!parsed) return null;
+  return {
+    debugNotesText: text,
+    cycleIndex: best.rec.cycleIndex,
+    recommendation: parsed,
+  };
+}
+
 /**
  * Result of `buildRerouteCommands` — the kernel commands to push, plus
  * the structured `TriageHandoff` payload built along the way so the
@@ -215,6 +295,13 @@ async function buildRerouteCommands(
    *  as a provenance footer in the dev-agent handoff so the agent can
    *  confirm the filter ran. Zero / omitted when no filtering happened. */
   baselineDropCounts?: { console: number; network: number; uncaught: number },
+  /** Prior debug-cycle recommendation parsed from the most recent
+   *  `storefront-debug` `debug-notes.md`. Threaded into
+   *  `buildTriageHandoff` so the rerouted dev agent sees the diagnosis
+   *  inline. The same recommendation has already biased the LLM router
+   *  upstream of this call. Absent when no eligible debug-notes exist
+   *  or no recognised heading was present. */
+  priorDebugRecommendation?: LoadedDebugRecommendation | null,
 ): Promise<RerouteBuildResult> {
   const { slug } = ctx;
   const commands: DagCommand[] = [];
@@ -270,6 +357,13 @@ async function buildRerouteCommands(
       baseline,
       slug,
       triageInvocationId: ctx.executionId,
+      ...(priorDebugRecommendation
+        ? {
+            debugNotesText: priorDebugRecommendation.debugNotesText,
+            debugNotesCycleIndex: priorDebugRecommendation.cycleIndex,
+            allowedDomains: Object.keys(ctx.failureRoutes ?? {}),
+          }
+        : {}),
     });
     commands.push({
       type: "stage-invocation",
@@ -707,9 +801,21 @@ const triageHandlerInner: NodeHandler = {
     // Best-effort — a failure here just means the LLM gets a slightly
     // less informed prompt, not a triage failure.
     let errorLogForRouter: readonly { timestamp: string; itemKey: string; message: string; errorSignature?: string | null }[] = [];
+    let priorDebugRecommendation: LoadedDebugRecommendation | null = null;
     try {
       const ps = await ctx.stateReader.getStatus(slug);
       errorLogForRouter = ps.errorLog ?? [];
+      // Surface the most recent storefront-debug `## Remaining Test-Code
+      // Issue` / `## Unit Test Follow-ups` recommendation to the LLM
+      // router and the dev-agent handoff. Allowed domains gate by what
+      // the failing node can actually reroute to so we never bias the
+      // classifier toward an unroutable verdict.
+      const allowedDomains = Object.keys(ctx.failureRoutes ?? {});
+      priorDebugRecommendation = await loadDebugRecommendation(
+        ctx,
+        ps.artifacts as Parameters<typeof loadDebugRecommendation>[1],
+        allowedDomains,
+      );
     } catch { /* non-fatal */ }
     const triageResult: TriageResult =
       preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
@@ -717,6 +823,13 @@ const triageHandlerInner: NodeHandler = {
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
             undefined, baseline, errorLogForRouter, failingNodeKey,
+            priorDebugRecommendation
+              ? {
+                  domain: priorDebugRecommendation.recommendation.domain,
+                  note: priorDebugRecommendation.recommendation.note,
+                  cycleIndex: priorDebugRecommendation.cycleIndex,
+                }
+              : undefined,
           );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---
@@ -949,7 +1062,7 @@ const triageHandlerInner: NodeHandler = {
     const routeToPolicy = resolveNodeBudgetPolicy(routeToNode, ctx.apmContext);
     const maxReroutes = profileForCap?.max_reroutes ?? routeToPolicy.maxRerouteCycles;
 
-    const { commands, handoff, routedToInvocationId } = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts);
+    const { commands, handoff, routedToInvocationId } = await buildRerouteCommands(ctx, routeToKey, record, triageResult, maxReroutes, routeToPolicy, failingNodeKey, rawError, filteredStructuredFailure, baseline, baselineDropCounts, priorDebugRecommendation);
 
     return {
       outcome: "completed",

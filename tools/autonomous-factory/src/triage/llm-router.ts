@@ -111,6 +111,24 @@ function renderPriorAttemptsSection(priorAttempts: readonly PriorAttempt[]): str
   return lines.join("\n");
 }
 
+/**
+ * Render the prior-debug-recommendation block. The classifier sees this
+ * AFTER the baseline-noise section and BEFORE the prior-attempts section
+ * so the most recent specialist diagnosis is the highest-trust hint
+ * available short of contradicting trace evidence.
+ */
+function renderPriorDebugRecommendationSection(
+  rec: { readonly domain: string; readonly note: string; readonly cycleIndex: number } | undefined,
+): string {
+  if (!rec) return "";
+  const note = rec.note.replace(/\s+/g, " ").trim();
+  return (
+    `A prior debug specialist (cycle ${rec.cycleIndex}) recommended classifying the ` +
+    `next failure as \`${rec.domain}\` because: ${note}. Prefer this classification ` +
+    `unless the new trace contains direct evidence contradicting it.`
+  );
+}
+
 function buildTriagePrompt(
   trace: string,
   domains: string[],
@@ -118,6 +136,7 @@ function buildTriagePrompt(
   faultRouting: Record<string, { description?: string }>,
   baseline: BaselineProfile | null,
   priorAttempts: readonly PriorAttempt[],
+  priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
@@ -132,8 +151,10 @@ function buildTriagePrompt(
     .join("\n");
 
   const baselineSection = renderBaselineSection(baseline);
+  const recommendationSection = renderPriorDebugRecommendationSection(priorDebugRecommendation);
   const priorSection = renderPriorAttemptsSection(priorAttempts);
   const baselineBlock = baselineSection ? `\n\n${baselineSection}` : "";
+  const recommendationBlock = recommendationSection ? `\n\n${recommendationSection}` : "";
   const priorBlock = priorSection ? `\n\n${priorSection}` : "";
 
   return `You are a fault-domain classifier for an agentic CI/CD pipeline.
@@ -149,7 +170,7 @@ ${rules}
 Output ONLY valid JSON: {"fault_domain": "<domain>", "reason": "<one-sentence explanation>", "evidence_line": "<exact verbatim substring from the trace that justifies the verdict>"}
 The "evidence_line" field MUST be copied verbatim from the trace below — do not paraphrase, do not invent.
 Do not output any other text.
-${matchContext}${baselineBlock}${priorBlock}
+${matchContext}${baselineBlock}${recommendationBlock}${priorBlock}
 
 Error trace:
 ${trace.slice(0, 4000)}`;
@@ -289,6 +310,7 @@ export async function askLlmRouter(
   baseline: BaselineProfile | null = null,
   priorAttempts: readonly PriorAttempt[] = [],
   failingNodeKey?: string,
+  priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
@@ -296,7 +318,7 @@ export async function askLlmRouter(
   };
 
   const prompt = buildTriagePrompt(
-    trace, domains, topMatches, faultRouting, baseline, priorAttempts,
+    trace, domains, topMatches, faultRouting, baseline, priorAttempts, priorDebugRecommendation,
   );
   const baseSystem =
     "You are a JSON-only fault-domain classifier. " +

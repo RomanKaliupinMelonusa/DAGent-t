@@ -504,6 +504,28 @@ export interface TriageHandoff {
    *  record even when no downstream dev agent will consume it. Absent /
    *  false means the handoff is carrying a live reroute target. */
   readonly degraded?: boolean;
+  /** Recommendation parsed out of the most recent `storefront-debug`
+   *  `debug-notes.md` artifact when its body included a
+   *  `## Remaining Test-Code Issue` (or `## Unit Test Follow-ups`)
+   *  heading. The debug specialist's diagnosis that the next failure
+   *  will actually be in test code, not the component itself —
+   *  surfaced here so the next triage cycle can prefer the
+   *  recommended classification instead of looping back to debug.
+   *  Absent when no recognised heading was present, the body was
+   *  empty, or the recommended domain is not in the failing node's
+   *  routing table. */
+  readonly priorDebugRecommendation?: {
+    /** Inferred fault domain from the heading. Currently always
+     *  `"test-code"` — both supported headings map to the same domain. */
+    readonly domain: string;
+    /** Heading body, trimmed. Free-form prose copied verbatim from the
+     *  debug-notes artifact. */
+    readonly note: string;
+    /** `cycleIndex` of the source `storefront-debug` invocation —
+     *  rendered alongside the recommendation so the LLM router and
+     *  dev agent can tell how recent the diagnosis is. */
+    readonly cycleIndex: number;
+  };
 }
 
 /**

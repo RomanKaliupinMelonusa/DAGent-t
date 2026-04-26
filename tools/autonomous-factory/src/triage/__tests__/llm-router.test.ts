@@ -158,6 +158,54 @@ describe("buildTriagePrompt — both-empty path", () => {
   });
 });
 
+describe("buildTriagePrompt — priorDebugRecommendation block", () => {
+  const REC = {
+    domain: "test-code",
+    note: "The consent dialog timing intercepts pointer events.",
+    cycleIndex: 2,
+  };
+
+  it("renders the recommendation block when supplied", () => {
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, null, [], REC);
+    assert.match(
+      prompt,
+      /A prior debug specialist \(cycle 2\) recommended classifying the next failure as `test-code` because: The consent dialog timing intercepts pointer events\./,
+    );
+    assert.match(prompt, /Prefer this classification unless the new trace contains direct evidence contradicting it\./);
+  });
+
+  it("omits the block when priorDebugRecommendation is undefined", () => {
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, null, []);
+    assert.doesNotMatch(prompt, /A prior debug specialist/);
+  });
+
+  it("places the block AFTER the baseline section and BEFORE the prior-attempts section", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [
+        { pattern: "Warning: The result of getServerSnapshot should be cached" },
+      ],
+    };
+    const priors: PriorAttempt[] = [{
+      cycle: 1,
+      timestamp: "t1",
+      resetReason: "[domain:frontend] hydration mismatch",
+      resultingSignature: null,
+      failingItemKey: null,
+      errorPreview: "",
+    }];
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, priors, REC);
+    const baselineIdx = prompt.indexOf("Pre-existing baseline noise");
+    const recIdx = prompt.indexOf("A prior debug specialist");
+    const priorsIdx = prompt.indexOf("Prior debug-cycle classifications");
+    assert.ok(baselineIdx >= 0, "baseline section must be present");
+    assert.ok(recIdx >= 0, "recommendation block must be present");
+    assert.ok(priorsIdx >= 0, "prior-attempts section must be present");
+    assert.ok(baselineIdx < recIdx, "recommendation must follow baseline");
+    assert.ok(recIdx < priorsIdx, "recommendation must precede prior-attempts");
+  });
+});
+
 describe("buildTriagePrompt — end-to-end loader → prompt subtraction (regression)", () => {
   it(
     "renders the baseline-noise section when the baseline is resolved via the artifact catalog "
