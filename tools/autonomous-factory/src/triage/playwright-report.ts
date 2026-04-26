@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { WORKING_DIR } from "../paths/feature-paths.js";
 
 /** Discriminated `kind` keeps future formats (jest-json, pytest-json) additive. */
 export interface StructuredFailure {
@@ -241,7 +242,7 @@ export function parsePlaywrightReport(
 
   const evidenceDir =
     opts.appRoot && opts.slug
-      ? path.join(opts.appRoot, ".dagent", `${opts.slug}_evidence`)
+      ? path.join(opts.appRoot, WORKING_DIR, `${opts.slug}_evidence`)
       : null;
 
   // Compile the effective redaction regex once — either user-supplied or

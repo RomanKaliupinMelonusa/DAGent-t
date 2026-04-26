@@ -32,6 +32,7 @@ import {
   validateEnvelope,
 } from "../apm/artifact-catalog.js";
 import { isInvocationId } from "../kernel/invocation-id.js";
+import { WORKING_DIR } from "../paths/feature-paths.js";
 
 const KICKOFF_DIR = "_kickoff";
 
@@ -78,7 +79,7 @@ export class FileArtifactBus implements ArtifactBus {
 
   private slugRoot(slug: string): string {
     this.assertIdent(slug, "slug");
-    return this.fs.joinPath(this.appRoot, ".dagent", slug);
+    return this.fs.joinPath(this.appRoot, WORKING_DIR, slug);
   }
 
   private filenameFor(kind: ArtifactKind): string {
