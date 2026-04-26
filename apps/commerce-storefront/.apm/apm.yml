@@ -40,7 +40,15 @@ agents:
     # Uses the existing Playwright MCP server (same pattern as
     # e2e-author / qa-adversary). No roam-code — baseline capture is
     # orthogonal to code indexing.
-    instructions: [always]
+    #
+    # `storefront/baseline-volatility-tagging.md` teaches the agent to
+    # tag known-permanent PWA Kit platform noise (the `volatility` /
+    # `category` schema fields landed in Phase A3) so the triage
+    # renderer can route persistent entries into the
+    # "DO NOT investigate" block. Loaded individually rather than via
+    # the `storefront` shorthand to avoid pulling in unrelated
+    # storefront/* fragments (e2e-guidelines, pwa-kit-patterns, …).
+    instructions: [always, storefront/baseline-volatility-tagging.md]
     promptFile: baseline-analyzer.agent.md
     mcp: [playwright]
     skills: []
