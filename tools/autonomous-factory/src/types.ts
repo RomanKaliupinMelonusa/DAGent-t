@@ -515,9 +515,8 @@ export interface TriageHandoff {
    *  false means the handoff is carrying a live reroute target. */
   readonly degraded?: boolean;
   /** Recommendation parsed out of the most recent `storefront-debug`
-   *  `debug-notes.md` artifact when its body included a
-   *  `## Remaining Test-Code Issue` (or `## Unit Test Follow-ups`)
-   *  heading. The debug specialist's diagnosis that the next failure
+   *  `debug-notes.md` artifact when its body included a recognised
+   *  recommendation marker. The debug specialist's diagnosis that the next failure
    *  will actually be in test code, not the component itself —
    *  surfaced here so the next triage cycle can prefer the
    *  recommended classification instead of looping back to debug.

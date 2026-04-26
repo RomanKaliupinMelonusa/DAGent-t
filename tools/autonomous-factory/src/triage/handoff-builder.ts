@@ -215,19 +215,6 @@ export function buildLoopAdvisory(
   return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }
 
-/**
- * Backward-compatible alias for `buildLoopAdvisory` that runs only the
- * consecutive-domain detector. Retained for callers (notably the A4
- * blocked-verdict circuit breaker) that have no current-cycle test
- * context to feed the same-test detector.
- */
-export function buildConsecutiveDomainAdvisory(
-  errorLog: readonly HandoffLogEntry[],
-  currentDomain: string,
-): string | undefined {
-  return buildLoopAdvisory(errorLog, currentDomain, []);
-}
-
 // ---------------------------------------------------------------------------
 // Top-level builder
 // ---------------------------------------------------------------------------

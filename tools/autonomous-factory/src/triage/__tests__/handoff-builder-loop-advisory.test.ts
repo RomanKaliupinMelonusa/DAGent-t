@@ -6,8 +6,6 @@
  *      mentions the test name, "fixture", and "spec-compiler".
  *   2. Only one prior cycle naming the test → no test-loop advisory.
  *   3. Same domain ×2 AND same test ×2 → both advisories joined.
- *   4. The deprecated `buildConsecutiveDomainAdvisory` alias still
- *      produces a domain-only advisory (no test-loop block).
  */
 
 import { describe, it } from "node:test";
@@ -15,7 +13,6 @@ import assert from "node:assert/strict";
 
 import {
   buildLoopAdvisory,
-  buildConsecutiveDomainAdvisory,
   detectSameTestLoop,
   extractTestNamesFromMessage,
 } from "../handoff-builder.js";
@@ -140,21 +137,5 @@ describe("buildLoopAdvisory", () => {
     assert.match(advisory!, new RegExp(TEST_NAME));
     // Joined with a blank line
     assert.match(advisory!, /\n\n/);
-  });
-});
-
-describe("buildConsecutiveDomainAdvisory (alias)", () => {
-  it("still produces the domain-only advisory and never includes the test-loop block", () => {
-    const log = [
-      failEntry(PW_LINE(297), "t0"),
-      rerouteEntry("frontend", "t1"),
-      failEntry(PW_LINE(299), "t2"),
-      rerouteEntry("frontend", "t3"),
-    ];
-    const advisory = buildConsecutiveDomainAdvisory(log, "frontend");
-    assert.ok(advisory);
-    assert.match(advisory!, /third/);
-    assert.doesNotMatch(advisory!, /spec-compiler/);
-    assert.doesNotMatch(advisory!, /fixture/);
   });
 });

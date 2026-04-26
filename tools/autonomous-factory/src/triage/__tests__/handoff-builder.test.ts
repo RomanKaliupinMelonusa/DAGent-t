@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 
 import {
   buildTriageHandoff,
-  buildConsecutiveDomainAdvisory,
   formatDomainTag,
   parseDomainTag,
   truncateError,
@@ -51,54 +50,6 @@ describe("truncateError", () => {
     const out = truncateError(lines, 40);
     assert.match(out, /^l0\n/);
     assert.match(out, /… \(10 more lines\)$/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildConsecutiveDomainAdvisory
-// ---------------------------------------------------------------------------
-
-describe("buildConsecutiveDomainAdvisory", () => {
-  function resetEntry(tag: string, ts: string) {
-    return {
-      timestamp: ts,
-      itemKey: RESET_OPS.RESET_FOR_REROUTE,
-      message: `${tag} [source:llm] something`,
-    };
-  }
-  function failEntry(ts: string) {
-    return { timestamp: ts, itemKey: "dev", message: "previous failure" };
-  }
-
-  it("fires when the last two reroutes and current domain all match", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:01:00Z"),
-      failEntry("2026-04-20T00:02:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:03:00Z"),
-    ];
-    const advisory = buildConsecutiveDomainAdvisory(log, "frontend");
-    assert.ok(advisory);
-    assert.match(advisory!, /third/);
-    assert.match(advisory!, /agent-branch\.sh revert/);
-  });
-
-  it("returns undefined when prior domains differ", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:backend]", "2026-04-20T00:01:00Z"),
-      failEntry("2026-04-20T00:02:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:03:00Z"),
-    ];
-    assert.equal(buildConsecutiveDomainAdvisory(log, "frontend"), undefined);
-  });
-
-  it("returns undefined when there are fewer than 2 prior attempts", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:01:00Z"),
-    ];
-    assert.equal(buildConsecutiveDomainAdvisory(log, "frontend"), undefined);
   });
 });
 

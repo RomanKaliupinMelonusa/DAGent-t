@@ -200,8 +200,9 @@ function validateFixture(
         });
         continue;
       }
-      // Successful status expected (2xx/3xx) but baseline shows the URL is broken.
-      const expectedOk = compareNumeric(a.comparator, a.value, 200) || a.value < 400;
+      // Successful status expected (any 2xx/3xx, regardless of comparator)
+      // but baseline shows the URL is broken.
+      const expectedOk = a.value < 400;
       if (expectedOk && baseline) {
         const evidence = urlHasBaselineFailure(fixture.url, baseline);
         if (evidence) {

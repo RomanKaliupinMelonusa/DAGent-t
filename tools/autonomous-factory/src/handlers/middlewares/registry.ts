@@ -24,6 +24,14 @@ import { handlerOutputIngestionMiddleware } from "./handler-output-ingestion.js"
 // Registry
 // ---------------------------------------------------------------------------
 
+/*
+ * Middleware ordering constraints (when both are enabled in a chain):
+ *   - `acceptance-integrity` MUST run before `fixture-validation`.
+ *   - `fixture-validation` reads the acceptance path pinned by
+ *     `acceptance-integrity` on `handlerOutput`.
+ *   - New middlewares with ordering dependencies should document them
+ *     here so chain authors have a single reference point.
+ */
 const BUILT_IN_MIDDLEWARES: Record<string, NodeMiddleware> = {
   [autoSkipMiddleware.name]: autoSkipMiddleware,
   [lifecycleHooksMiddleware.name]: lifecycleHooksMiddleware,

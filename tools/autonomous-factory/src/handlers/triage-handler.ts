@@ -32,7 +32,7 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
+import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
@@ -481,9 +481,9 @@ const triageHandlerInner: NodeHandler = {
     // --- A4 blocked-verdict circuit breaker ---
     // Count prior $BLOCKED outcomes for this same failing item from
     // errorLog. On the 2nd, halt the run instead of issuing another
-    // salvage-draft. Reuses `buildConsecutiveDomainAdvisory` so the
-    // halt reason carries the existing `agent-branch.sh revert`
-    // advisory text — no duplication.
+    // salvage-draft. Reuses `buildLoopAdvisory` (with no current-cycle
+    // test names) so the halt reason carries the existing
+    // `agent-branch.sh revert` advisory text — no duplication.
     try {
       const pipeStateForCb = await ctx.stateReader.getStatus(slug);
       const blockedFailingPrefix = `[failing:${failingNodeKey}]`;
@@ -502,9 +502,10 @@ const triageHandlerInner: NodeHandler = {
             break;
           }
         }
-        const advisory = buildConsecutiveDomainAdvisory(
+        const advisory = buildLoopAdvisory(
           pipeStateForCb.errorLog ?? [],
           lastDomain,
+          [],
         );
         const reason =
           `blocked-verdict circuit breaker: ${priorBlockedCount + 1} consecutive $BLOCKED ` +
