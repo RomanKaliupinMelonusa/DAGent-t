@@ -25,6 +25,7 @@ import type {
   SealInvocationInput,
 } from "../../types.js";
 import { isInvocationId } from "../../kernel/invocation-id.js";
+import { sealInvocationRecordPure } from "../../domain/dangling-invocations.js";
 
 // ─── Index helpers ──────────────────────────────────────────────────────────
 
@@ -152,32 +153,7 @@ export function sealInvocationRecord(
   slug: string,
   input: SealInvocationInput,
 ): InvocationRecord {
-  ensureArtifactsIndex(state);
-  const existing = state.artifacts[input.invocationId];
-  if (!existing) {
-    throw new Error(
-      `sealInvocationRecord: unknown invocationId '${input.invocationId}'`,
-    );
-  }
-  if (existing.sealed) {
-    // Idempotent — sealing a sealed record is a no-op. Return the existing
-    // record unchanged so callers can rely on the outcome field.
-    return existing;
-  }
-  const mergedOutputs = [
-    ...(existing.outputs ?? []),
-    ...(input.outputs ?? []),
-  ];
-  const sealed: InvocationRecord = {
-    ...existing,
-    outcome: input.outcome,
-    finishedAt: input.finishedAt ?? new Date().toISOString(),
-    outputs: mergedOutputs,
-    sealed: true,
-    ...(input.routedTo ? { routedTo: input.routedTo } : {}),
-    ...(input.nextFailureHint ? { nextFailureHint: input.nextFailureHint } : {}),
-  };
-  state.artifacts[input.invocationId] = sealed;
+  const sealed = sealInvocationRecordPure(state, input);
   appendInvocationJsonl(slug, sealed);
   return sealed;
 }

@@ -25,8 +25,10 @@ import {
   findInfraDevKey,
   type TransitionState,
 } from "../domain/transitions.js";
-import { findDanglingInvocations } from "../domain/dangling-invocations.js";
-import { sealInvocationRecord } from "../adapters/file-state/artifacts.js";
+import {
+  findDanglingInvocations,
+  sealInvocationRecordPure,
+} from "../domain/dangling-invocations.js";
 
 // ---------------------------------------------------------------------------
 // AdminCommand discriminated union
@@ -181,10 +183,12 @@ export function applyAdminCommand(state: PipelineState, cmd: AdminCommand): Admi
       // surrounding `withLockedWrite` writes the final snapshot atomically.
       let working: PipelineState = state;
       for (const { record, ageMs } of dangling) {
-        // Seal the invocation record itself so the JSONL tail and in-memory
-        // index reflect the synthetic failure. `sealInvocationRecord` is
-        // idempotent — re-sealing an already-sealed record is a no-op.
-        sealInvocationRecord(working, cmd.slug, {
+        // Seal the invocation record itself so the in-memory index reflects
+        // the synthetic failure. `sealInvocationRecordPure` is idempotent —
+        // re-sealing an already-sealed record is a no-op. The JSONL tail
+        // for kernel-issued seals is regenerable from `state.artifacts`;
+        // the adapter's wrapper handles tailing for non-kernel callers.
+        sealInvocationRecordPure(working, {
           invocationId: record.invocationId,
           outcome: "failed",
           finishedAt,

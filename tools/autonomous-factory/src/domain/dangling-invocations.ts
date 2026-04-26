@@ -13,7 +13,7 @@
  * use a fake clock.
  */
 
-import type { InvocationRecord } from "../types.js";
+import type { InvocationRecord, PipelineState, SealInvocationInput } from "../types.js";
 
 /**
  * Return the subset of `records` that are dangling at time `now`:
@@ -50,4 +50,45 @@ export function findDanglingInvocations(
     }
   }
   return result;
+}
+
+/**
+ * Pure state-mutation half of `sealInvocationRecord`. Mirrors the adapter's
+ * logic but performs no I/O — does not write the JSONL tail. Used by the
+ * kernel admin reducer (`recover-dangling`) so the kernel layer stays free
+ * of adapter imports. The adapter's `sealInvocationRecord` delegates here
+ * and then appends to `_invocations.jsonl`.
+ *
+ * Idempotent: re-sealing an already-sealed record returns the existing
+ * record unchanged. Throws if the invocationId is unknown.
+ */
+export function sealInvocationRecordPure(
+  state: PipelineState,
+  input: SealInvocationInput,
+): InvocationRecord {
+  state.artifacts ??= {};
+  const existing = state.artifacts[input.invocationId];
+  if (!existing) {
+    throw new Error(
+      `sealInvocationRecord: unknown invocationId '${input.invocationId}'`,
+    );
+  }
+  if (existing.sealed) {
+    return existing;
+  }
+  const mergedOutputs = [
+    ...(existing.outputs ?? []),
+    ...(input.outputs ?? []),
+  ];
+  const sealed: InvocationRecord = {
+    ...existing,
+    outcome: input.outcome,
+    finishedAt: input.finishedAt ?? new Date().toISOString(),
+    outputs: mergedOutputs,
+    sealed: true,
+    ...(input.routedTo ? { routedTo: input.routedTo } : {}),
+    ...(input.nextFailureHint ? { nextFailureHint: input.nextFailureHint } : {}),
+  };
+  state.artifacts[input.invocationId] = sealed;
+  return sealed;
 }
