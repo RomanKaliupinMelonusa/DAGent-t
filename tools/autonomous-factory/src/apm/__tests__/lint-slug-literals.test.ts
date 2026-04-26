@@ -18,7 +18,7 @@ describe("lintAgentPromptForSlugLiterals", () => {
 
   it("ignores boilerplate banner that uses `<KIND>.<EXT>` placeholder", () => {
     const prompt = [
-      "> Any reference below to `{{appRoot}}/in-progress/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name**.",
+      "> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name**.",
       "> Translate `_SPEC.md` → `spec`, `_CHANGES.json` → `change-manifest`.",
     ].join("\n");
     assert.deepEqual(lintAgentPromptForSlugLiterals(prompt), []);
@@ -28,7 +28,7 @@ describe("lintAgentPromptForSlugLiterals", () => {
     const prompt = [
       "Run the test:",
       "```bash",
-      "npx playwright test > {{appRoot}}/in-progress/{{featureSlug}}_PLAYWRIGHT-LOG.md",
+      "npx playwright test > {{appRoot}}/.dagent/{{featureSlug}}_PLAYWRIGHT-LOG.md",
       "```",
     ].join("\n");
     const hits = lintAgentPromptForSlugLiterals(prompt);
@@ -40,11 +40,11 @@ describe("lintAgentPromptForSlugLiterals", () => {
   it("flags multiple offenders across separate fenced blocks", () => {
     const prompt = [
       "```bash",
-      "cat {{appRoot}}/in-progress/{{featureSlug}}_CI-FAILURE.log",
+      "cat {{appRoot}}/.dagent/{{featureSlug}}_CI-FAILURE.log",
       "```",
       "And later:",
       "```bash",
-      "echo done >> {{appRoot}}/in-progress/{{featureSlug}}_PLAYWRIGHT-LOG.md",
+      "echo done >> {{appRoot}}/.dagent/{{featureSlug}}_PLAYWRIGHT-LOG.md",
       "```",
     ].join("\n");
     const hits = lintAgentPromptForSlugLiterals(prompt);
@@ -65,7 +65,7 @@ describe("lintAgentPromptForSlugLiterals", () => {
   });
 
   it("flags prose reads of legacy flat-path kernel files", () => {
-    const prompt = "2. Read `{{appRoot}}/in-progress/{{featureSlug}}_TRANS.md` for history.";
+    const prompt = "2. Read `{{appRoot}}/.dagent/{{featureSlug}}_TRANS.md` for history.";
     const hits = lintAgentPromptForSlugLiterals(prompt);
     assert.equal(hits.length, 1);
     assert.equal(hits[0]!.line, 1);
@@ -73,23 +73,23 @@ describe("lintAgentPromptForSlugLiterals", () => {
   });
 
   it("flags prose reads of legacy flat-path change manifest", () => {
-    const prompt = "1. Read the manifest: `{{appRoot}}/in-progress/{{featureSlug}}_CHANGES.json`.";
+    const prompt = "1. Read the manifest: `{{appRoot}}/.dagent/{{featureSlug}}_CHANGES.json`.";
     const hits = lintAgentPromptForSlugLiterals(prompt);
     assert.equal(hits.length, 1);
   });
 
   it("allow-lists lines with negative-example markers (do NOT)", () => {
-    const prompt = "do NOT construct `{{appRoot}}/in-progress/{{featureSlug}}_QA-REPORT.json` yourself.";
+    const prompt = "do NOT construct `{{appRoot}}/.dagent/{{featureSlug}}_QA-REPORT.json` yourself.";
     assert.deepEqual(lintAgentPromptForSlugLiterals(prompt), []);
   });
 
   it("allow-lists lines with 'never' marker", () => {
-    const prompt = "Never write to `{{appRoot}}/in-progress/{{featureSlug}}_SUMMARY.md` directly.";
+    const prompt = "Never write to `{{appRoot}}/.dagent/{{featureSlug}}_SUMMARY.md` directly.";
     assert.deepEqual(lintAgentPromptForSlugLiterals(prompt), []);
   });
 
   it("allow-lists lines with 'no longer scanned' marker", () => {
-    const prompt = "Writing to `{{appRoot}}/in-progress/{{featureSlug}}_CI-FAILURE.log` is no longer scanned.";
+    const prompt = "Writing to `{{appRoot}}/.dagent/{{featureSlug}}_CI-FAILURE.log` is no longer scanned.";
     assert.deepEqual(lintAgentPromptForSlugLiterals(prompt), []);
   });
 });

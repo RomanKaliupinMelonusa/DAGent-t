@@ -77,7 +77,7 @@ const localExecHandler: NodeHandler = {
     // if present. Ingestion is performed by the
     // `handler-output-ingestion` middleware so post-hook writes are
     // observable.
-    const invocationDir = path.join(appRoot, "in-progress", slug, itemKey, ctx.executionId);
+    const invocationDir = path.join(appRoot, ".dagent", slug, itemKey, ctx.executionId);
     const execEnv: Record<string, string | undefined> = {
       ...process.env,
       ...environment,
@@ -106,7 +106,7 @@ const localExecHandler: NodeHandler = {
       // Supported placeholders: ${featureSlug}, ${OUTPUTS_DIR},
       // ${INVOCATION_DIR}. The latter two let workflows pin Playwright's
       // JSON reporter inside the per-invocation outputs tree instead of
-      // the legacy flat `in-progress/<slug>_*` namespace.
+      // the legacy flat `.dagent/<slug>_*` namespace.
       const interpolated = structuredFailureCfg.path
         .replace(/\$\{featureSlug\}/g, slug)
         .replace(/\$\{OUTPUTS_DIR\}/g, execEnv.OUTPUTS_DIR ?? "")

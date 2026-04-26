@@ -53,24 +53,24 @@ function findApps(repoRoot: string): string[] {
 }
 
 /**
- * Aggregate every `errorLog[*].message` across all in-progress slugs for
- * an app. Best-effort: returns `[]` when no `in-progress/` directory or
+ * Aggregate every `errorLog[*].message` across all .dagent slugs for
+ * an app. Best-effort: returns `[]` when no `.dagent/` directory or
  * no `_state.json` files exist (pre-first-run apps), suppressing the
  * dead-pattern lint silently.
  */
 function readRecentErrorMessages(appRoot: string): string[] {
-  const inProgress = path.join(appRoot, "in-progress");
-  if (!fs.existsSync(inProgress)) return [];
+  const workDir = path.join(appRoot, ".dagent");
+  if (!fs.existsSync(workDir)) return [];
   const messages: string[] = [];
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(inProgress, { withFileTypes: true });
+    entries = fs.readdirSync(workDir, { withFileTypes: true });
   } catch {
     return [];
   }
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    const stateFile = path.join(inProgress, e.name, "_state.json");
+    const stateFile = path.join(workDir, e.name, "_state.json");
     if (!fs.existsSync(stateFile)) continue;
     try {
       const raw = fs.readFileSync(stateFile, "utf8");
@@ -258,7 +258,7 @@ function lintApp(appRoot: string): LintReport {
     // matched zero observed signatures in the most recent run. Catches
     // both authoring mistakes (pattern targets the wrong shape) and
     // patterns whose triggering failure no longer occurs. Best-effort:
-    // requires a recent `_state.json` under `in-progress/` for the app.
+    // requires a recent `_state.json` under `.dagent/` for the app.
     issues.push(...lintDeadVolatilePatterns(appRoot, appRel, compiled));
   } catch (err) {
     issues.push({

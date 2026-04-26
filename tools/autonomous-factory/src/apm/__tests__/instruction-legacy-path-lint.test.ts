@@ -4,7 +4,7 @@
  * Validates the schema gate that rejects rendered instruction prompts
  * containing legacy `<slug>_*` filename patterns or unbacked
  * `${SLUG}_*` envvars. The new Unified Node I/O Contract puts every
- * per-feature file under `in-progress/<slug>/<nodeKey>/<inv>/(inputs|outputs)/`,
+ * per-feature file under `.dagent/<slug>/<nodeKey>/<inv>/(inputs|outputs)/`,
  * so any prompt still telling the agent to read `<slug>_FOO.md` is dead
  * code waiting to silently fail at runtime.
  */
@@ -21,7 +21,7 @@ describe("lintAssembledInstructions", () => {
       "## Coding Rules",
       "",
       "Read the spec from `inputs/spec.md` and write to `outputs/summary.md`.",
-      "Honor the per-invocation directory tree at `in-progress/<slug>/<nodeKey>/<inv>/`.",
+      "Honor the per-invocation directory tree at `.dagent/<slug>/<nodeKey>/<inv>/`.",
     ].join("\n");
     assert.deepEqual(lintAssembledInstructions(text), []);
   });
@@ -43,7 +43,7 @@ describe("lintAssembledInstructions", () => {
   });
 
   it("flags `{{featureSlug}}_FOO` Handlebars-style references", () => {
-    const text = "Read {{featureSlug}}_PLAN.md from in-progress/.";
+    const text = "Read {{featureSlug}}_PLAN.md from .dagent/.";
     const v = lintAssembledInstructions(text);
     assert.equal(v.length, 1);
     assert.equal(v[0]!.pattern, "legacy-feature-slug-path");
@@ -54,8 +54,8 @@ describe("lintAssembledInstructions", () => {
       "Migration note — the old shape was:",
       "",
       "```",
-      "in-progress/<slug>_SPEC.md",
-      "in-progress/${SLUG}_acceptance.yaml",
+      ".dagent/<slug>_SPEC.md",
+      ".dagent/${SLUG}_acceptance.yaml",
       "```",
       "",
       "The new shape is `inputs/spec.md`.",

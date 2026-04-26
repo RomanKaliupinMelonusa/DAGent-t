@@ -14,7 +14,7 @@
  *   - OUTPUTS_DIR                 — invocation-scoped outputs directory.
  *   - NODE_KEY                    — producer identity for the envelope.
  *   - APP_ROOT, SLUG              — used to resolve the evidence directory
- *     (`in-progress/<slug>_evidence/`) where `parsePlaywrightReport`
+ *     (`.dagent/<slug>_evidence/`) where `parsePlaywrightReport`
  *     copies screenshots / traces / videos.
  *
  * Behaviour:

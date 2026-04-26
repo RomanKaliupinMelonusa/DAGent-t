@@ -165,9 +165,9 @@ describe("lifecycleHooksMiddleware", () => {
     const slug = "feat-xyz";
     const ctx = makeCtx({ appRoot: tmpDir, slug });
     const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(tmpDir, "in-progress", slug, "_kickoff"), { recursive: true });
+    mkdirSync(join(tmpDir, ".dagent", slug, "_kickoff"), { recursive: true });
     writeFileSync(
-      join(tmpDir, "in-progress", `${slug}/_kickoff/flight-data.json`),
+      join(tmpDir, ".dagent", `${slug}/_kickoff/flight-data.json`),
       JSON.stringify({ baselineValidation: { "/foo": "fail" } }),
     );
     const marker = join(tmpDir, "baseline-env.txt");
@@ -183,9 +183,9 @@ describe("lifecycleHooksMiddleware", () => {
     const slug = "feat-no-baseline";
     const ctx = makeCtx({ appRoot: tmpDir, slug });
     const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(tmpDir, "in-progress", slug, "_kickoff"), { recursive: true });
+    mkdirSync(join(tmpDir, ".dagent", slug, "_kickoff"), { recursive: true });
     writeFileSync(
-      join(tmpDir, "in-progress", `${slug}/_kickoff/flight-data.json`),
+      join(tmpDir, ".dagent", `${slug}/_kickoff/flight-data.json`),
       JSON.stringify({ somethingElse: true }),
     );
     const marker = join(tmpDir, "baseline-env-empty.txt");

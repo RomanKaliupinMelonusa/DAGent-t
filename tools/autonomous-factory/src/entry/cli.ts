@@ -33,7 +33,7 @@ export interface CliArgs {
   /**
    * Absolute path to the user-supplied feature spec markdown. Propagated
    * to nodes as `SPEC_FILE` so the `stage-spec` node can copy it to
-   * `in-progress/<slug>/_kickoff/spec.md`.
+   * `.dagent/<slug>/_kickoff/spec.md`.
    */
   readonly specFile: string;
 }
@@ -104,7 +104,7 @@ export function parseCli(argv: string[], repoRoot: string): CliArgs {
   if (!specFileArg) {
     throw new CliValidationError(
       "--spec-file <path> is required. The feature spec markdown is " +
-      "staged into `in-progress/<slug>/_kickoff/spec.md` by the `stage-spec` node.",
+      "staged into `.dagent/<slug>/_kickoff/spec.md` by the `stage-spec` node.",
     );
   }
   const specFile = path.isAbsolute(specFileArg)

@@ -3,7 +3,7 @@
  *
  * Layout:
  *
- *     in-progress/<slug>/
+ *     .dagent/<slug>/
  *       _state.json                      // kernel state
  *       _trans.md                        // human-readable transition log
  *       _events.jsonl                    // telemetry stream
@@ -34,6 +34,11 @@
  */
 
 import path from "node:path";
+
+/** Per-app pipeline working directory name. The kernel persists per-feature
+ *  state, telemetry, and node invocation artifacts under
+ *  `<appRoot>/<WORKING_DIR>/<slug>/`. */
+export const WORKING_DIR = ".dagent";
 
 /** Every per-feature file currently routed through this module. */
 export type FeatureFileKind =
@@ -93,29 +98,18 @@ export const SUBPATHS: Readonly<Record<FeatureFileKind, string>> = Object.freeze
 });
 
 /** Absolute path of a per-feature file under
- *  `<appRoot>/in-progress/<slug>/`. */
+ *  `<appRoot>/<WORKING_DIR>/<slug>/`. */
 export function featurePath(
   appRoot: string,
   slug: string,
   kind: FeatureFileKind,
 ): string {
-  return path.join(appRoot, "in-progress", slug, SUBPATHS[kind]);
-}
-
-/** Absolute path of an archived per-feature file under
- *  `<appRoot>/archive/features/<slug>/`. The slug directory's contents
- *  are moved as a unit during archiving, so the relative subpath survives. */
-export function archiveFeaturePath(
-  appRoot: string,
-  slug: string,
-  kind: FeatureFileKind,
-): string {
-  return path.join(appRoot, "archive", "features", slug, SUBPATHS[kind]);
+  return path.join(appRoot, WORKING_DIR, slug, SUBPATHS[kind]);
 }
 
 /** Repo-root-relative presentation string for prompts / error messages
  *  that need to reference a feature file by name. Avoids leaking
  *  absolute paths into agent context. */
 export function featureRelPath(slug: string, kind: FeatureFileKind): string {
-  return "in-progress/" + slug + "/" + SUBPATHS[kind];
+  return WORKING_DIR + "/" + slug + "/" + SUBPATHS[kind];
 }

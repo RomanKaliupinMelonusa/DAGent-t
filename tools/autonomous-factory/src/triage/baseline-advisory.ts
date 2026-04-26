@@ -15,7 +15,7 @@
  *
  * The advisory is intentionally short (bounded by `MAX_PATTERNS_PER_KIND`)
  * — it's context, not a log dump. The full baseline lives at
- * `<appRoot>/in-progress/<slug>_BASELINE.json` for agents that want to
+ * `<appRoot>/.dagent/<slug>_BASELINE.json` for agents that want to
  * inspect it directly.
  *
  * Pure — no I/O. Returns empty string when the baseline is absent so the

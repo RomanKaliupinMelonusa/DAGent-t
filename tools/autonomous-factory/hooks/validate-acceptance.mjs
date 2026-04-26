@@ -7,18 +7,18 @@
  * scores a feature against its compiled acceptance contract.
  *
  * Inputs (env / argv):
- *   APP_ROOT        — absolute path to the app (contains `e2e/`, `playwright.config.ts`, `in-progress/`)
+ *   APP_ROOT        — absolute path to the app (contains `e2e/`, `playwright.config.ts`, `.dagent/`)
  *   SLUG            — feature slug (used for output naming and CLI fallback paths)
  *   STOREFRONT_URL  — base URL to run Playwright against (optional; falls back to localhost:3000)
  *   OUTPUTS_DIR     — per-invocation outputs directory (set by `local-exec`).
  *                     When present, `validation.json` and `validation-report.json`
  *                     are written here. When absent, the legacy flat path
- *                     `<APP_ROOT>/in-progress/<SLUG>_VALIDATION.json` is used.
+ *                     `<APP_ROOT>/.dagent/<SLUG>_VALIDATION.json` is used.
  *   INPUTS_DIR      — per-invocation inputs directory. When present,
  *                     `acceptance.yml` is read from here (materialized by
  *                     the `materialize-inputs` middleware via the node's
  *                     `consumes_artifacts` declaration). Falls back to
- *                     `<APP_ROOT>/in-progress/<SLUG>_ACCEPTANCE.yml`.
+ *                     `<APP_ROOT>/.dagent/<SLUG>_ACCEPTANCE.yml`.
  *
  * Outputs:
  *   stdout          — human-readable summary (one line per flow + a verdict).
@@ -80,7 +80,7 @@ if (!APP_ROOT || !SLUG) {
 const OUTPUTS_DIR = process.env.OUTPUTS_DIR || "";
 const INPUTS_DIR = process.env.INPUTS_DIR || "";
 
-const LEGACY_FLAT_DIR = APP_ROOT && SLUG ? path.join(APP_ROOT, "in-progress") : "";
+const LEGACY_FLAT_DIR = APP_ROOT && SLUG ? path.join(APP_ROOT, ".dagent") : "";
 
 const ACCEPTANCE_PATH = INPUTS_DIR
   ? path.join(INPUTS_DIR, "acceptance.yml")

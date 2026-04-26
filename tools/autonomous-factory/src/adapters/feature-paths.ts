@@ -15,8 +15,8 @@ import type { FeatureFileKind } from "../paths/feature-paths.js";
 
 export {
   featurePath,
-  archiveFeaturePath,
   featureRelPath,
+  WORKING_DIR,
   SUBPATHS,
 } from "../paths/feature-paths.js";
 export type { FeatureFileKind } from "../paths/feature-paths.js";

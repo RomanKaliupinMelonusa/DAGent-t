@@ -13,7 +13,7 @@
  *   pipeline:lineage <slug> --json       # raw JSON
  *   pipeline:lineage <slug> --kind spec  # filter producers by kind
  *
- * Consumes the same flat `apps/<app>/in-progress/<slug>_STATE.json`
+ * Consumes the same flat `apps/<app>/.dagent/<slug>_STATE.json`
  * layout the orchestrator writes — pick the right `APP_ROOT` before
  * invoking (defaults to `apps/sample-app` for parity with existing
  * CLIs).

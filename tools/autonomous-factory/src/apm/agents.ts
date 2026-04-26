@@ -58,7 +58,7 @@ export interface AgentContext {
    *  simply ignore it. */
   pwaKitDriftReport?: string;
   /** Absolute path to this dispatch's per-invocation directory
-   *  (`<appRoot>/in-progress/<slug>/<itemKey>/<invocationId>/`). Used by
+   *  (`<appRoot>/.dagent/<slug>/<itemKey>/<invocationId>/`). Used by
    *  `resolveMcpPlaceholders` to slug- and invocation-scope MCP server
    *  arguments (e.g. Playwright `--output-dir`). Optional so unit tests
    *  that build a minimal AgentContext continue to work; callers that
@@ -237,7 +237,7 @@ function validateRuntimePath(label: string, p: string): void {
  * and `{invocationDir}` placeholders with actual runtime paths. The slug and
  * invocation directory let MCP servers (e.g. Playwright) write under the
  * per-invocation tree (`<inv>/outputs/...`) so their artefacts archive with
- * the feature instead of leaking into a shared `in-progress/screenshots/`.
+ * the feature instead of leaking into a shared `.dagent/screenshots/`.
  *
  * Returns undefined if the agent has no MCP servers.
  *

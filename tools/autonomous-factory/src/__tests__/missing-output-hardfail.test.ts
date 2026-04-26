@@ -90,7 +90,7 @@ describe("Phase D — hard-fail on missing declared outputs", () => {
     const slug = "feat-d";
     const invocationId = newInvocationId();
     const itemKey = "dev-storefront";
-    const dir = join(appRoot, "in-progress", slug, itemKey, invocationId, "outputs");
+    const dir = join(appRoot, ".dagent", slug, itemKey, invocationId, "outputs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "debug-notes.md"), "# debug\n");
 

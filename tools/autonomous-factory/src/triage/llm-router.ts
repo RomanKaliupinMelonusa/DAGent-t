@@ -6,7 +6,7 @@
  * constrained to output only valid fault domains declared in workflows.yml.
  *
  * Implements the Data Flywheel: novel LLM classifications are persisted to
- * `in-progress/<slug>_NOVEL_TRIAGE.jsonl` so humans can generalize them into
+ * `.dagent/<slug>_NOVEL_TRIAGE.jsonl` so humans can generalize them into
  * triage pack signatures.
  *
  * Vendor SDKs are NOT imported here — all LLM I/O flows through the

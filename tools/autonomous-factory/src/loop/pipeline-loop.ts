@@ -99,8 +99,6 @@ export interface LoopLifecycle {
   syncBranch(): void | Promise<void>;
   /** Commit + push state files after a batch completes. */
   commitState(batchNumber: number): void | Promise<void>;
-  /** Archive feature files and push for PR creation. */
-  archiveAndPush(slug: string): Promise<void>;
   /** Get the workflow node definition for an item key. */
   getWorkflowNode(itemKey: string): ApmWorkflowNode | undefined;
 }
@@ -549,9 +547,8 @@ export async function runPipelineLoop(
         console.error(`  ✖ Unexpected session error: ${err.message}`);
       }
 
-      // Step 10: Handle create-pr: archive + push
+      // Step 10: Handle create-pr signal
       if (directive.createPr) {
-        await lifecycle.archiveAndPush(slug);
         terminationReason = "create-pr";
         return { reason: "create-pr" };
       }

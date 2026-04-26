@@ -20,7 +20,7 @@ set -euo pipefail
 
 COMMIT_SCRIPT="${REPO_ROOT}/tools/autonomous-factory/agent-commit.sh"
 BRANCH_SCRIPT="${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh"
-IN_PROGRESS="${APP_ROOT}/in-progress"
+IN_PROGRESS="${APP_ROOT}/.dagent"
 
 # 0. Push finalize artifacts
 bash "$COMMIT_SCRIPT" all "chore(${SLUG}): finalize phase artifacts" 2>/dev/null || true
@@ -32,7 +32,7 @@ bash "$BRANCH_SCRIPT" push 2>/dev/null || echo "  ℹ No pending artifacts to pu
 # Rather than halting the pipeline at the publish step, create the PR here
 # (draft if salvaged, ready otherwise) and continue with the appendix +
 # ready-promote flow below.
-STATE_FILE="${APP_ROOT}/in-progress/${SLUG}/_state.json"
+STATE_FILE="${APP_ROOT}/.dagent/${SLUG}/_state.json"
 SALVAGED_STATUS=""
 if [[ -f "$STATE_FILE" ]] && command -v jq >/dev/null 2>&1; then
   SALVAGED_STATUS=$(jq -r '(.items // []) | map(select(.key=="create-draft-pr")) | (.[0].status // "")' "$STATE_FILE" 2>/dev/null || echo "")
@@ -117,7 +117,7 @@ if [[ ${#COMBINED} -gt $MAX_BODY ]]; then
   BUDGET=$((MAX_BODY - ${#EXISTING_BODY} - 200))
   if [[ $BUDGET -lt 2000 ]]; then BUDGET=2000; fi
   TRUNCATED="${APPENDIX:0:$BUDGET}"
-  TRUNCATED+=$'\n\n> ⚠️ Truncated — full logs in `in-progress/'"${SLUG}"'_*.md`\n'
+  TRUNCATED+=$'\n\n> ⚠️ Truncated — full logs in `.dagent/'"${SLUG}"'_*.md`\n'
   COMBINED="${EXISTING_BODY}${TRUNCATED}"
   echo "  ⚠ PR body truncated to fit GitHub limit"
 fi

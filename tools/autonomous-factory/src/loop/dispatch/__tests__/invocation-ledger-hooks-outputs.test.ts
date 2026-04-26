@@ -59,7 +59,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
     const slug = "demo";
     const nodeKey = "spec-compiler";
     const invocationId = newInvocationId();
-    const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+    const dir = join(appRoot, ".dagent", slug, nodeKey, invocationId, "outputs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "acceptance.yml"), "ok: true", "utf8");
 
@@ -106,7 +106,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
     const slug = "demo";
     const nodeKey = "spec-compiler";
     const invocationId = newInvocationId();
-    const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+    const dir = join(appRoot, ".dagent", slug, nodeKey, invocationId, "outputs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "acceptance.yml"), "partial", "utf8");
 
@@ -237,7 +237,7 @@ describe("recordInvocationSeal — outputs auto-population", () => {
     const slug = "demo";
     const nodeKey = "triage-storefront";
     const invocationId = newInvocationId();
-    const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+    const dir = join(appRoot, ".dagent", slug, nodeKey, invocationId, "outputs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "triage-handoff.json"), "{}", "utf8");
 

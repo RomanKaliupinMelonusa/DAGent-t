@@ -218,7 +218,7 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     );
   }
 
-  // Propagate appRoot so the JsonFileStateStore adapter resolves in-progress/
+  // Propagate appRoot so the JsonFileStateStore adapter resolves .dagent/
   // correctly (consumed by the pipeline-state CLI and by agent hooks).
   process.env.APP_ROOT = appRoot;
   // Allow deploy-manager's poll-ci.sh to poll for up to ~30 min

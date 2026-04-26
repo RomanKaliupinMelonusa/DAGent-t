@@ -11,9 +11,9 @@ import { loadContractEvidence, prependContractEvidence } from "../contract-evide
 
 function makeApp(files: Record<string, string>): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-"));
-  fs.mkdirSync(path.join(dir, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".dagent"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
-    const target = path.join(dir, "in-progress", name);
+    const target = path.join(dir, ".dagent", name);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, body, "utf-8");
   }
@@ -36,7 +36,7 @@ describe("triage/contract-evidence", () => {
     assert.match(r.text, /### Contract evidence/);
     assert.match(r.text, /Acceptance Oracle Verdict/);
     assert.match(r.text, /Uncaught TypeError/);
-    assert.deepEqual(r.sources, [path.join("in-progress", "pqv/_validation.json")]);
+    assert.deepEqual(r.sources, [path.join(".dagent", "pqv/_validation.json")]);
   });
 
   it("renders both VALIDATION and QA-REPORT when both exist", () => {

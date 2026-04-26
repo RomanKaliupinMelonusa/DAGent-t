@@ -192,9 +192,9 @@ function copyEvidence(
 
 /** Options for `parsePlaywrightReport`. */
 export interface ParsePlaywrightReportOptions {
-  /** Absolute path to the app root (containing `in-progress/`). When
+  /** Absolute path to the app root (containing `.dagent/`). When
    *  supplied together with `slug`, binary attachments are copied to
-   *  `<appRoot>/in-progress/<slug>_evidence/` and surfaced on each
+   *  `<appRoot>/.dagent/<slug>_evidence/` and surfaced on each
    *  failedTest's `attachments[]`. When omitted, evidence harvesting
    *  is skipped silently — parsing still succeeds. */
   readonly appRoot?: string;
@@ -241,7 +241,7 @@ export function parsePlaywrightReport(
 
   const evidenceDir =
     opts.appRoot && opts.slug
-      ? path.join(opts.appRoot, "in-progress", `${opts.slug}_evidence`)
+      ? path.join(opts.appRoot, ".dagent", `${opts.slug}_evidence`)
       : null;
 
   // Compile the effective redaction regex once — either user-supplied or

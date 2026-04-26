@@ -222,7 +222,7 @@ describe("buildTriagePrompt — end-to-end loader → prompt subtraction (regres
       try {
         const slug = "regression-feature";
         const inv = "inv_01HTRIAGEREGR0000000000A";
-        const outputsDir = path.join(tmpRoot, "in-progress", slug, "baseline-analyzer", inv, "outputs");
+        const outputsDir = path.join(tmpRoot, ".dagent", slug, "baseline-analyzer", inv, "outputs");
         fs.mkdirSync(outputsDir, { recursive: true });
         const baselinePath = path.join(outputsDir, "baseline.json");
         fs.writeFileSync(
@@ -234,7 +234,7 @@ describe("buildTriagePrompt — end-to-end loader → prompt subtraction (regres
             ],
           }),
         );
-        const ledgerPath = path.join(tmpRoot, "in-progress", slug, "_invocations.jsonl");
+        const ledgerPath = path.join(tmpRoot, ".dagent", slug, "_invocations.jsonl");
         fs.writeFileSync(
           ledgerPath,
           JSON.stringify({
@@ -383,7 +383,7 @@ describe("askLlmRouter — cycle-2 product-quick-view-plp regression replay", ()
 
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "router-replay-"));
       try {
-        fs.mkdirSync(path.join(tmp, "in-progress", "regression"), { recursive: true });
+        fs.mkdirSync(path.join(tmp, ".dagent", "regression"), { recursive: true });
         const errorExcerpt =
           "TimeoutError: locator.waitFor: Timeout 10000ms exceeded.\n" +
           "[error] Warning: The result of getServerSnapshot should be cached to avoid an infinite loop";

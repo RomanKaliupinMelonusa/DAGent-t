@@ -3,7 +3,7 @@
  *
  * Owns the canonical layout for one dispatch:
  *
- *     in-progress/<slug>/<nodeKey>/<invocationId>/
+ *     .dagent/<slug>/<nodeKey>/<invocationId>/
  *       meta.json            (mirror of InvocationRecord)
  *       inputs/              (resolved consumes; populated in Phase 3)
  *       outputs/             (declared produces; populated in Phase 2)
@@ -25,7 +25,7 @@
 import type { InvocationRecord } from "../types.js";
 
 export interface InvocationDirHandles {
-  /** Absolute path to `<appRoot>/in-progress/<slug>/<nodeKey>/<invocationId>/`. */
+  /** Absolute path to `<appRoot>/.dagent/<slug>/<nodeKey>/<invocationId>/`. */
   readonly invocationDir: string;
   /** Absolute path to `<invocationDir>/inputs/`. */
   readonly inputsDir: string;

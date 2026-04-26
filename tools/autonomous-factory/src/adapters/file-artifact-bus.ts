@@ -2,7 +2,7 @@
  * adapters/file-artifact-bus.ts — Filesystem adapter for the Artifact Bus.
  *
  * Writes artifacts under
- *   `<appRoot>/in-progress/<slug>/...`
+ *   `<appRoot>/.dagent/<slug>/...`
  * using the layout declared in `ports/artifact-bus.ts`.
  *
  * Phase 1 scope: addressing + read/write + in-memory seal tracking +
@@ -78,7 +78,7 @@ export class FileArtifactBus implements ArtifactBus {
 
   private slugRoot(slug: string): string {
     this.assertIdent(slug, "slug");
-    return this.fs.joinPath(this.appRoot, "in-progress", slug);
+    return this.fs.joinPath(this.appRoot, ".dagent", slug);
   }
 
   private filenameFor(kind: ArtifactKind): string {

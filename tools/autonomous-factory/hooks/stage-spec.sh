@@ -6,7 +6,7 @@
 #
 # Required env (provided by local-exec handler):
 #   SPEC_FILE     Absolute path to the user-supplied spec markdown
-#   APP_ROOT      App directory containing in-progress/
+#   APP_ROOT      App directory containing .dagent/
 #   featureSlug   Feature slug (also exported as SLUG)
 #
 # Idempotent — re-runs overwrite, which is safe on resume.
@@ -23,7 +23,7 @@ if [ ! -f "$SPEC_FILE" ]; then
   exit 1
 fi
 
-DEST_DIR="$APP_ROOT/in-progress/$featureSlug/_kickoff"
+DEST_DIR="$APP_ROOT/.dagent/$featureSlug/_kickoff"
 DEST="$DEST_DIR/spec.md"
 META="$DEST.meta.json"
 

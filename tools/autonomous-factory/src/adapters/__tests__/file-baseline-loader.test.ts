@@ -35,7 +35,7 @@ function seedKickoffBaseline(
   slug: string,
   payload: Record<string, unknown>,
 ): void {
-  const dir = path.join(appRoot, "in-progress", slug, "_kickoff");
+  const dir = path.join(appRoot, ".dagent", slug, "_kickoff");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "baseline.json"), JSON.stringify(payload));
 }
@@ -49,7 +49,7 @@ function seedInvocationArtifact(
 ): string {
   const outputsDir = path.join(
     appRoot,
-    "in-progress",
+    ".dagent",
     slug,
     "baseline-analyzer",
     invocationId,
@@ -59,7 +59,7 @@ function seedInvocationArtifact(
   const filePath = path.join(outputsDir, "baseline.json");
   fs.writeFileSync(filePath, JSON.stringify(payload));
 
-  const ledgerPath = path.join(appRoot, "in-progress", slug, "_invocations.jsonl");
+  const ledgerPath = path.join(appRoot, ".dagent", slug, "_invocations.jsonl");
   fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
   const record = {
     invocationId,
@@ -88,7 +88,7 @@ function seedInvocationArtifact(
 
 before(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "baseline-loader-"));
-  fs.mkdirSync(path.join(tmpRoot, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(tmpRoot, ".dagent"), { recursive: true });
 });
 
 after(() => {
@@ -102,9 +102,9 @@ describe("FileBaselineLoader", () => {
   });
 
   it("returns null when the baseline file is malformed JSON", () => {
-    fs.mkdirSync(path.join(tmpRoot, "in-progress", "bad-feature/_kickoff"), { recursive: true });
+    fs.mkdirSync(path.join(tmpRoot, ".dagent", "bad-feature/_kickoff"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpRoot, "in-progress", "bad-feature/_kickoff/baseline.json"),
+      path.join(tmpRoot, ".dagent", "bad-feature/_kickoff/baseline.json"),
       "{not json",
     );
     const loader = makeLoader(tmpRoot);
@@ -112,9 +112,9 @@ describe("FileBaselineLoader", () => {
   });
 
   it("returns null when the baseline file is missing the `feature` field", () => {
-    fs.mkdirSync(path.join(tmpRoot, "in-progress", "nofeat/_kickoff"), { recursive: true });
+    fs.mkdirSync(path.join(tmpRoot, ".dagent", "nofeat/_kickoff"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpRoot, "in-progress", "nofeat/_kickoff/baseline.json"),
+      path.join(tmpRoot, ".dagent", "nofeat/_kickoff/baseline.json"),
       JSON.stringify({ console_errors: [{ pattern: "x" }] }),
     );
     const loader = makeLoader(tmpRoot);
@@ -139,7 +139,7 @@ describe("FileBaselineLoader", () => {
   });
 
   it("does not throw on a directory-where-file-should-be", () => {
-    fs.mkdirSync(path.join(tmpRoot, "in-progress", "dir-feature/_kickoff/baseline.json"), { recursive: true });
+    fs.mkdirSync(path.join(tmpRoot, ".dagent", "dir-feature/_kickoff/baseline.json"), { recursive: true });
     const loader = makeLoader(tmpRoot);
     assert.equal(loader.loadBaseline("dir-feature"), null);
   });
@@ -215,7 +215,7 @@ describe("FileBaselineLoader", () => {
       const inv = "inv_01HMULTIRECORDREGR000000A";
       const outputsDir = path.join(
         tmpRoot,
-        "in-progress",
+        ".dagent",
         slug,
         "baseline-analyzer",
         inv,
@@ -230,7 +230,7 @@ describe("FileBaselineLoader", () => {
           console_errors: [{ pattern: "Warning: getServerSnapshot leaked" }],
         }),
       );
-      const ledgerPath = path.join(tmpRoot, "in-progress", slug, "_invocations.jsonl");
+      const ledgerPath = path.join(tmpRoot, ".dagent", slug, "_invocations.jsonl");
       fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
       // Append progressive status records the way the real kernel does:
       // started → multiple in-flight updates with empty outputs → final sealed

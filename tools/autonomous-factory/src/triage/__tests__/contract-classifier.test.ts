@@ -88,7 +88,7 @@ describe("evaluateProfilePatterns — structured-field built-ins", () => {
 });
 
 describe("evaluateProfilePatterns — raw-regex built-ins (spec-schema-violation)", () => {
-  const ACC_PATH = "/repo/apps/x/in-progress/feat/_kickoff/acceptance.yml";
+  const ACC_PATH = "/repo/apps/x/.dagent/feat/_kickoff/acceptance.yml";
 
   it("routes Zod schema violations to schema-violation", () => {
     const msg =

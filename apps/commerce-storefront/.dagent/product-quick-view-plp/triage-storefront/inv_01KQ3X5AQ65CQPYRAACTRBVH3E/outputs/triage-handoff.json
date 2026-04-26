@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "triage-storefront",
+  "producedAt": "2026-04-26T03:26:09.738Z",
+  "failingItem": "storefront-debug",
+  "errorExcerpt": "{\"errorType\":\"test-code\",\"errorMessage\":\"Code defect FIXED (committed): Quick View triggers were SSR-rendered, making them clickable before React hydration attached onClick handlers. Added isMounted/useEffect guard so triggers only appear post-hydration. REMAINING: All 5 E2E tests now correctly open the modal and verify product content, but fail at the final `consoleErrors` assertion because BASELINE_NOISE_PATTERNS in the spec is missing two pre-existing platform warnings: (1) 'Encountered two children with the same key' (from Footer language selector, key=en-US, appears at 1370ms on bare page load), (2) 'React does not recognize the %s prop' (from Chakra UI internals). Both are confirmed baseline noise — they appear on initial page load before any Quick View interaction. The e2e-author needs to add `/Encountered two children with the same key/i` and `/React does not recognize the .+ prop/i` to the BASELINE_NOISE_PATTERNS array.\",\"fault_domain\":\"test-code\",\"failingFile\":\"e2e/product-quick-view-plp.spec.ts\",\"codeFixCommitted\":true,\"fixDescription\":\"Added isMounted + useEffect hydration guard to overrides/app/components/product-tile/index.jsx\"}",
+  "errorSignature": "c3003c76db4483a5",
+  "triageDomain": "test-code",
+  "triageReason": "The original code defect has been fixed and committed; the remaining failures are caused by the spec's BASELINE_NOISE_PATTERNS array missing two pre-existing platform console warnings, which is a test-code issue for the SDET to update.",
+  "priorAttemptCount": 2,
+  "touchedFiles": [
+    "apps/commerce-storefront/overrides/app/components/product-tile/index.jsx"
+  ],
+  "touchedFilesSource": "self",
+  "triageInvocationId": "inv_01KQ3X5AQ65CQPYRAACTRBVH3E"
+}

@@ -1,0 +1,67 @@
+{
+  "invocationId": "inv_01KQ3XK44V7277WBRHRHBSWVF2",
+  "nodeKey": "storefront-debug",
+  "cycleIndex": 5,
+  "trigger": "triage-reroute",
+  "parentInvocationId": "inv_01KQ3XJZZQVH5AXTNSNQHZJA7P",
+  "producedBy": "triage-storefront#inv_01KQ3XJZZQVH5AXTNSNQHZJA7P",
+  "triggeredBy": {
+    "nodeKey": "triage-storefront",
+    "invocationId": "inv_01KQ3XJZZQVH5AXTNSNQHZJA7P",
+    "reason": "triage-reroute"
+  },
+  "startedAt": "2026-04-26T03:33:38.096Z",
+  "finishedAt": "2026-04-26T03:37:18.078Z",
+  "outcome": "completed",
+  "inputs": [
+    {
+      "kind": "spec",
+      "scope": "kickoff",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/_kickoff/spec.md"
+    },
+    {
+      "kind": "acceptance",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW"
+    },
+    {
+      "kind": "baseline",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/baseline-analyzer/inv_01KQ3R1TD7V58R8EC7XHWPNW3H/outputs/baseline.json",
+      "nodeKey": "baseline-analyzer",
+      "invocationId": "inv_01KQ3R1TD7V58R8EC7XHWPNW3H"
+    },
+    {
+      "kind": "triage-handoff",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/triage-storefront/inv_01KQ3XJZZQVH5AXTNSNQHZJA7P/outputs/triage-handoff.json",
+      "nodeKey": "triage-storefront",
+      "invocationId": "inv_01KQ3XJZZQVH5AXTNSNQHZJA7P"
+    }
+  ],
+  "outputs": [
+    {
+      "kind": "debug-notes",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/storefront-debug/inv_01KQ3XK44V7277WBRHRHBSWVF2/outputs/debug-notes.md",
+      "nodeKey": "storefront-debug",
+      "invocationId": "inv_01KQ3XK44V7277WBRHRHBSWVF2"
+    },
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/storefront-debug/inv_01KQ3XK44V7277WBRHRHBSWVF2/outputs/node-report.json",
+      "nodeKey": "storefront-debug",
+      "invocationId": "inv_01KQ3XK44V7277WBRHRHBSWVF2"
+    }
+  ],
+  "sealed": true
+}

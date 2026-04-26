@@ -172,7 +172,7 @@ jobs:
           # 2. Commit and push the updated state back to the feature branch
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add ${{ env.APP_PATH }}/in-progress/
+          git add ${{ env.APP_PATH }}/.dagent/
           git commit -m "chore(pipeline): complete await-infra-approval gate [skip ci]" || echo "No state changes to commit"
           git push origin ${{ steps.pr-meta.outputs.branch }}
 
@@ -222,7 +222,7 @@ jobs:
           # 2. Commit and push the updated state back to the feature branch
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add ${{ env.APP_PATH }}/in-progress/
+          git add ${{ env.APP_PATH }}/.dagent/
           git commit -m "chore(pipeline): recover-elevated after apply failure [skip ci]" || echo "No state changes to commit"
           git push origin ${{ steps.pr-meta.outputs.branch }}
 

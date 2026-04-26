@@ -35,11 +35,11 @@ export function checkJunkFiles(repoRoot: string): void {
 }
 
 /**
- * Scan in-progress/ for non-standard files (temp scripts, etc.).
+ * Scan .dagent/ for non-standard files (temp scripts, etc.).
  */
 export function checkInProgressArtifacts(repoRoot: string, appRoot: string): void {
   try {
-    const inProgressFiles = execSync(`ls ${path.relative(repoRoot, path.join(appRoot, "in-progress/"))} 2>/dev/null || true`, {
+    const inProgressFiles = execSync(`ls ${path.relative(repoRoot, path.join(appRoot, ".dagent/"))} 2>/dev/null || true`, {
       cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
     }).trim();
     if (inProgressFiles) {
@@ -48,7 +48,7 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
         (f) => f && !allowedPatterns.test(f),
       );
       if (junkInProgress.length > 0) {
-        console.warn(`\n  ⚠ WARNING: Non-standard files in in-progress/:`);
+        console.warn(`\n  ⚠ WARNING: Non-standard files in .dagent/:`);
         junkInProgress.forEach((f) => console.warn(`      - ${f}`));
         console.warn(`    These may be temp scripts from agent workarounds. Consider deleting them.\n`);
       }
@@ -176,7 +176,7 @@ export function checkPreflightAuth(repoRoot: string, appRoot: string, apmContext
  * identifiers to `"pass"` or `"fail"`. Any other output is treated as
  * "no baseline captured" (non-fatal — the orchestrator continues).
  *
- * Results are persisted to `<appRoot>/in-progress/<slug>_FLIGHT_DATA.json`
+ * Results are persisted to `<appRoot>/.dagent/<slug>_FLIGHT_DATA.json`
  * under the `baselineValidation` key, merging with any existing flight data.
  */
 export function runPreflightBaseline(

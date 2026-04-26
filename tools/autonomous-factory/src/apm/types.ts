@@ -661,12 +661,12 @@ const nodeBodyFields = {
    *  The kernel warns/fails at dispatch if required keys are missing. */
   consumes: z.array(consumesEntrySchema).default([]),
   /** Artifact-bus inputs (Phase 3). Kickoff-scope artifact kinds this node
-   *  reads from `in-progress/<slug>/_kickoff/`. Example: `[spec]` for the
+   *  reads from `.dagent/<slug>/_kickoff/`. Example: `[spec]` for the
    *  spec-compiler. Validated against `apm/artifact-catalog.ts` at compile
    *  time; kinds that don't support the `kickoff` scope are rejected. */
   consumes_kickoff: z.array(z.string()).default([]),
   /** Artifact-bus outputs (Phase 3). Artifact kinds this node writes into
-   *  its own invocation directory `in-progress/<slug>/<nodeKey>/<inv>/`.
+   *  its own invocation directory `.dagent/<slug>/<nodeKey>/<inv>/`.
    *  Downstream nodes declare `consumes_artifacts: [{ from: X, kind: Y }]`
    *  to receive them. Validated against the catalog and the DAG shape. */
   produces_artifacts: z.array(z.string()).default([]),

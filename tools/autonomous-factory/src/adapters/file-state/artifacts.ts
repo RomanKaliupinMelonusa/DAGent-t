@@ -5,7 +5,7 @@
  * Owns:
  *  - `appendInvocationRecord` — creates a fresh `InvocationRecord`, stores
  *    it in `state.artifacts[id]`, sets `item.latestInvocationId`, and tails
- *    `in-progress/<slug>/_invocations.jsonl`.
+ *    `.dagent/<slug>/_invocations.jsonl`.
  *  - `sealInvocationRecord` — finalizes a record with outcome + outputs
  *    and marks it `sealed` so subsequent artifact writes will reject.
  *  - `ensureArtifactsIndex` — backfills a missing `artifacts` field on
@@ -17,7 +17,7 @@
 
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { IN_PROGRESS } from "./io.js";
+import { WORK_DIR } from "./io.js";
 import type {
   PipelineState,
   InvocationRecord,
@@ -239,13 +239,13 @@ export function attachInvocationRoutedTo(
 // ─── JSONL tail ─────────────────────────────────────────────────────────────
 
 /**
- * Append a single record to `in-progress/<slug>/_invocations.jsonl`. Best
+ * Append a single record to `.dagent/<slug>/_invocations.jsonl`. Best
  * effort: failures are swallowed so a ledger write can never block the
  * authoritative `_STATE.json` write. The tail is regenerable from the index.
  */
 function appendInvocationJsonl(slug: string, rec: InvocationRecord): void {
   try {
-    const dir = `${IN_PROGRESS}/${slug}`;
+    const dir = `${WORK_DIR}/${slug}`;
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

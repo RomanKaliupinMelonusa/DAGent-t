@@ -10,7 +10,7 @@
  *
  * Directory layout (target — see `docs/06-roadmap/artifact-bus.md`):
  *
- *     in-progress/<slug>/
+ *     .dagent/<slug>/
  *       _state.json
  *       _trans.md
  *       _events.jsonl

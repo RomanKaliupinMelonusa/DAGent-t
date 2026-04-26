@@ -270,14 +270,6 @@ export async function runWithKernel(
       const currentBranch = await vcs.getCurrentBranch();
       filesystem.commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
     },
-    async archiveAndPush(slug: string) {
-      filesystem.archiveFeature(slug, appRoot, repoRoot);
-      try {
-        await vcs.pushWithRetry(baseBranch);
-      } catch (err) {
-        console.error(`  ✖ ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
     getWorkflowNode(itemKey: string) {
       return getWorkflowNode(config.apmContext, config.workflowName, itemKey);
     },

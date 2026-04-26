@@ -19,10 +19,10 @@ import { join } from "node:path";
 import { evaluateTriage } from "../index.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
 
-// LLM router appends to <appRoot>/in-progress/<slug>/_novel-triage.jsonl on
+// LLM router appends to <appRoot>/.dagent/<slug>/_novel-triage.jsonl on
 // every invocation; the directory must exist.
 const TMP_APP_ROOT = mkdtempSync(join(tmpdir(), "triage-classifier-test-"));
-mkdirSync(join(TMP_APP_ROOT, "in-progress"), { recursive: true });
+mkdirSync(join(TMP_APP_ROOT, ".dagent"), { recursive: true });
 
 function makeStubLlm(responseDomain: string, responseReason: string): TriageLlm {
   return {

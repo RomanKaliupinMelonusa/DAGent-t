@@ -1,0 +1,41 @@
+{
+  "invocationId": "inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW",
+  "nodeKey": "spec-compiler",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "triggeredBy": {
+    "nodeKey": "stage-spec",
+    "invocationId": "inv_01KQ3QVNH2WZQKTEPYFQMZ2193",
+    "reason": "initial"
+  },
+  "startedAt": "2026-04-26T01:53:26.500Z",
+  "finishedAt": "2026-04-26T01:56:46.969Z",
+  "outcome": "completed",
+  "inputs": [
+    {
+      "kind": "spec",
+      "scope": "kickoff",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/_kickoff/spec.md"
+    }
+  ],
+  "outputs": [
+    {
+      "kind": "acceptance",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW"
+    },
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/node-report.json",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW"
+    }
+  ],
+  "sealed": true
+}

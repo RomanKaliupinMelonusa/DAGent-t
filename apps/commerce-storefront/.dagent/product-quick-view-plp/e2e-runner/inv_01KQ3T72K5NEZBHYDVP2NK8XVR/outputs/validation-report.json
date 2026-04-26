@@ -1,0 +1,472 @@
+{
+  "config": {
+    "configFile": "/workspaces/DAGent-t/apps/commerce-storefront/playwright.config.ts",
+    "rootDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 6
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspaces/DAGent-t/apps/commerce-storefront/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 6
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ],
+      [
+        "list"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 6,
+    "webServer": {
+      "command": "npm start",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "_acceptance_product-quick-view-plp.spec.ts",
+      "file": "_acceptance_product-quick-view-plp.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "acceptance: product-quick-view-plp",
+          "file": "_acceptance_product-quick-view-plp.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "acceptance flow 1 — open-quick-view-modal",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 15648,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:33:66",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 66,
+                          "line": 33
+                        },
+                        "snippet": "  31 |   test('acceptance flow 1 — open-quick-view-modal', async ({ page }) => {\n  32 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 33 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 15000 });\n     |                                                                  ^\n  34 |     await page.getByTestId('quick-view-trigger').first().click();\n  35 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  36 |     await expect(page.getByTestId('quick-view-product-name')).toBeVisible({ timeout: 5000 });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 66,
+                            "line": 33
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n\n  31 |   test('acceptance flow 1 — open-quick-view-modal', async ({ page }) => {\n  32 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 33 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 15000 });\n     |                                                                  ^\n  34 |     await page.getByTestId('quick-view-trigger').first().click();\n  35 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  36 |     await expect(page.getByTestId('quick-view-product-name')).toBeVisible({ timeout: 5000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:33:66"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.146Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--eeff7-w-1-—-open-quick-view-modal-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--eeff7-w-1-—-open-quick-view-modal-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 66,
+                        "line": 33
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-af30d6d4cbcc8bffe7fa",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 31,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 2 — quick-view-shows-all-controls",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "timedOut",
+                      "duration": 60077,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 58,
+                            "line": 58
+                          },
+                          "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n\n  56 |   test('acceptance flow 2 — quick-view-shows-all-controls', async ({ page }) => {\n  57 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 58 |     await page.getByTestId('quick-view-trigger').first().click();\n     |                                                          ^\n  59 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  60 |     await expect(page.getByTestId('quick-view-swatch').first()).toBeVisible({ timeout: 5000 });\n  61 |     await expect(page.getByTestId('quick-view-quantity-stepper')).toBeVisible({ timeout: 5000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:58:58"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.115Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--8c2ee-ick-view-shows-all-controls-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--8c2ee-ick-view-shows-all-controls-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-3e2ad4de9d810ae53e3e",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 3 — swatch-selection-updates-image",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "timedOut",
+                      "duration": 60056,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 58,
+                            "line": 84
+                          },
+                          "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n\n  82 |   test('acceptance flow 3 — swatch-selection-updates-image', async ({ page }) => {\n  83 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 84 |     await page.getByTestId('quick-view-trigger').first().click();\n     |                                                          ^\n  85 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  86 |     await expect(page.getByTestId('quick-view-swatch').first()).toBeVisible({ timeout: 5000 });\n  87 |     await page.getByTestId('quick-view-swatch').nth(1).click();\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:84:58"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.262Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--c8204-tch-selection-updates-image-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--c8204-tch-selection-updates-image-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-3eb43279ba33e730dee4",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 82,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 4 — add-to-cart-from-quick-view",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "timedOut",
+                      "duration": 60083,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 58,
+                            "line": 108
+                          },
+                          "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n\n  106 |   test('acceptance flow 4 — add-to-cart-from-quick-view', async ({ page }) => {\n  107 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 108 |     await page.getByTestId('quick-view-trigger').first().click();\n      |                                                          ^\n  109 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  110 |     await expect(page.getByTestId('quick-view-add-to-cart-btn')).toBeVisible({ timeout: 5000 });\n  111 |     await page.getByTestId('quick-view-add-to-cart-btn').click();\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:108:58"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.143Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--a3f6b-add-to-cart-from-quick-view-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--a3f6b-add-to-cart-from-quick-view-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-6c02ef88d5b591ef427e",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 106,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 5 — close-modal-stays-on-plp",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "timedOut",
+                      "duration": 60054,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 58,
+                            "line": 132
+                          },
+                          "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:3000/uk/en-GB/category/mens-clothing-jackets\"\u001b[22m\n\n\n  130 |   test('acceptance flow 5 — close-modal-stays-on-plp', async ({ page }) => {\n  131 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n> 132 |     await page.getByTestId('quick-view-trigger').first().click();\n      |                                                          ^\n  133 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n  134 |     await page.getByTestId('quick-view-close-btn').click();\n  135 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 5000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:132:58"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.250Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--cd716--—-close-modal-stays-on-plp-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--cd716--—-close-modal-stays-on-plp-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-c9777e983bf1419ff625",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "acceptance required DOM",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "failed",
+                      "duration": 28675,
+                      "error": {
+                        "message": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n",
+                        "stack": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:160:90",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 90,
+                          "line": 160
+                        },
+                        "snippet": "  158 |     await expect(page.getByTestId('quick-view-trigger').first(), 'required_dom: quick-view-trigger').toBeVisible({ timeout: 15000 });\n  159 |     await expect(page.getByTestId('quick-view-trigger').first()).toContainText('Quick View');\n> 160 |     await expect(page.getByTestId('quick-view-modal'), 'required_dom: quick-view-modal').toBeVisible({ timeout: 15000 });\n      |                                                                                          ^\n  161 |     await expect(page.getByTestId('product-view-modal'), 'required_dom: product-view-modal').toBeVisible({ timeout: 15000 });\n  162 |     await expect(page.getByTestId('quick-view-product-name'), 'required_dom: quick-view-product-name').toBeVisible({ timeout: 15000 });\n  163 |     {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 90,
+                            "line": 160
+                          },
+                          "message": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n  158 |     await expect(page.getByTestId('quick-view-trigger').first(), 'required_dom: quick-view-trigger').toBeVisible({ timeout: 15000 });\n  159 |     await expect(page.getByTestId('quick-view-trigger').first()).toContainText('Quick View');\n> 160 |     await expect(page.getByTestId('quick-view-modal'), 'required_dom: quick-view-modal').toBeVisible({ timeout: 15000 });\n      |                                                                                          ^\n  161 |     await expect(page.getByTestId('product-view-modal'), 'required_dom: product-view-modal').toBeVisible({ timeout: 15000 });\n  162 |     await expect(page.getByTestId('quick-view-product-name'), 'required_dom: quick-view-product-name').toBeVisible({ timeout: 15000 });\n  163 |     {\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:160:90"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T02:37:29.211Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--42169-plp-acceptance-required-DOM-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--42169-plp-acceptance-required-DOM-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 90,
+                        "line": 160
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-1b013599cfc26213e72c",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 153,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-04-26T02:37:23.250Z",
+    "duration": 66332.14300000001,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 6,
+    "flaky": 0
+  }
+}

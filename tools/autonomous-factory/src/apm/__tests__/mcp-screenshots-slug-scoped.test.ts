@@ -9,7 +9,7 @@
  *     command/args strings.
  *   - When `{invocationDir}` is referenced in any MCP arg, the resolved
  *     path lands under
- *     `<appRoot>/in-progress/<slug>/<itemKey>/<invocationId>/...`
+ *     `<appRoot>/.dagent/<slug>/<itemKey>/<invocationId>/...`
  *     (per `ports/invocation-filesystem.ts` layout).
  *   - Unsafe values for any substituted path are rejected before
  *     materialising into the SDK config.
@@ -28,12 +28,12 @@ const REPO_ROOT = "/repo";
 const SLUG = "product-quick-view-plp";
 const NODE_KEY = "frontend-unit-test";
 const INVOCATION_ID = "inv_01h0000000000000000000000a";
-const INVOCATION_DIR = `${APP_ROOT}/in-progress/${SLUG}/${NODE_KEY}/${INVOCATION_ID}`;
+const INVOCATION_DIR = `${APP_ROOT}/.dagent/${SLUG}/${NODE_KEY}/${INVOCATION_ID}`;
 
 function makeContext(overrides: Partial<AgentContext> = {}): AgentContext {
   return {
     featureSlug: SLUG,
-    specPath: `${APP_ROOT}/in-progress/${SLUG}/_kickoff/spec.md`,
+    specPath: `${APP_ROOT}/.dagent/${SLUG}/_kickoff/spec.md`,
     deployedUrl: null,
     workflowName: "storefront",
     repoRoot: REPO_ROOT,
@@ -92,14 +92,14 @@ describe("MCP placeholder resolution — slug + invocationDir", () => {
       `${INVOCATION_DIR}/outputs/screenshots`,
     ]);
     // The resolved path MUST live under <slug>/<nodeKey>/<inv>/... and
-    // MUST NOT equal the legacy shared `<appRoot>/in-progress/screenshots`.
+    // MUST NOT equal the legacy shared `<appRoot>/.dagent/screenshots`.
     const outputDir = playwright.args[2];
     assert.ok(
-      outputDir.startsWith(`${APP_ROOT}/in-progress/${SLUG}/${NODE_KEY}/`),
+      outputDir.startsWith(`${APP_ROOT}/.dagent/${SLUG}/${NODE_KEY}/`),
       `output-dir ${outputDir} is not slug+invocation scoped`,
     );
     assert.ok(
-      !outputDir.includes("/in-progress/screenshots"),
+      !outputDir.includes("/.dagent/screenshots"),
       `output-dir leaked to legacy shared path: ${outputDir}`,
     );
   });

@@ -60,10 +60,10 @@ yarn-debug.log*
 yarn-error.log*
 # ----- Pipeline temp files -----
 PR_BODY.md
-in-progress/*.mjs
-in-progress/*.js
-in-progress/*.ts
-!in-progress/README.md
+.dagent/*.mjs
+.dagent/*.js
+.dagent/*.ts
+!.dagent/README.md
 # ----- Playwright -----
 test-results/
 playwright-report/

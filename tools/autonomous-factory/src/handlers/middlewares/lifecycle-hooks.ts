@@ -98,7 +98,7 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
   // layout owned by the Artifact Bus. Hook scripts consume them to read
   // declared inputs / write declared outputs / append logs without
   // reconstructing paths from slug + node key + invocation id.
-  const invocationDir = ctx.filesystem.joinPath(ctx.appRoot, "in-progress", ctx.slug, ctx.itemKey, ctx.executionId);
+  const invocationDir = ctx.filesystem.joinPath(ctx.appRoot, ".dagent", ctx.slug, ctx.itemKey, ctx.executionId);
   const env: Record<string, string> = {
     ...ctx.environment,
     SLUG: ctx.slug,

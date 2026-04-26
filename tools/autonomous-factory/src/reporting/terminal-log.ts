@@ -53,7 +53,7 @@ export function writeTerminalLog(
   try {
     const remoteBranch = `origin/${baseBranch}`;
     gitDiffStat = execSync(
-      `git diff --stat ${remoteBranch}..HEAD -- . ':!**/in-progress' ':!**/archive'`,
+      `git diff --stat ${remoteBranch}..HEAD -- . ':!**/.dagent'`,
       { cwd: repoRoot, encoding: "utf-8", timeout: 10_000 },
     ).trim();
   } catch { /* non-fatal */ }

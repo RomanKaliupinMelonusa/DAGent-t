@@ -4,7 +4,7 @@
  *
  * Delegates to the existing helpers in `src/triage/` and
  * `src/apm/acceptance-schema.ts`. This adapter exists purely to lift
- * the `in-progress/<slug>_*.{yml,json}` filesystem convention out of
+ * the `.dagent/<slug>_*.{yml,json}` filesystem convention out of
  * `triage-handler.ts`; it does not change the underlying I/O strategy.
  */
 
@@ -23,7 +23,7 @@ import {
 } from "../triage/context-builder.js";
 
 export interface FileTriageArtifactLoaderOptions {
-  /** Absolute path to the app root (contains `in-progress/`). */
+  /** Absolute path to the app root (contains `.dagent/`). */
   readonly appRoot: string;
 }
 

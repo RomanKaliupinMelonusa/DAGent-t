@@ -17,7 +17,7 @@ import { FileTriageArtifactLoader } from "../file-triage-artifact-loader.js";
 
 function makeAppRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "dagent-bundle-"));
-  mkdirSync(join(root, "in-progress"), { recursive: true });
+  mkdirSync(join(root, ".dagent"), { recursive: true });
   return root;
 }
 
@@ -38,8 +38,8 @@ function writeState(root: string, slug: string, artifacts: Record<string, Invoca
     salvageSurvivors: [],
     artifacts,
   } as unknown as PipelineState;
-  mkdirSync(join(root, "in-progress", slug), { recursive: true });
-  writeFileSync(join(root, "in-progress", `${slug}/_state.json`), JSON.stringify(full), "utf8");
+  mkdirSync(join(root, ".dagent", slug), { recursive: true });
+  writeFileSync(join(root, ".dagent", `${slug}/_state.json`), JSON.stringify(full), "utf8");
 }
 
 function inv(

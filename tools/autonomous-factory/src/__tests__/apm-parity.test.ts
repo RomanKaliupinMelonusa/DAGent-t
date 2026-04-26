@@ -281,7 +281,7 @@ report_outcome({ status: "failed", message: "<detailed reason>" })
       const template = Handlebars.compile(agent.systemPromptTemplate, { noEscape: true });
       const mockData = {
         featureSlug: "test-feature",
-        specPath: "apps/sample-app/in-progress/test-feature/_kickoff/spec.md",
+        specPath: "apps/sample-app/.dagent/test-feature/_kickoff/spec.md",
         workflowName: "full-stack",
         repoRoot: "/workspaces/test",
         appRoot: "/workspaces/test/apps/sample-app",

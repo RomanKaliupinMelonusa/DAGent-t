@@ -35,7 +35,7 @@ import { LocalFilesystem } from "../adapters/local-filesystem.js";
 
 function makeTmpAppRoot(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-bus-"));
-  fs.mkdirSync(path.join(tmp, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(tmp, ".dagent"), { recursive: true });
   return tmp;
 }
 
@@ -125,10 +125,10 @@ describe("invocation-id", () => {
 // ---------------------------------------------------------------------------
 
 describe("FileArtifactBus addressing", () => {
-  it("kickoffPath lays out under <appRoot>/in-progress/<slug>/_kickoff/", () => {
+  it("kickoffPath lays out under <appRoot>/.dagent/<slug>/_kickoff/", () => {
     const { bus, appRoot } = makeBus();
     const p = bus.kickoffPath("demo", "spec");
-    assert.equal(p, path.join(appRoot, "in-progress", "demo", "_kickoff", "spec.md"));
+    assert.equal(p, path.join(appRoot, ".dagent", "demo", "_kickoff", "spec.md"));
   });
 
   it("kickoffPath rejects node-only kinds", () => {
@@ -139,13 +139,13 @@ describe("FileArtifactBus addressing", () => {
     );
   });
 
-  it("nodePath lays out under <appRoot>/in-progress/<slug>/<node>/<inv>/outputs/", () => {
+  it("nodePath lays out under <appRoot>/.dagent/<slug>/<node>/<inv>/outputs/", () => {
     const { bus, appRoot } = makeBus();
     const inv = newInvocationId();
     const p = bus.nodePath("demo", "spec-compiler", inv, "acceptance");
     assert.equal(
       p,
-      path.join(appRoot, "in-progress", "demo", "spec-compiler", inv, "outputs", "acceptance.yml"),
+      path.join(appRoot, ".dagent", "demo", "spec-compiler", inv, "outputs", "acceptance.yml"),
     );
   });
 
@@ -299,19 +299,19 @@ describe("FileArtifactBus path snapshot", () => {
     // Spot-check well-known entries against the documented layout.
     assert.equal(
       snapshot["kickoff:spec"],
-      path.join(appRoot, "in-progress", "demo", "_kickoff", "spec.md"),
+      path.join(appRoot, ".dagent", "demo", "_kickoff", "spec.md"),
     );
     assert.equal(
       snapshot["node:acceptance"],
-      path.join(appRoot, "in-progress", "demo", "some-node", inv, "outputs", "acceptance.yml"),
+      path.join(appRoot, ".dagent", "demo", "some-node", inv, "outputs", "acceptance.yml"),
     );
     assert.equal(
       snapshot["node:meta"],
-      path.join(appRoot, "in-progress", "demo", "some-node", inv, "outputs", "meta.json"),
+      path.join(appRoot, ".dagent", "demo", "some-node", inv, "outputs", "meta.json"),
     );
     assert.equal(
       snapshot["node:playwright-report"],
-      path.join(appRoot, "in-progress", "demo", "some-node", inv, "outputs", "playwright-report.json"),
+      path.join(appRoot, ".dagent", "demo", "some-node", inv, "outputs", "playwright-report.json"),
     );
   });
 });

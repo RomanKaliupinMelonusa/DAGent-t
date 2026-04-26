@@ -107,14 +107,14 @@ describe("renderInvocationTree", () => {
         trigger: "initial",
         outcome: "completed",
         outputs: [
-          { kind: "spec", scope: "node", slug: "feat", nodeKey: "spec-compiler", invocationId: "a1", path: "in-progress/feat/spec-compiler/a1/outputs/spec.md" },
-          { kind: "acceptance", scope: "node", slug: "feat", nodeKey: "spec-compiler", invocationId: "a1", path: "in-progress/feat/spec-compiler/a1/outputs/acceptance.yml" },
+          { kind: "spec", scope: "node", slug: "feat", nodeKey: "spec-compiler", invocationId: "a1", path: ".dagent/feat/spec-compiler/a1/outputs/spec.md" },
+          { kind: "acceptance", scope: "node", slug: "feat", nodeKey: "spec-compiler", invocationId: "a1", path: ".dagent/feat/spec-compiler/a1/outputs/acceptance.yml" },
         ],
       }),
     };
     const out = renderInvocationTree(ledger, { includeArtifacts: true });
-    assert.ok(out.some((l) => /·\s+spec\s+—\s+`in-progress\/feat\/spec-compiler\/a1\/outputs\/spec\.md`/.test(l)));
-    assert.ok(out.some((l) => /·\s+acceptance\s+—\s+`in-progress\/feat\/spec-compiler\/a1\/outputs\/acceptance\.yml`/.test(l)));
+    assert.ok(out.some((l) => /·\s+spec\s+—\s+`\.dagent\/feat\/spec-compiler\/a1\/outputs\/spec\.md`/.test(l)));
+    assert.ok(out.some((l) => /·\s+acceptance\s+—\s+`\.dagent\/feat\/spec-compiler\/a1\/outputs\/acceptance\.yml`/.test(l)));
   });
 
   it("with includeArtifacts: surfaces `(no outputs)` when an invocation produced none", () => {

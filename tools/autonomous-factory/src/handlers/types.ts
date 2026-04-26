@@ -133,7 +133,7 @@ export interface NodeContext {
    */
   readonly triageLlm?: TriageLlm;
   /**
-   * Triage artifact loader port. Hides the `in-progress/<slug>_*.{yml,json}`
+   * Triage artifact loader port. Hides the `.dagent/<slug>_*.{yml,json}`
    * filesystem convention from the triage handler so the handler stays a
    * pure classifier + command builder.
    */
@@ -181,7 +181,7 @@ export interface NodeContext {
   readonly shell: Shell;
   /**
    * Feature workspace filesystem — handlers must read/write feature files
-   * (in-progress/ diagnostics, CI artifact staging, tmp dirs) through
+   * (.dagent/ diagnostics, CI artifact staging, tmp dirs) through
    * this port rather than importing `node:fs` / `node:path` directly.
    */
   readonly filesystem: FeatureFilesystem;

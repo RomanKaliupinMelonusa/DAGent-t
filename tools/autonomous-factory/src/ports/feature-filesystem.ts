@@ -1,7 +1,7 @@
 /**
  * ports/feature-filesystem.ts — Port interface for feature workspace I/O.
  *
- * Abstracts in-progress/ and archive/ file operations behind an interface.
+ * Abstracts .dagent/ and archive/ file operations behind an interface.
  * Production adapter uses node:fs; tests use an in-memory stub.
  */
 
@@ -41,12 +41,6 @@ export interface FeatureFilesystem {
 
   /** List files matching a glob pattern. */
   glob(pattern: string, cwd: string): Promise<string[]>;
-
-  /**
-   * Archive feature artifacts from in-progress/ to archive/features/<slug>/
-   * and commit via the git wrapper.
-   */
-  archiveFeature(slug: string, appRoot: string, repoRoot: string): void;
 
   /**
    * Commit and push pipeline state files after a parallel execution batch.

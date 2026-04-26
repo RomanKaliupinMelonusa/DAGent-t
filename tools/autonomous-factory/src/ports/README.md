@@ -19,7 +19,7 @@ Each file declares exactly one port interface (plus supporting types). Nothing e
 | [ci-gateway.ts](ci-gateway.ts) | `CiGateway` — CI run polling and status | `adapters/github-ci-adapter.ts` |
 | [hook-executor.ts](hook-executor.ts) | `HookExecutor` — runs `.apm/hooks/*.sh` lifecycle scripts | `adapters/shell-hook-executor.ts` |
 | [shell.ts](shell.ts) | `Shell` — generic subprocess execution with stderr/stdout/timeout | `adapters/node-shell-adapter.ts` |
-| [feature-filesystem.ts](feature-filesystem.ts) | `FeatureFilesystem` — feature workspace file ops (`in-progress/`, `archive/`) | `adapters/local-filesystem.ts` |
+| [feature-filesystem.ts](feature-filesystem.ts) | `FeatureFilesystem` — feature workspace file ops (`.dagent/`, `archive/`) | `adapters/local-filesystem.ts` |
 | [context-compiler.ts](context-compiler.ts) | `ContextCompiler` — APM compile entry point | `adapters/apm-file-compiler.ts` |
 | [telemetry.ts](telemetry.ts) | `Telemetry` — structured event emission | `adapters/jsonl-telemetry.ts` |
 | [triage-llm.ts](triage-llm.ts) | `TriageLlm` — LLM-based failure classification fallback | `adapters/copilot-triage-llm.ts` |

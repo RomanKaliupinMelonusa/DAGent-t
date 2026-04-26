@@ -23,7 +23,7 @@ import type { ItemSummary } from "../types.js";
 
 function makeTmpAppRoot(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "flight-data-test-"));
-  fs.mkdirSync(path.join(tmp, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(tmp, ".dagent"), { recursive: true });
   return tmp;
 }
 
@@ -85,8 +85,8 @@ describe("writePipelineSummary — /_kickoff/flight-data.json export", () => {
     writePipelineSummary(appRoot, "/repo", slug, summaries);
 
     // Both files must exist
-    const summaryPath = path.join(appRoot, "in-progress", `${slug}/_summary.md`);
-    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
+    const summaryPath = path.join(appRoot, ".dagent", `${slug}/_summary.md`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     assert.ok(fs.existsSync(summaryPath), "/_summary.md must be written");
     assert.ok(fs.existsSync(flightPath), "/_kickoff/flight-data.json must be written");
 
@@ -110,7 +110,7 @@ describe("writePipelineSummary — /_kickoff/flight-data.json export", () => {
 
     writePipelineSummary(appRoot, "/repo", slug, summaries);
 
-    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     const envelope = JSON.parse(fs.readFileSync(flightPath, "utf-8"));
     const item = envelope.items[0];
 
@@ -135,7 +135,7 @@ describe("writePipelineSummary — /_kickoff/flight-data.json export", () => {
     writePipelineSummary(appRoot, "/repo", slug, summaries);
 
     const raw = fs.readFileSync(
-      path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`),
+      path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`),
       "utf-8",
     );
     // 2-space indentation means lines should start with "  " (not tabs, not 4 spaces)
@@ -146,12 +146,12 @@ describe("writePipelineSummary — /_kickoff/flight-data.json export", () => {
     assert.equal(raw, roundTrip, "JSON must be formatted with JSON.stringify(…, null, 2)");
   });
 
-  it("does not throw when the in-progress directory is missing", () => {
+  it("does not throw when the .dagent directory is missing", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "flight-no-dir-"));
     tmpDirs.push(tmp);
-    // Intentionally do NOT create in-progress/ — both writes should fail silently
+    // Intentionally do NOT create .dagent/ — both writes should fail silently
     assert.doesNotThrow(() => {
       writePipelineSummary(tmp, "/repo", "no-dir", [makeItemSummary()]);
-    }, "writePipelineSummary must not throw even when in-progress/ is missing");
+    }, "writePipelineSummary must not throw even when .dagent/ is missing");
   });
 });

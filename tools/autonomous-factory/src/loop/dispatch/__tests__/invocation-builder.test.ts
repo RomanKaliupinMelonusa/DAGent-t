@@ -240,7 +240,7 @@ describe("materializeInputs", () => {
 
     // Write a kickoff `spec` WITHOUT the sidecar (`spec.md.meta.json`).
     // Using the raw filesystem bypasses the producer-side auto-stamp.
-    const kickoffDir = join(appRoot, "in-progress", slug, "_kickoff");
+    const kickoffDir = join(appRoot, ".dagent", slug, "_kickoff");
     mkdirSync(kickoffDir, { recursive: true });
     writeFileSync(join(kickoffDir, "spec.md"), "# Feature spec\n");
 

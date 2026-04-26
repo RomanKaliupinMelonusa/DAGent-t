@@ -1,0 +1,21 @@
+{
+  "nodeKey": "e2e-author",
+  "invocationId": "inv_01KQ3X5ET8N02NM65DZ16XB05Z",
+  "trigger": "triage-reroute",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/e2e-author/inv_01KQ3X5ET8N02NM65DZ16XB05Z/inputs/acceptance.yml"
+    },
+    {
+      "kind": "triage-handoff",
+      "source": "reroute",
+      "from": "triage-storefront",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/triage-storefront/inv_01KQ3X5AQ65CQPYRAACTRBVH3E/outputs/triage-handoff.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/e2e-author/inv_01KQ3X5ET8N02NM65DZ16XB05Z/inputs/triage-handoff.json"
+    }
+  ]
+}

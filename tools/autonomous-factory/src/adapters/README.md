@@ -12,14 +12,14 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 
 | File | Implements port | What it does |
 |---|---|---|
-| [json-file-state-store.ts](json-file-state-store.ts) | `StateStore` | Persists `PipelineState` to `in-progress/<slug>/_state.json` (nested layout) behind a POSIX `mkdirSync` lock ([file-state/lock.ts](file-state/lock.ts)). Also owns the invocation ledger (`state.artifacts`) and re-renders `_trans.md` on every write. |
+| [json-file-state-store.ts](json-file-state-store.ts) | `StateStore` | Persists `PipelineState` to `.dagent/<slug>/_state.json` (nested layout) behind a POSIX `mkdirSync` lock ([file-state/lock.ts](file-state/lock.ts)). Also owns the invocation ledger (`state.artifacts`) and re-renders `_trans.md` on every write. |
 | [file-state/](file-state/) | — | Internal helpers for `JsonFileStateStore`: `io.ts` (read/write), `lock.ts` (mkdir mutex), `init.ts` (state bootstrap from workflows.yml). |
 | [git-shell-adapter.ts](git-shell-adapter.ts) | `VersionControl` | Runs `git` subprocesses via the `Shell` port. Never shells out directly; composes with `node-shell-adapter`. |
 | [git-ops.ts](git-ops.ts) | — | Higher-level helpers (`createFeatureBranch`, branch checks) consumed by `GitShellAdapter` and the `create-branch` DAG node. |
 | [github-ci-adapter.ts](github-ci-adapter.ts) | `CiGateway` | Polls GitHub Actions runs via `gh` CLI; tracks run status per SHA. |
 | [shell-hook-executor.ts](shell-hook-executor.ts) | `HookExecutor` | Executes `.apm/hooks/*.sh` with orchestrator env + APM environment dict; captures stdout/stderr/exit. |
 | [node-shell-adapter.ts](node-shell-adapter.ts) | `Shell` | Thin wrapper over `child_process.spawn` with timeout + stderr/stdout capture. Every subprocess in the engine transits this adapter. |
-| [local-filesystem.ts](local-filesystem.ts) | `FeatureFilesystem` | Reads/writes feature-workspace files (`in-progress/`, `archive/`). |
+| [local-filesystem.ts](local-filesystem.ts) | `FeatureFilesystem` | Reads/writes feature-workspace files (`.dagent/`, `archive/`). |
 | [apm-file-compiler.ts](apm-file-compiler.ts) | `ContextCompiler` | Runs the APM compiler against a given app root. Thin wrapper around `apm/compiler.ts`. |
 | [jsonl-telemetry.ts](jsonl-telemetry.ts) | `Telemetry` | Appends structured events to JSONL log files per slug. |
 | [copilot-session-runner.ts](copilot-session-runner.ts) | `CopilotSessionRunner` | Creates a Copilot SDK session, wires harness (tool logging, limits), sends prompt, waits for outcome. Owns SDK event plumbing. |
@@ -35,7 +35,7 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 Every adapter is a class or factory fn that returns an object matching its port. Construct in `main.ts`:
 
 ```ts
-const stateStore = new JsonFileStateStore(path.join(appRoot, "in-progress"));
+const stateStore = new JsonFileStateStore(path.join(appRoot, ".dagent"));
 const vcs = new GitShellAdapter(new NodeShellAdapter({ cwd: repoRoot }));
 const ci = new GithubCiAdapter({ shell, repoRoot });
 const hookExec = new ShellHookExecutor({ shell, appRoot, repoRoot });

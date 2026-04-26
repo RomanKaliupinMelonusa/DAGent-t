@@ -22,7 +22,7 @@ import type { ItemSummary } from "../types.js";
 
 function makeTmpAppRoot(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "flight-data-direct-"));
-  fs.mkdirSync(path.join(tmp, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(tmp, ".dagent"), { recursive: true });
   return tmp;
 }
 
@@ -73,7 +73,7 @@ describe("writeFlightData — atomic write contract", () => {
 
     writeFlightData(appRoot, slug, summaries);
 
-    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     assert.ok(fs.existsSync(flightPath), "/_kickoff/flight-data.json must exist");
 
     const envelope = JSON.parse(fs.readFileSync(flightPath, "utf-8"));
@@ -91,7 +91,7 @@ describe("writeFlightData — atomic write contract", () => {
 
     writeFlightData(appRoot, slug, [makeItemSummary()]);
 
-    const tmpPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json.tmp`);
+    const tmpPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json.tmp`);
     assert.ok(!fs.existsSync(tmpPath), ".tmp file must not remain after successful write");
   });
 
@@ -103,7 +103,7 @@ describe("writeFlightData — atomic write contract", () => {
     writeFlightData(appRoot, slug, [makeItemSummary()]);
 
     const raw = fs.readFileSync(
-      path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`),
+      path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`),
       "utf-8",
     );
     const roundTrip = JSON.stringify(JSON.parse(raw), null, 2);
@@ -127,7 +127,7 @@ describe("writeFlightData — atomic write contract", () => {
     assert.equal(flightLogs.length, 0, "silent=true must suppress ✈ log line");
 
     // File must still be written
-    const flightPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     assert.ok(fs.existsSync(flightPath), "file must still be written when silent");
   });
 
@@ -160,18 +160,18 @@ describe("writeFlightData — atomic write contract", () => {
     writeFlightData(appRoot, slug, summaries, true);
 
     const envelope = JSON.parse(
-      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`), "utf-8"),
+      fs.readFileSync(path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`), "utf-8"),
     );
     assert.equal(envelope.items[1].outcome, "in-progress");
   });
 
-  it("does not throw when in-progress directory is missing", () => {
+  it("does not throw when .dagent directory is missing", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "flight-no-dir-"));
     tmpDirs.push(tmp);
-    // Intentionally do NOT create in-progress/ — write should fail silently
+    // Intentionally do NOT create .dagent/ — write should fail silently
     assert.doesNotThrow(() => {
       writeFlightData(tmp, "no-dir", [makeItemSummary()]);
-    }, "writeFlightData must not throw when in-progress/ is missing");
+    }, "writeFlightData must not throw when .dagent/ is missing");
   });
 
   it("overwrites a pre-existing .tmp file without error", () => {
@@ -180,7 +180,7 @@ describe("writeFlightData — atomic write contract", () => {
     const slug = "stale-tmp";
 
     // Plant a stale .tmp file (simulating a prior crash)
-    const tmpPath = path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json.tmp`);
+    const tmpPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json.tmp`);
     fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
     fs.writeFileSync(tmpPath, "stale data", "utf-8");
 
@@ -190,7 +190,7 @@ describe("writeFlightData — atomic write contract", () => {
     assert.ok(!fs.existsSync(tmpPath), "stale .tmp must be cleaned up");
     // Final .json must be valid
     const envelope = JSON.parse(
-      fs.readFileSync(path.join(appRoot, "in-progress", `${slug}/_kickoff/flight-data.json`), "utf-8"),
+      fs.readFileSync(path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`), "utf-8"),
     );
     assert.equal(envelope.version, 1);
   });

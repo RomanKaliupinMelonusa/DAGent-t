@@ -19,7 +19,7 @@ import type { ArtifactKind } from "../apm/artifact-catalog.js";
 
 /**
  * Reference to a kickoff artifact (e.g. the human-authored spec).
- * Resolved against `in-progress/<slug>/_kickoff/<kind>.<ext>`.
+ * Resolved against `.dagent/<slug>/_kickoff/<kind>.<ext>`.
  */
 export interface KickoffConsumes {
   readonly kind: ArtifactKind;

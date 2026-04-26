@@ -1,0 +1,156 @@
+feature: product-quick-view-plp
+summary: >
+  A quick-view modal launched from each product tile on the PLP showing product images,
+  swatches with PDP-identical OOS treatment, quantity stepper, Add to Cart, and wishlist
+  toggle — with ship-to-store / pickup-in-store / delivery options intentionally suppressed.
+
+required_dom:
+  - testid: quick-view-trigger
+    description: Quick View button rendered on each standard product tile on the PLP (excluded for sets/bundles)
+    cardinality: many
+    contains_text: Quick View
+
+  - testid: quick-view-modal
+    description: Outer wrapper element for the quick-view modal dialog
+    cardinality: one
+
+  - testid: product-view-modal
+    description: Base ProductViewModal rendered inside the quick-view-modal wrapper
+    cardinality: one
+
+  - testid: quick-view-product-name
+    description: Product name heading displayed inside the quick-view modal
+    requires_non_empty_text: true
+
+  - testid: quick-view-price
+    description: Product price displayed inside the quick-view modal
+    requires_non_empty_text: true
+
+  - testid: quick-view-main-image
+    description: Main product image rendered by the ImageGallery inside the quick-view modal
+    cardinality: one
+
+  - testid: quick-view-swatch
+    description: Individual color or size swatch option inside the quick-view modal (OOS swatches carry aria-disabled)
+    cardinality: many
+
+  - testid: quick-view-quantity-stepper
+    description: Quantity input stepper (decrement / value / increment) inside the quick-view modal
+    cardinality: one
+
+  - testid: quick-view-add-to-cart-btn
+    description: Primary Add to Cart CTA button inside the quick-view modal
+    contains_text: Add to Cart
+
+  - testid: quick-view-add-to-wishlist-btn
+    description: Add to Wishlist toggle button inside the quick-view modal
+    cardinality: one
+
+  - testid: quick-view-full-details-link
+    description: Link inside the quick-view modal that navigates to the full PDP for the displayed product
+    requires_non_empty_text: true
+
+  - testid: quick-view-close-btn
+    description: Close button that dismisses the quick-view modal
+    cardinality: one
+
+  - testid: add-to-cart-confirmation
+    description: Confirmation toast or modal shown after an item is successfully added to the cart (from useAddToCartModal)
+    cardinality: one
+
+required_flows:
+  - name: open-quick-view-modal
+    description: User clicks Quick View on a PLP product tile and the modal opens showing product details
+    steps:
+      - { action: goto, url: "/uk/en-GB/category/mens-clothing-jackets" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 15000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-product-name, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-price, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-main-image, timeout_ms: 5000 }
+
+  - name: quick-view-shows-all-controls
+    description: The opened quick-view modal displays swatches, quantity stepper, add-to-cart, wishlist, and full-details link
+    steps:
+      - { action: goto, url: "/uk/en-GB/category/mens-clothing-jackets" }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-swatch, match: first, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-quantity-stepper, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-add-to-wishlist-btn, timeout_ms: 5000 }
+      - { action: assert_visible, testid: quick-view-full-details-link, timeout_ms: 5000 }
+
+  - name: swatch-selection-updates-image
+    description: Clicking a different color swatch in the quick-view modal swaps the main product image
+    steps:
+      - { action: goto, url: "/uk/en-GB/category/mens-clothing-jackets" }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-swatch, match: first, timeout_ms: 5000 }
+      - { action: click, testid: quick-view-swatch, match: nth, nth: 1 }
+      - { action: assert_visible, testid: quick-view-main-image, timeout_ms: 5000 }
+
+  - name: add-to-cart-from-quick-view
+    description: User adds a product to cart from the quick-view modal and sees the added-to-bag confirmation
+    steps:
+      - { action: goto, url: "/uk/en-GB/category/mens-clothing-jackets" }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn, timeout_ms: 5000 }
+      - { action: click, testid: quick-view-add-to-cart-btn }
+      - { action: assert_visible, testid: add-to-cart-confirmation, timeout_ms: 15000 }
+
+  - name: close-modal-stays-on-plp
+    description: Closing the quick-view modal returns focus to the PLP without changing the URL
+    steps:
+      - { action: goto, url: "/uk/en-GB/category/mens-clothing-jackets" }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-close-btn }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 5000 }
+
+forbidden_console_patterns: []
+
+forbidden_network_failures:
+  - "GET /mobify/proxy/api/.*/products/.*"
+  - "POST /mobify/proxy/api/.*/baskets/.*/items"
+
+base_template_reuse:
+  - symbol: ProductViewModal
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Base quick-view modal component that renders ProductView inside a Chakra Modal;
+      must be wrapped (not forked) to inherit future upstream improvements.
+  - symbol: ProductView
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Full product detail view with ImageGallery, swatches, quantity stepper, and
+      add-to-cart flow; rendered inside ProductViewModal. Supports showDeliveryOptions
+      prop to suppress ship-to-store UI.
+  - symbol: useProduct
+    package: "@salesforce/commerce-sdk-react"
+    rationale: >
+      Hook for fetching full product detail by ID; must be reused for lazy-loading
+      product data when the modal opens.
+  - symbol: useAddToCartModal
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides the standard "Added to bag" confirmation toast/modal; reuse ensures
+      UX consistency with the PDP add-to-cart flow.
+  - symbol: useWishList
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Manages customer wishlist state and CRUD mutations; reuse ensures consistent
+      wishlist toggle behavior matching the PDP and PLP patterns.
+  - symbol: ImageGallery
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Product image carousel with thumbnail navigation; rendered by ProductView inside
+      the modal. Must not be re-implemented.
+  - symbol: SwatchGroup
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Renders color and size swatch options with built-in OOS disabled state
+      (aria-disabled); PDP parity required in the quick-view modal.

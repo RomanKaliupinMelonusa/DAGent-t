@@ -1,0 +1,20 @@
+{
+  "nodeKey": "baseline-analyzer",
+  "invocationId": "inv_01KQ3R1TD7V58R8EC7XHWPNW3H",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "spec",
+      "source": "kickoff",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/_kickoff/spec.md",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/baseline-analyzer/inv_01KQ3R1TD7V58R8EC7XHWPNW3H/inputs/spec.md"
+    },
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/baseline-analyzer/inv_01KQ3R1TD7V58R8EC7XHWPNW3H/inputs/acceptance.yml"
+    }
+  ]
+}

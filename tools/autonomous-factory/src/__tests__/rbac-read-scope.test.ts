@@ -17,7 +17,7 @@ const NO_MCP = new Set<string>();
 
 // Allowed read list modelled on the apm.yml profile for @e2e-author.
 const SDET_READS = [
-  /^in-progress\/[^/]+\/_kickoff\/(spec|acceptance)\./,
+  /^\.dagent\/[^/]+\/_kickoff\/(spec|acceptance)\./,
   /^e2e\//,
   /(^|\/)package\.json$/,
 ];
@@ -26,7 +26,7 @@ describe("checkRbac — read-scope enforcement", () => {
   it("allows read_file when target matches allowedReadPaths", () => {
     const d = checkRbac(
       "read_file",
-      { filePath: "apps/commerce-storefront/in-progress/feat/_kickoff/acceptance.yml" },
+      { filePath: "apps/commerce-storefront/.dagent/feat/_kickoff/acceptance.yml" },
       REPO_ROOT, E2E_WRITE, NO_CMD, NO_MCP, APP_ROOT, undefined, SDET_READS,
     );
     assert.equal(d, null);
@@ -108,12 +108,12 @@ describe("resolveAgentSandbox — allowedReadPaths compilation", () => {
   it("compiles allowedReadPaths regexes when present", () => {
     const sb = resolveAgentSandbox("sdet", ctxWith({
       allowedWritePaths: ["^e2e/"],
-      allowedReadPaths: ["^e2e/", "^in-progress/.*\\.yml$"],
+      allowedReadPaths: ["^e2e/", "^.dagent/.*\\.yml$"],
     }), APP_ROOT);
     assert.ok(Array.isArray(sb.allowedReadPaths));
     assert.equal(sb.allowedReadPaths!.length, 2);
     assert.ok(sb.allowedReadPaths![0].test("e2e/foo.spec.ts"));
-    assert.ok(sb.allowedReadPaths![1].test("in-progress/feat/_kickoff/acceptance.yml"));
+    assert.ok(sb.allowedReadPaths![1].test(".dagent/feat/_kickoff/acceptance.yml"));
     assert.ok(!sb.allowedReadPaths![0].test("overrides/app/thing.jsx"));
   });
 

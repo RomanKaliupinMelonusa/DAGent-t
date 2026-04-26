@@ -2,7 +2,7 @@
  * adapters/file-state/io.ts — File I/O for the JSON file state adapter.
  *
  * Single source of truth for:
- *  - REPO_ROOT / APP_ROOT / IN_PROGRESS path resolution
+ *  - REPO_ROOT / APP_ROOT / WORK_DIR path resolution
  *  - state/TRANS path helpers
  *  - readState / writeState (sync; state files are small)
  *  - renderTrans (regenerates _TRANS.md from _STATE.json on every write)
@@ -28,18 +28,18 @@ export const REPO_ROOT = join(__dirname, "../../../../..");
 export const APP_ROOT = process.env.APP_ROOT
   ? (isAbsolute(process.env.APP_ROOT) ? process.env.APP_ROOT : join(REPO_ROOT, process.env.APP_ROOT))
   : REPO_ROOT;
-export const IN_PROGRESS = join(APP_ROOT, "in-progress");
+export const WORK_DIR = join(APP_ROOT, ".dagent");
 
 // ─── Path helpers ───────────────────────────────────────────────────────────
 
 /** `<inProgress>/<slug>/_state.json` — nested-layout state path. */
 export function statePath(slug: string): string {
-  return join(IN_PROGRESS, slug, "_state.json");
+  return join(WORK_DIR, slug, "_state.json");
 }
 
 /** `<inProgress>/<slug>/_trans.md` — nested-layout transition log path. */
 export function transPath(slug: string): string {
-  return join(IN_PROGRESS, slug, "_trans.md");
+  return join(WORK_DIR, slug, "_trans.md");
 }
 
 export function today(): string {

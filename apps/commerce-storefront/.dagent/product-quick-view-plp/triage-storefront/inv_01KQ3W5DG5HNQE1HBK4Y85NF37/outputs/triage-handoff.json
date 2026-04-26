@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "triage-storefront",
+  "producedAt": "2026-04-26T03:08:44.305Z",
+  "failingItem": "e2e-runner",
+  "errorExcerpt": "TEST SUMMARY: 0 passed, 3 failed, 3 total\n\nRunning 5 tests using 1 worker\n\n  ✘  1 [chromium] › e2e/product-quick-view-plp.spec.ts:131:7 › Product Quick View on PLP › open-quick-view-modal (11.0s)\n  ✘  2 [chromium] › e2e/product-quick-view-plp.spec.ts:201:7 › Product Quick View on PLP › quick-view-shows-all-controls (11.2s)\n  ✘  3 [chromium] › e2e/product-quick-view-plp.spec.ts:242:7 › Product Quick View on PLP › swatch-selection-updates-image (11.0s)\n\u001b[31mTesting stopped early after 3 maximum allowed failures.\u001b[39m\n\n\n  1) [chromium] › e2e/product-quick-view-plp.spec.ts:131:7 › Product Quick View on PLP › open-quick-view-modal \n\n    TimeoutError: locator.waitFor: Timeout 10000ms exceeded.\n    Call log:\n    \u001b[2m  - waiting for getByTestId('quick-view-modal') to be visible\u001b[22m\n\n\n      149 |     const winner = await Promise.race([\n      150 |       modal\n    > 151 |         .waitFor({ state: 'visible', timeout: 10000 })\n          |          ^\n      152 |         .then(() => 'content' as const),\n      153 |       crashPage\n      154 |         .waitFor({ state: 'visible', timeout: 10000 })\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view-plp.spec.ts:151:10\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-plp-Pro-c575f-n-PLP-open-quick-view-modal-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    attachment #2: console-errors (text/plain) ─────────────────────────────────────────────────────\n    [error] Warning: The result of getServerSnapshot should be cached to avoid an infinite loop%s at App (http://localhost:3000/mobify/bundle/development/main.js:212:5) at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7) at C (http://localhost:3000/mobify/bundle/develop...\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    attachment #3: failed-requests (text/plain) ────────────────────────────────────────────────────\n    GET http://localhost:3000/callback?usid=509b599c-72c8-4808-ab5c-4267172246b0&code=gv5B_G2H2SDnigDhtHtYkWrjUMJNxTERFoOtFAfB-aQ -> net::ERR_ABORTED (fetch)\n    POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/7ae070a6-f4ec-4def-a383-d9cacc3f20a1/ -> net::ERR_NAME_NOT_RESOLVED...\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results/product-quick-view-plp-Pro-c575f-n-PLP-open-quick-view-modal-chromium/error-context.md\n… (83 more lines)",
+  "errorSignature": "7ebf497167c184d5",
+  "triageDomain": "code-defect",
+  "triageReason": "The storefront app emits a React hook error ('getServerSnapshot should be cached to avoid an infinite loop') preventing the quick-view modal from rendering, indicating an application-code defect rather than a test-authoring issue.",
+  "priorAttemptCount": 1,
+  "touchedFiles": [
+    "apps/commerce-storefront/config/default.js",
+    "apps/commerce-storefront/config/sites.js",
+    "apps/commerce-storefront/overrides/app/components/quick-view-modal/index.jsx"
+  ],
+  "touchedFilesSource": "storefront-debug",
+  "triageInvocationId": "inv_01KQ3W5DG5HNQE1HBK4Y85NF37"
+}

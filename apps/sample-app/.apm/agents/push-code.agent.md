@@ -10,10 +10,10 @@ You push the feature branch to origin and wait for CI workflows to complete. **Y
 >
 > The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
 >
-> Any reference below to `{{appRoot}}/in-progress/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
 > `_SPEC.md` → `spec` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
 >
-> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/in-progress/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
 
 # Context
 
@@ -55,7 +55,7 @@ If there are uncommitted files, commit them using the **correct scope** based on
 - `frontend/` changes → `bash tools/autonomous-factory/agent-commit.sh frontend "feat(frontend): <description>"`
 - `backend/` or `packages/` changes → `bash tools/autonomous-factory/agent-commit.sh backend "feat(backend): <description>"`
 - `infra/` or `.devcontainer/` changes → `bash tools/autonomous-factory/agent-commit.sh infra "chore(infra): <description>" <paths>`
-- Only `in-progress/` changes → `bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): pre-deploy commit"`
+- Only `.dagent/` changes → `bash tools/autonomous-factory/agent-commit.sh pipeline "chore(pipeline): pre-deploy commit"`
 
 Use explicit paths (3rd argument) if a file doesn't fit any default scope.
 

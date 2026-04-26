@@ -18,7 +18,7 @@ type InvocationRecord = import("../types.js").InvocationRecord;
 
 describe("Phase F — triage lineage first-class", () => {
   it("includes invocation lineage walked from state.artifacts", async () => {
-    mkdirSync(join(FIXTURE_ROOT, "in-progress"), { recursive: true });
+    mkdirSync(join(FIXTURE_ROOT, ".dagent"), { recursive: true });
 
     const slug = "lineage-feat";
     const runnerInv = newInvocationId(Date.now() - 4000);
@@ -77,9 +77,9 @@ describe("Phase F — triage lineage first-class", () => {
       artifacts,
     };
 
-    mkdirSync(join(FIXTURE_ROOT, "in-progress", slug), { recursive: true });
+    mkdirSync(join(FIXTURE_ROOT, ".dagent", slug), { recursive: true });
     writeFileSync(
-      join(FIXTURE_ROOT, "in-progress", `${slug}/_state.json`),
+      join(FIXTURE_ROOT, ".dagent", `${slug}/_state.json`),
       JSON.stringify(state, null, 2),
     );
 
@@ -108,9 +108,9 @@ describe("Phase F — triage lineage first-class", () => {
       artifacts: {},
     };
 
-    mkdirSync(join(FIXTURE_ROOT, "in-progress", slug), { recursive: true });
+    mkdirSync(join(FIXTURE_ROOT, ".dagent", slug), { recursive: true });
     writeFileSync(
-      join(FIXTURE_ROOT, "in-progress", `${slug}/_state.json`),
+      join(FIXTURE_ROOT, ".dagent", `${slug}/_state.json`),
       JSON.stringify(state, null, 2),
     );
 

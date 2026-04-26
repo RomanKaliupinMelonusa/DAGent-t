@@ -25,7 +25,7 @@ import type { PipelineState, InvocationRecord } from "../../types.js";
 // APP_ROOT must be set BEFORE loading any module that captures path constants
 // (file-state/io.ts → file-state/artifacts.ts → kernel/admin.ts).
 const tmpAppRoot = mkdtempSync(join(tmpdir(), "dagent-recover-dangling-"));
-mkdirSync(join(tmpAppRoot, "in-progress"), { recursive: true });
+mkdirSync(join(tmpAppRoot, ".dagent"), { recursive: true });
 process.env.APP_ROOT = tmpAppRoot;
 
 const { findDanglingInvocations } = await import("../../domain/dangling-invocations.js");
@@ -191,7 +191,7 @@ describe("applyAdminCommand({ type: 'recover-dangling' })", () => {
     assert.equal(e2eItem.error, null);
 
     // Cleanup the JSONL tail the seal call produced.
-    rmSync(join(tmpAppRoot, "in-progress", SLUG), { recursive: true, force: true });
+    rmSync(join(tmpAppRoot, ".dagent", SLUG), { recursive: true, force: true });
   });
 
   it("returns empty recovered list when no dangling invocations exist", () => {

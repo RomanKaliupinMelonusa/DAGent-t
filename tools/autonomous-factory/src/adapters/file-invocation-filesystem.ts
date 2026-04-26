@@ -3,7 +3,7 @@
  * `InvocationFilesystem`.
  *
  * Owns the per-invocation directory tree under
- * `<appRoot>/in-progress/<slug>/<nodeKey>/<invocationId>/`. Phase 1: dir
+ * `<appRoot>/.dagent/<slug>/<nodeKey>/<invocationId>/`. Phase 1: dir
  * creation, meta mirror read/write, seal probe. Inputs/outputs/logs are
  * left empty for Phase 2-4 producers to populate.
  *
@@ -53,7 +53,7 @@ export class FileInvocationFilesystem implements InvocationFilesystem {
     }
     const invocationDir = this.fs.joinPath(
       this.appRoot,
-      "in-progress",
+      ".dagent",
       slug,
       nodeKey,
       invocationId,

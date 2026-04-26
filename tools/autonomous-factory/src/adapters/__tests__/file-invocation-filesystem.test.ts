@@ -50,14 +50,14 @@ describe("FileInvocationFilesystem", () => {
     assert.equal(handles2.invocationDir, handles.invocationDir);
   });
 
-  it("pathsFor returns deterministic absolute paths under <appRoot>/in-progress/<slug>/<nodeKey>/<inv>", () => {
+  it("pathsFor returns deterministic absolute paths under <appRoot>/.dagent/<slug>/<nodeKey>/<inv>", () => {
     const appRoot = "/tmp/app";
     const ifs = new FileInvocationFilesystem(appRoot, new LocalFilesystem());
     const inv = newInvocationId();
     const handles = ifs.pathsFor("feat", "backend-dev", inv);
     assert.equal(
       handles.invocationDir,
-      `/tmp/app/in-progress/feat/backend-dev/${inv}`,
+      `/tmp/app/.dagent/feat/backend-dev/${inv}`,
     );
     assert.equal(handles.inputsDir, `${handles.invocationDir}/inputs`);
     assert.equal(handles.outputsDir, `${handles.invocationDir}/outputs`);

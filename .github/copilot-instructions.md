@@ -78,14 +78,14 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
 | APM compiler & context loader | `tools/autonomous-factory/src/apm/compiler.ts` · `src/apm/context-loader.ts` |
-| Active feature workspace | `apps/sample-app/in-progress/` |
+| Active feature workspace | `apps/sample-app/.dagent/` |
 | Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
 | Commerce storefront DAG definition | `apps/commerce-storefront/.apm/workflows.yml` |
 | Commerce storefront instruction fragments | `apps/commerce-storefront/.apm/instructions/**/*.md` |
 | Commerce storefront lifecycle hooks | `apps/commerce-storefront/.apm/hooks/*.sh` |
 | Commerce storefront skill declarations | `apps/commerce-storefront/.apm/skills/*.skill.md` |
 | Commerce storefront MCP declarations | `apps/commerce-storefront/.apm/mcp/*.mcp.yml` |
-| Commerce storefront active workspace | `apps/commerce-storefront/in-progress/` |
+| Commerce storefront active workspace | `apps/commerce-storefront/.dagent/` |
 | CI/CD: Integration tests & builds | `.github/workflows/ci-integration.yml` |
 | CI/CD: Backend deploy | `.github/workflows/deploy-backend.yml` |
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
@@ -152,7 +152,7 @@ Trigger the `agentic-feature.yml` workflow via `workflow_dispatch` with a featur
 The orchestrator is a deterministic `while` loop that:
 1. Builds the roam-code semantic graph index (Phase 0, non-fatal)
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
-3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
+3. Runs pre-flight checks: junk file detection, .dagent artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
 5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `github-ci-poll` (CI polling), `local-exec` (script execution — push, publish, tests, builds)
 6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
@@ -160,7 +160,7 @@ The orchestrator is a deterministic `while` loop that:
 8. For script nodes: runs optional `pre` hook before the handler body (e.g. environment health check), then runs the handler, then runs optional `post` hook (e.g. cleanup/validation). Failed output flows to the triage system for fault classification.
 9. Waits for handlers to complete or fail
 10. Advances to the next batch of ready items
-11. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
+11. After `publish-pr` completes, the feature's `.dagent/<slug>/` directory remains tracked in Git for PR review and retro analysis
 12. Injects downstream failure context into dev agents during redevelopment cycles
 
 ### Hard Rules

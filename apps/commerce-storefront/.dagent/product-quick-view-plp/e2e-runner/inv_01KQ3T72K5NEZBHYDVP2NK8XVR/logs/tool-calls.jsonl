@@ -1,0 +1,1 @@
+{"ts":"2026-04-26T02:35:01.208Z","tool":"local-exec","category":"shell","detail":" → npx playwright test e2e/product-quick-view-plp.spec.ts --workers=1 --max-failures=3","is_write":false,"kind":"tool.call","itemKey":"e2e-runner"}

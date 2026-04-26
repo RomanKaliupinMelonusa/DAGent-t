@@ -762,7 +762,7 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
     // Lint: ERROR on literal `{{featureSlug}}_*.ext` constructions inside
     // fenced code blocks. Those are executable instructions (shell snippets,
     // tool-call arguments) that bypass the typed Declared I/O block and
-    // re-introduce the flat `in-progress/<slug>_*` namespace the artifact
+    // re-introduce the flat `.dagent/<slug>_*` namespace the artifact
     // bus replaced. Inline-backtick references inside the standard "legacy
     // path warning" boilerplate are intentional and excluded by this
     // heuristic (only fenced ``` blocks are scanned). Promoted from
@@ -989,7 +989,7 @@ export function getApmSourceMtime(appRoot: string): number {
  * path in an agent prompt that is NOT a documented negative example.
  *
  * Background: the artifact bus replaced the flat
- * `in-progress/<slug>_<KIND>.<ext>` namespace with per-invocation typed
+ * `.dagent/<slug>_<KIND>.<ext>` namespace with per-invocation typed
  * artifacts, and kernel-owned files moved under `<slug>/` (e.g.
  * `<slug>/_trans.md`, `<slug>/_change-manifest.json`). Legacy flat
  * paths like `<slug>_TRANS.md` or `<slug>_CHANGES.json` are no longer

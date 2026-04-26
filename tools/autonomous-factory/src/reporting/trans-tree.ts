@@ -40,8 +40,8 @@ export interface RenderInvocationTreeOptions {
  * outputs as further-indented bullets:
  *
  *   - ✓ #1 `inv_01HZ…` (kickoff) [completed]
- *     · spec — in-progress/feat/spec-compiler/inv_…/outputs/spec.md
- *     · acceptance — in-progress/feat/spec-compiler/inv_…/outputs/acceptance.yml
+ *     · spec — .dagent/feat/spec-compiler/inv_…/outputs/spec.md
+ *     · acceptance — .dagent/feat/spec-compiler/inv_…/outputs/acceptance.yml
  *
  * Returns `[]` when the ledger is empty (legacy / fresh state).
  */

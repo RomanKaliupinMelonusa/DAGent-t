@@ -270,7 +270,7 @@ export class JsonFileStateStore implements StateStore {
     // masking the halt reason itself.
     try {
       const { writeFile, mkdir } = await import("node:fs/promises");
-      const { IN_PROGRESS } = await import("./file-state/io.js");
+      const { WORK_DIR: IN_PROGRESS } = await import("./file-state/io.js");
       const { dirname } = await import("node:path");
       const { featurePath } = await import("./feature-paths.js");
       const target = featurePath(dirname(IN_PROGRESS), slug, "halt");

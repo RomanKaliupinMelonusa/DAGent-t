@@ -10,13 +10,13 @@
 
 | Scope | Stages these paths |
 |---|---|
-| `backend` | `backend/`, `packages/`, `infra/`, `in-progress/` |
-| `frontend` | `frontend/`, `packages/`, `e2e/`, `in-progress/` |
-| `infra` | `infra/`, `in-progress/` |
-| `cicd` | `.github/`, `in-progress/` |
-| `docs` | `docs/`, `archive/`, `in-progress/`, READMEs |
-| `e2e` | `e2e/`, `in-progress/` |
-| `pipeline` | `in-progress/` |
+| `backend` | `backend/`, `packages/`, `infra/`, `.dagent/` |
+| `frontend` | `frontend/`, `packages/`, `e2e/`, `.dagent/` |
+| `infra` | `infra/`, `.dagent/` |
+| `cicd` | `.github/`, `.dagent/` |
+| `docs` | `docs/`, `archive/`, `.dagent/`, READMEs |
+| `e2e` | `e2e/`, `.dagent/` |
+| `pipeline` | `.dagent/` |
 | `all` | all of the above |
 
 ### Cross-Scope Commits

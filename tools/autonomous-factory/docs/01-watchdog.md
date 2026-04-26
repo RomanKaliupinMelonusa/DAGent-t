@@ -62,8 +62,7 @@ flowchart TD
     end
 
     LOOP -->|"all done"| REPORTS["Write Reports\n· _SUMMARY.md\n· _TERMINAL-LOG.md\n· _PLAYWRIGHT-LOG.md"]
-    REPORTS --> ARCHIVE["archiveFeatureFiles()\nin-progress/ → archive/features/slug/"]
-    ARCHIVE --> DONE(["✅ Pipeline Complete"])
+    REPORTS --> DONE(["✅ Pipeline Complete"])
 
     style PF fill:#e8f5e9
     style MAIN_LOOP fill:#e3f2fd
@@ -248,7 +247,7 @@ flowchart LR
 | **Terminal Log** | `_TERMINAL-LOG.md` | Chronological events: shell commands, file ops, intents with timestamps |
 | **Playwright Log** | `_PLAYWRIGHT-LOG.md` | Structured Playwright tool calls with args and results (live-ui phase only) |
 
-All reports saved to `in-progress/<slug>_*.md` before archiving to `archive/features/<slug>/`.
+All reports saved under `.dagent/<slug>/` and stay tracked in Git for PR review and retro analysis.
 
 ### Cross-Session Summary Merging
 
@@ -308,7 +307,6 @@ classDiagram
 | `buildNodeContext()` | dispatch/context-builder.ts | Assemble per-item context: config, compiled APM, upstream artifacts, `vcs`, `stateReader` port references | `dispatchBatch()` |
 | `dispatchItem()` | dispatch/item-dispatch.ts | Per-item lifecycle — circuit breaker → auto-skip → resolve handler → execute → translate result into kernel Commands | `dispatchBatch()` |
 | `translateResult()` | dispatch/result-translator.ts | Map `NodeResult` into kernel Commands (`CompleteItem`, `FailItem`, `ResetForDev`, etc.) | `dispatchItem()` |
-| `archiveFeatureFiles()` | archive.ts | Move `in-progress/` → `archive/features/slug/` after publish-pr | `runPipelineLoop()` |
 | `handleAgent()` | handlers/copilot-agent.ts | Copilot SDK session execution. No direct I/O — uses `ctx.vcs` + `ctx.stateReader`. Delegates context build / limits / post-session enrichment to `handlers/support/` | Handler registry |
 | `buildAgentContext()` | handlers/support/agent-context.ts | Collect upstream artifacts and shape the agent prompt context from `NodeContext` | `handleAgent()` |
 | `resolveAgentLimits()` | handlers/support/agent-limits.ts | APM cascade → tool limits, harness limits, sandbox config, filtered tool list | `handleAgent()` |

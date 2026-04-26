@@ -75,7 +75,7 @@ export interface StateStore {
 
   /**
    * Write a human-readable halt-escalation artifact to
-   * `in-progress/<slug>_HALT.md`. Best-effort; failures must not break the
+   * `.dagent/<slug>_HALT.md`. Best-effort; failures must not break the
    * halt itself (the kernel halt signal is authoritative — this is just
    * for operator visibility and resume pointers).
    */

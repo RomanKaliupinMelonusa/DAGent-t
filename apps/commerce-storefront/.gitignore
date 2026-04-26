@@ -19,11 +19,10 @@ playwright-report/
 .DS_Store
 Thumbs.db
 
-# Pipeline working directory — every file under in-progress/ is transient
-# telemetry/state. archiveFeatureFiles() moves the keepers to
-# archive/features/<slug>/ at publish-pr time, so they land on the PR from
-# there. Only README.md (folder docs) and *_SPEC.md (human-authored feature
-# input) are tracked.
-in-progress/*
-!in-progress/README.md
-!in-progress/*_SPEC.md
+# Pipeline working directory (`<app>/.dagent/<slug>/`) — slug folders are
+# tracked in Git so PR reviewers can audit pipeline state alongside the
+# feature diff. Only transient junk that pollutes the working dir
+# (stray scripts an agent might emit at the slug root) is ignored.
+.dagent/*.mjs
+.dagent/*.js
+.dagent/*.ts

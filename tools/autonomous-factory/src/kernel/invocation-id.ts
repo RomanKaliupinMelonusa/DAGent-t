@@ -5,7 +5,7 @@
  * must be:
  *   1. Unique across parallel dispatches in the same pipeline run.
  *   2. Lexicographically ordered by creation time, so directory listings
- *      under `in-progress/<slug>/<nodeKey>/` sort chronologically without
+ *      under `.dagent/<slug>/<nodeKey>/` sort chronologically without
  *      needing to parse `meta.json` timestamps.
  *   3. Filesystem-safe (no slashes, colons, or case-folding ambiguity).
  *   4. Portable — no external dependency.

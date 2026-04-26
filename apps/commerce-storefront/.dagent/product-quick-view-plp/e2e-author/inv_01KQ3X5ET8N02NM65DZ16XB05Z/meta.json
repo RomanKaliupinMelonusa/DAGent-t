@@ -1,0 +1,45 @@
+{
+  "invocationId": "inv_01KQ3X5ET8N02NM65DZ16XB05Z",
+  "nodeKey": "e2e-author",
+  "cycleIndex": 3,
+  "trigger": "triage-reroute",
+  "parentInvocationId": "inv_01KQ3X5AQ65CQPYRAACTRBVH3E",
+  "producedBy": "triage-storefront#inv_01KQ3X5AQ65CQPYRAACTRBVH3E",
+  "triggeredBy": {
+    "nodeKey": "triage-storefront",
+    "invocationId": "inv_01KQ3X5AQ65CQPYRAACTRBVH3E",
+    "reason": "triage-reroute"
+  },
+  "startedAt": "2026-04-26T03:28:32.110Z",
+  "finishedAt": "2026-04-26T03:29:35.114Z",
+  "outcome": "completed",
+  "inputs": [
+    {
+      "kind": "acceptance",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW"
+    },
+    {
+      "kind": "triage-handoff",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/triage-storefront/inv_01KQ3X5AQ65CQPYRAACTRBVH3E/outputs/triage-handoff.json",
+      "nodeKey": "triage-storefront",
+      "invocationId": "inv_01KQ3X5AQ65CQPYRAACTRBVH3E"
+    }
+  ],
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/e2e-author/inv_01KQ3X5ET8N02NM65DZ16XB05Z/outputs/node-report.json",
+      "nodeKey": "e2e-author",
+      "invocationId": "inv_01KQ3X5ET8N02NM65DZ16XB05Z"
+    }
+  ],
+  "sealed": true
+}

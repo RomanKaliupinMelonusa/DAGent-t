@@ -10,11 +10,11 @@
 
 | Scope | Stages these paths |
 |---|---|
-| `all` | all tracked files + `in-progress/` |
-| `e2e` | `e2e/`, `in-progress/` |
-| `docs` | `docs/`, `archive/`, `in-progress/`, READMEs |
-| `cicd` | `.github/`, `in-progress/` |
-| `pipeline` | `in-progress/` |
+| `all` | all tracked files + `.dagent/` |
+| `e2e` | `e2e/`, `.dagent/` |
+| `docs` | `docs/`, `archive/`, `.dagent/`, READMEs |
+| `cicd` | `.github/`, `.dagent/` |
+| `pipeline` | `.dagent/` |
 
 ### Cross-Scope Commits
 

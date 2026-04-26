@@ -136,7 +136,7 @@ Violations of this direction are the main source of tech debt (see [Rough edges]
    Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `stage-invocation`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
 7. **Effect execution** ([kernel/effect-executor.ts](src/kernel/effect-executor.ts))
    `persist-state`, `persist-execution-record`, `telemetry-event`, `reindex`, `write-halt-artifact` flow to adapters.
-8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `in-progress/`.
+8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `.dagent/`.
 
 **Failure path**: if post-deploy verification (`integration-test`, `live-ui`) fails, the `triage` handler runs the [2-layer classifier](src/triage/index.ts) (RAG substring → optional LLM fallback), emits a `reset-nodes` command with the responsible domain's items, and the loop picks them up on the next batch. Bounded by 5 redevelopment cycles.
 
@@ -147,7 +147,7 @@ Violations of this direction are the main source of tech debt (see [Rough edges]
 Every DAG node's I/O flows through one declarative contract backed by the [`ArtifactBus`](src/ports/artifact-bus.ts) port. Agents declare `consumes_kickoff`, `consumes_artifacts`, and `produces_artifacts` in `workflows.yml`; the kernel resolves inputs, enforces declared outputs, and indexes every dispatch in `state.artifacts[invocationId]` — the authoritative lineage ledger. No handler hardcodes filenames.
 
 ```
-apps/<app>/in-progress/<slug>/
+apps/<app>/.dagent/<slug>/
   _state.json                      # DAG state + invocation ledger (artifacts[inv])
   _kickoff/<kind>.<ext>            # feature inputs authored BEFORE any node runs
   <nodeKey>/<invocationId>/        # immutable once sealed

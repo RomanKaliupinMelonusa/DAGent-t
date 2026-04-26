@@ -30,7 +30,7 @@ describe("Phase 2 — outputs land in <inv>/outputs/", () => {
     await bus.write(ref, "feature: f\nsummary: s\n");
 
     const expected = join(
-      appRoot, "in-progress", slug, nodeKey, inv, "outputs", "acceptance.yml",
+      appRoot, ".dagent", slug, nodeKey, inv, "outputs", "acceptance.yml",
     );
     assert.equal(ref.path, expected);
     assert.ok(existsSync(expected), "artifact written under outputs/");

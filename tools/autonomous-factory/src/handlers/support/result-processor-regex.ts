@@ -182,7 +182,7 @@ function capPlaywrightStructured(
 
   let body = preamble + kept.join("") + postscript;
   if (truncatedCount > 0) {
-    const note = `\n\n... [${truncatedCount} additional failing-test section(s) omitted for brevity — full output at in-progress/<slug>_LAST_FAILURE.txt] ...\n`;
+    const note = `\n\n... [${truncatedCount} additional failing-test section(s) omitted for brevity — full output at .dagent/<slug>_LAST_FAILURE.txt] ...\n`;
     // Inject the note just before the postscript so the `N failed` footer
     // still closes the block.
     body = preamble + kept.join("") + note + postscript;

@@ -52,7 +52,7 @@ export async function enrichPostSessionTelemetry(
         const allowedPrefixes = getAgentDirectoryPrefixes(getWorkflowNode(ctx), appRel, dirs);
         const scopedFiles = allowedPrefixes.length > 0
           ? diffFiles.filter((f) => allowedPrefixes.some((p) => f.startsWith(p)))
-          : diffFiles.filter((f) => !f.includes("in-progress/"));
+          : diffFiles.filter((f) => !f.includes(".dagent/"));
         for (const f of scopedFiles) {
           if (!telemetry.filesChanged.includes(f)) telemetry.filesChanged.push(f);
         }

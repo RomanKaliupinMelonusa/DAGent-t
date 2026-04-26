@@ -20,7 +20,7 @@ import type { PipelineState } from "../../types.js";
 import { newInvocationId } from "../../kernel/invocation-id.js";
 
 const tmpAppRoot = mkdtempSync(join(tmpdir(), "dagent-ledger-test-"));
-mkdirSync(join(tmpAppRoot, "in-progress"), { recursive: true });
+mkdirSync(join(tmpAppRoot, ".dagent"), { recursive: true });
 process.env.APP_ROOT = tmpAppRoot;
 
 const { JsonFileStateStore } = await import("../json-file-state-store.js");
@@ -82,7 +82,7 @@ describe("state-store invocation ledger", () => {
     assert.ok(state.artifacts);
     assert.equal(state.artifacts[invId].invocationId, invId);
 
-    const jsonlPath = join(tmpAppRoot, "in-progress", SLUG, "_invocations.jsonl");
+    const jsonlPath = join(tmpAppRoot, ".dagent", SLUG, "_invocations.jsonl");
     assert.equal(existsSync(jsonlPath), true);
     const lines = readFileSync(jsonlPath, "utf8").trim().split("\n");
     assert.equal(lines.length, 1);

@@ -3,7 +3,7 @@
  *
  * Produced by the `spec-compiler` agent at feature-init from the
  * human-readable `_SPEC.md`, and written to
- * `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`.
+ * `<appRoot>/.dagent/<slug>_ACCEPTANCE.yml`.
  *
  * Consumed by:
  *   - The dev agent — injected into the prompt alongside the spec.

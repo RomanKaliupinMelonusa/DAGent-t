@@ -143,7 +143,7 @@ export function buildNodeContext(
     // `NodeContext` / `ExecutionRecord` surface; its *value* is now a
     // valid `inv_`-prefixed ULID that the ArtifactBus can use as the
     // per-dispatch directory key under
-    // `in-progress/<slug>/<nodeKey>/<invocationId>/`.
+    // `.dagent/<slug>/<nodeKey>/<invocationId>/`.
     executionId,
     ...(adoptStaged ? { currentInvocation: stagedRecord } : {}),
     slug: config.slug,

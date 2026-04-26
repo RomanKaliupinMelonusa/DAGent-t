@@ -195,7 +195,7 @@ flowchart TD
 
 | Step | Action |
 |------|--------|
-| 1 | Read feature spec from `in-progress/` |
+| 1 | Read feature spec from `.dagent/` |
 | 2 | `roam_understand` — codebase briefing |
 | 3 | `roam_context` — locate relevant symbols |
 | 4 | `roam_preflight` — blast radius check |

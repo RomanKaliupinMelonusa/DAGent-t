@@ -106,7 +106,7 @@ describe("scaffold-outcome-fidelity (Bug B)", () => {
     // 2) node-report.json was written with the correct handler + durationMs
     const reportPath = join(
       appRoot,
-      "in-progress",
+      ".dagent",
       slug,
       nodeKey,
       invocationId,

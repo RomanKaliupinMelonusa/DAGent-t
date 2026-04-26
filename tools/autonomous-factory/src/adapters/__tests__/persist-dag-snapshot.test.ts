@@ -25,7 +25,7 @@ import type { PipelineState } from "../../types.js";
 // APP_ROOT must be set BEFORE loading the adapter — path constants are
 // captured at module load.
 const tmpAppRoot = mkdtempSync(join(tmpdir(), "dagent-state-test-"));
-mkdirSync(join(tmpAppRoot, "in-progress"), { recursive: true });
+mkdirSync(join(tmpAppRoot, ".dagent"), { recursive: true });
 process.env.APP_ROOT = tmpAppRoot;
 
 const { JsonFileStateStore } = await import("../json-file-state-store.js");

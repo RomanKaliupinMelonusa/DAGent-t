@@ -22,7 +22,7 @@ import path from "node:path";
 import type { PipelineEvent, PipelineBlob } from "../telemetry/index.js";
 import { formatDuration, formatUsd, computeStepCost, outcomeIcon, buildCostAnalysisLines } from "./index.js";
 import type { ItemSummary } from "../types.js";
-import { featurePath, archiveFeaturePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../adapters/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // JSONL loader
@@ -530,9 +530,9 @@ function main(): void {
   }
 
   // Resolve app root — enumerate apps/* at runtime and pick the first
-  // directory that carries either an in-progress or archived event stream
-  // for this slug. Keeps the CLI framework-agnostic — adding a new app
-  // under `apps/` does not require editing this file.
+  // directory that carries a working-dir event stream for this slug.
+  // Keeps the CLI framework-agnostic — adding a new app under `apps/`
+  // does not require editing this file.
   if (!appRoot) {
     const repoRoot = process.cwd().includes("autonomous-factory")
       ? path.resolve(process.cwd(), "../..")
@@ -548,8 +548,7 @@ function main(): void {
     }
     for (const c of candidates) {
       const evPath = featurePath(c, slug, "events");
-      const archivePath = archiveFeaturePath(c, slug, "events");
-      if (fs.existsSync(evPath) || fs.existsSync(archivePath)) {
+      if (fs.existsSync(evPath)) {
         appRoot = c;
         break;
       }
@@ -561,13 +560,8 @@ function main(): void {
     process.exit(1);
   }
 
-  // Try in-progress first, then archived
-  let eventsPath = featurePath(appRoot, slug, "events");
-  let blobsPath = featurePath(appRoot, slug, "blobs");
-  if (!fs.existsSync(eventsPath)) {
-    eventsPath = archiveFeaturePath(appRoot, slug, "events");
-    blobsPath = archiveFeaturePath(appRoot, slug, "blobs");
-  }
+  const eventsPath = featurePath(appRoot, slug, "events");
+  const blobsPath = featurePath(appRoot, slug, "blobs");
 
   if (!fs.existsSync(eventsPath)) {
     console.error(`No event stream found at ${eventsPath}`);

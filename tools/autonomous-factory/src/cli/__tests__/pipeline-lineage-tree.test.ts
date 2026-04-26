@@ -46,7 +46,7 @@ function inv(
 describe("pipeline-lineage --tree", () => {
   it("renders the ancestry forest with indented children", () => {
     const root = mkdtempSync(join(tmpdir(), "dagent-lineage-tree-"));
-    mkdirSync(join(root, "in-progress"), { recursive: true });
+    mkdirSync(join(root, ".dagent"), { recursive: true });
     const slug = "two-reroutes";
     const artifacts: Record<string, InvocationRecord> = {
       RUN1: inv("RUN1", "runner", {
@@ -88,8 +88,8 @@ describe("pipeline-lineage --tree", () => {
       salvageSurvivors: [],
       artifacts,
     } as unknown as PipelineState;
-    mkdirSync(join(root, "in-progress", slug), { recursive: true });
-    writeFileSync(join(root, "in-progress", `${slug}/_state.json`), JSON.stringify(state), "utf8");
+    mkdirSync(join(root, ".dagent", slug), { recursive: true });
+    writeFileSync(join(root, ".dagent", `${slug}/_state.json`), JSON.stringify(state), "utf8");
 
     const result = spawnSync("npx", ["tsx", CLI_PATH, slug, "--tree"], {
       env: { ...process.env, APP_ROOT: root },

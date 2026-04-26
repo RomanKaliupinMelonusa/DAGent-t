@@ -336,7 +336,7 @@ describe("parsePlaywrightReport — Level-1 screenshot evidence", () => {
     assert.ok(parsed);
     assert.deepEqual(parsed!.failedTests[0].attachments, []);
     assert.equal(
-      fs.existsSync(path.join(appRoot, "in-progress", "feat_evidence")),
+      fs.existsSync(path.join(appRoot, ".dagent", "feat_evidence")),
       false,
       "evidence dir should not be created when everything is redacted",
     );

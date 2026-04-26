@@ -80,7 +80,7 @@ function makeCtx(
 function writeArtifact(
   appRoot: string, nodeKey: string, invocationId: string, filename: string, body: string,
 ): string {
-  const dir = join(appRoot, "in-progress", "feat-s", nodeKey, invocationId, "outputs");
+  const dir = join(appRoot, ".dagent", "feat-s", nodeKey, invocationId, "outputs");
   mkdirSync(dir, { recursive: true });
   const p = join(dir, filename);
   writeFileSync(p, body);

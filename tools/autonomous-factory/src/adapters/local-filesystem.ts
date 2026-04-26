@@ -9,10 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { glob as nodeGlob } from "node:fs/promises";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
-import {
-  archiveFeatureFiles,
-  commitAndPushState,
-} from "../lifecycle/archive.js";
+import { commitAndPushState } from "../lifecycle/state-commit.js";
 
 export class LocalFilesystem implements FeatureFilesystem {
   async exists(filePath: string): Promise<boolean> {
@@ -69,10 +66,6 @@ export class LocalFilesystem implements FeatureFilesystem {
       results.push(entry);
     }
     return results;
-  }
-
-  archiveFeature(slug: string, appRoot: string, repoRoot: string): void {
-    archiveFeatureFiles(slug, appRoot, repoRoot);
   }
 
   commitAndPushState(repoRoot: string, appRoot: string, branch: string, batchNumber: number): void {

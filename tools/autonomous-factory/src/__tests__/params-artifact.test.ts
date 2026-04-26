@@ -64,7 +64,7 @@ describe("Phase A — params artifact end-to-end", () => {
     const nodeKey = "spec-compiler";
     const invocationId = newInvocationId();
     const ref = bus.ref(slug, "params", { nodeKey, invocationId });
-    assert.ok(ref.path.endsWith(`in-progress/${slug}/${nodeKey}/${invocationId}/outputs/params.json`));
+    assert.ok(ref.path.endsWith(`.dagent/${slug}/${nodeKey}/${invocationId}/outputs/params.json`));
     await bus.write(ref, '{"contract":1}');
     const body = readFileSync(ref.path, "utf8");
     assert.equal(body, '{"contract":1}');
@@ -134,7 +134,7 @@ describe("Phase A — params artifact end-to-end", () => {
     const inv = newInvocationId();
 
     // Stage the artifact on disk.
-    const dir = join(appRoot, "in-progress", slug, upstreamKey, inv);
+    const dir = join(appRoot, ".dagent", slug, upstreamKey, inv);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "params.json"), '{"contract":"v1","testids":["foo"]}', "utf8");
 

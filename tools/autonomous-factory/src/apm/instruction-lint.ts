@@ -11,7 +11,7 @@
  * 1. **Legacy `<slug>_*` filename patterns** — e.g. `<slug>_SPEC.md`,
  *    `${SLUG}_PLAN.md`, `${slug}_acceptance.yaml`. The Unified Node I/O
  *    Contract migration moved every per-feature file under
- *    `in-progress/<slug>/<nodeKey>/<inv>/(inputs|outputs)/<kind>.<ext>`.
+ *    `.dagent/<slug>/<nodeKey>/<inv>/(inputs|outputs)/<kind>.<ext>`.
  *    Any prompt still telling an agent to read or write `<slug>_FOO.md`
  *    will silently miss the new on-disk shape.
  *
@@ -136,7 +136,7 @@ export function formatViolations(
     `Instruction prompt for agent "${agentKey}" in ${appRel} contains ` +
     `${violations.length} forbidden legacy pattern(s). The Unified Node ` +
     `I/O Contract requires per-invocation paths under ` +
-    `\`in-progress/<slug>/<nodeKey>/<inv>/(inputs|outputs)/<kind>.<ext>\` — ` +
+    `\`.dagent/<slug>/<nodeKey>/<inv>/(inputs|outputs)/<kind>.<ext>\` — ` +
     `legacy \`<slug>_*\` filenames no longer resolve.`;
   const body = violations
     .map((v) => `  · [${v.pattern}] line ${v.line}: ${v.snippet}`)

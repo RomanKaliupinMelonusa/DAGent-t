@@ -1,0 +1,469 @@
+{
+  "config": {
+    "configFile": "/workspaces/DAGent-t/apps/commerce-storefront/playwright.config.ts",
+    "rootDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 6
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspaces/DAGent-t/apps/commerce-storefront/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 6
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ],
+      [
+        "list"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 6,
+    "webServer": {
+      "command": "npm start",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "_acceptance_product-quick-view-plp.spec.ts",
+      "file": "_acceptance_product-quick-view-plp.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "acceptance: product-quick-view-plp",
+          "file": "_acceptance_product-quick-view-plp.spec.ts",
+          "line": 29,
+          "column": 6,
+          "specs": [
+            {
+              "title": "acceptance flow 1 — open-quick-view-modal",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 21173,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:35:56",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 56,
+                          "line": 35
+                        },
+                        "snippet": "  33 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 15000 });\n  34 |     await page.getByTestId('quick-view-trigger').first().click();\n> 35 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n     |                                                        ^\n  36 |     await expect(page.getByTestId('quick-view-product-name')).toBeVisible({ timeout: 5000 });\n  37 |     await expect(page.getByTestId('quick-view-price')).toBeVisible({ timeout: 5000 });\n  38 |     await expect(page.getByTestId('quick-view-main-image')).toBeVisible({ timeout: 5000 });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 56,
+                            "line": 35
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n  33 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 15000 });\n  34 |     await page.getByTestId('quick-view-trigger').first().click();\n> 35 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n     |                                                        ^\n  36 |     await expect(page.getByTestId('quick-view-product-name')).toBeVisible({ timeout: 5000 });\n  37 |     await expect(page.getByTestId('quick-view-price')).toBeVisible({ timeout: 5000 });\n  38 |     await expect(page.getByTestId('quick-view-main-image')).toBeVisible({ timeout: 5000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:35:56"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.358Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--eeff7-w-1-—-open-quick-view-modal-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--eeff7-w-1-—-open-quick-view-modal-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 56,
+                        "line": 35
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-af30d6d4cbcc8bffe7fa",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 31,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 2 — quick-view-shows-all-controls",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 17697,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-swatch').first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-swatch').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-swatch').first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-swatch').first()\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:60:65",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 65,
+                          "line": 60
+                        },
+                        "snippet": "  58 |     await page.getByTestId('quick-view-trigger').first().click();\n  59 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n> 60 |     await expect(page.getByTestId('quick-view-swatch').first()).toBeVisible({ timeout: 5000 });\n     |                                                                 ^\n  61 |     await expect(page.getByTestId('quick-view-quantity-stepper')).toBeVisible({ timeout: 5000 });\n  62 |     await expect(page.getByTestId('quick-view-add-to-cart-btn')).toBeVisible({ timeout: 5000 });\n  63 |     await expect(page.getByTestId('quick-view-add-to-wishlist-btn')).toBeVisible({ timeout: 5000 });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 65,
+                            "line": 60
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-swatch').first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-swatch').first()\u001b[22m\n\n\n  58 |     await page.getByTestId('quick-view-trigger').first().click();\n  59 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n> 60 |     await expect(page.getByTestId('quick-view-swatch').first()).toBeVisible({ timeout: 5000 });\n     |                                                                 ^\n  61 |     await expect(page.getByTestId('quick-view-quantity-stepper')).toBeVisible({ timeout: 5000 });\n  62 |     await expect(page.getByTestId('quick-view-add-to-cart-btn')).toBeVisible({ timeout: 5000 });\n  63 |     await expect(page.getByTestId('quick-view-add-to-wishlist-btn')).toBeVisible({ timeout: 5000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:60:65"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.350Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--8c2ee-ick-view-shows-all-controls-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--8c2ee-ick-view-shows-all-controls-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 65,
+                        "line": 60
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-3e2ad4de9d810ae53e3e",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 3 — swatch-selection-updates-image",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 18388,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.279Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-3eb43279ba33e730dee4",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 82,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 4 — add-to-cart-from-quick-view",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "failed",
+                      "duration": 24575,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:109:56",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 56,
+                          "line": 109
+                        },
+                        "snippet": "  107 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n  108 |     await page.getByTestId('quick-view-trigger').first().click();\n> 109 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n      |                                                        ^\n  110 |     await expect(page.getByTestId('quick-view-add-to-cart-btn')).toBeVisible({ timeout: 5000 });\n  111 |     await page.getByTestId('quick-view-add-to-cart-btn').click();\n  112 |     await expect(page.getByTestId('add-to-cart-confirmation')).toBeVisible({ timeout: 15000 });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 56,
+                            "line": 109
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n  107 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n  108 |     await page.getByTestId('quick-view-trigger').first().click();\n> 109 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n      |                                                        ^\n  110 |     await expect(page.getByTestId('quick-view-add-to-cart-btn')).toBeVisible({ timeout: 5000 });\n  111 |     await page.getByTestId('quick-view-add-to-cart-btn').click();\n  112 |     await expect(page.getByTestId('add-to-cart-confirmation')).toBeVisible({ timeout: 15000 });\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:109:56"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.387Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--a3f6b-add-to-cart-from-quick-view-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--a3f6b-add-to-cart-from-quick-view-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 56,
+                        "line": 109
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-6c02ef88d5b591ef427e",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 106,
+              "column": 7
+            },
+            {
+              "title": "acceptance flow 5 — close-modal-stays-on-plp",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 4,
+                      "status": "failed",
+                      "duration": 21766,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:133:56",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 56,
+                          "line": 133
+                        },
+                        "snippet": "  131 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n  132 |     await page.getByTestId('quick-view-trigger').first().click();\n> 133 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n      |                                                        ^\n  134 |     await page.getByTestId('quick-view-close-btn').click();\n  135 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 5000 });\n  136 |     // Forbidden-console assertion runs after the flow finishes."
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 56,
+                            "line": 133
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n  131 |     await page.goto('/uk/en-GB/category/mens-clothing-jackets', { waitUntil: 'domcontentloaded' });\n  132 |     await page.getByTestId('quick-view-trigger').first().click();\n> 133 |     await expect(page.getByTestId('quick-view-modal')).toBeVisible({ timeout: 10000 });\n      |                                                        ^\n  134 |     await page.getByTestId('quick-view-close-btn').click();\n  135 |     await expect(page.getByTestId('quick-view-trigger').first()).toBeVisible({ timeout: 5000 });\n  136 |     // Forbidden-console assertion runs after the flow finishes.\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:133:56"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.390Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--cd716--—-close-modal-stays-on-plp-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--cd716--—-close-modal-stays-on-plp-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 56,
+                        "line": 133
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-c9777e983bf1419ff625",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "acceptance required DOM",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 5,
+                      "status": "failed",
+                      "duration": 27212,
+                      "error": {
+                        "message": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n",
+                        "stack": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:160:90",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                          "column": 90,
+                          "line": 160
+                        },
+                        "snippet": "  158 |     await expect(page.getByTestId('quick-view-trigger').first(), 'required_dom: quick-view-trigger').toBeVisible({ timeout: 15000 });\n  159 |     await expect(page.getByTestId('quick-view-trigger').first()).toContainText('Quick View');\n> 160 |     await expect(page.getByTestId('quick-view-modal'), 'required_dom: quick-view-modal').toBeVisible({ timeout: 15000 });\n      |                                                                                          ^\n  161 |     await expect(page.getByTestId('product-view-modal'), 'required_dom: product-view-modal').toBeVisible({ timeout: 15000 });\n  162 |     await expect(page.getByTestId('quick-view-product-name'), 'required_dom: quick-view-product-name').toBeVisible({ timeout: 15000 });\n  163 |     {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                            "column": 90,
+                            "line": 160
+                          },
+                          "message": "Error: required_dom: quick-view-modal\n\n\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-modal')\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - required_dom: quick-view-modal with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-modal')\u001b[22m\n\n\n  158 |     await expect(page.getByTestId('quick-view-trigger').first(), 'required_dom: quick-view-trigger').toBeVisible({ timeout: 15000 });\n  159 |     await expect(page.getByTestId('quick-view-trigger').first()).toContainText('Quick View');\n> 160 |     await expect(page.getByTestId('quick-view-modal'), 'required_dom: quick-view-modal').toBeVisible({ timeout: 15000 });\n      |                                                                                          ^\n  161 |     await expect(page.getByTestId('product-view-modal'), 'required_dom: product-view-modal').toBeVisible({ timeout: 15000 });\n  162 |     await expect(page.getByTestId('quick-view-product-name'), 'required_dom: quick-view-product-name').toBeVisible({ timeout: 15000 });\n  163 |     {\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts:160:90"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-26T03:07:12.295Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--42169-plp-acceptance-required-DOM-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/_acceptance_product-quick--42169-plp-acceptance-required-DOM-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/_acceptance_product-quick-view-plp.spec.ts",
+                        "column": 90,
+                        "line": 160
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "825ac6631b2f07ab0c7d-1b013599cfc26213e72c",
+              "file": "_acceptance_product-quick-view-plp.spec.ts",
+              "line": 153,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-04-26T03:07:07.689Z",
+    "duration": 31967.541999999998,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 5,
+    "flaky": 0
+  }
+}

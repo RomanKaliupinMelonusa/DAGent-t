@@ -143,7 +143,7 @@ jobs:
         env:
           APP_PATH: apps/sample-app
         run: |
-          STATE_FILE="${APP_PATH}/in-progress/${{ steps.pr-meta.outputs.slug }}_STATE.json"
+          STATE_FILE="${APP_PATH}/.dagent/${{ steps.pr-meta.outputs.slug }}_STATE.json"
           if [ -f "$STATE_FILE" ]; then
             WF_NAME=$(node -e "const s=JSON.parse(require('fs').readFileSync('$STATE_FILE','utf-8'));console.log(s.workflowName||s.workflowType||'full-stack')")
             echo "workflow_name=$WF_NAME" >> "$GITHUB_OUTPUT"

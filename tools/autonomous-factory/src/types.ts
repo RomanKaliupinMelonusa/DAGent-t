@@ -413,7 +413,7 @@ export interface TriageHandoff {
   readonly advisory?: string;
   /** Level-1 screenshot/trace evidence harvested from a Playwright JSON
    *  reporter artifact. Paths are absolute and point to copies persisted
-   *  under `<appRoot>/in-progress/<slug>_evidence/` so they survive the
+   *  under `<appRoot>/.dagent/<slug>_evidence/` so they survive the
    *  Playwright cleanup of `test-results/` between runs. Omitted when
    *  the failure is not a Playwright-json failure or no binary
    *  attachments were present. */
@@ -475,7 +475,7 @@ export interface TriageHandoff {
     readonly error: string;
   }>;
   /** Pointer to the pre-feature noise catalogue captured by
-   *  `baseline-analyzer` (`in-progress/<slug>_BASELINE.json`). The
+   *  `baseline-analyzer` (`.dagent/<slug>_BASELINE.json`). The
    *  current dev-agent prompt does not filter via this file (the
    *  compact `failedTests` list replaces raw stdout), but a future
    *  debug agent with Playwright MCP access will need to consult it

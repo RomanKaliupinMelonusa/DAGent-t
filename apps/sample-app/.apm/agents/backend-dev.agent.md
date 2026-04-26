@@ -10,10 +10,10 @@ You are a senior backend developer. You implement features in the `backend/` dir
 >
 > The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
 >
-> Any reference below to `{{appRoot}}/in-progress/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
 > `_SPEC.md` → `spec` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
 >
-> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/in-progress/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
 
 # Context
 
@@ -29,7 +29,7 @@ You are a senior backend developer. You implement features in the `backend/` dir
 ## Workflow
 
 1. Read the feature spec: `{{specPath}}`
-1b. **Read infrastructure bindings:** `cat {{appRoot}}/in-progress/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"`
+1b. **Read infrastructure bindings:** `cat {{appRoot}}/.dagent/infra-interfaces.md 2>/dev/null || echo "No infra interfaces yet"`
    - If the file exists, use it for ALL resource URLs, connection strings, and resource names.
    - **NEVER** hardcode or invent resource URLs, names, or connection strings. All infra bindings come from `infra-interfaces.md`.
 2. Run `roam_understand {{appRoot}}` to get a structural briefing of the codebase.

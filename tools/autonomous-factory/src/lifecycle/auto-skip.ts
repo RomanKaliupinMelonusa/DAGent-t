@@ -112,9 +112,9 @@ export function getDirectoryPrefixes(
  */
 export function getGitDeletions(repoRoot: string, baseBranch: string): number {
   try {
-    // Pathspec magic (':!**/in-progress/**') excludes pipeline state files
+    // Pathspec magic (':!**/.dagent/**') excludes pipeline state files
     // so orchestrator mutations don't falsely trigger the dead-code scanner.
-    const output = execSync(`git diff origin/${baseBranch}...HEAD --shortstat -- . ":!**/in-progress/**"`, {
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --shortstat -- . ":!**/.dagent/**"`, {
       cwd: repoRoot,
       encoding: "utf-8",
       timeout: 10_000,
@@ -138,7 +138,7 @@ export function getGitDeletions(repoRoot: string, baseBranch: string): number {
  */
 export function hasDeletedFiles(repoRoot: string, baseBranch: string): boolean {
   try {
-    const output = execSync(`git diff origin/${baseBranch}...HEAD --diff-filter=D --name-only -- . ":!**/in-progress/**"`, {
+    const output = execSync(`git diff origin/${baseBranch}...HEAD --diff-filter=D --name-only -- . ":!**/.dagent/**"`, {
       cwd: repoRoot,
       encoding: "utf-8",
       timeout: 10_000,

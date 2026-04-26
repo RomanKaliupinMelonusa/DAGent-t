@@ -33,7 +33,7 @@ const SLUG = "feat-x";
 beforeEach(() => {
   workDir = mkdtempSync(join(tmpdir(), "publish-pr-"));
   appRoot = join(workDir, "app");
-  inProgress = join(appRoot, "in-progress", SLUG);
+  inProgress = join(appRoot, ".dagent", SLUG);
   mkdirSync(inProgress, { recursive: true });
 
   // Stub bin dir prepended to PATH; each command appends a JSON line per call.

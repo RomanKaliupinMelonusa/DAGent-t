@@ -43,14 +43,14 @@
         "terminal.integrated.defaultProfile.linux": "zsh",
         "files.watcherExclude": {
           "**/.roam/**": true,
-          "**/in-progress/**": true,
+          "**/.dagent/**": true,
           "**/archive/**": true,
           "**/node_modules/**": true,
           "**/test-results/**": true
         },
         "search.exclude": {
           "**/.roam": true,
-          "**/in-progress": true,
+          "**/.dagent": true,
           "**/archive": true,
           "**/test-results": true
         }

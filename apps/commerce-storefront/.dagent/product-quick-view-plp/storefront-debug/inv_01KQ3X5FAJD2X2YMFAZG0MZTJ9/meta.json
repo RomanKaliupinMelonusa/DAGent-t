@@ -1,0 +1,26 @@
+{
+  "invocationId": "inv_01KQ3X5FAJD2X2YMFAZG0MZTJ9",
+  "nodeKey": "storefront-debug",
+  "cycleIndex": 4,
+  "trigger": "redevelopment-cycle",
+  "triggeredBy": {
+    "nodeKey": "storefront-debug",
+    "invocationId": "inv_01KQ3W5HWGVM4JFJPX86BARTSS",
+    "reason": "redevelopment-cycle"
+  },
+  "startedAt": "2026-04-26T03:26:10.258Z",
+  "finishedAt": "2026-04-26T03:26:10.270Z",
+  "outcome": "completed",
+  "inputs": [],
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view-plp",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/storefront-debug/inv_01KQ3X5FAJD2X2YMFAZG0MZTJ9/outputs/node-report.json",
+      "nodeKey": "storefront-debug",
+      "invocationId": "inv_01KQ3X5FAJD2X2YMFAZG0MZTJ9"
+    }
+  ],
+  "sealed": true
+}

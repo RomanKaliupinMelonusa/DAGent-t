@@ -62,7 +62,7 @@ const githubCiPollHandler: NodeHandler = {
       };
     }
 
-    const inProgressDir = filesystem.joinPath(appRoot, "in-progress");
+    const inProgressDir = filesystem.joinPath(appRoot, ".dagent");
     const diagFile = featurePath(appRoot, slug, "ci-failure");
 
     // Resolve the pushed SHA from the corresponding push item's handler output

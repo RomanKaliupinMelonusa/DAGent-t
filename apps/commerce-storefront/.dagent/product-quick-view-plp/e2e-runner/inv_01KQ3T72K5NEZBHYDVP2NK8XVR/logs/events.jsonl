@@ -1,0 +1,7 @@
+{"ts":"2026-04-26T02:34:37.039Z","kind":"dispatch.start","invocationId":"inv_01KQ3T72K5NEZBHYDVP2NK8XVR","nodeKey":"e2e-runner","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-26T02:34:37.030Z","attempt":1}
+{"ts":"2026-04-26T02:34:37.066Z","command":"bash .apm/hooks/e2e-runner-pre.sh","kind":"hook.pre.start","itemKey":"e2e-runner"}
+{"ts":"2026-04-26T02:35:01.187Z","exit_code":0,"kind":"hook.pre.end","itemKey":"e2e-runner"}
+{"ts":"2026-04-26T02:37:22.115Z","outcome":"failed","error_preview":"exit code 1","kind":"item.end","itemKey":"e2e-runner"}
+{"ts":"2026-04-26T02:38:29.628Z","exit_code":0,"kind":"hook.post.end","itemKey":"e2e-runner"}
+{"ts":"2026-04-26T02:37:22.116Z","command":"bash .apm/hooks/e2e-runner-post.sh && (${REPO_ROOT}/tools/autonomous-factory/hooks/emit-playwright-handler-output.ts || true) && (node ${REPO_ROOT}/tools/autonomous-factory/hooks/validate-acceptance.mjs \"${APP_ROOT}\" \"${SLUG}\" || true)","kind":"hook.post.start","itemKey":"e2e-runner"}
+{"ts":"2026-04-26T02:38:29.637Z","kind":"dispatch.end","invocationId":"inv_01KQ3T72K5NEZBHYDVP2NK8XVR","nodeKey":"e2e-runner","outcome":"failed","finishedAt":"2026-04-26T02:38:29.629Z","outputKinds":["node-report"]}

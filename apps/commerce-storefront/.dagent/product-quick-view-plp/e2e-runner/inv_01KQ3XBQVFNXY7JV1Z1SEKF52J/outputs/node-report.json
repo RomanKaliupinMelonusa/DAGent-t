@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "e2e-runner",
+  "producedAt": "2026-04-26T03:31:32.871Z",
+  "nodeKey": "e2e-runner",
+  "invocationId": "inv_01KQ3XBQVFNXY7JV1Z1SEKF52J",
+  "handler": "local-exec",
+  "trigger": "redevelopment-cycle",
+  "attempt": 3,
+  "startedAt": "2026-04-26T03:29:35.600Z",
+  "finishedAt": "2026-04-26T03:31:32.868Z",
+  "durationMs": 117268,
+  "outcome": "failed",
+  "counters": {
+    "shellCommands": 0,
+    "toolCalls": 0,
+    "messages": 0,
+    "intents": 1,
+    "filesRead": 0,
+    "filesChanged": 0
+  },
+  "tokens": null,
+  "filesRead": [],
+  "filesChanged": [],
+  "intents": [
+    "Native script execution — failed"
+  ],
+  "messages": [],
+  "errorMessage": null,
+  "errorSignature": null,
+  "exitCode": null,
+  "triggeredBy": {
+    "nodeKey": "storefront-debug",
+    "invocationId": "inv_01KQ3W5HWGVM4JFJPX86BARTSS",
+    "reason": "redevelopment-cycle"
+  }
+}

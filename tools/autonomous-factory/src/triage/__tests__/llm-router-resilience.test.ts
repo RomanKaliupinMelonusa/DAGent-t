@@ -34,7 +34,7 @@ let TMP_APP_ROOT: string;
 
 before(() => {
   TMP_APP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "llm-router-resilience-"));
-  fs.mkdirSync(path.join(TMP_APP_ROOT, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(TMP_APP_ROOT, ".dagent"), { recursive: true });
 });
 
 after(() => {

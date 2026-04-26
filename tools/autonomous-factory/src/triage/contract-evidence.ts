@@ -2,7 +2,7 @@
  * triage/contract-evidence.ts — D3.
  *
  * When Phase B oracles (`validate-acceptance.mjs`) and the B2 qa-adversary
- * node run, they deposit structured JSON into the feature's `in-progress/`
+ * node run, they deposit structured JSON into the feature's `.dagent/`
  * directory:
  *
  *   <slug>_VALIDATION.json  — contract oracle verdict
@@ -61,7 +61,7 @@ function formatArtifact(label: string, relPath: string, body: string): string {
 /**
  * Load and render the contract-evidence block for a feature.
  *
- * @param appRoot Absolute path to the app root (the directory that contains `in-progress/`).
+ * @param appRoot Absolute path to the app root (the directory that contains `.dagent/`).
  * @param slug    Feature slug; artifacts are resolved via `featurePath`.
  */
 export function loadContractEvidence(appRoot: string, slug: string): ContractEvidenceBlock {

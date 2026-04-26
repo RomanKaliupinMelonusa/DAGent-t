@@ -40,7 +40,7 @@ function makeCtx(appRoot: string): { ctx: NodeContext; events: LoggedEvent[]; ou
   const slug = "demo";
   const itemKey = "my-script";
   const executionId = newInvocationId();
-  const outputsDir = join(appRoot, "in-progress", slug, itemKey, executionId, "outputs");
+  const outputsDir = join(appRoot, ".dagent", slug, itemKey, executionId, "outputs");
   const ctx = {
     slug,
     itemKey,

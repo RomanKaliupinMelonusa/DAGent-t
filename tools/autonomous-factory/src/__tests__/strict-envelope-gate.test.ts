@@ -90,7 +90,7 @@ function writeArtifact(
   filename: string,
   body: string,
 ): void {
-  const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+  const dir = join(appRoot, ".dagent", slug, nodeKey, invocationId, "outputs");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, filename), body);
 }
@@ -192,7 +192,7 @@ describe("Session A — producer-side strict envelope gate", () => {
 
     // Sidecar should have materialized via auto-stamp.
     const sidecarPath = join(
-      appRoot, "in-progress", "feat-s", "qa-adversary", invocationId,
+      appRoot, ".dagent", "feat-s", "qa-adversary", invocationId,
       "outputs", "acceptance.yml.meta.json",
     );
     const { readFileSync, existsSync } = await import("node:fs");
@@ -208,7 +208,7 @@ describe("Session A — producer-side strict envelope gate", () => {
     const invocationId = newInvocationId();
     const slug = "feat-s";
     const nodeKey = "qa-adversary";
-    const dir = join(appRoot, "in-progress", slug, nodeKey, invocationId, "outputs");
+    const dir = join(appRoot, ".dagent", slug, nodeKey, invocationId, "outputs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "acceptance.yml"),

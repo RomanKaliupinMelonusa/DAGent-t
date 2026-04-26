@@ -397,8 +397,8 @@ classDiagram
 
 | File | Format | Purpose |
 |------|--------|---------|
-| `in-progress/<slug>/_state.json` | JSON | Machine-readable state (read by orchestrator) |
-| `in-progress/<slug>/_trans.md` | Markdown | Human-readable view (auto-generated from state) |
+| `.dagent/<slug>/_state.json` | JSON | Machine-readable state (read by orchestrator) |
+| `.dagent/<slug>/_trans.md` | Markdown | Human-readable view (auto-generated from state) |
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
@@ -543,7 +543,7 @@ Every DAG node's I/O flows through a single declarative contract — the **artif
 ### Directory layout
 
 ```
-apps/<app>/in-progress/<slug>/
+apps/<app>/.dagent/<slug>/
   _state.json                      # kernel-owned DAG state + invocation ledger
   _trans.md                        # human-readable transition log
   _kickoff/                        # feature inputs authored BEFORE any node runs
@@ -571,7 +571,7 @@ The `_kickoff/` scope is the only non-node path. Re-runs never overwrite: every 
 |---|---|---|
 | **Declare** | `workflows.yml` | Each node lists `consumes_kickoff: [kind]`, `consumes_artifacts: [{from, kind}]`, `consumes_reroute: [kind]` (optional, only resolved when `trigger === "triage-reroute"`), `produces_artifacts: [kind]`. Artifact kinds registered in [artifact-catalog.ts](../src/apm/artifact-catalog.ts). |
 | **Resolve** | `loop/dispatch/invocation-builder.ts` (via `materializeInputsMiddleware`) | At dispatch, the builder walks the ledger, resolves each declared input to an `ArtifactRef`, **copies** the file into `<inv>/inputs/<kind>.<ext>`, and writes `inputs/params.in.json`. Required-but-missing throws `MissingRequiredInputError` → synthetic failed `InvocationRecord` with `errorSignature = missing_required_input:<kind>`. |
-| **Write** | Agent writes to `$OUTPUTS_DIR/<kind>.<ext>`; `harness/outcome-tool.ts` `report_outcome({status, message?})` signals completion | The collapsed `report_outcome` schema carries only control flow — every payload (summary, deployment URL, CI result, approval, triage handoff) is a declared artifact written to `outputs/`. The `ArtifactBus` write path computes `<appRoot>/in-progress/<slug>/<nodeKey>/<invocationId>/outputs/<kind>.<ext>`. |
+| **Write** | Agent writes to `$OUTPUTS_DIR/<kind>.<ext>`; `harness/outcome-tool.ts` `report_outcome({status, message?})` signals completion | The collapsed `report_outcome` schema carries only control flow — every payload (summary, deployment URL, CI result, approval, triage handoff) is a declared artifact written to `outputs/`. The `ArtifactBus` write path computes `<appRoot>/.dagent/<slug>/<nodeKey>/<invocationId>/outputs/<kind>.<ext>`. |
 | **Enforce** | `kernel/pipeline-kernel.ts` | On `report_outcome(completed)`, the kernel diffs declared `produces_artifacts` against `state.artifacts[inv].outputs`. Missing → `failed` with `errorSignature = missing_required_output:<kind>` → routed through `on_failure.triage`. |
 | **Trace** | `state.artifacts[inv].parentInvocationId` + `cli/pipeline-lineage.ts` | The ledger is the lineage graph. `pipeline:lineage <slug> --tree` renders the ancestry forest; `TriageArtifactLoader.loadEvidenceBundle` produces a `{ invocation, ancestry, events, artifacts }` record for triage agents. Triage re-entrance: triage emits `outputs/triage-handoff.json`; the rerouted dev node declares `consumes_reroute: [triage-handoff]`; the builder copies it into the next invocation's `inputs/triage-handoff.json`. |
 

@@ -1,0 +1,14 @@
+{
+  "nodeKey": "e2e-author",
+  "invocationId": "inv_01KQ3VN78E7NHH7QZY8SMPR53V",
+  "trigger": "redevelopment-cycle",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/spec-compiler/inv_01KQ3QVNZ4VMDFSGT2YNAB4JFW/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/in-progress/product-quick-view-plp/e2e-author/inv_01KQ3VN78E7NHH7QZY8SMPR53V/inputs/acceptance.yml"
+    }
+  ]
+}

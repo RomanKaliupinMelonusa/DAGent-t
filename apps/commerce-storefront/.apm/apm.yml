@@ -20,9 +20,9 @@ agents:
     skills: []
     toolLimits: { soft: 30, hard: 45 }
     security:
-      # Write ACCEPTANCE.yml only. `in-progress/` is the shared pipeline
+      # Write ACCEPTANCE.yml only. `.dagent/` is the shared pipeline
       # scratch dir; the spec-compiler must not touch feature code.
-      allowedWritePaths: ["(^|/)in-progress/.*_ACCEPTANCE\\.yml$"]
+      allowedWritePaths: ["(^|/).dagent/.*_ACCEPTANCE\\.yml$"]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent]
@@ -45,9 +45,9 @@ agents:
     toolLimits: { soft: 45, hard: 65 }
     security:
       # Write exactly one advisory artifact. No code, no specs, no tests.
-      allowedWritePaths: ["(^|/)in-progress/.*_BASELINE\\.json$"]
+      allowedWritePaths: ["(^|/).dagent/.*_BASELINE\\.json$"]
       allowedReadPaths:
-        - "^in-progress/.*_(SPEC|ACCEPTANCE)\\."
+        - "^.dagent/.*_(SPEC|ACCEPTANCE)\\."
         - "(^|/)package\\.json$"
         - "^tsconfig"
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
@@ -70,7 +70,7 @@ agents:
         - "^config/"
         - "^worker/"
         - "^translations/"
-        - "(^|/)in-progress/[^/]+/storefront-dev/[^/]+/outputs/.*\\.(json|md|yml|yaml)$"
+        - "(^|/).dagent/[^/]+/storefront-dev/[^/]+/outputs/.*\\.(json|md|yml|yaml)$"
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
@@ -97,7 +97,7 @@ agents:
       # debug agent prompt enforces that contract with explicit forbidden
       # actions; path guards here prevent accidental writes even if the
       # prompt is ignored.
-      allowedWritePaths: ["^app/", "^config/", "^worker/", "^translations/", "(^|/)in-progress/.*_DEBUG-NOTES\\.md$"]
+      allowedWritePaths: ["^app/", "^config/", "^worker/", "^translations/", "(^|/).dagent/.*_DEBUG-NOTES\\.md$"]
       # Match storefront-dev / qa-adversary / baseline-analyzer: block CLI
       # Playwright and `npm start`. Debug reproduction must go through the
       # declared Playwright MCP and the prior `e2e-runner` evidence,
@@ -130,7 +130,7 @@ agents:
     skills: []
     toolLimits: { soft: 60, hard: 80 }
     security:
-      allowedWritePaths: ["(^|/)in-progress/"]
+      allowedWritePaths: ["(^|/).dagent/"]
     tools:
       core: [read_file, file_read, view, bash, write_bash, shell, grep_search, list_dir, report_intent]
   e2e-author:
@@ -147,7 +147,7 @@ agents:
       # denied so tests cannot be reverse-engineered to match a buggy impl.
       # Patterns are tested against app-relative paths by checkRbac.
       allowedReadPaths:
-        - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY)\\."
+        - "^.dagent/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY)\\."
         - "^e2e/"
         - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
         # Session C — vendored PWA Kit reference snapshot. Replaces the
@@ -176,15 +176,15 @@ agents:
     toolLimits: { soft: 50, hard: 70 }
     security:
       allowedWritePaths:
-        - "(^|/)in-progress/.*_QA-REPORT\\.json$"
+        - "(^|/).dagent/.*_QA-REPORT\\.json$"
         - "(^|/)e2e/_qa_.*\\.spec\\.ts$"
       allowedReadPaths:
-        - "^in-progress/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY|VALIDATION)\\."
+        - "^.dagent/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY|VALIDATION)\\."
         # Session A \u2014 materialized inputs land under
-        # `in-progress/<slug>/<nodeKey>/<invocationId>/inputs/<kind>.<ext>`.
+        # `.dagent/<slug>/<nodeKey>/<invocationId>/inputs/<kind>.<ext>`.
         # Allow qa-adversary to read everything the Declared I/O block
         # points it at (acceptance, playwright-report, implementation-status).
-        - "^in-progress/.*/inputs/.*\\.(yml|yaml|json|md)$"
+        - "^.dagent/.*/inputs/.*\\.(yml|yaml|json|md)$"
         - "^e2e/"
         - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
         - "(^|/)package\\.json$"

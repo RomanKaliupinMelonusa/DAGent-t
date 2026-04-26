@@ -18,7 +18,7 @@ import { FileTriageArtifactLoader } from "../file-triage-artifact-loader.js";
 
 function makeAppRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "dagent-triage-ledger-"));
-  mkdirSync(join(root, "in-progress"), { recursive: true });
+  mkdirSync(join(root, ".dagent"), { recursive: true });
   return root;
 }
 
@@ -37,8 +37,8 @@ function writeState(root: string, slug: string, state: Partial<PipelineState> & 
     redevelopmentCycles: {},
     ...state,
   } as PipelineState;
-  mkdirSync(join(root, "in-progress", slug), { recursive: true });
-  writeFileSync(join(root, "in-progress", `${slug}/_state.json`), JSON.stringify(full), "utf8");
+  mkdirSync(join(root, ".dagent", slug), { recursive: true });
+  writeFileSync(join(root, ".dagent", `${slug}/_state.json`), JSON.stringify(full), "utf8");
 }
 
 describe("FileTriageArtifactLoader — Phase 5 ledger queries", () => {
@@ -50,8 +50,8 @@ describe("FileTriageArtifactLoader — Phase 5 ledger queries", () => {
 
   it("listInvocations returns [] on malformed JSON", async () => {
     const root = makeAppRoot();
-    mkdirSync(join(root, "in-progress", "junk"), { recursive: true });
-    writeFileSync(join(root, "in-progress", "junk/_state.json"), "{not json", "utf8");
+    mkdirSync(join(root, ".dagent", "junk"), { recursive: true });
+    writeFileSync(join(root, ".dagent", "junk/_state.json"), "{not json", "utf8");
     const loader = new FileTriageArtifactLoader({ appRoot: root });
     assert.deepEqual(await loader.listInvocations("junk"), []);
   });

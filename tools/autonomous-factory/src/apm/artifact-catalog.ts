@@ -3,8 +3,8 @@
  *
  * Part of the Artifact Bus (Phase 1). The catalog is the single source of
  * truth for every artifact kind that can appear under
- * `in-progress/<slug>/_kickoff/` (scope=kickoff) or
- * `in-progress/<slug>/<nodeKey>/<invocationId>/` (scope=node).
+ * `.dagent/<slug>/_kickoff/` (scope=kickoff) or
+ * `.dagent/<slug>/<nodeKey>/<invocationId>/` (scope=node).
  *
  * Adding a new artifact means declaring it here; consumers discover kinds
  * via lookup rather than hardcoding filenames. Subsequent phases will

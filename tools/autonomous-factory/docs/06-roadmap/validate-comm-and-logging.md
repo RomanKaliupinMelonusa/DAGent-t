@@ -139,7 +139,7 @@ If any cell above is empty when it shouldn't be, the multiplex wiring failed for
 1. **No prose back-channel.** Search the codebase for `pendingContext` and `lastTriageRecord` — both should be GONE (Track A in the prior plan removed them). Re-entrance context flows ONLY through `consumes_reroute` artifacts.
 2. **Schema-by-default.** `triage-handoff`, `acceptance`, and `node-report` are the three kinds with Zod schemas. Validation fires at both producer and consumer boundaries. Other kinds are intentionally string/JSON-typed for now (don't propose broad enforcement — see plan's "out of scope").
 3. **Secret redaction is upstream of logs.** `FileInvocationLogger` accepts an optional `redactor`; the redactor is built from `apm.yml` `config.environment` once per run and threaded through `ContextBuilderConfig.logRedactor`. Confirm a known secret value never reaches any file under `<inv>/logs/`.
-4. **Archive is verbatim.** After `publish-pr`, the whole `in-progress/<slug>/` directory moves to `archive/features/<slug>/`. The per-invocation log tree must survive the move intact.
+4. **Slug folder survives the run.** `.dagent/<slug>/` stays tracked in Git after `publish-pr` so PR reviewers can audit the per-invocation log tree alongside the feature diff.
 
 ## Known wontfix items (do not reopen)
 
@@ -161,7 +161,7 @@ node --import tsx -e "import('./src/apm/compiler.ts').then(m => m.compileApm('..
 grep -rn 'config\.logger\.\(event\|message\|toolCall\)' src/handlers/ src/loop/dispatch/
 
 # Disk-shape inspection (run after any test that exercises real dispatch):
-ls in-progress/<slug>/<nodeKey>/<inv>/{inputs,outputs,logs}/
+ls .dagent/<slug>/<nodeKey>/<inv>/{inputs,outputs,logs}/
 ```
 
 ## Deliverable

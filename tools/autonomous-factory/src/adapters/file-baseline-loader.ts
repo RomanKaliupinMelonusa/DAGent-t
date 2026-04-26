@@ -6,7 +6,7 @@
  *   1. Artifact catalog — most recent sealed/completed `baseline` artifact
  *      produced by the `baseline-analyzer` node, located via
  *      `FileArtifactBus.findLatestArtifact()` reading `_invocations.jsonl`.
- *   2. Kickoff fallback — `<appRoot>/in-progress/<slug>/_kickoff/baseline.json`
+ *   2. Kickoff fallback — `<appRoot>/.dagent/<slug>/_kickoff/baseline.json`
  *      (deprecated, retained for manual-staging compatibility).
  *
  * Returns null on missing file, malformed JSON, or any I/O error —
@@ -20,7 +20,7 @@ import type { FileArtifactBus } from "./file-artifact-bus.js";
 import { featurePath } from "./feature-paths.js";
 
 export interface FileBaselineLoaderOptions {
-  /** Absolute path to the app root (contains `in-progress/`). */
+  /** Absolute path to the app root (contains `.dagent/`). */
   readonly appRoot: string;
   /** Artifact bus used to resolve the latest `baseline` produced by
    *  `baseline-analyzer`. Required — kickoff is fallback-only. */

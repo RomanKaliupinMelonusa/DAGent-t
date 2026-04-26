@@ -43,7 +43,7 @@ export async function writeChangeManifest(
     }).trim();
 
     if (diff) {
-      allFilesChanged = diff.split("\n").filter(f => !f.includes("in-progress/"));
+      allFilesChanged = diff.split("\n").filter(f => !f.includes(".dagent/"));
     }
   } catch {
     console.warn("  ⚠ Could not compute full git diff for _CHANGES.json. Falling back to session memory.");
