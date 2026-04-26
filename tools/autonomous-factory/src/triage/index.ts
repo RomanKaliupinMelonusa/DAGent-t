@@ -56,6 +56,7 @@ export async function evaluateTriage(
   errorLog?: readonly TriageErrorLogEntry[],
   failingNodeKey?: string,
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
+  filteredStructuredFailure?: unknown,
 ): Promise<TriageResult> {
   // Resolve classifier strategy.
   // - Built-in strategy keywords are the canonical enum + friendly aliases.
@@ -139,6 +140,7 @@ export async function evaluateTriage(
       triageLlm, errorTrace, domains, topMatches, slug, appRoot,
       routingDescriptions, baseline ?? null, priorAttempts, failingNodeKey,
       priorDebugRecommendation,
+      filteredStructuredFailure,
     );
     const llmResponseMs = Date.now() - t0;
     return {

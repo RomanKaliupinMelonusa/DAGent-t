@@ -29,10 +29,17 @@ import { featureRelPath } from "../adapters/feature-paths.js";
 const MAX_PATTERNS_PER_KIND = 6;
 /** Cap per-line length so a single pattern can't blow the block up. */
 const MAX_PATTERN_CHARS = 140;
+/** Cap on the rendered `notes` block — bounded so a verbose analyst can't
+ *  drown the rest of the advisory. Whitespace is collapsed before clipping. */
+const MAX_NOTES_CHARS = 600;
 
 function clip(s: string, max = MAX_PATTERN_CHARS): string {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+}
+
+function isPersistent(e: BaselineEntry): boolean {
+  return e.volatility === "persistent";
 }
 
 function renderEntries(
@@ -40,14 +47,33 @@ function renderEntries(
   entries: ReadonlyArray<BaselineEntry> | undefined,
 ): string[] {
   if (!entries || entries.length === 0) return [];
-  const lines: string[] = [`**${label}:**`];
-  const shown = entries.slice(0, MAX_PATTERNS_PER_KIND);
-  for (const e of shown) {
-    const src = e.source_page ? ` _(${e.source_page})_` : "";
-    lines.push(`- \`${clip(e.pattern)}\`${src}`);
+  const persistent = entries.filter(isPersistent);
+  const transient = entries.filter((e) => !isPersistent(e));
+  const lines: string[] = [];
+  if (persistent.length > 0) {
+    lines.push(
+      `**${label} — Permanent platform warnings — DO NOT investigate; do not modify component code to silence:**`,
+    );
+    const shown = persistent.slice(0, MAX_PATTERNS_PER_KIND);
+    for (const e of shown) {
+      const src = e.source_page ? ` _(${e.source_page})_` : "";
+      lines.push(`- \`${clip(e.pattern)}\`${src}`);
+    }
+    if (persistent.length > shown.length) {
+      lines.push(`- _…and ${persistent.length - shown.length} more_`);
+    }
   }
-  if (entries.length > shown.length) {
-    lines.push(`- _…and ${entries.length - shown.length} more_`);
+  if (transient.length > 0) {
+    if (persistent.length > 0) lines.push("");
+    lines.push(`**${label}:**`);
+    const shown = transient.slice(0, MAX_PATTERNS_PER_KIND);
+    for (const e of shown) {
+      const src = e.source_page ? ` _(${e.source_page})_` : "";
+      lines.push(`- \`${clip(e.pattern)}\`${src}`);
+    }
+    if (transient.length > shown.length) {
+      lines.push(`- _…and ${transient.length - shown.length} more_`);
+    }
   }
   return lines;
 }
@@ -106,6 +132,20 @@ export function formatBaselineAdvisory(
   parts.push(...network);
   if (network.length && uncaught.length) parts.push("");
   parts.push(...uncaught);
+
+  // Free-form analyst notes from the baseline-analyzer — often the most
+  // actionable signal (e.g. "URL X returns 404, use Y instead"). Bounded
+  // so a verbose note cannot drown the channel lists.
+  const notes = (baseline.notes ?? "").replace(/\s+/g, " ").trim();
+  if (notes.length > 0) {
+    const clipped = notes.length > MAX_NOTES_CHARS
+      ? `${notes.slice(0, MAX_NOTES_CHARS - 1)}…`
+      : notes;
+    parts.push("");
+    parts.push("**Analyst notes:**");
+    parts.push("");
+    parts.push(`> ${clipped}`);
+  }
 
   parts.push("");
   parts.push(

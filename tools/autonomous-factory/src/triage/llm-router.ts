@@ -55,41 +55,168 @@ const BASELINE_PATTERN_CAP = 30;
 const PRIOR_ATTEMPT_CAP = 3;
 const PATTERN_CHAR_CAP = 160;
 const REASON_CHAR_CAP = 200;
+/** Cap on the rendered baseline-notes block. Mirrors `MAX_NOTES_CHARS`
+ *  in `baseline-advisory.ts` so the dispatch advisory and the triage
+ *  prompt show the same notes envelope. */
+const NOTES_CHAR_CAP = 600;
+
+/** Markers emitted by the orchestrator when the failing trace contains
+ *  no genuine evidence — the agent timed out, exhausted its tool budget,
+ *  or was force-disconnected. Used by `isEvidenceEmpty` and surfaced via
+ *  the regex export for tests. */
+export const EVIDENCE_EMPTY_MARKERS: readonly RegExp[] = [
+  /\[session-idle-timeout\]/,
+  /\[tool-budget-exhausted\]/,
+  /\[force-disconnect\]/,
+  /\[hard-timeout\]/,
+];
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
 }
 
-function renderBaselineSection(baseline: BaselineProfile | null): string {
+/**
+ * Pure check: does this failure carry zero classifiable evidence?
+ *
+ * Returns `true` when the rawError contains any agent-side wedge
+ * marker (session-idle-timeout / tool-budget-exhausted /
+ * force-disconnect / hard-timeout) AND `structuredFailure` is either
+ * absent or a `playwright-json` shape with empty
+ * `consoleErrors` / `failedRequests` / `uncaughtErrors` / `failedTests`.
+ *
+ * The triage handler short-circuits on this signal before calling the
+ * LLM router — a wedged agent's previous-cycle verdict must NOT be
+ * inherited as if it were domain evidence.
+ *
+ * Conservative when the structured payload is an unrecognised shape:
+ * returns `false` (the LLM still gets a chance).
+ */
+export function isEvidenceEmpty(
+  rawError: string | undefined | null,
+  structuredFailure: unknown,
+): boolean {
+  if (!rawError) return false;
+  const markerHit = EVIDENCE_EMPTY_MARKERS.some((re) => re.test(rawError));
+  if (!markerHit) return false;
+  if (structuredFailure === null || structuredFailure === undefined) return true;
+  if (typeof structuredFailure !== "object") return false;
+  const sf = structuredFailure as {
+    kind?: unknown;
+    consoleErrors?: unknown;
+    failedRequests?: unknown;
+    uncaughtErrors?: unknown;
+    failedTests?: unknown;
+  };
+  if (sf.kind !== "playwright-json") return false;
+  const len = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+  return (
+    len(sf.consoleErrors) === 0 &&
+    len(sf.failedRequests) === 0 &&
+    len(sf.uncaughtErrors) === 0 &&
+    len(sf.failedTests) === 0
+  );
+}
+
+/**
+ * Project the baseline-filtered structured failure to a count of
+ * surviving signals. `null`/non-playwright shapes return 0 (caller
+ * treats absence as "no signals").
+ */
+function countSurvivingSignals(structuredFailure: unknown): number {
+  if (!structuredFailure || typeof structuredFailure !== "object") return 0;
+  const sf = structuredFailure as {
+    kind?: unknown;
+    consoleErrors?: unknown;
+    failedRequests?: unknown;
+    uncaughtErrors?: unknown;
+    failedTests?: unknown;
+  };
+  if (sf.kind !== "playwright-json") return 0;
+  const len = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+  return (
+    len(sf.consoleErrors) +
+    len(sf.failedRequests) +
+    len(sf.uncaughtErrors) +
+    len(sf.failedTests)
+  );
+}
+
+function renderBaselineSection(
+  baseline: BaselineProfile | null,
+  filteredStructuredFailure?: unknown,
+): string {
   if (!baseline) return "";
   const ordered: Array<{ kind: string; entry: BaselineEntry }> = [];
   for (const e of baseline.console_errors ?? []) ordered.push({ kind: "console", entry: e });
   for (const e of baseline.network_failures ?? []) ordered.push({ kind: "network", entry: e });
   for (const e of baseline.uncaught_exceptions ?? []) ordered.push({ kind: "uncaught", entry: e });
-  if (ordered.length === 0) return "";
+  const notes = (baseline.notes ?? "").replace(/\s+/g, " ").trim();
+  if (ordered.length === 0 && notes.length === 0) return "";
 
-  const capped = ordered.slice(0, BASELINE_PATTERN_CAP);
   const lines: string[] = [];
-  lines.push("Pre-existing baseline noise (captured BEFORE this feature began):");
-  for (const { kind, entry } of capped) {
-    lines.push(`- [${kind}] ${truncate(entry.pattern, PATTERN_CHAR_CAP)}`);
+  if (ordered.length > 0) {
+    const capped = ordered.slice(0, BASELINE_PATTERN_CAP);
+    const persistent = capped.filter((c) => c.entry.volatility === "persistent");
+    const transient = capped.filter((c) => c.entry.volatility !== "persistent");
+    lines.push("Pre-existing baseline noise (captured BEFORE this feature began):");
+    if (persistent.length > 0) {
+      lines.push(
+        "Permanent platform warnings — DO NOT investigate; do not modify component code to silence:",
+      );
+      for (const { kind, entry } of persistent) {
+        lines.push(`- [${kind}] ${truncate(entry.pattern, PATTERN_CHAR_CAP)}`);
+      }
+    }
+    if (transient.length > 0) {
+      if (persistent.length > 0) lines.push("Other pre-existing patterns (transient / unclassified):");
+      for (const { kind, entry } of transient) {
+        lines.push(`- [${kind}] ${truncate(entry.pattern, PATTERN_CHAR_CAP)}`);
+      }
+    }
+    if (ordered.length > capped.length) {
+      lines.push(`- … (${ordered.length - capped.length} more patterns omitted)`);
+    }
   }
-  if (ordered.length > capped.length) {
-    lines.push(`- … (${ordered.length - capped.length} more patterns omitted)`);
+  // Free-form analyst notes — most actionable signal the baseline-analyzer
+  // produces (e.g. "URL X returns 404, use Y instead"). Bounded so a
+  // verbose note cannot drown the rule list.
+  if (notes.length > 0) {
+    const clipped = notes.length > NOTES_CHAR_CAP
+      ? `${notes.slice(0, NOTES_CHAR_CAP - 1)}…`
+      : notes;
+    lines.push("Analyst notes (from baseline-analyzer):");
+    lines.push(clipped);
   }
   // Domain-agnostic closing rule: a trace whose post-subtraction console /
   // network / uncaught evidence is empty cannot justify ANY domain. The
   // classifier must prefer `test-code` if that domain is in the allowed
   // list (degrades to `blocked` otherwise) — this is enforced
   // deterministically in `tryClassifyOnce` via `evidence_line`.
-  lines.push(
-    "Rule: trace lines matching any pattern above are pre-existing platform/legacy " +
-    "noise. After mentally subtracting them, if no console / network / uncaught " +
-    "evidence remains, the failure cannot justify ANY domain; prefer `test-code` if " +
-    "it is in the allowed domain list (otherwise the verdict degrades to `blocked`). " +
-    "Your `evidence_line` MUST NOT be a substring of any pattern above.",
-  );
+  if (ordered.length > 0) {
+    lines.push(
+      "Rule: trace lines matching any pattern above are pre-existing platform/legacy " +
+      "noise. After mentally subtracting them, if no console / network / uncaught " +
+      "evidence remains, the failure cannot justify ANY domain; prefer `test-code` if " +
+      "it is in the allowed domain list (otherwise the verdict degrades to `blocked`). " +
+      "Your `evidence_line` MUST NOT be a substring of any pattern above.",
+    );
+  }
+
+  // A3 hard rule — when the baseline-filtered structured failure has zero
+  // surviving signals AND the baseline declares at least one persistent
+  // entry, the only thing the trace could anchor on is permanent platform
+  // noise. Steer the classifier away from `code-defect`.
+  if (
+    filteredStructuredFailure !== undefined &&
+    countSurvivingSignals(filteredStructuredFailure) === 0 &&
+    ordered.some((c) => c.entry.volatility === "persistent")
+  ) {
+    lines.push(
+      "Surviving evidence is entirely permanent platform noise — prefer `test-code`; " +
+      "`code-defect` is not justified.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -137,6 +264,7 @@ function buildTriagePrompt(
   baseline: BaselineProfile | null,
   priorAttempts: readonly PriorAttempt[],
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
+  filteredStructuredFailure?: unknown,
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
@@ -150,7 +278,7 @@ function buildTriagePrompt(
     })
     .join("\n");
 
-  const baselineSection = renderBaselineSection(baseline);
+  const baselineSection = renderBaselineSection(baseline, filteredStructuredFailure);
   const recommendationSection = renderPriorDebugRecommendationSection(priorDebugRecommendation);
   const priorSection = renderPriorAttemptsSection(priorAttempts);
   const baselineBlock = baselineSection ? `\n\n${baselineSection}` : "";
@@ -311,6 +439,7 @@ export async function askLlmRouter(
   priorAttempts: readonly PriorAttempt[] = [],
   failingNodeKey?: string,
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
+  filteredStructuredFailure?: unknown,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
@@ -319,6 +448,7 @@ export async function askLlmRouter(
 
   const prompt = buildTriagePrompt(
     trace, domains, topMatches, faultRouting, baseline, priorAttempts, priorDebugRecommendation,
+    filteredStructuredFailure,
   );
   const baseSystem =
     "You are a JSON-only fault-domain classifier. " +

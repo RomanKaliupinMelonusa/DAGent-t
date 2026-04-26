@@ -411,3 +411,222 @@ describe("askLlmRouter — cycle-2 product-quick-view-plp regression replay", ()
   );
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// A1 — analyst notes block surfacing in the LLM router prompt.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildTriagePrompt — analyst notes block (A1)", () => {
+  it("renders the notes block before the rule line when baseline.notes is non-empty", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [{ pattern: "Warning: any" }],
+      notes:
+        "URL /uk/en-GB/category/newarrivals returns 404, use /category/newarrivals instead.",
+    };
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
+    assert.match(prompt, /Analyst notes \(from baseline-analyzer\):/);
+    assert.match(prompt, /URL \/uk\/en-GB\/category\/newarrivals returns 404/);
+    const notesIdx = prompt.indexOf("Analyst notes (from baseline-analyzer):");
+    const ruleIdx = prompt.indexOf("Rule: trace lines matching any pattern above");
+    assert.ok(notesIdx >= 0 && ruleIdx > notesIdx, "notes block must precede Rule line");
+  });
+
+  it("clips notes longer than the 600-char cap with an ellipsis", () => {
+    const huge = "n".repeat(2000);
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [{ pattern: "p" }],
+      notes: huge,
+    };
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
+    assert.match(prompt, /n{599}…/);
+    assert.doesNotMatch(prompt, /n{601}/);
+  });
+
+  it("omits the notes block when baseline.notes is empty / missing", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [{ pattern: "p" }],
+    };
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
+    assert.doesNotMatch(prompt, /Analyst notes \(from baseline-analyzer\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// A2 — evidence-empty short-circuit (`isEvidenceEmpty` helper).
+// ─────────────────────────────────────────────────────────────────────────
+
+import { isEvidenceEmpty, EVIDENCE_EMPTY_MARKERS } from "../llm-router.js";
+
+describe("isEvidenceEmpty (A2)", () => {
+  const emptyPlaywright = {
+    kind: "playwright-json",
+    consoleErrors: [],
+    failedRequests: [],
+    uncaughtErrors: [],
+    failedTests: [],
+  };
+
+  it("exports the four required marker regexes", () => {
+    const sources = EVIDENCE_EMPTY_MARKERS.map((r) => r.source);
+    assert.ok(sources.some((s) => /session-idle-timeout/.test(s)));
+    assert.ok(sources.some((s) => /tool-budget-exhausted/.test(s)));
+    assert.ok(sources.some((s) => /force-disconnect/.test(s)));
+    assert.ok(sources.some((s) => /hard-timeout/.test(s)));
+  });
+
+  it("returns true for [session-idle-timeout] + empty structuredFailure", () => {
+    assert.equal(
+      isEvidenceEmpty("[session-idle-timeout] Timeout after 1500000ms", emptyPlaywright),
+      true,
+    );
+  });
+
+  it("returns true for each marker individually", () => {
+    for (const marker of [
+      "[session-idle-timeout]",
+      "[tool-budget-exhausted]",
+      "[force-disconnect]",
+      "[hard-timeout]",
+    ]) {
+      assert.equal(
+        isEvidenceEmpty(`${marker} something`, emptyPlaywright),
+        true,
+        `marker ${marker} must short-circuit`,
+      );
+    }
+  });
+
+  it("returns true when structuredFailure is null/undefined and the marker is present", () => {
+    assert.equal(isEvidenceEmpty("[force-disconnect] gone", null), true);
+    assert.equal(isEvidenceEmpty("[force-disconnect] gone", undefined), true);
+  });
+
+  it("returns false when no marker is present, even with empty structuredFailure", () => {
+    assert.equal(isEvidenceEmpty("plain old error", emptyPlaywright), false);
+    assert.equal(isEvidenceEmpty("plain old error", null), false);
+  });
+
+  it("returns false when a marker is present but structuredFailure has signals", () => {
+    const withSignal = {
+      ...emptyPlaywright,
+      consoleErrors: ["Real error happened"],
+    };
+    assert.equal(
+      isEvidenceEmpty("[session-idle-timeout] x", withSignal),
+      false,
+    );
+  });
+
+  it("returns false for unrecognised structuredFailure shapes (conservative)", () => {
+    assert.equal(
+      isEvidenceEmpty("[session-idle-timeout] x", { kind: "future-format" }),
+      false,
+    );
+  });
+});
+
+describe("askLlmRouter — A2 contract: helper truthiness implies handler short-circuit", () => {
+  it("isEvidenceEmpty returns true for the canonical task fixture (no LLM call needed)", () => {
+    const rawError = "[session-idle-timeout] Timeout after 1500000ms";
+    const empty = {
+      kind: "playwright-json" as const,
+      consoleErrors: [],
+      failedRequests: [],
+      uncaughtErrors: [],
+      failedTests: [],
+    };
+    assert.equal(isEvidenceEmpty(rawError, empty), true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// A3 — persistent-only hard rule in the LLM prompt.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildTriagePrompt — A3 persistent-only hard rule", () => {
+  const PERSISTENT_BASELINE: BaselineProfile = {
+    feature: "x",
+    console_errors: [
+      {
+        pattern: "Warning: getServerSnapshot leaked",
+        volatility: "persistent",
+      },
+    ],
+  };
+
+  const TRANSIENT_BASELINE: BaselineProfile = {
+    feature: "x",
+    console_errors: [
+      { pattern: "TransientFlake: cosmetic", volatility: "transient" },
+    ],
+  };
+
+  const emptyFiltered = {
+    kind: "playwright-json",
+    consoleErrors: [],
+    failedRequests: [],
+    uncaughtErrors: [],
+    failedTests: [],
+  };
+
+  it("appends the hard rule when surviving evidence is empty AND baseline has persistent entries", () => {
+    const prompt = buildTriagePrompt(
+      TRACE, DOMAINS, [], ROUTING, PERSISTENT_BASELINE, [], undefined, emptyFiltered,
+    );
+    assert.match(
+      prompt,
+      /Surviving evidence is entirely permanent platform noise — prefer `test-code`; `code-defect` is not justified\./,
+    );
+  });
+
+  it("does NOT append the hard rule when surviving evidence still has signals", () => {
+    const survivingSignal = {
+      ...emptyFiltered,
+      consoleErrors: ["Real new error"],
+    };
+    const prompt = buildTriagePrompt(
+      TRACE, DOMAINS, [], ROUTING, PERSISTENT_BASELINE, [], undefined, survivingSignal,
+    );
+    assert.doesNotMatch(prompt, /Surviving evidence is entirely permanent platform noise/);
+  });
+
+  it("does NOT append the hard rule when baseline has only transient entries", () => {
+    const prompt = buildTriagePrompt(
+      TRACE, DOMAINS, [], ROUTING, TRANSIENT_BASELINE, [], undefined, emptyFiltered,
+    );
+    assert.doesNotMatch(prompt, /Surviving evidence is entirely permanent platform noise/);
+  });
+
+  it("does NOT append the hard rule when filteredStructuredFailure is undefined", () => {
+    const prompt = buildTriagePrompt(
+      TRACE, DOMAINS, [], ROUTING, PERSISTENT_BASELINE, [],
+    );
+    assert.doesNotMatch(prompt, /Surviving evidence is entirely permanent platform noise/);
+  });
+
+  it("renders persistent and transient sub-blocks with distinct headers", () => {
+    const mixed: BaselineProfile = {
+      feature: "x",
+      console_errors: [
+        { pattern: "Warning: persistent-perm", volatility: "persistent" },
+        { pattern: "Warning: transient-flake", volatility: "transient" },
+      ],
+    };
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, mixed, []);
+    assert.match(
+      prompt,
+      /Permanent platform warnings — DO NOT investigate; do not modify component code to silence:/,
+    );
+    assert.match(prompt, /Other pre-existing patterns \(transient \/ unclassified\):/);
+    assert.match(prompt, /\[console\] Warning: persistent-perm/);
+    assert.match(prompt, /\[console\] Warning: transient-flake/);
+  });
+
+  it("does not render the persistent header when no persistent entries exist", () => {
+    const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, TRANSIENT_BASELINE, []);
+    assert.doesNotMatch(prompt, /Permanent platform warnings — DO NOT investigate/);
+  });
+});

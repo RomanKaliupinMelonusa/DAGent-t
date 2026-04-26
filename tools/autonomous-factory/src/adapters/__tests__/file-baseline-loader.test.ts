@@ -300,4 +300,93 @@ describe("FileBaselineLoader", () => {
     assert.ok(advisory && advisory.length > 0, "advisory must be non-empty");
     assert.match(advisory, /getServerSnapshot/);
   });
+
+  it(
+    "renders the analyst notes block in the advisory when baseline.notes is non-empty (A1)",
+    () => {
+      const profile = {
+        feature: "notes-feature",
+        console_errors: [{ pattern: "Warning: deprecated foo" }],
+        notes: "URL /uk/en-GB/category/newarrivals returns 404, use /category/newarrivals instead.",
+      };
+      seedInvocationArtifact(
+        tmpRoot,
+        "notes-feature",
+        "inv_01HNOTESBLOCKADVISOR000A",
+        profile,
+        { finishedAt: "2026-04-25T06:00:00.000Z" },
+      );
+      const loader = makeLoader(tmpRoot);
+      const loaded = loader.loadBaseline("notes-feature");
+      assert.ok(loaded);
+      const advisory = formatBaselineAdvisory(loaded, "notes-feature");
+      assert.match(advisory, /\*\*Analyst notes:\*\*/);
+      assert.match(advisory, /URL \/uk\/en-GB\/category\/newarrivals returns 404/);
+      assert.match(advisory, /use \/category\/newarrivals instead/);
+    },
+  );
+
+  it(
+    "splits persistent vs transient entries into separate advisory sub-blocks (A3)",
+    () => {
+      const profile = {
+        feature: "volatility-feature",
+        console_errors: [
+          { pattern: "Warning: getServerSnapshot leaked", volatility: "persistent" },
+          { pattern: "TransientFlake: cosmetic", volatility: "transient" },
+        ],
+      };
+      seedInvocationArtifact(
+        tmpRoot,
+        "volatility-feature",
+        "inv_01HVOLATILITYADVISORY00A",
+        profile,
+        { finishedAt: "2026-04-25T07:00:00.000Z" },
+      );
+      const loader = makeLoader(tmpRoot);
+      const loaded = loader.loadBaseline("volatility-feature");
+      assert.ok(loaded);
+      const advisory = formatBaselineAdvisory(loaded, "volatility-feature");
+      assert.match(
+        advisory,
+        /Permanent platform warnings — DO NOT investigate; do not modify component code to silence/,
+      );
+      assert.match(advisory, /getServerSnapshot leaked/);
+      assert.match(advisory, /TransientFlake: cosmetic/);
+      // Permanent block must precede the transient block for the same channel.
+      const permIdx = advisory.indexOf("Permanent platform warnings");
+      const transIdx = advisory.indexOf("TransientFlake");
+      assert.ok(permIdx >= 0 && transIdx > permIdx, "permanent block must precede transient entry");
+    },
+  );
+
+  it(
+    "accepts the optional volatility / category schema fields without breaking back-compat (A3)",
+    () => {
+      const profile = {
+        feature: "schema-feature",
+        console_errors: [
+          {
+            pattern: "Warning: x",
+            volatility: "persistent",
+            category: "framework-warning",
+          },
+        ],
+        notes: "free-form note",
+      };
+      seedInvocationArtifact(
+        tmpRoot,
+        "schema-feature",
+        "inv_01HSCHEMAFEATURE0000000A",
+        profile,
+        { finishedAt: "2026-04-25T08:00:00.000Z" },
+      );
+      const loader = makeLoader(tmpRoot);
+      const loaded = loader.loadBaseline("schema-feature");
+      assert.ok(loaded);
+      assert.equal(loaded!.console_errors?.[0]?.volatility, "persistent");
+      assert.equal(loaded!.console_errors?.[0]?.category, "framework-warning");
+      assert.equal(loaded!.notes, "free-form note");
+    },
+  );
 });

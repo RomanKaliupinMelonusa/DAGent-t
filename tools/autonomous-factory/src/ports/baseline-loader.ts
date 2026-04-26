@@ -46,6 +46,39 @@ export interface BaselineEntry {
    * Backward-compatible: entries without `source_url` behave as before.
    */
   readonly source_url?: string;
+  /**
+   * Volatility classification for this entry.
+   *
+   *   - `persistent` — known-permanent platform/legacy warning that will
+   *     not be fixed by this feature (e.g. React `getServerSnapshot`
+   *     warning, deprecated `defaultProps`, sandbox-only network 403s).
+   *     Rendering surfaces flag persistent entries in a dedicated
+   *     "DO NOT investigate" sub-block, and the LLM router appends a
+   *     hard rule when post-subtraction surviving evidence is fully
+   *     covered by persistent patterns.
+   *   - `transient` — pre-feature noise that may legitimately disappear
+   *     once application state changes, but still does not justify a
+   *     code-defect verdict on its own.
+   *
+   * Optional. Absent → entry behaves like `transient` (existing
+   * behaviour, fully back-compatible).
+   *
+   * TODO(phase-A4): tagging is performed by the `baseline-analyzer`
+   * agent via APM instruction. The current phase only delivers the
+   * schema + rendering + LLM weighting; the agent does not yet emit
+   * these fields.
+   */
+  readonly volatility?: "persistent" | "transient";
+  /**
+   * Optional taxonomy hint for human triage / dashboards. Not consumed
+   * by the rendering or filter logic. See `volatility` for the
+   * tagging-deferral note.
+   */
+  readonly category?:
+    | "framework-warning"
+    | "network-sandbox"
+    | "legacy-deprecation"
+    | "app-specific";
 }
 
 export interface BaselineProfile {
