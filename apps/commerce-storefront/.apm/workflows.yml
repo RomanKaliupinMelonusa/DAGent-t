@@ -334,7 +334,7 @@ storefront:
       llm_fallback: true
       max_reroutes: 5
       evidence_enrichment: false
-      baseline_noise_filter: false
+      baseline_noise_filter: true
       domains: [test-code, code-defect]
       routing:
         test-code:

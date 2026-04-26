@@ -19,6 +19,8 @@ import type { TriageSignature } from "../apm/types.js";
 import type { BaselineProfile, BaselineEntry } from "../ports/baseline-loader.js";
 import type { PriorAttempt } from "./historian.js";
 import { parseDomainTag } from "./handoff-builder.js";
+import { matchesAnyBaselinePattern } from "./baseline-filter.js";
+import { normalizeError } from "./error-fingerprint.js";
 import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 
 // ---------------------------------------------------------------------------
@@ -31,7 +33,11 @@ import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 
 type ClassifyOutcome =
   | { ok: true; fault_domain: string; reason: string }
-  | { ok: false; kind: "no-json" | "hallucinated" | "error"; detail: string };
+  | {
+      ok: false;
+      kind: "no-json" | "hallucinated" | "error" | "baseline-only";
+      detail: string;
+    };
 
 export interface LlmTriageResult {
   fault_domain: string;
@@ -72,9 +78,17 @@ function renderBaselineSection(baseline: BaselineProfile | null): string {
   if (ordered.length > capped.length) {
     lines.push(`- … (${ordered.length - capped.length} more patterns omitted)`);
   }
+  // Domain-agnostic closing rule: a trace whose post-subtraction console /
+  // network / uncaught evidence is empty cannot justify ANY domain. The
+  // classifier must prefer `test-code` if that domain is in the allowed
+  // list (degrades to `blocked` otherwise) — this is enforced
+  // deterministically in `tryClassifyOnce` via `evidence_line`.
   lines.push(
-    "Rule: trace lines matching any pattern above are pre-existing platform/legacy noise " +
-    "and must NOT by themselves justify a frontend / browser-runtime-error classification.",
+    "Rule: trace lines matching any pattern above are pre-existing platform/legacy " +
+    "noise. After mentally subtracting them, if no console / network / uncaught " +
+    "evidence remains, the failure cannot justify ANY domain; prefer `test-code` if " +
+    "it is in the allowed domain list (otherwise the verdict degrades to `blocked`). " +
+    "Your `evidence_line` MUST NOT be a substring of any pattern above.",
   );
   return lines.join("\n");
 }
@@ -132,7 +146,8 @@ Rules:
 ${rules}
 - For stack-specific domains not listed above, use the closest match from the allowed list.
 
-Output ONLY valid JSON: {"fault_domain": "<domain>", "reason": "<one-sentence explanation>"}
+Output ONLY valid JSON: {"fault_domain": "<domain>", "reason": "<one-sentence explanation>", "evidence_line": "<exact verbatim substring from the trace that justifies the verdict>"}
+The "evidence_line" field MUST be copied verbatim from the trace below — do not paraphrase, do not invent.
 Do not output any other text.
 ${matchContext}${baselineBlock}${priorBlock}
 
@@ -163,6 +178,7 @@ async function tryClassifyOnce(
   prompt: string,
   domains: string[],
   timeoutMs: number,
+  baseline: BaselineProfile | null,
 ): Promise<ClassifyOutcome> {
   try {
     const text = await llm.classify({ systemMessage, prompt, timeoutMs });
@@ -188,6 +204,26 @@ async function tryClassifyOnce(
         kind: "hallucinated",
         detail: `domain "${faultDomain}" not in allowed list`,
       };
+    }
+    // Enforce the baseline rule deterministically. The router cannot
+    // accept a verdict whose `evidence_line` substring-matches any
+    // pre-feature noise pattern, because that means the model picked
+    // a domain on noise alone. Missing/empty `evidence_line` is
+    // lenient-accepted — we can only filter what the model surfaces.
+    const evidenceLine = typeof parsed.evidence_line === "string"
+      ? parsed.evidence_line
+      : "";
+    if (evidenceLine.length > 0 && baseline) {
+      const normalised = normalizeError(evidenceLine);
+      if (matchesAnyBaselinePattern(normalised, baseline)
+        || matchesAnyBaselinePattern(evidenceLine, baseline)) {
+        return {
+          ok: false,
+          kind: "baseline-only",
+          detail:
+            `evidence_line matches baseline pattern: "${truncate(evidenceLine, 120)}"`,
+        };
+      }
     }
     return { ok: true, fault_domain: faultDomain, reason };
   } catch (err) {
@@ -267,7 +303,7 @@ export async function askLlmRouter(
     "Output exactly one JSON object, no markdown.";
 
   // Step 1 — primary attempt.
-  const first = await tryClassifyOnce(llm, baseSystem, prompt, domains, 60_000);
+  const first = await tryClassifyOnce(llm, baseSystem, prompt, domains, 60_000, baseline);
   if (first.ok) {
     const result: LlmTriageResult = { fault_domain: first.fault_domain, reason: first.reason };
     appendNovelTriageLog(slug, appRoot, {
@@ -290,7 +326,7 @@ export async function askLlmRouter(
     `No prose, no markdown, no code fences.`;
   const retryPrompt =
     `${prompt}\n\nAllowed domains: ${JSON.stringify(domains)}. Pick exactly one.`;
-  const second = await tryClassifyOnce(llm, retrySystem, retryPrompt, domains, 30_000);
+  const second = await tryClassifyOnce(llm, retrySystem, retryPrompt, domains, 30_000, baseline);
   if (second.ok) {
     const result: LlmTriageResult = { fault_domain: second.fault_domain, reason: second.reason };
     appendNovelTriageLog(slug, appRoot, {

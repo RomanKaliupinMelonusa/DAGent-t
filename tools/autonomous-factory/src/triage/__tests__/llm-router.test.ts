@@ -47,7 +47,8 @@ describe("buildTriagePrompt — baseline noise section", () => {
     const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
     assert.match(prompt, /Pre-existing baseline noise/);
     assert.match(prompt, /\[console\] Warning: The result of getServerSnapshot/);
-    assert.match(prompt, /must NOT by themselves justify a frontend/);
+    assert.match(prompt, /cannot justify ANY domain/);
+    assert.match(prompt, /prefer `test-code`/);
   });
 
   it("omits the section entirely when baseline is null", () => {
@@ -209,10 +210,156 @@ describe("buildTriagePrompt — end-to-end loader → prompt subtraction (regres
         const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
         assert.match(prompt, /Pre-existing baseline noise/);
         assert.match(prompt, /\[console\] Warning: The result of getServerSnapshot/);
-        assert.match(prompt, /must NOT by themselves justify a frontend/);
+        assert.match(prompt, /cannot justify ANY domain/);
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }
     },
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Baseline-only enforcement — `tryClassifyOnce` must reject any verdict
+// whose `evidence_line` substring-matches a baseline pattern, even when
+// the model picked an allowed domain. This is the deterministic guard
+// that fixes the cycle-2 product-quick-view-plp misclassification.
+// ─────────────────────────────────────────────────────────────────────────
+
+import type { TriageLlm, TriageLlmRequest } from "../../ports/triage-llm.js";
+import { askLlmRouter } from "../llm-router.js";
+
+const { tryClassifyOnce } = __test;
+
+function singleShotLlm(response: string): TriageLlm {
+  return {
+    async classify(_req: TriageLlmRequest): Promise<string> {
+      return response;
+    },
+  };
+}
+
+describe("tryClassifyOnce — baseline-only rejection", () => {
+  const STOREFRONT_DOMAINS = ["test-code", "code-defect"];
+
+  it("rejects a verdict whose evidence_line matches a baseline pattern", async () => {
+    const baseline: BaselineProfile = {
+      feature: "product-quick-view-plp",
+      console_errors: [
+        { pattern: "Warning: The result of getServerSnapshot should be cached" },
+      ],
+    };
+    const llm = singleShotLlm(JSON.stringify({
+      fault_domain: "code-defect",
+      reason: "React hook bug — getServerSnapshot loop",
+      evidence_line:
+        "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+    }));
+    const result = await tryClassifyOnce(llm, "sys", "prompt", STOREFRONT_DOMAINS, 1000, baseline);
+    assert.equal(result.ok, false);
+    if (result.ok) return; // narrowing
+    assert.equal(result.kind, "baseline-only");
+    assert.match(result.detail, /matches baseline pattern/);
+  });
+
+  it("accepts a verdict whose evidence_line does NOT match the baseline", async () => {
+    const baseline: BaselineProfile = {
+      feature: "product-quick-view-plp",
+      console_errors: [
+        { pattern: "Warning: The result of getServerSnapshot should be cached" },
+      ],
+    };
+    const llm = singleShotLlm(JSON.stringify({
+      fault_domain: "test-code",
+      reason: "spec timeout",
+      evidence_line: "TimeoutError: locator.waitFor: Timeout 10000ms exceeded",
+    }));
+    const result = await tryClassifyOnce(llm, "sys", "prompt", STOREFRONT_DOMAINS, 1000, baseline);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.fault_domain, "test-code");
+  });
+
+  it("missing evidence_line is lenient-accepted (back-compat with older fixtures)", async () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [{ pattern: "anything" }],
+    };
+    const llm = singleShotLlm(JSON.stringify({
+      fault_domain: "test-code",
+      reason: "no evidence supplied",
+    }));
+    const result = await tryClassifyOnce(llm, "sys", "prompt", STOREFRONT_DOMAINS, 1000, baseline);
+    assert.equal(result.ok, true);
+  });
+});
+
+describe("askLlmRouter — cycle-2 product-quick-view-plp regression replay", () => {
+  it(
+    "does not classify the saved errorExcerpt as code-defect when the LLM cites getServerSnapshot",
+    async () => {
+      const fs = await import("node:fs");
+      const os = await import("node:os");
+      const path = await import("node:path");
+
+      const STOREFRONT_DOMAINS = ["test-code", "code-defect"];
+      const STOREFRONT_ROUTING = {
+        "test-code": { description: "Playwright spec defect" },
+        "code-defect": { description: "Storefront app code defect" },
+      };
+
+      // The exact baseline pattern captured by `baseline-analyzer` for
+      // the product-quick-view-plp run, and the verbatim warning the
+      // cycle-2 LLM cited as `evidence_line`.
+      const baseline: BaselineProfile = {
+        feature: "product-quick-view-plp",
+        console_errors: [
+          { pattern: "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop" },
+        ],
+      };
+
+      // Simulate the cycle-2 misclassification: model picks `code-defect`
+      // and (hypothetically, under the new contract) cites the baseline
+      // warning as its evidence. Both attempts return the same shape so
+      // primary + retry both reject as `baseline-only`.
+      const verdictJson = JSON.stringify({
+        fault_domain: "code-defect",
+        reason: "React getServerSnapshot loop preventing modal render",
+        evidence_line:
+          "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+      });
+      const llm: TriageLlm = {
+        async classify(_req: TriageLlmRequest): Promise<string> {
+          return verdictJson;
+        },
+      };
+
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "router-replay-"));
+      try {
+        fs.mkdirSync(path.join(tmp, "in-progress", "regression"), { recursive: true });
+        const errorExcerpt =
+          "TimeoutError: locator.waitFor: Timeout 10000ms exceeded.\n" +
+          "[error] Warning: The result of getServerSnapshot should be cached to avoid an infinite loop";
+        const result = await askLlmRouter(
+          llm,
+          errorExcerpt,
+          STOREFRONT_DOMAINS,
+          [],
+          "regression",
+          tmp,
+          STOREFRONT_ROUTING,
+          baseline,
+          [],
+          "e2e-runner",
+        );
+        // Neither retry nor inheritance is available, so the verdict
+        // must fall through to `blocked` rather than the original
+        // `code-defect`. Critical assertion: it is NOT code-defect.
+        assert.notEqual(result.fault_domain, "code-defect");
+        assert.equal(result.fault_domain, "blocked");
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
