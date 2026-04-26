@@ -3,18 +3,20 @@ version: 1.0.0
 description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless React + SCAPI"
 # Bumped 13000 → 15000 (Apr 2026) to accommodate e2e-guidelines.md §19–§21
 # (overlay dismissal, strict-mode locator discipline, redev-cycle handoff
-# rules) plus restored ~10% headroom. The `storefront` shorthand pulls all
-# fragments under instructions/storefront/, so additions land on
-# storefront-dev (~92%) and storefront-debug (~96% pre-bump → ~85% post)
-# as well as e2e-author. The shared-fragment fan-out is the dominant
-# budget pressure here, not e2e-author itself.
-tokenBudget: 15000
+# rules) plus restored ~10% headroom.
+# Bumped 15000 → 20000 (Apr 2026, Phase C) to accommodate the new
+# `Fixture References` section in e2e-guidelines.md (§23–§25) and the
+# `spec-compilation.md` fragment. Both flow into storefront-dev /
+# storefront-debug via the `storefront` shorthand. Headroom is
+# generous so the next instruction increment doesn't immediately
+# squeeze the budget again.
+tokenBudget: 20000
 
 agents:
   spec-compiler:
     # Narrow-scope agent: reads SPEC.md, writes ACCEPTANCE.yml. No impl access.
     # Low token budget — this is an extraction job, not a coding job.
-    instructions: [always]
+    instructions: [always, storefront/spec-compilation.md]
     promptFile: spec-compiler.agent.md
     mcp: []
     skills: []

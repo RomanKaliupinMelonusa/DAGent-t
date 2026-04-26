@@ -77,4 +77,19 @@ export const BUILTIN_TRIAGE_PATTERNS: readonly TriagePattern[] = [
       "{schemaVersion, producedBy, producedAt} envelope. Re-emit with the " +
       "envelope: ${errFirstLine}",
   },
+  // Fixture-validation gate: the post-spec-compiler `fixture-validation`
+  // middleware emits this canonical tag when a `test_fixtures[]` entry is
+  // misconfigured (URL hits a baseline 404, unknown assert kind,
+  // http_status mismatch, etc.). Routes back to spec-compiler so it can
+  // pick a different fixture (different product / category / locale)
+  // instead of forcing e2e-author to loop on locator tweaks.
+  {
+    match_kind: "raw-regex",
+    pattern: "\\[fixture-validation\\]",
+    domain: "fixture-validation-failure",
+    reason_template:
+      "Fixture validation gate flagged at least one test_fixtures[] entry " +
+      "as misconfigured for the running config. Re-emit acceptance.yml " +
+      "with a different fixture (product / category / locale): ${errFirstLine}",
+  },
 ];

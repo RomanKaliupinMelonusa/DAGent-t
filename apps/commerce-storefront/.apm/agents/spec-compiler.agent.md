@@ -36,6 +36,14 @@ Schema (fields marked `[]` take arrays):
 ```yaml
 feature: <slug>                         # must equal the feature slug
 summary: <one or two sentences>         # shown to reviewers
+test_fixtures:                          # [] — emit BEFORE required_flows
+  - id: <kebab-case-id>
+    url: <resolved storefront path>
+    base_sha: <feature-branch HEAD sha>
+    asserted_at: <ISO-8601 UTC timestamp>
+    asserts:
+      - { kind: http_status, value: 200, comparator: eq }
+      - { kind: first_tile_swatch_count, value: 2, comparator: gte }
 required_dom:                           # []
   - testid: <data-testid value>
     description: <what this element is>
@@ -45,6 +53,8 @@ required_dom:                           # []
 required_flows:                         # []
   - name: <short-kebab-name>
     description: <one sentence>
+    fixture: <test_fixtures[].id>       # optional but recommended for any
+                                        # flow whose URL/data shape matters
     steps:
       - { action: goto, url: "/some/path" }
       - { action: click, testid: <testid>, match: only | first | nth, nth: <int> }
@@ -132,10 +142,16 @@ base_template_reuse:                    # [] — components the dev MUST audit
 ## Output Procedure
 
 1. Read `{{specPath}}`. If it is missing, empty, or under 50 characters, call `report_outcome({ status: "failed", message: "Spec file missing or too short to compile" })` and stop.
-2. Extract acceptance criteria per the rules above.
-3. Write the YAML to `$OUTPUTS_DIR/acceptance.yml` using `write_file`.
-4. Validate your output by re-reading the file. The YAML MUST parse and MUST contain at least one entry in `required_dom` AND at least one entry in `required_flows`. If either is empty, rewrite.
-5. Run `bash tools/autonomous-factory/agent-commit.sh all "chore(spec): compile acceptance contract for {{featureSlug}}"` from the repo root.
-6. Call `report_outcome({ status: "completed" })` exactly once.
+2. Read `config/default.js` and `config/sites.js` to determine `url.locale` / `url.site` and resolve every candidate URL accordingly (see the Resolving Fixture URLs section in your rules).
+3. Read `<appRoot>/.dagent/<slug>/_kickoff/baseline.json` if it exists. Cross-reference each candidate URL against `network_failures[]` and `console_errors[]` (`volatility: persistent`). Reject any URL the baseline records as broken.
+4. Extract acceptance criteria per the rules above. Emit `test_fixtures` BEFORE `required_flows` and reference fixtures by `id` from each flow that depends on URL or data shape.
+5. Write the YAML to `$OUTPUTS_DIR/acceptance.yml` using `write_file`.
+6. Validate your output by re-reading the file. The YAML MUST parse and MUST contain at least one entry in `required_dom` AND at least one entry in `required_flows`. If either is empty, rewrite.
+7. Run `bash tools/autonomous-factory/agent-commit.sh all "chore(spec): compile acceptance contract for {{featureSlug}}"` from the repo root.
+8. Call `report_outcome({ status: "completed" })` exactly once.
+
+## When re-invoked with a fixture-validation failure
+
+If `inputs/triage-handoff.json` carries a `[fixture-validation]`-tagged error or a `test-data` domain verdict, the post-completion validator (or a downstream test node) detected a misconfigured fixture. The handoff names the failing fixture id and assertion. Pick a **different fixture** (different product / category / locale) — do not retry the same URL or assertion. The validator's URL-vs-baseline checks are deterministic; the same URL will fail again.
 
 {{> completion}}

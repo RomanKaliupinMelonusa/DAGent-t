@@ -241,6 +241,68 @@ Playwright runs every actionable locator (`.click`, `.hover`, `.fill`, `.tap`, `
     await page.getByTestId(`product-tile-quick-view-btn-${productId}`).click();
     ```
 
+## Fixture References (MANDATORY when the contract declares test_fixtures)
+
+The acceptance contract resolves URLs / product / locale concerns ONCE in `test_fixtures[]`. Each `required_flow` may carry an optional `fixture: <id>` reference. Your spec consumes fixtures **by reference** — you do NOT re-resolve URLs and you do NOT inline data assumptions.
+
+23. **Read fixtures from acceptance.yml; never inline URLs for fixture-bound flows.**
+
+    - For every flow whose `fixture:` field is set, the URL belongs in `test_fixtures[<id>].url` — your `goto` step copies it from there at test setup. Do not hard-code `/category/newarrivals` (or worse, `/uk/en-GB/category/...`) inline when a fixture exists.
+    - The `e2e/fixtures.ts` file is treated as PWA-Kit framework code and is out of bounds. **Do NOT modify it.** Add a per-spec `loadFixture(id)` helper inlined in your spec file (mirrors the `dismissOverlays` pattern in §19).
+
+    ```ts
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import yaml from 'js-yaml';
+
+    type Fixture = {
+      id: string;
+      url: string;
+      base_sha: string;
+      asserted_at: string;
+      asserts: Array<{ kind: string; value: unknown; comparator?: string }>;
+    };
+
+    function loadFixture(id: string): Fixture {
+      const acceptancePath = process.env.ACCEPTANCE_PATH
+        ?? path.join(process.cwd(), '..', '..', '.dagent', process.env.FEATURE_SLUG ?? '', '_kickoff', 'acceptance.yml');
+      const doc = yaml.load(fs.readFileSync(acceptancePath, 'utf-8')) as { test_fixtures?: Fixture[] };
+      const f = (doc.test_fixtures ?? []).find((x) => x.id === id);
+      if (!f) throw new Error(`fixture id "${id}" not found in acceptance.yml`);
+      return f;
+    }
+
+    test('switch color swatch on PLP tile', async ({ page }) => {
+      const fixture = loadFixture('plp-multi-color');
+      await page.goto(fixture.url, { waitUntil: 'domcontentloaded' });
+      await dismissOverlays(page);
+      await awaitHydrated(page);
+      // ... act + assert against fixture-derived expectations
+    });
+    ```
+
+24. **A fixture-runtime mismatch is `test-data`, not `test-code`.**
+
+    If your spec's setup matches the fixture's URL and asserts, but the test still fails because (e.g.) the first PLP tile has only one color swatch when the fixture asserts `first_tile_swatch_count >= 2`, that is **not your bug** — the spec-compiler picked the wrong fixture. Surface the mismatch in the failure message so triage routes the failure to `test-data` (→ spec-compiler) instead of looping you on locator tweaks:
+
+    ```ts
+    const swatchCount = await page.getByTestId('color-swatch-btn').count();
+    expect(swatchCount, `fixture "${fixture.id}" asserts first_tile_swatch_count >= 2 but got ${swatchCount}`).toBeGreaterThanOrEqual(2);
+    ```
+
+    The explicit assertion message means the `e2e-runner` triage layer can match the failure to a fixture assertion and route to `test-data` rather than `test-code`.
+
+25. **Self-review grep (run before commit):**
+
+    ```bash
+    # Every spec referencing a fixture-bound flow MUST call loadFixture.
+    # If your acceptance.yml has any flow with `fixture:`, every matching
+    # spec file should import yaml + loadFixture and use fixture.url, not
+    # an inlined URL string.
+    grep -nE "page\.goto\(['\"]/uk/|/en-GB/|/RefArch/" e2e/*.spec.ts && \
+      echo "FAIL: locale/site-prefixed URLs are forbidden — read fixture.url instead" && exit 1 || true
+    ```
+
 ## When you receive a triage-handoff from a prior cycle (MANDATORY)
 
 You have been re-invoked because a prior cycle's spec failed in a downstream node (`e2e-runner`, `qa-adversary`, or `storefront-debug`) and triage classified the failure as `test-code`. The pipeline materialises the prior triage decision into your invocation under `inputs/triage-handoff.json`. Treat this artifact as authoritative.

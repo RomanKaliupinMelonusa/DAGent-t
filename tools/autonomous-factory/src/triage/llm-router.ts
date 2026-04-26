@@ -256,6 +256,78 @@ function renderPriorDebugRecommendationSection(
   );
 }
 
+/**
+ * Optional fixture-context block. Surfaces the `test_fixtures[]` entries
+ * declared on the acceptance contract that the failing flow references,
+ * so the classifier can prefer the `test-data` domain when (a) the
+ * post-baseline-subtraction trace contains no application runtime
+ * errors AND (b) at least one fixture assertion can be plausibly
+ * violated by the failure.
+ *
+ * The router does not deterministically check whether assertions are
+ * actually violated — that's the validator's job. The router's role is
+ * to bias the LLM AWAY from `test-code` (locator tweaks) when fixture
+ * mismatch is the more likely root cause.
+ */
+export interface TriageFixtureContext {
+  /** Name of the failing flow when one can be identified. Surfaced to
+   *  the model so it can correlate trace evidence with the fixture's
+   *  declared assertions. */
+  readonly failingFlow?: string;
+  /** Fixtures referenced by failing or related flows. Pruned by the
+   *  caller to the relevant subset; the router renders all supplied
+   *  entries. */
+  readonly fixtures: ReadonlyArray<{
+    readonly id: string;
+    readonly url: string;
+    readonly asserts: ReadonlyArray<{
+      readonly kind: string;
+      readonly value: unknown;
+      readonly comparator?: string;
+    }>;
+  }>;
+}
+
+const FIXTURE_BLOCK_MAX_FIXTURES = 5;
+const FIXTURE_BLOCK_MAX_ASSERTS = 6;
+
+function renderFixtureContextSection(
+  ctx: TriageFixtureContext | undefined,
+  domains: readonly string[],
+): string {
+  if (!ctx || !domains.includes("test-data")) return "";
+  if (ctx.fixtures.length === 0) return "";
+
+  const lines: string[] = [];
+  lines.push("Test-fixture context for the failing flow:");
+  if (ctx.failingFlow) lines.push(`Failing flow: ${ctx.failingFlow}`);
+  const fxs = ctx.fixtures.slice(0, FIXTURE_BLOCK_MAX_FIXTURES);
+  for (const f of fxs) {
+    lines.push(`- fixture id=${f.id} url=${f.url}`);
+    const asserts = f.asserts.slice(0, FIXTURE_BLOCK_MAX_ASSERTS);
+    for (const a of asserts) {
+      const cmp = a.comparator ?? "eq";
+      const val = typeof a.value === "string" ? `"${a.value}"` : String(a.value);
+      lines.push(`    · assert kind=${a.kind} ${cmp} ${val}`);
+    }
+    if (f.asserts.length > asserts.length) {
+      lines.push(`    · … (${f.asserts.length - asserts.length} more asserts omitted)`);
+    }
+  }
+  if (ctx.fixtures.length > fxs.length) {
+    lines.push(`- … (${ctx.fixtures.length - fxs.length} more fixtures omitted)`);
+  }
+  lines.push(
+    "Rule: prefer `test-data` over `test-code` when (a) post-baseline-subtraction " +
+    "the trace shows no application runtime errors AND (b) the failure plausibly " +
+    "violates a fixture assertion above (URL unreachable, swatch / variation count " +
+    "mismatch, in-stock / product-type mismatch). `test-data` reroutes to spec-compiler " +
+    "to pick a different fixture; `test-code` only fits when the test itself is wrong " +
+    "for a valid fixture.",
+  );
+  return lines.join("\n");
+}
+
 function buildTriagePrompt(
   trace: string,
   domains: string[],
@@ -265,6 +337,7 @@ function buildTriagePrompt(
   priorAttempts: readonly PriorAttempt[],
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
   filteredStructuredFailure?: unknown,
+  fixtureContext?: TriageFixtureContext,
 ): string {
   const domainList = domains.map((d) => `"${d}"`).join(", ");
   const matchContext = topMatches.length > 0
@@ -281,9 +354,11 @@ function buildTriagePrompt(
   const baselineSection = renderBaselineSection(baseline, filteredStructuredFailure);
   const recommendationSection = renderPriorDebugRecommendationSection(priorDebugRecommendation);
   const priorSection = renderPriorAttemptsSection(priorAttempts);
+  const fixtureSection = renderFixtureContextSection(fixtureContext, domains);
   const baselineBlock = baselineSection ? `\n\n${baselineSection}` : "";
   const recommendationBlock = recommendationSection ? `\n\n${recommendationSection}` : "";
   const priorBlock = priorSection ? `\n\n${priorSection}` : "";
+  const fixtureBlock = fixtureSection ? `\n\n${fixtureSection}` : "";
 
   return `You are a fault-domain classifier for an agentic CI/CD pipeline.
 
@@ -298,7 +373,7 @@ ${rules}
 Output ONLY valid JSON: {"fault_domain": "<domain>", "reason": "<one-sentence explanation>", "evidence_line": "<exact verbatim substring from the trace that justifies the verdict>"}
 The "evidence_line" field MUST be copied verbatim from the trace below — do not paraphrase, do not invent.
 Do not output any other text.
-${matchContext}${baselineBlock}${recommendationBlock}${priorBlock}
+${matchContext}${baselineBlock}${recommendationBlock}${priorBlock}${fixtureBlock}
 
 Error trace:
 ${trace.slice(0, 4000)}`;
@@ -440,6 +515,7 @@ export async function askLlmRouter(
   failingNodeKey?: string,
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
   filteredStructuredFailure?: unknown,
+  fixtureContext?: TriageFixtureContext,
 ): Promise<LlmTriageResult> {
   const FALLBACK: LlmTriageResult = {
     fault_domain: "blocked",
@@ -448,7 +524,7 @@ export async function askLlmRouter(
 
   const prompt = buildTriagePrompt(
     trace, domains, topMatches, faultRouting, baseline, priorAttempts, priorDebugRecommendation,
-    filteredStructuredFailure,
+    filteredStructuredFailure, fixtureContext,
   );
   const baseSystem =
     "You are a JSON-only fault-domain classifier. " +

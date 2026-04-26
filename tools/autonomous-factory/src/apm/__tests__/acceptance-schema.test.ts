@@ -199,3 +199,108 @@ describe("hashAcceptanceContract", () => {
     assert.notEqual(hashAcceptanceContract(a), hashAcceptanceContract(b));
   });
 });
+
+describe("AcceptanceContractSchema — test_fixtures", () => {
+  const validFixture = {
+    id: "plp-multi-color",
+    url: "/category/newarrivals",
+    base_sha: "abc123",
+    asserted_at: "2026-04-26T12:00:00Z",
+    asserts: [
+      { kind: "http_status", value: 200, comparator: "eq" as const },
+      { kind: "first_tile_swatch_count", value: 2, comparator: "gte" as const },
+    ],
+  };
+
+  it("back-compat: contract without test_fixtures parses with default []", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      required_flows: [{
+        name: "f",
+        description: "d",
+        steps: [{ action: "click", testid: "btn" }],
+      }],
+    });
+    assert.deepEqual(parsed.test_fixtures, []);
+    assert.equal(parsed.required_flows[0]!.fixture, undefined);
+  });
+
+  it("accepts a fixture and a flow that references it by id", () => {
+    const parsed = AcceptanceContractSchema.parse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [validFixture],
+      required_flows: [{
+        name: "f",
+        description: "d",
+        fixture: "plp-multi-color",
+        steps: [{ action: "click", testid: "btn" }],
+      }],
+    });
+    assert.equal(parsed.test_fixtures.length, 1);
+    assert.equal(parsed.required_flows[0]!.fixture, "plp-multi-color");
+  });
+
+  it("rejects a flow that references an unknown fixture id", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [validFixture],
+      required_flows: [{
+        name: "f",
+        description: "d",
+        fixture: "does-not-exist",
+        steps: [{ action: "click", testid: "btn" }],
+      }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msg = r.error.issues.map((i) => i.message).join(" ");
+      assert.match(msg, /not declared in test_fixtures/);
+    }
+  });
+
+  it("rejects duplicate fixture ids", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [validFixture, { ...validFixture }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msg = r.error.issues.map((i) => i.message).join(" ");
+      assert.match(msg, /duplicate fixture id/);
+    }
+  });
+
+  it("rejects an unknown comparator", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [{
+        ...validFixture,
+        asserts: [{ kind: "http_status", value: 200, comparator: "approximately" }],
+      }],
+    });
+    assert.equal(r.success, false);
+  });
+
+  it("rejects a fixture missing required fields", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [{ id: "x", url: "/a" }],
+    });
+    assert.equal(r.success, false);
+  });
+
+  it("rejects a non-ISO asserted_at", () => {
+    const r = AcceptanceContractSchema.safeParse({
+      feature: "demo",
+      summary: "x",
+      test_fixtures: [{ ...validFixture, asserted_at: "yesterday" }],
+    });
+    assert.equal(r.success, false);
+  });
+});

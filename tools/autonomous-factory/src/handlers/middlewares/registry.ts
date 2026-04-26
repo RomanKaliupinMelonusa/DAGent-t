@@ -16,6 +16,7 @@ import { lifecycleHooksMiddleware } from "./lifecycle-hooks.js";
 import { resultProcessorMiddleware } from "./result-processor.js";
 import { metricsMiddleware } from "./metrics.js";
 import { acceptanceIntegrityMiddleware } from "./acceptance-integrity.js";
+import { fixtureValidationMiddleware } from "./fixture-validation.js";
 import { materializeInputsMiddleware } from "./materialize-inputs.js";
 import { handlerOutputIngestionMiddleware } from "./handler-output-ingestion.js";
 
@@ -29,6 +30,7 @@ const BUILT_IN_MIDDLEWARES: Record<string, NodeMiddleware> = {
   [resultProcessorMiddleware.name]: resultProcessorMiddleware,
   [metricsMiddleware.name]: metricsMiddleware,
   [acceptanceIntegrityMiddleware.name]: acceptanceIntegrityMiddleware,
+  [fixtureValidationMiddleware.name]: fixtureValidationMiddleware,
   [materializeInputsMiddleware.name]: materializeInputsMiddleware,
   [handlerOutputIngestionMiddleware.name]: handlerOutputIngestionMiddleware,
 };
@@ -84,6 +86,7 @@ function getMiddleware(name: string): NodeMiddleware {
  *  thought through the timing carefully. */
 export const ENGINE_DEFAULT_MIDDLEWARE_NAMES: ReadonlyArray<string> = [
   "auto-skip",
+  "fixture-validation",
   "acceptance-integrity",
   "handler-output-ingestion",
   "lifecycle-hooks",

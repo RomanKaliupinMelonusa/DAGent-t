@@ -62,10 +62,17 @@ storefront:
         halt_on_identical: true
       on_failure:
         triage: triage-storefront
-        # Storefront triage classifies into {test-code, code-defect}; neither
-        # applies to spec-compiler output. Any failure here halts gracefully
-        # via `blocked: null` once the circuit_breaker above caps retries.
+        # Storefront triage classifies into {test-code, code-defect, test-data};
+        # the first two don't apply to spec-compiler output. `test-data`
+        # reroutes from e2e-runner / qa-adversary when a test_fixtures[]
+        # entry is wrong for the running config; spec-compiler self-heals
+        # by picking a different fixture. `fixture-validation-failure` is
+        # the L0-classified equivalent emitted by the post-completion
+        # `fixture-validation` middleware. Both bound by circuit_breaker
+        # above; ultimate failure halts gracefully via `blocked: null`.
         routes:
+          test-data: "$SELF"
+          fixture-validation-failure: "$SELF"
           blocked: null
 
     # ── Pre-feature baseline ──────────────────────────────────────────
@@ -183,6 +190,11 @@ storefront:
           test-code: e2e-author
           # Storefront defect surfaced by Playwright — live-browser debugger.
           code-defect: storefront-debug
+          # Fixture mismatch surfaced by Playwright (e.g. assert_visible on a
+          # tile that doesn't exist for the chosen product, http_status:200
+          # contract violated by a 404 URL) — re-pick the fixture, don't
+          # tweak locators.
+          test-data: spec-compiler
 
     # ── Adversarial QA pass (Phase B.2) ───────────────────────────────
     # Attempts to falsify the feature against the acceptance contract.
@@ -208,6 +220,9 @@ storefront:
           test-code: qa-adversary
           # Storefront defect surfaced by an adversarial probe.
           code-defect: storefront-debug
+          # Fixture mismatch (chosen product/category violates a runtime
+          # assertion declared on the fixture) — re-pick the fixture.
+          test-data: spec-compiler
 
     create-draft-pr:
       depends_on: [storefront-unit-test, e2e-author, qa-adversary]
@@ -318,14 +333,16 @@ storefront:
   # See `apps/commerce-storefront/.apm/apm.yml` → config.error_signature.
 
   # ── Triage Profiles ─────────────────────────────────────────────────
-  # Single-shot LLM classifier with two routes only:
-  #   - test-code  → e2e-author        (Playwright spec is the defect)
+  # Single-shot LLM classifier with three routes:
+  #   - test-code   → e2e-author       (Playwright spec is the defect)
   #   - code-defect → storefront-debug (storefront code is the defect)
+  #   - test-data   → spec-compiler    (acceptance fixture is wrong for
+  #                                     the running config — pick again)
   # No RAG packs, no declarative pre-classifier patterns, no contract-
   # evidence prepend, no in-triage baseline noise filter. The baseline
   # captured by `baseline-analyzer` flows directly to `storefront-debug`
   # via `consumes_artifacts` — triage no longer touches it. Anything the
-  # classifier cannot fit into the two domains degrades to a draft PR
+  # classifier cannot fit into the three domains degrades to a draft PR
   # for human review (typically a pipeline-layer defect, not fixable
   # by re-running an agent).
   triage:
@@ -335,10 +352,14 @@ storefront:
       max_reroutes: 5
       evidence_enrichment: false
       baseline_noise_filter: true
-      domains: [test-code, code-defect]
+      domains: [test-code, code-defect, test-data, fixture-validation-failure]
       routing:
         test-code:
           description: "The Playwright spec itself is wrong (bad locator, strict-mode violation, race condition, assertion contradicts the acceptance contract). Route to the SDET (e2e-author)."
         code-defect:
           description: "Defect in the storefront application code surfaced by the failing node — rendering crash, hydration mismatch, runtime exception, hook misuse, missing null guard. Route to the live-browser debugger (storefront-debug)."
+        test-data:
+          description: "The acceptance contract's test fixture is misconfigured for the running storefront — URL 404s under the active locale/site config, the chosen product violates a runtime assertion declared on the fixture (swatch count, in-stock, product type), or http_status:200 contradicts a baseline failure. Route to spec-compiler so it picks a different fixture (different product / category / locale)."
+        fixture-validation-failure:
+          description: "Synthetic L0 domain emitted by the deterministic post-spec-compiler validation gate (raw-regex classifier matches `[fixture-validation]`). Never produced by the LLM router. Routed to spec-compiler self-heal."
 
