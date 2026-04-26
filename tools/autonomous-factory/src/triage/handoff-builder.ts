@@ -94,64 +94,6 @@ export function buildConsecutiveDomainAdvisory(
 }
 
 // ---------------------------------------------------------------------------
-// Debug-notes recommendation parser
-// ---------------------------------------------------------------------------
-
-/** Headings recognised in a `storefront-debug` `debug-notes.md` body that
- *  signal the agent's own diagnosis: the next failure will actually be in
- *  test code, not the component. Both currently map to the same inferred
- *  domain (`test-code`); when both are present, `Remaining Test-Code Issue`
- *  is preferred (it is the stronger "next failure will be here" signal vs.
- *  the advisory follow-up note). */
-const DEBUG_RECOMMENDATION_HEADINGS: ReadonlyArray<{
-  readonly pattern: RegExp;
-  readonly domain: "test-code";
-  readonly priority: number;
-}> = [
-  { pattern: /^##\s+Remaining\s+Test-Code\s+Issue\s*$/im, domain: "test-code", priority: 0 },
-  { pattern: /^##\s+Unit\s+Test\s+Follow-ups\s*$/im, domain: "test-code", priority: 1 },
-];
-
-/**
- * Parse a `storefront-debug` `debug-notes.md` body for a domain
- * recommendation. Returns `null` when:
- *   - no recognised heading is found,
- *   - the body following a recognised heading is whitespace-only,
- *   - the inferred domain is not in `allowedDomains` (caller's failing-
- *     node routing table) — the recommendation cannot bias the LLM
- *     toward an unroutable verdict.
- *
- * Pure — no I/O, no shared state. The caller is expected to read the
- * `debug-notes.md` artifact via the artifact bus and pass the contents
- * here.
- */
-export function parseDebugRecommendation(
-  notesMarkdown: string,
-  allowedDomains: readonly string[],
-): { domain: string; note: string } | null {
-  if (!notesMarkdown) return null;
-  // Find the highest-priority recognised heading present in the body.
-  let chosen: { domain: "test-code"; index: number; matchLen: number; priority: number } | null = null;
-  for (const h of DEBUG_RECOMMENDATION_HEADINGS) {
-    const m = h.pattern.exec(notesMarkdown);
-    if (!m) continue;
-    if (!chosen || h.priority < chosen.priority) {
-      chosen = { domain: h.domain, index: m.index, matchLen: m[0].length, priority: h.priority };
-    }
-  }
-  if (!chosen) return null;
-  if (!allowedDomains.includes(chosen.domain)) return null;
-
-  // Extract body from end of heading line to next `## ` heading or EOF.
-  const after = notesMarkdown.slice(chosen.index + chosen.matchLen);
-  const nextHeading = /^##\s+/m.exec(after);
-  const body = nextHeading ? after.slice(0, nextHeading.index) : after;
-  const trimmed = body.trim();
-  if (trimmed.length === 0) return null;
-  return { domain: chosen.domain, note: trimmed };
-}
-
-// ---------------------------------------------------------------------------
 // Top-level builder
 // ---------------------------------------------------------------------------
 
@@ -192,24 +134,13 @@ export interface BuildTriageHandoffArgs {
    *  lineage a traversable chain from the original failure through every
    *  reroute (Phase 5 follow-up). Absent = legacy behaviour. */
   readonly triageInvocationId?: string;
-  /** Raw `debug-notes.md` body harvested from the most recent completed
-   *  `storefront-debug` invocation (if any). The handler reads the file
-   *  via the artifact bus and passes the string here so this module
-   *  remains pure. When `parseDebugRecommendation` returns a non-null
-   *  result against `allowedDomains`, the parsed recommendation is
-   *  surfaced on the handoff as `priorDebugRecommendation`. */
-  readonly debugNotesText?: string;
-  /** `cycleIndex` of the source `storefront-debug` invocation. Stamped
-   *  onto `priorDebugRecommendation.cycleIndex` so the LLM router and
-   *  the dev agent can tell how recent the diagnosis is. Ignored when
-   *  `debugNotesText` is absent. */
-  readonly debugNotesCycleIndex?: number;
-  /** Allowed fault domains for the failing node — typically
-   *  `Object.keys(failureRoutes)`. The recommendation parser refuses
-   *  to surface a domain not in this list so the LLM cannot be biased
-   *  toward an unroutable verdict. Ignored when `debugNotesText` is
-   *  absent. */
-  readonly allowedDomains?: readonly string[];
+  /** Pre-resolved structured next-failure hint sourced from the most
+   *  recent completed-and-sealed debug-class invocation. Surfaced
+   *  verbatim on the handoff as `priorDebugRecommendation` so the
+   *  rerouted dev agent and the LLM router both see the diagnosis.
+   *  Caller (the triage handler) is responsible for the lookup; the
+   *  builder remains pure. Absent when no eligible hint exists. */
+  readonly priorDebugRecommendation?: TriageHandoff["priorDebugRecommendation"];
 }
 
 /**
@@ -264,9 +195,7 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     baseline,
     slug,
     triageInvocationId,
-    debugNotesText,
-    debugNotesCycleIndex,
-    allowedDomains,
+    priorDebugRecommendation,
   } = args;
 
   const touched = resolveTouchedFiles(failingNodeKey, routeToKey, pipelineSummaries);
@@ -290,24 +219,13 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     };
   }
 
-  // Prior debug-cycle recommendation — parsed from the most recent
-  // storefront-debug debug-notes body if the handler supplied one and the
-  // body carries a recognised heading whose inferred domain is routable.
-  let priorDebugRecommendation: TriageHandoff["priorDebugRecommendation"];
-  if (
-    debugNotesText !== undefined
-    && allowedDomains !== undefined
-    && typeof debugNotesCycleIndex === "number"
-  ) {
-    const parsed = parseDebugRecommendation(debugNotesText, allowedDomains);
-    if (parsed) {
-      priorDebugRecommendation = {
-        domain: parsed.domain,
-        note: parsed.note,
-        cycleIndex: debugNotesCycleIndex,
-      };
-    }
-  }
+  // Prior debug-cycle recommendation — the caller resolves this from
+  // the most recent completed-and-sealed debug-class invocation that
+  // emitted a structured `nextFailureHint` via `report_outcome`. The
+  // builder is a pure pass-through; the producer-agnostic lookup lives
+  // in the triage handler so this module stays free of state-store
+  // and artifact-bus dependencies.
+  // (Field is omitted from the result when the caller passes nothing.)
 
   return {
     schemaVersion: getArtifactSchemaVersion("triage-handoff") as 1 | undefined,

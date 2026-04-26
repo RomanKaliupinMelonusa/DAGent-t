@@ -15,6 +15,7 @@ import type { ResolvedHarnessLimits } from "../harness/index.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { ReportedOutcome } from "../harness/outcome-tool.js";
+import type { NextFailureHintValidation } from "../harness/outcome-tool.js";
 
 export interface CopilotSessionParams {
   slug: string;
@@ -40,6 +41,10 @@ export interface CopilotSessionParams {
   preTimeoutPercent?: number;
   runtimeTokenBudget?: number;
   logger: PipelineLogger;
+  /** Validation context for `report_outcome.next_failure_hint`. Resolved
+   *  per-invocation by the copilot-agent handler from the failing node's
+   *  `on_failure.routes` keys + the compiled DAG node set. */
+  nextFailureHintValidation?: NextFailureHintValidation;
 }
 
 export interface CopilotSessionResult {

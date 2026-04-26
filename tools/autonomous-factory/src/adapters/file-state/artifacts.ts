@@ -175,6 +175,7 @@ export function sealInvocationRecord(
     outputs: mergedOutputs,
     sealed: true,
     ...(input.routedTo ? { routedTo: input.routedTo } : {}),
+    ...(input.nextFailureHint ? { nextFailureHint: input.nextFailureHint } : {}),
   };
   state.artifacts[input.invocationId] = sealed;
   appendInvocationJsonl(slug, sealed);

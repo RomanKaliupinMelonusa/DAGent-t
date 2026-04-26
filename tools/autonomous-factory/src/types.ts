@@ -160,6 +160,12 @@ export interface InvocationRecord {
    *  targeting this invocation will throw. Mirrors the adapter's in-memory
    *  cache so seal state survives orchestrator restarts. */
   readonly sealed?: boolean;
+  /** Optional structured next-failure hint emitted via `report_outcome`.
+   *  Replaces the markdown heading parser the triage handoff builder used
+   *  to apply to `debug-notes.md`. Producer-agnostic — any sealed,
+   *  completed invocation whose agent supplied the field is eligible
+   *  for downstream triage's `priorDebugRecommendation` lookup. */
+  readonly nextFailureHint?: import("./harness/outcome-tool.js").NextFailureHint;
 }
 
 export interface AppendInvocationInput {
@@ -184,6 +190,10 @@ export interface SealInvocationInput {
   /** Optional update to the `routedTo` field (used by the triage handler
    *  on a successful reroute to record its callee). */
   readonly routedTo?: InvocationRecord["routedTo"];
+  /** Optional structured next-failure hint reported by the agent via
+   *  `report_outcome`. Persisted on the InvocationRecord and read by
+   *  downstream triage to populate `priorDebugRecommendation`. */
+  readonly nextFailureHint?: InvocationRecord["nextFailureHint"];
 }
 
 // ---------------------------------------------------------------------------

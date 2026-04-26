@@ -15,8 +15,14 @@
  *   - `deployedUrl` → `deployment-url` artifact written to
  *     `outputs/deployment-url.json` (declared via
  *     `produces_artifacts: ["deployment-url"]`).
- * This keeps the SDK surface small and routes all rich content through
- * the same artifact tree the rest of the pipeline already inspects.
+ *
+ * Phase B (next-failure-hint): an optional `next_failure_hint` field
+ * lets a debug-class agent flag the most likely next failure domain +
+ * target node. Replaces the markdown heading parser the triage handoff
+ * builder used to apply to `debug-notes.md`. Validation runs at submit
+ * time against the failing node's allowed domains and the compiled DAG
+ * node set; an unknown domain or target_node is rejected so the agent
+ * sees the error inline and can retry.
  *
  * The tool is idempotent — only the LAST call wins. Agents are expected
  * to call it exactly once at the end of their session.
@@ -26,28 +32,159 @@ import { defineTool } from "@github/copilot-sdk";
 import type { Tool } from "@github/copilot-sdk";
 import type { ItemSummary } from "../types.js";
 
+/** Default cap on `next_failure_hint.summary` length. */
+export const DEFAULT_NEXT_FAILURE_HINT_SUMMARY_MAX = 500;
+
 /**
- * Structured outcome reported by an agent at session end.
- * Status + (on failure) a diagnostic message — nothing else. Rich content
- * (notes, URLs, …) flows through declared artifacts in `outputs/`.
+ * Structured next-failure hint. Optional companion to `report_outcome`
+ * that lets a debug-class agent point downstream triage at the most
+ * likely next failure domain + target dev node.
  */
+export interface NextFailureHint {
+  readonly domain: string;
+  readonly target_node: string;
+  readonly summary: string;
+  readonly evidence_paths?: readonly string[];
+}
+
 export type ReportedOutcome =
-  | { status: "completed" }
-  | {
-      status: "failed";
-      /** REQUIRED diagnostic message — usually a TriageDiagnostic JSON. */
-      message: string;
+  | { status: "completed"; nextFailureHint?: NextFailureHint }
+  | { status: "failed"; message: string; nextFailureHint?: NextFailureHint };
+
+export interface NextFailureHintValidation {
+  readonly allowedDomains: readonly string[];
+  readonly dagNodeKeys: readonly string[];
+  readonly summaryMaxChars?: number;
+}
+
+/**
+ * Validate a candidate `next_failure_hint` payload. Returns the cleaned
+ * hint on success or a tool-error string the SDK handler returns inline
+ * so the agent sees the rejection and can retry. Pure — exported for tests.
+ */
+export function validateNextFailureHint(
+  raw: unknown,
+  validation: NextFailureHintValidation | null,
+): { ok: true; hint: NextFailureHint } | { ok: false; error: string } {
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: false, error: "ERROR: next_failure_hint must be an object." };
+  }
+  const obj = raw as Record<string, unknown>;
+  const domain = obj.domain;
+  const target_node = obj.target_node;
+  const summary = obj.summary;
+  const evidence_paths = obj.evidence_paths;
+
+  if (typeof domain !== "string" || domain.length === 0) {
+    return { ok: false, error: "ERROR: next_failure_hint.domain must be a non-empty string." };
+  }
+  if (typeof target_node !== "string" || target_node.length === 0) {
+    return { ok: false, error: "ERROR: next_failure_hint.target_node must be a non-empty string." };
+  }
+  if (typeof summary !== "string" || summary.length === 0) {
+    return { ok: false, error: "ERROR: next_failure_hint.summary must be a non-empty string." };
+  }
+
+  if (!validation) {
+    return {
+      ok: false,
+      error:
+        "ERROR: next_failure_hint validation context is unavailable for this " +
+        "invocation. Drop the field or retry from a node whose failure routes " +
+        "are declared in workflows.yml.",
     };
+  }
+
+  const cap = validation.summaryMaxChars ?? DEFAULT_NEXT_FAILURE_HINT_SUMMARY_MAX;
+  if (summary.length > cap) {
+    return {
+      ok: false,
+      error:
+        `ERROR: next_failure_hint.summary length ${summary.length} exceeds ` +
+        `the ${cap}-char cap. Trim the summary and retry.`,
+    };
+  }
+
+  if (!validation.allowedDomains.includes(domain)) {
+    const allowed = validation.allowedDomains.length > 0
+      ? validation.allowedDomains.join(", ")
+      : "(none — failing node declares no on_failure.routes)";
+    return {
+      ok: false,
+      error:
+        `ERROR: next_failure_hint.domain '${domain}' is not in the failing ` +
+        `node's allowed domains: [${allowed}]. Choose one of those domains ` +
+        `or drop the hint.`,
+    };
+  }
+
+  if (!validation.dagNodeKeys.includes(target_node)) {
+    const sample = validation.dagNodeKeys.slice(0, 8).join(", ");
+    return {
+      ok: false,
+      error:
+        `ERROR: next_failure_hint.target_node '${target_node}' is not a DAG ` +
+        `node in this workflow. Known nodes (first 8): [${sample}]. Use a ` +
+        `valid node key or drop the hint.`,
+    };
+  }
+
+  let evidenceClean: readonly string[] | undefined;
+  if (evidence_paths !== undefined) {
+    if (!Array.isArray(evidence_paths)) {
+      return { ok: false, error: "ERROR: next_failure_hint.evidence_paths must be an array of strings." };
+    }
+    const cleaned: string[] = [];
+    for (let i = 0; i < evidence_paths.length; i++) {
+      const p = evidence_paths[i];
+      if (typeof p !== "string" || p.length === 0) {
+        return {
+          ok: false,
+          error: `ERROR: next_failure_hint.evidence_paths[${i}] must be a non-empty string.`,
+        };
+      }
+      if (p.startsWith("/") || p.startsWith("\\")) {
+        return {
+          ok: false,
+          error:
+            `ERROR: next_failure_hint.evidence_paths[${i}] '${p}' must be a ` +
+            `workspace-relative path (no leading '/').`,
+        };
+      }
+      if (p.split(/[\\/]/).includes("..")) {
+        return {
+          ok: false,
+          error:
+            `ERROR: next_failure_hint.evidence_paths[${i}] '${p}' must not ` +
+            `contain '..' segments.`,
+        };
+      }
+      cleaned.push(p);
+    }
+    if (cleaned.length > 0) evidenceClean = cleaned;
+  }
+
+  const hint: NextFailureHint = {
+    domain,
+    target_node,
+    summary,
+    ...(evidenceClean ? { evidence_paths: evidenceClean } : {}),
+  };
+  return { ok: true, hint };
+}
 
 /**
  * Build the `report_outcome` tool. The handler writes the latest call into
  * `telemetry.reportedOutcome`; later calls overwrite earlier ones.
  *
- * The tool returns a brief acknowledgement string so the SDK message
- * stream contains a clear marker, but the source of truth for outcome
- * routing is the telemetry field, not the message text.
+ * `validation`, when supplied, gates `next_failure_hint` submission. When
+ * the agent supplies the field without a validation context, the tool
+ * rejects the call so the failure mode is explicit.
  */
-export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
+export function buildReportOutcomeTool(
+  telemetry: ItemSummary,
+  validation?: NextFailureHintValidation,
+): Tool<any> {
   return defineTool("report_outcome", {
     description:
       "Report the final outcome of this session. Call exactly once, " +
@@ -57,7 +194,11 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
       "with a diagnostic `message` on failure. " +
       "Notes, URLs, and other rich content go in declared artifacts " +
       "(write `outputs/summary.md` or `outputs/deployment-url.json` " +
-      "instead of passing them here).",
+      "instead of passing them here). " +
+      "Optional `next_failure_hint` lets a debug-class agent flag the " +
+      "most likely next failure for downstream triage; `domain` must be " +
+      "one of the failing node's allowed routing domains and " +
+      "`target_node` must be a DAG node key in this workflow.",
     parameters: {
       type: "object",
       properties: {
@@ -73,13 +214,54 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
             "a TriageDiagnostic JSON object describing root cause, blame, " +
             "and suggested next agent.",
         },
+        next_failure_hint: {
+          type: "object",
+          description:
+            "OPTIONAL forward-looking diagnosis. Replaces the legacy markdown " +
+            "heading parser on debug-notes.md with a structured pointer to " +
+            "the most likely next failure.",
+          properties: {
+            domain: {
+              type: "string",
+              description:
+                "Fault domain — must be one of the failing node's allowed " +
+                "routing domains (declared via on_failure.routes).",
+            },
+            target_node: {
+              type: "string",
+              description:
+                "DAG node key the hint targets — must exist in the compiled " +
+                "workflow.",
+            },
+            summary: {
+              type: "string",
+              description: "Short summary of the diagnosis. <= 500 chars.",
+            },
+            evidence_paths: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Optional workspace-relative file:line refs supporting the " +
+                "diagnosis. No absolute paths, no '..' segments.",
+            },
+          },
+          required: ["domain", "target_node", "summary"],
+        },
       },
       required: ["status"],
     },
     handler: (args: {
       status: "completed" | "failed";
       message?: string;
+      next_failure_hint?: unknown;
     }) => {
+      let nextFailureHint: NextFailureHint | undefined;
+      if (args.next_failure_hint !== undefined && args.next_failure_hint !== null) {
+        const v = validateNextFailureHint(args.next_failure_hint, validation ?? null);
+        if (!v.ok) return v.error;
+        nextFailureHint = v.hint;
+      }
+
       if (args.status === "failed") {
         const message = (args.message ?? "").trim();
         if (!message) {
@@ -89,12 +271,25 @@ export function buildReportOutcomeTool(telemetry: ItemSummary): Tool<any> {
             "call again with a diagnostic message."
           );
         }
-        telemetry.reportedOutcome = { status: "failed", message };
-        return `Outcome recorded: failed. ${message.length > 120 ? message.slice(0, 117) + "..." : message}`;
+        telemetry.reportedOutcome = {
+          status: "failed",
+          message,
+          ...(nextFailureHint ? { nextFailureHint } : {}),
+        };
+        const hintTag = nextFailureHint
+          ? ` (hint: ${nextFailureHint.domain} → ${nextFailureHint.target_node})`
+          : "";
+        return `Outcome recorded: failed${hintTag}. ${message.length > 120 ? message.slice(0, 117) + "..." : message}`;
       }
 
-      telemetry.reportedOutcome = { status: "completed" };
-      return "Outcome recorded: completed.";
+      telemetry.reportedOutcome = {
+        status: "completed",
+        ...(nextFailureHint ? { nextFailureHint } : {}),
+      };
+      const hintTag = nextFailureHint
+        ? ` (hint: ${nextFailureHint.domain} → ${nextFailureHint.target_node})`
+        : "";
+      return `Outcome recorded: completed${hintTag}.`;
     },
   });
 }

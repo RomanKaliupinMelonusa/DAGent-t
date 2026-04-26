@@ -17,6 +17,7 @@ import {
   buildSessionHooks,
   buildReportOutcomeTool,
   type ResolvedHarnessLimits,
+  type NextFailureHintValidation,
 } from "../harness/index.js";
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
@@ -55,6 +56,11 @@ export interface CopilotSessionParams {
   preTimeoutPercent?: number;
   runtimeTokenBudget?: number;
   logger: PipelineLogger;
+  /** Validation context for `report_outcome.next_failure_hint`. Resolved
+   *  per-invocation by the copilot-agent handler. When absent, an agent
+   *  that supplies the hint will be rejected by the tool — we'd rather
+   *  fail loud than silently accept an unvalidated hint. */
+  nextFailureHintValidation?: NextFailureHintValidation;
 }
 
 export interface CopilotSessionResult {
@@ -102,7 +108,10 @@ export async function runCopilotSession(
     systemMessage: { mode: "replace", content: params.systemMessage },
     // `report_outcome` is appended unconditionally — every agent must be
     // able to signal its outcome to the orchestrator.
-    tools: [...(params.tools as any[]), buildReportOutcomeTool(telemetry)],
+    tools: [
+      ...(params.tools as any[]),
+      buildReportOutcomeTool(telemetry, params.nextFailureHintValidation),
+    ],
     hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);

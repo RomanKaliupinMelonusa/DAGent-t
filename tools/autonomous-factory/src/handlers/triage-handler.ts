@@ -32,8 +32,9 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory, parseDebugRecommendation } from "../triage/handoff-builder.js";
+import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
+import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
@@ -172,82 +173,74 @@ function truncateErrorExcerpt(raw: string, maxLines = 40): string {
 }
 
 // ---------------------------------------------------------------------------
-// Prior debug-notes recommendation lookup
+// Prior debug-cycle structured-hint lookup
 // ---------------------------------------------------------------------------
 
-/** Producer node whose `debug-notes` artifact carries the
- *  `## Remaining Test-Code Issue` / `## Unit Test Follow-ups` heading we
- *  surface to the next triage cycle. Storefront-only by design — sample-app
- *  parity is deferred. */
-const DEBUG_NOTES_PRODUCER = "storefront-debug";
-
+/**
+ * Resolved hint surfaced to the LLM router and the dev-agent handoff.
+ * Shape matches `TriageHandoff.priorDebugRecommendation` so the outer
+ * caller can pass it through unmodified.
+ */
 interface LoadedDebugRecommendation {
-  readonly debugNotesText: string;
   readonly cycleIndex: number;
   readonly recommendation: { domain: string; note: string };
 }
 
 /**
- * Find the most recent completed + sealed `storefront-debug` invocation
- * whose outputs include a `debug-notes` artifact, read the file via the
- * artifact bus, and parse it for a domain recommendation. Returns `null`
- * when no eligible invocation exists, the file cannot be read, or the
- * body carries no recognised heading routable to `allowedDomains`.
+ * Walk the persisted invocation ledger for the most recent
+ * completed-and-sealed invocation whose agent emitted a structured
+ * `nextFailureHint` via `report_outcome`. Producer-agnostic — any
+ * debug-class agent that records a hint is eligible.
  *
- * Best-effort — every failure is swallowed and treated as "no
- * recommendation". The recommendation is advisory; it must never block
- * a reroute.
+ * Filters out hints whose `domain` is not in `allowedDomains` so the
+ * recommendation cannot bias the LLM toward an unroutable verdict.
+ *
+ * Picks the lex-greatest `finishedAt` (ISO timestamps are
+ * lex-sortable), tiebreak by lex-greatest `invocationId` — same
+ * selector as `FileArtifactBus.findLatestArtifact`.
+ *
+ * Pure (apart from the in-memory `artifacts` walk). Returns `null` when
+ * nothing eligible is found.
  */
-async function loadDebugRecommendation(
-  ctx: NodeContext,
-  artifacts: Record<string, { nodeKey: string; cycleIndex: number; outcome?: string; sealed?: boolean; finishedAt?: string; outputs: ArtifactRefSerialized[]; invocationId: string }> | undefined,
+function loadDebugRecommendation(
+  artifacts:
+    | Record<string, {
+        nodeKey: string;
+        cycleIndex: number;
+        outcome?: string;
+        sealed?: boolean;
+        finishedAt?: string;
+        invocationId: string;
+        nextFailureHint?: { domain: string; target_node: string; summary: string };
+      }>
+    | undefined,
   allowedDomains: readonly string[],
-): Promise<LoadedDebugRecommendation | null> {
+): LoadedDebugRecommendation | null {
   if (!artifacts) return null;
   if (allowedDomains.length === 0) return null;
 
-  // Walk artifacts → keep records for the producer that completed +
-  // sealed and emitted a `debug-notes` output. Pick the one with the
-  // greatest `finishedAt` (lex-sortable ISO), tiebreak by lex-greatest
-  // invocationId — same selector as `FileArtifactBus.findLatestArtifact`.
-  let best: { rec: typeof artifacts[string]; output: ArtifactRefSerialized } | null = null;
+  let best: { rec: NonNullable<typeof artifacts>[string] } | null = null;
   for (const rec of Object.values(artifacts)) {
-    if (rec.nodeKey !== DEBUG_NOTES_PRODUCER) continue;
     if (rec.sealed !== true) continue;
     if (rec.outcome !== "completed") continue;
     if (!rec.finishedAt) continue;
-    const out = rec.outputs.find((o) => o.kind === "debug-notes" && typeof o.path === "string" && o.path.length > 0);
-    if (!out) continue;
+    const hint = rec.nextFailureHint;
+    if (!hint) continue;
+    if (!allowedDomains.includes(hint.domain)) continue;
     if (
       !best
       || (rec.finishedAt > (best.rec.finishedAt ?? ""))
       || (rec.finishedAt === best.rec.finishedAt && rec.invocationId > best.rec.invocationId)
     ) {
-      best = { rec, output: out };
+      best = { rec };
     }
   }
   if (!best) return null;
 
-  let text: string;
-  try {
-    // Build a typed ref via the bus so we don't depend on the kind union
-    // typing on the serialised form. The bus path resolver is identical
-    // across both code paths.
-    const ref = ctx.artifactBus.ref(ctx.slug, "debug-notes", {
-      nodeKey: DEBUG_NOTES_PRODUCER,
-      invocationId: best.rec.invocationId,
-    });
-    text = await ctx.artifactBus.read(ref);
-  } catch {
-    return null;
-  }
-
-  const parsed = parseDebugRecommendation(text, allowedDomains);
-  if (!parsed) return null;
+  const hint = best.rec.nextFailureHint!;
   return {
-    debugNotesText: text,
     cycleIndex: best.rec.cycleIndex,
-    recommendation: parsed,
+    recommendation: { domain: hint.domain, note: hint.summary },
   };
 }
 
@@ -359,9 +352,11 @@ async function buildRerouteCommands(
       triageInvocationId: ctx.executionId,
       ...(priorDebugRecommendation
         ? {
-            debugNotesText: priorDebugRecommendation.debugNotesText,
-            debugNotesCycleIndex: priorDebugRecommendation.cycleIndex,
-            allowedDomains: Object.keys(ctx.failureRoutes ?? {}),
+            priorDebugRecommendation: {
+              domain: priorDebugRecommendation.recommendation.domain,
+              note: priorDebugRecommendation.recommendation.note,
+              cycleIndex: priorDebugRecommendation.cycleIndex,
+            },
           }
         : {}),
     });
@@ -805,20 +800,40 @@ const triageHandlerInner: NodeHandler = {
     try {
       const ps = await ctx.stateReader.getStatus(slug);
       errorLogForRouter = ps.errorLog ?? [];
-      // Surface the most recent storefront-debug `## Remaining Test-Code
-      // Issue` / `## Unit Test Follow-ups` recommendation to the LLM
-      // router and the dev-agent handoff. Allowed domains gate by what
-      // the failing node can actually reroute to so we never bias the
-      // classifier toward an unroutable verdict.
+      // Surface the most recent debug-class `nextFailureHint` (emitted via
+      // `report_outcome`) to the LLM router and the dev-agent handoff.
+      // Allowed domains gate by what the failing node can actually reroute
+      // to so we never bias the classifier toward an unroutable verdict.
       const allowedDomains = Object.keys(ctx.failureRoutes ?? {});
-      priorDebugRecommendation = await loadDebugRecommendation(
-        ctx,
-        ps.artifacts as Parameters<typeof loadDebugRecommendation>[1],
+      priorDebugRecommendation = loadDebugRecommendation(
+        ps.artifacts as Parameters<typeof loadDebugRecommendation>[0],
         allowedDomains,
       );
     } catch { /* non-fatal */ }
     const triageResult: TriageResult =
-      preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
+      isEvidenceEmpty(rawError, filteredStructuredFailure)
+        ? (() => {
+            // A2 — agent-side wedge marker AND zero post-baseline browser
+            // signals/failed tests. Skip the LLM entirely; the prior cycle's
+            // verdict must NOT be inherited as evidence. Route as `infra`
+            // so the failing node retries instead of cascading a bogus
+            // domain. If `infra` is not declared in the failing node's
+            // `failureRoutes`, the existing null-route branch below
+            // degrades to graceful blocked.
+            logger.event("triage.evaluate", failingNodeKey, {
+              source: "evidence-empty",
+              domain: "infra",
+              reason: "agent-side wedge marker; zero browser signals after baseline subtraction",
+            });
+            return {
+              domain: "infra",
+              reason:
+                "evidence-empty agent-side failure; route to retry not domain inheritance",
+              source: "fallback",
+              rag_matches: [],
+            } satisfies TriageResult;
+          })()
+      : preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
         ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
@@ -830,6 +845,7 @@ const triageHandlerInner: NodeHandler = {
                   cycleIndex: priorDebugRecommendation.cycleIndex,
                 }
               : undefined,
+            filteredStructuredFailure,
           );
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---

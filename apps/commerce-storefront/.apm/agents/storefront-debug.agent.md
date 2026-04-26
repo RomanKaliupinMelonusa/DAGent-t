@@ -89,13 +89,57 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
   with `fault_domain: test-code` so triage reroutes to `@e2e-author`.
 - **Do NOT edit unit tests under `__tests__/`, `tests/`, `*.test.*`, or
   `*.spec.*` (non-Playwright).** The downstream `storefront-unit-test` node
-  owns those. If tests need to be updated because your fix changes a
-  component's contract, add a note in `$OUTPUTS_DIR/debug-notes.md` under
-  a `## Unit Test Follow-ups` heading — the unit-test agent will read it.
+  owns those. If your fix changes a component's contract such that unit
+  tests need updating, surface this to downstream triage via the
+  structured `next_failure_hint` field on `report_outcome` (see
+  "Structured next-failure hint" below) rather than parking advice in
+  prose. `debug-notes.md` remains a free-form artifact for human / PR
+  review only — it is **not** parsed by the orchestrator.
 - **Do NOT add new features** or modify code unrelated to the diagnosed
   failure.
 - **Do NOT run the full test suite.** Only re-run the failing scenario
   identified in the handoff.
+
+## Structured Next-Failure Hint
+
+When you finish your investigation — whether or not your fix landed —
+you may surface a forward-looking diagnosis to downstream triage by
+attaching a `next_failure_hint` payload to your `report_outcome` call.
+The orchestrator validates the hint at submit time (unknown `domain`
+or `target_node` are rejected with an inline error) and persists it on
+this invocation's record. The next triage cycle reads the most recent
+sealed-completed hint from the artifact ledger and surfaces it as
+`priorDebugRecommendation` on the dev-agent handoff — replacing the
+legacy markdown-heading parser that used to scan `debug-notes.md`.
+
+The field is **optional** and applies generically to any debug-class
+node; you may also omit it and rely on the orchestrator's normal triage
+classification.
+
+```jsonc
+report_outcome({
+  status: "completed",                  // or "failed"
+  next_failure_hint: {
+    // Must be one of the failing node's allowed routing domains
+    // (declared on this node's on_failure.routes in workflows.yml).
+    "domain": "test-code",
+    // Must be a DAG node key in this workflow.
+    "target_node": "e2e-author",
+    // <= 500 chars. Plain prose; no markdown.
+    "summary": "The Playwright spec polls the modal at 0ms and races the consent dialog. Wait for the dialog dismissal before clicking the trigger.",
+    // Optional. Workspace-relative file:line refs only — no absolute paths,
+    // no '..' segments. Use to point at the produced evidence.
+    "evidence_paths": [
+      "e2e/widget.spec.ts:42",
+      "$OUTPUTS_DIR/debug-notes.md"
+    ]
+  }
+})
+```
+
+If the orchestrator rejects the hint (validation error returned inline
+as the tool's response), fix the offending field and call
+`report_outcome` again — the last call wins.
 
 ## Re-running the Failing Scenario
 

@@ -11,7 +11,6 @@ import {
   buildConsecutiveDomainAdvisory,
   formatDomainTag,
   parseDomainTag,
-  parseDebugRecommendation,
   truncateError,
 } from "../handoff-builder.js";
 import type { ItemSummary } from "../../types.js";
@@ -211,80 +210,6 @@ describe("buildTriageHandoff (Phase A)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseDebugRecommendation
-// ---------------------------------------------------------------------------
-
-describe("parseDebugRecommendation", () => {
-  const ALLOWED = ["test-code", "frontend", "backend"];
-
-  it("extracts domain=test-code from `## Remaining Test-Code Issue`", () => {
-    const md =
-      "## Diagnosis\n\nFix applied.\n\n## Remaining Test-Code Issue\n\n" +
-      "The consent dialog timing intercepts pointer events.\n";
-    const r = parseDebugRecommendation(md, ALLOWED);
-    assert.deepEqual(r, {
-      domain: "test-code",
-      note: "The consent dialog timing intercepts pointer events.",
-    });
-  });
-
-  it("extracts domain=test-code from `## Unit Test Follow-ups`", () => {
-    const md = "## Unit Test Follow-ups\n\nUpdate snapshot for QuickView.\n";
-    const r = parseDebugRecommendation(md, ALLOWED);
-    assert.deepEqual(r, {
-      domain: "test-code",
-      note: "Update snapshot for QuickView.",
-    });
-  });
-
-  it("matches headings case-insensitively", () => {
-    const md = "## remaining TEST-CODE issue\n\nbody text.\n";
-    const r = parseDebugRecommendation(md, ALLOWED);
-    assert.ok(r);
-    assert.equal(r!.domain, "test-code");
-    assert.equal(r!.note, "body text.");
-  });
-
-  it("terminates the body at the next `## ` heading", () => {
-    const md =
-      "## Remaining Test-Code Issue\n\nFirst paragraph.\n\n" +
-      "## Other Section\n\nNot part of body.\n";
-    const r = parseDebugRecommendation(md, ALLOWED);
-    assert.ok(r);
-    assert.equal(r!.note, "First paragraph.");
-    assert.doesNotMatch(r!.note, /Not part of body/);
-  });
-
-  it("returns null when no recognised heading is present", () => {
-    const md = "## Diagnosis\n\nFix applied.\n";
-    assert.equal(parseDebugRecommendation(md, ALLOWED), null);
-  });
-
-  it("returns null when the body is whitespace-only", () => {
-    const md = "## Remaining Test-Code Issue\n\n   \n\n## Next\n\nx";
-    assert.equal(parseDebugRecommendation(md, ALLOWED), null);
-  });
-
-  it("returns null when the inferred domain is not in allowedDomains", () => {
-    const md = "## Remaining Test-Code Issue\n\nbody.\n";
-    assert.equal(parseDebugRecommendation(md, ["frontend", "backend"]), null);
-  });
-
-  it("prefers `Remaining Test-Code Issue` when both headings are present", () => {
-    const md =
-      "## Unit Test Follow-ups\n\nfollow-up note.\n\n" +
-      "## Remaining Test-Code Issue\n\nstronger signal.\n";
-    const r = parseDebugRecommendation(md, ALLOWED);
-    assert.ok(r);
-    assert.equal(r!.note, "stronger signal.");
-  });
-
-  it("returns null on empty input", () => {
-    assert.equal(parseDebugRecommendation("", ALLOWED), null);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // buildTriageHandoff — priorDebugRecommendation surfacing
 // ---------------------------------------------------------------------------
 
@@ -300,15 +225,14 @@ describe("buildTriageHandoff — priorDebugRecommendation", () => {
     structuredFailure: null,
   };
 
-  it("surfaces the recommendation when debug-notes carry a recognised heading", () => {
-    const md =
-      "## Remaining Test-Code Issue\n\n" +
-      "The consent dialog timing intercepts pointer events.\n";
+  it("passes the structured hint through to the handoff verbatim", () => {
     const h = buildTriageHandoff({
       ...baseArgs2,
-      debugNotesText: md,
-      debugNotesCycleIndex: 2,
-      allowedDomains: ["test-code", "frontend"],
+      priorDebugRecommendation: {
+        domain: "test-code",
+        note: "The consent dialog timing intercepts pointer events.",
+        cycleIndex: 2,
+      },
     });
     assert.ok(h.priorDebugRecommendation);
     assert.equal(h.priorDebugRecommendation!.domain, "test-code");
@@ -319,26 +243,7 @@ describe("buildTriageHandoff — priorDebugRecommendation", () => {
     assert.equal(h.priorDebugRecommendation!.cycleIndex, 2);
   });
 
-  it("omits the field when allowedDomains is not supplied", () => {
-    const h = buildTriageHandoff({
-      ...baseArgs2,
-      debugNotesText: "## Remaining Test-Code Issue\n\nbody.\n",
-      debugNotesCycleIndex: 1,
-    });
-    assert.equal(h.priorDebugRecommendation, undefined);
-  });
-
-  it("omits the field when debug-notes body is whitespace-only", () => {
-    const h = buildTriageHandoff({
-      ...baseArgs2,
-      debugNotesText: "## Remaining Test-Code Issue\n\n   \n",
-      debugNotesCycleIndex: 1,
-      allowedDomains: ["test-code"],
-    });
-    assert.equal(h.priorDebugRecommendation, undefined);
-  });
-
-  it("omits the field when debug-notes is absent", () => {
+  it("omits the field when no recommendation is supplied", () => {
     const h = buildTriageHandoff(baseArgs2);
     assert.equal(h.priorDebugRecommendation, undefined);
   });

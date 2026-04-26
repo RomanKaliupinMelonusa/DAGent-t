@@ -311,6 +311,14 @@ export async function recordInvocationSeal(
   /** Phase D — handler-stamped `routedTo` (triage). Read from the
    *  generic handler-output bag; non-triage handlers don't populate it. */
   const routedToByItem = new Map<string, { nodeKey: string; invocationId: string }>();
+  /** Phase B (next-failure-hint) — handler-stamped `nextFailureHint`
+   *  (debug-class agents). Read from the generic handler-output bag and
+   *  threaded onto the `SealInvocationInput` so it lands on the
+   *  persisted InvocationRecord. */
+  const nextFailureHintByItem = new Map<
+    string,
+    import("../../harness/outcome-tool.js").NextFailureHint
+  >();
   for (const r of batchResult.itemResults) {
     // The authoritative outcome is the dispatch-layer `ItemDispatchResult.outcome`
     // (see `src/loop/dispatch/item-dispatch.ts`). This is the top-level
@@ -368,10 +376,22 @@ export async function recordInvocationSeal(
     if (typeof handlerName === "string" && handlerName.length > 0) {
       handlerByItem.set(r.itemKey, handlerName);
     }
-    const handlerOutput = (r.result as { handlerOutput?: { routedTo?: { nodeKey?: unknown; invocationId?: unknown } } }).handlerOutput;
+    const handlerOutput = (r.result as { handlerOutput?: { routedTo?: { nodeKey?: unknown; invocationId?: unknown }; nextFailureHint?: unknown } }).handlerOutput;
     const ro = handlerOutput?.routedTo;
     if (ro && typeof ro.nodeKey === "string" && typeof ro.invocationId === "string") {
       routedToByItem.set(r.itemKey, { nodeKey: ro.nodeKey, invocationId: ro.invocationId });
+    }
+    const nfh = handlerOutput?.nextFailureHint;
+    if (
+      nfh && typeof nfh === "object"
+      && typeof (nfh as { domain?: unknown }).domain === "string"
+      && typeof (nfh as { target_node?: unknown }).target_node === "string"
+      && typeof (nfh as { summary?: unknown }).summary === "string"
+    ) {
+      nextFailureHintByItem.set(
+        r.itemKey,
+        nfh as import("../../harness/outcome-tool.js").NextFailureHint,
+      );
     }
   }
 
@@ -467,6 +487,9 @@ export async function recordInvocationSeal(
       outcome,
       finishedAt,
       ...(outputs.length > 0 ? { outputs } : {}),
+      ...(nextFailureHintByItem.has(ctx.itemKey)
+        ? { nextFailureHint: nextFailureHintByItem.get(ctx.itemKey) }
+        : {}),
     };
     let sealedRecord: InvocationRecord | undefined;
     try {
@@ -500,6 +523,9 @@ export async function recordInvocationSeal(
           : {}),
         ...(sealedRecord?.routedTo
           ? { routedTo: sealedRecord.routedTo }
+          : {}),
+        ...(sealedRecord?.nextFailureHint
+          ? { nextFailureHint: sealedRecord.nextFailureHint }
           : {}),
         ...(priorMeta?.startedAt ? { startedAt: priorMeta.startedAt } : {}),
         finishedAt: input.finishedAt,

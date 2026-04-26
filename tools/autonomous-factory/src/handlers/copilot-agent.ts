@@ -235,6 +235,20 @@ const copilotAgentHandler: NodeHandler = {
     const telemetry = initTelemetry(itemKey, attempt);
     const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? DEFAULT_FATAL_SDK_PATTERNS;
 
+    // Resolve `next_failure_hint` validation context for this invocation.
+    // - allowedDomains: keys of the failing-node's `on_failure.routes`
+    //   (falls back to an empty list when the node has none — the tool
+    //   will then reject any hint with a clear "no allowed domains"
+    //   error so misuse is loud rather than silent).
+    // - dagNodeKeys: the full compiled workflow node set so the agent
+    //   can target any node in the DAG (forward or sibling).
+    const failureRoutes = (node?.on_failure?.routes ?? {}) as Record<string, unknown>;
+    const workflowNodes = apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes ?? {};
+    const nextFailureHintValidation = {
+      allowedDomains: Object.keys(failureRoutes),
+      dagNodeKeys: Object.keys(workflowNodes),
+    };
+
     const { sessionError, fatalError, reportedOutcome } = await ctx.copilotSessionRunner.run(client, {
       slug, itemKey, appRoot, repoRoot,
       model: agentConfig.model,
@@ -253,6 +267,7 @@ const copilotAgentHandler: NodeHandler = {
       preTimeoutPercent: limits.preTimeoutPercent,
       runtimeTokenBudget: limits.runtimeTokenBudget,
       logger: ctx.logger,
+      nextFailureHintValidation,
     });
 
     // ── 5. Post-session telemetry (via ctx.vcs port) ────────────────────────
@@ -295,6 +310,8 @@ const copilotAgentHandler: NodeHandler = {
     // exist (Phase A.6). A missing reportedOutcome here means the agent
     // ended its session without signalling — treat as a failure.
     if (reportedOutcome) {
+      const hint = reportedOutcome.nextFailureHint;
+      const handlerOutput = hint ? { nextFailureHint: hint } : undefined;
       if (reportedOutcome.status === "failed") {
         const message = reportedOutcome.message;
         telemetry.outcome = "failed";
@@ -306,6 +323,7 @@ const copilotAgentHandler: NodeHandler = {
           errorMessage: message,
           summary: telemetry,
           ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
+          ...(handlerOutput ? { handlerOutput } : {}),
         };
       }
 
@@ -350,6 +368,7 @@ const copilotAgentHandler: NodeHandler = {
       return {
         outcome: "completed",
         summary: telemetry,
+        ...(handlerOutput ? { handlerOutput } : {}),
       };
     }
 

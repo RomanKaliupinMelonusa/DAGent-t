@@ -689,6 +689,7 @@ function applySealInvocation(
     outputs: mergedOutputs,
     sealed: true,
     ...(input.routedTo ? { routedTo: input.routedTo } : {}),
+    ...(input.nextFailureHint ? { nextFailureHint: input.nextFailureHint } : {}),
   };
   return { ...state, artifacts } as PipelineState;
 }
