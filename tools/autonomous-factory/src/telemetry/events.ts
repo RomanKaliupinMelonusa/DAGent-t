@@ -39,6 +39,13 @@ export type EventKind =
   | "triage.enqueue"
   | "triage.dispatch"
   | "triage.handoff.skipped_non_completed"
+  // Phase D — same-test loop override events. Fired when triage detects
+  // 2 prior cycles failing the same test name and either (a) overrides
+  // the LLM verdict to `test-data` because the failing node has a
+  // `test-data` route declared, or (b) skips the override because no
+  // such route exists.
+  | "triage.override.same_test_loop"
+  | "triage.override.same_test_loop_skipped"
   // Handoff
   | "handoff.emit"
   | "handoff.inject"

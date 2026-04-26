@@ -20,6 +20,7 @@ import { extractPriorAttempts } from "./historian.js";
 import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "./handoff-evidence.js";
 import { featureRelPath } from "../adapters/feature-paths.js";
 import { getArtifactSchemaVersion } from "../apm/artifact-catalog.js";
+import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Domain-tag format — single source of truth shared with triage-handler's
@@ -61,16 +62,14 @@ interface HandoffLogEntry {
 }
 
 /**
- * Round-2 R3 — consecutive-domain advisory.
+ * Round-2 R3 — consecutive-domain detector.
  *
  * When the last two reroute cycles both classified into `currentDomain`,
  * the redevelopment cycle is almost certainly looping on the same root
- * cause with incrementally mutated symptoms. Surface an advisory string
- * so the next dev agent sees the pattern explicitly and can choose a
- * `agent-branch.sh revert` clean-slate rebuild. Returns `undefined`
- * when the advisory does not apply.
+ * cause with incrementally mutated symptoms. Returns the advisory text,
+ * or `undefined` when the pattern does not hold.
  */
-export function buildConsecutiveDomainAdvisory(
+function detectConsecutiveDomain(
   errorLog: readonly HandoffLogEntry[],
   currentDomain: string,
 ): string | undefined {
@@ -91,6 +90,142 @@ export function buildConsecutiveDomainAdvisory(
     `feature branch to the base and rebuild from scratch — the circuit ` +
     `breaker grants one bypass for exactly this case.`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Same-test loop detector (Phase D)
+// ---------------------------------------------------------------------------
+
+const RESET_OP_KEYS: ReadonlySet<string> = new Set<string>([
+  ...REDEVELOPMENT_RESET_OPS as readonly string[],
+  RESET_OPS.RESET_FOR_REROUTE,
+  RESET_OPS.RESET_PHASES,
+]);
+
+/**
+ * Extract failing test names from a Playwright-style failure message.
+ * Anchors on the ` › ` separator: the trailing token after the last
+ * ` › ` on each line is treated as a test title (with any ` (1.0m)`
+ * style duration suffix stripped). Matches the listing format Playwright
+ * emits for failed specs, e.g.
+ *
+ *   `[chromium] › path/file.spec.ts:301:9 › Suite › my-test (1.0m)`
+ *
+ * Stack traces and other lines without ` › ` are ignored. Returns the
+ * deduplicated list of titles found across all matching lines.
+ */
+export function extractTestNamesFromMessage(message: string): string[] {
+  const out = new Set<string>();
+  for (const raw of message.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line.includes(" › ")) continue;
+    const parts = line.split(" › ");
+    const last = parts[parts.length - 1];
+    if (!last) continue;
+    // Strip trailing ` (1.0m)` / ` (6.6s)` style duration suffix.
+    const cleaned = last.replace(/\s*\([\d.]+[a-z]+\)\s*$/i, "").trim();
+    if (cleaned.length > 0) out.add(cleaned);
+  }
+  return [...out];
+}
+
+/**
+ * Walk `errorLog` and pair each `reset-for-reroute` op with the most
+ * recent preceding non-reset failure entry — the same pairing the
+ * historian uses, but returning the full untruncated message.
+ */
+function priorFailureMessages(
+  errorLog: readonly HandoffLogEntry[],
+): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < errorLog.length; i++) {
+    const entry = errorLog[i];
+    if (!RESET_OP_KEYS.has(entry.itemKey)) continue;
+    for (let j = i - 1; j >= 0; j--) {
+      const cand = errorLog[j];
+      if (!RESET_OP_KEYS.has(cand.itemKey)) {
+        out.push(cand.message);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Detect the "same failing test in 2 consecutive cycles" pattern.
+ *
+ * Walks the last two prior cycles' preceding-failure messages, extracts
+ * the test names mentioned in each, and intersects with `currentTestNames`.
+ * When at least one shared title exists across all three cycles, returns
+ * that title. Otherwise returns `null`.
+ *
+ * The motivating incident is locator-class mutation looping: e2e-author
+ * tweaks selectors on a test whose root cause is actually the fixture
+ * (URL / product / account). Surfaces fixture re-pick as the next move.
+ */
+export function detectSameTestLoop(
+  errorLog: readonly HandoffLogEntry[],
+  currentTestNames: readonly string[],
+): string | null {
+  if (currentTestNames.length === 0) return null;
+  const priorMessages = priorFailureMessages(errorLog);
+  if (priorMessages.length < 2) return null;
+  const lastTwo = priorMessages.slice(-2);
+  const setA = new Set(extractTestNamesFromMessage(lastTwo[0]));
+  const setB = new Set(extractTestNamesFromMessage(lastTwo[1]));
+  for (const name of currentTestNames) {
+    if (setA.has(name) && setB.has(name)) return name;
+  }
+  return null;
+}
+
+function buildSameTestAdvisory(testName: string): string {
+  return (
+    `Test \`${testName}\` has failed in 2 consecutive cycles with ` +
+    `locator-class mutations. The probable root cause is the fixture ` +
+    `(URL / product / account), not the locator. The next reroute target ` +
+    `should be **spec-compiler** so a new fixture can be selected; the ` +
+    `revert advisory applies on the cycle after.`
+  );
+}
+
+/**
+ * Round-2 R3 / Phase D — composite loop advisory.
+ *
+ * Two detectors run independently and their advisories are joined with a
+ * blank line when both fire:
+ *   - same fault domain × 2 consecutive prior cycles → "third in domain"
+ *     advisory pointing at `agent-branch.sh revert`.
+ *   - same failing test name × 2 consecutive prior cycles → "fixture
+ *     re-pick" advisory pointing at spec-compiler.
+ *
+ * Returns `undefined` when neither detector fires.
+ */
+export function buildLoopAdvisory(
+  errorLog: readonly HandoffLogEntry[],
+  currentDomain: string,
+  currentTestNames: readonly string[] = [],
+): string | undefined {
+  const blocks: string[] = [];
+  const domainAdvisory = detectConsecutiveDomain(errorLog, currentDomain);
+  if (domainAdvisory) blocks.push(domainAdvisory);
+  const sharedTest = detectSameTestLoop(errorLog, currentTestNames);
+  if (sharedTest) blocks.push(buildSameTestAdvisory(sharedTest));
+  return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+}
+
+/**
+ * Backward-compatible alias for `buildLoopAdvisory` that runs only the
+ * consecutive-domain detector. Retained for callers (notably the A4
+ * blocked-verdict circuit breaker) that have no current-cycle test
+ * context to feed the same-test detector.
+ */
+export function buildConsecutiveDomainAdvisory(
+  errorLog: readonly HandoffLogEntry[],
+  currentDomain: string,
+): string | undefined {
+  return buildLoopAdvisory(errorLog, currentDomain, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +372,11 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     priorAttemptCount,
     touchedFiles: touched.files,
     touchedFilesSource: touched.source,
-    advisory: buildConsecutiveDomainAdvisory(errorLog, triageResult.domain),
+    advisory: buildLoopAdvisory(
+      errorLog,
+      triageResult.domain,
+      (toFailedTests(structuredFailure) ?? []).map((t) => t.title),
+    ),
     evidence: toHandoffEvidence(structuredFailure),
     browserSignals: toBrowserSignals(structuredFailure),
     baselineDropCounts: drops,

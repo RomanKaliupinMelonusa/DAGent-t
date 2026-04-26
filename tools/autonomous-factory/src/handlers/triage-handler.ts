@@ -32,7 +32,7 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory } from "../triage/handoff-builder.js";
+import { buildTriageHandoff, formatDomainTag, buildConsecutiveDomainAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
@@ -40,6 +40,7 @@ import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";
 import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
+import { toFailedTests } from "../triage/handoff-evidence.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
@@ -810,7 +811,7 @@ const triageHandlerInner: NodeHandler = {
         allowedDomains,
       );
     } catch { /* non-fatal */ }
-    const triageResult: TriageResult =
+    let triageResult: TriageResult =
       isEvidenceEmpty(rawError, filteredStructuredFailure)
         ? (() => {
             // A2 — agent-side wedge marker AND zero post-baseline browser
@@ -847,6 +848,47 @@ const triageHandlerInner: NodeHandler = {
               : undefined,
             filteredStructuredFailure,
           );
+
+    // --- Phase D — same-test loop override ---
+    // When the same failing test name has appeared in 2 consecutive prior
+    // cycles AND the failing node declares a `test-data` route (typically
+    // pointing at `spec-compiler` for fixture re-pick), override whatever
+    // domain the LLM/RAG/contract layer produced. The motivating pattern
+    // is locator-class mutation looping (e2e-author tweaks selectors
+    // cycle after cycle when the real fix is to swap the fixture). We
+    // only override when `test-data` is actually routable for this node;
+    // otherwise the LLM verdict stands.
+    {
+      const currentTestNames = (toFailedTests(filteredStructuredFailure) ?? []).map((t) => t.title);
+      const sharedTest = detectSameTestLoop(errorLogForRouter, currentTestNames);
+      if (sharedTest) {
+        const hasTestDataRoute = (ctx.failureRoutes ?? {})["test-data"] !== undefined;
+        if (hasTestDataRoute) {
+          const original = triageResult;
+          logger.event("triage.override.same_test_loop", failingNodeKey, {
+            test_name: sharedTest,
+            original_domain: original.domain,
+            original_reason: original.reason,
+            original_source: original.source,
+            overridden_domain: "test-data",
+          });
+          triageResult = {
+            ...original,
+            domain: "test-data",
+            reason:
+              `same-test loop override: test "${sharedTest}" failed in 2 prior ` +
+              `cycles → routing to spec-compiler for fixture re-pick ` +
+              `(was: ${original.domain})`,
+          };
+        } else {
+          logger.event("triage.override.same_test_loop_skipped", failingNodeKey, {
+            test_name: sharedTest,
+            reason: "no test-data route declared on failing node",
+            original_domain: triageResult.domain,
+          });
+        }
+      }
+    }
 
     // --- Resolve route_to from failing node's on_failure.routes (graph-level) ---
     // Fallback: profile.routing[domain].route_to (backward compat)
