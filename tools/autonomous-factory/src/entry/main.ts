@@ -39,6 +39,12 @@ import { FileBaselineLoader } from "../adapters/file-baseline-loader.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "../handlers/registry.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
+import { runAdminCommand, type AdminHost } from "../kernel/admin.js";
+
+/** Default threshold (ms) before an unsealed invocation is force-failed
+ *  by the dangling-invocation auto-recovery scanner. Mirrored as the
+ *  default for `config.staleInvocationMs` in `apm/types.ts`. */
+const DEFAULT_STALE_INVOCATION_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // HandlerResolver adapter — wraps the existing handler registry
@@ -156,6 +162,37 @@ export async function runWithKernel(
   const triageArtifacts = new FileTriageArtifactLoader({ appRoot });
   const baselineLoader = new FileBaselineLoader({ appRoot, bus: artifactBus });
   const effectPorts = { stateStore, telemetry };
+
+  // Auto-recover dangling invocations from a prior killed orchestrator run.
+  // Any unsealed record older than `config.staleInvocationMs` (default 30m)
+  // is force-failed via the kernel admin path so the loop's first tick sees
+  // a fresh slot the triage handler can re-route. Runs BEFORE the kernel is
+  // constructed so `getStatus` reads the post-recovery snapshot.
+  const staleMs =
+    config.apmContext.config?.staleInvocationMs ?? DEFAULT_STALE_INVOCATION_MS;
+  const adminHost: AdminHost = {
+    withLockedWrite: (s, fn) => stateStore.withLockedWrite(s, fn),
+  };
+  try {
+    const recoveryResult = await runAdminCommand(adminHost, slug, {
+      type: "recover-dangling",
+      now: Date.now(),
+      staleMs,
+      slug,
+    });
+    if (recoveryResult.kind === "recover-dangling") {
+      for (const r of recoveryResult.recovered) {
+        console.log(
+          `  ↻ recover-dangling: nodeKey=${r.nodeKey} invocationId=${r.invocationId} ageMs=${r.ageMs}`,
+        );
+      }
+    }
+  } catch (err) {
+    // Non-fatal: a missing _STATE.json (first run) surfaces here. The next
+    // step (`getStatus`) will produce its own error if state is required.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  ⚠ recover-dangling skipped: ${msg}`);
+  }
 
   // Load initial DAG state from the persisted _STATE.json
   const initialDagState = await stateStore.getStatus(slug) as PipelineState;

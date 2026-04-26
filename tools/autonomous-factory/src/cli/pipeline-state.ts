@@ -95,6 +95,54 @@ async function cmdRecoverElevated(slug: string, errorMessage: string): Promise<v
   );
 }
 
+/** Default threshold (ms) — must match `DEFAULT_STALE_INVOCATION_MS` in
+ *  `entry/main.ts`. The override env var lets operators tighten or loosen
+ *  the threshold ad-hoc without an apm.yml edit. */
+const DEFAULT_STALE_INVOCATION_MS = 30 * 60 * 1000;
+
+async function cmdRecoverDangling(slug: string): Promise<void> {
+  if (!slug) {
+    console.error("Usage: pipeline-state recover-dangling <slug>");
+    process.exit(1);
+  }
+  const envOverride = process.env.STALE_INVOCATION_MS;
+  let staleMs = DEFAULT_STALE_INVOCATION_MS;
+  if (envOverride !== undefined && envOverride !== "") {
+    const parsed = Number(envOverride);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      console.error(
+        `Invalid STALE_INVOCATION_MS=${envOverride!} — must be a positive number of milliseconds.`,
+      );
+      process.exit(1);
+    }
+    staleMs = parsed;
+  }
+  const result = await runAdminCommand(adminHost, slug, {
+    type: "recover-dangling",
+    now: Date.now(),
+    staleMs,
+    slug,
+  });
+  if (result.kind !== "recover-dangling") {
+    // Defensive — the host always returns the variant matching the command.
+    console.error(`Unexpected result kind: ${result.kind}`);
+    process.exit(1);
+  }
+  if (result.recovered.length === 0) {
+    console.log(`✔ No dangling invocations older than ${staleMs}ms for "${slug}".`);
+    return;
+  }
+  for (const r of result.recovered) {
+    console.log(
+      `↻ recover-dangling: nodeKey=${r.nodeKey} invocationId=${r.invocationId} ageMs=${r.ageMs}`,
+    );
+  }
+  console.log(
+    `🔄 Force-failed ${result.recovered.length} dangling invocation(s). ` +
+    `Re-run \`agent:run\` so triage can reroute the freed slot(s).`,
+  );
+}
+
 async function cmdStatus(slug: string): Promise<void> {
   if (!slug) {
     console.error("Usage: pipeline-state status <slug>");
@@ -160,6 +208,7 @@ function usage(): never {
   console.error("  reset-scripts     <slug> <category>           — Reset script nodes for re-push");
   console.error("  resume            <slug>                      — Resume after elevated apply");
   console.error("  recover-elevated  <slug> <error-message>      — Recover after failed elevated apply");
+  console.error("  recover-dangling  <slug>                      — Force-fail unsealed dangling invocations");
   console.error("  status            <slug>                      — Print state JSON");
   console.error("  next              <slug>                      — Print next actionable item");
   console.error("  tree              <slug> [--with-artifacts]   — Print invocation lineage tree");
@@ -196,6 +245,9 @@ async function main(): Promise<void> {
         break;
       case "recover-elevated":
         await cmdRecoverElevated(args[0]!, args.slice(1).join(" "));
+        break;
+      case "recover-dangling":
+        await cmdRecoverDangling(args[0]!);
         break;
       case "status":
         await cmdStatus(args[0]!);

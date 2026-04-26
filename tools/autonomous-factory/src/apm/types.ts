@@ -128,6 +128,19 @@ export const ApmCompiledAgentSchema = z.object({
 export const ApmConfigSchema = z.object({
   /** Default cognitive circuit breaker limits — used when an agent does not declare per-agent toolLimits. */
   defaultToolLimits: ApmToolLimitsSchema,
+  /**
+   * Threshold (in milliseconds) after which an unsealed invocation is
+   * considered abandoned by the dangling-invocation auto-recovery scanner.
+   *
+   * On orchestrator startup (and via `pipeline:recover-dangling`), any
+   * invocation whose record has no `finishedAt`, `sealed !== true`, and
+   * either no `startedAt` or a `startedAt` older than `now - staleInvocationMs`
+   * is force-failed via the kernel admin path so the slot can re-route
+   * through triage instead of stalling the loop forever.
+   *
+   * Default: 30 * 60 * 1000 (30 minutes).
+   */
+  staleInvocationMs: z.number().int().positive().optional(),
   /** Generic key-value environment dictionary — replaces cloud-specific url/resource blocks.
    *  Keys are app-defined (e.g. SERVICE_A_URL, SERVICE_B_URL, FUNC_APP_NAME, RESOURCE_GROUP).
    *  Values support ${ENV_VAR} interpolation resolved at compile time. */

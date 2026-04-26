@@ -25,6 +25,8 @@ import {
   findInfraDevKey,
   type TransitionState,
 } from "../domain/transitions.js";
+import { findDanglingInvocations } from "../domain/dangling-invocations.js";
+import { sealInvocationRecord } from "../adapters/file-state/artifacts.js";
 
 // ---------------------------------------------------------------------------
 // AdminCommand discriminated union
@@ -33,7 +35,8 @@ import {
 export type AdminCommand =
   | ResetScriptsCommand
   | ResumeAfterElevatedCommand
-  | RecoverElevatedCommand;
+  | RecoverElevatedCommand
+  | RecoverDanglingCommand;
 
 export interface ResetScriptsCommand {
   readonly type: "reset-scripts";
@@ -53,6 +56,25 @@ export interface RecoverElevatedCommand {
   readonly maxDevCycles?: number;
 }
 
+/**
+ * Force-fail any unsealed invocation older than `staleMs` so the kernel can
+ * re-route via triage on the next loop tick. Used by the composition root
+ * (auto-recovery before the first loop tick) and by the
+ * `pipeline:recover-dangling` CLI verb.
+ *
+ * `now` and `staleMs` are passed explicitly so the reducer remains pure and
+ * testable with a fake clock. The slug is supplied to `runAdminCommand`
+ * (the JSONL tail writer needs it) and not duplicated here.
+ */
+export interface RecoverDanglingCommand {
+  readonly type: "recover-dangling";
+  readonly now: number;
+  readonly staleMs: number;
+  readonly slug: string;
+  /** Cap forwarded to `failItem`. Defaults to 10, matching other admin paths. */
+  readonly maxFailCount?: number;
+}
+
 // ---------------------------------------------------------------------------
 // AdminResult
 // ---------------------------------------------------------------------------
@@ -60,7 +82,14 @@ export interface RecoverElevatedCommand {
 export type AdminResult =
   | { kind: "reset-scripts"; state: PipelineState; cycleCount: number; halted: boolean }
   | { kind: "resume-after-elevated"; state: PipelineState; cycleCount: number; halted: boolean }
-  | { kind: "recover-elevated"; state: PipelineState; cycleCount: number; halted: boolean; failCount?: number };
+  | { kind: "recover-elevated"; state: PipelineState; cycleCount: number; halted: boolean; failCount?: number }
+  | {
+      kind: "recover-dangling";
+      state: PipelineState;
+      cycleCount: number;
+      halted: boolean;
+      recovered: ReadonlyArray<{ nodeKey: string; invocationId: string; ageMs: number }>;
+    };
 
 // ---------------------------------------------------------------------------
 // Pure reducer — applies an AdminCommand to a PipelineState
@@ -128,6 +157,66 @@ export function applyAdminCommand(state: PipelineState, cmd: AdminCommand): Admi
       const next = reset.state as unknown as PipelineState;
       if (!reset.halted) bumpCycleCounter(next, "reset-for-dev", reset.cycleCount);
       return { kind: "recover-elevated", state: next, cycleCount: reset.cycleCount, halted: reset.halted };
+    }
+
+    case "recover-dangling": {
+      const maxFail = cmd.maxFailCount ?? 10;
+      const records = Object.values(state.artifacts ?? {});
+      const dangling = findDanglingInvocations(records, cmd.now, cmd.staleMs);
+      if (dangling.length === 0) {
+        return {
+          kind: "recover-dangling",
+          state,
+          cycleCount: 0,
+          halted: false,
+          recovered: [],
+        };
+      }
+
+      const finishedAt = new Date(cmd.now).toISOString();
+      const recovered: Array<{ nodeKey: string; invocationId: string; ageMs: number }> = [];
+      // Mutating reducer here — `sealInvocationRecord` and `failItemRule`
+      // already follow the kernel's "produce next state" contract; we just
+      // chain them. The state object is treated as the working buffer; the
+      // surrounding `withLockedWrite` writes the final snapshot atomically.
+      let working: PipelineState = state;
+      for (const { record, ageMs } of dangling) {
+        // Seal the invocation record itself so the JSONL tail and in-memory
+        // index reflect the synthetic failure. `sealInvocationRecord` is
+        // idempotent — re-sealing an already-sealed record is a no-op.
+        sealInvocationRecord(working, cmd.slug, {
+          invocationId: record.invocationId,
+          outcome: "failed",
+          finishedAt,
+        });
+        // Fail the owning item so the kernel's next tick sees a failed slot
+        // and lets triage reroute (or the loop advance past it).
+        const owningItem = working.items.find((i) => i.key === record.nodeKey);
+        if (owningItem && owningItem.status !== "failed" && owningItem.status !== "na") {
+          const reason =
+            `Auto-recovered dangling invocation ${record.invocationId} after ${ageMs}ms ` +
+            `(orchestrator restart with unsealed record)`;
+          const failed = failItemRule(
+            working as unknown as TransitionState,
+            record.nodeKey,
+            reason,
+            maxFail,
+          );
+          working = failed.state as unknown as PipelineState;
+        }
+        recovered.push({
+          nodeKey: record.nodeKey,
+          invocationId: record.invocationId,
+          ageMs,
+        });
+      }
+      return {
+        kind: "recover-dangling",
+        state: working,
+        cycleCount: 0,
+        halted: false,
+        recovered,
+      };
     }
 
     default: {
