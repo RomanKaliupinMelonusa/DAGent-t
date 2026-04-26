@@ -207,6 +207,76 @@ describe("FileBaselineLoader", () => {
     assert.equal(loaded!.console_errors?.[0]?.pattern, "older-completed");
   });
 
+  it(
+    "deduplicates multi-record invocations and resolves the final sealed entry "
+    + "(regression: real-world ledgers append per-status-change records, only the last carries sealed/outputs)",
+    () => {
+      const slug = "multi-record";
+      const inv = "inv_01HMULTIRECORDREGR000000A";
+      const outputsDir = path.join(
+        tmpRoot,
+        "in-progress",
+        slug,
+        "baseline-analyzer",
+        inv,
+        "outputs",
+      );
+      fs.mkdirSync(outputsDir, { recursive: true });
+      const filePath = path.join(outputsDir, "baseline.json");
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          feature: slug,
+          console_errors: [{ pattern: "Warning: getServerSnapshot leaked" }],
+        }),
+      );
+      const ledgerPath = path.join(tmpRoot, "in-progress", slug, "_invocations.jsonl");
+      fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+      // Append progressive status records the way the real kernel does:
+      // started → multiple in-flight updates with empty outputs → final sealed
+      // record carrying outputs[]+outcome+finishedAt+sealed:true.
+      const baseRec = {
+        invocationId: inv,
+        nodeKey: "baseline-analyzer",
+        cycleIndex: 1,
+        trigger: "initial",
+        startedAt: "2026-04-25T20:05:15.172Z",
+        inputs: [],
+      };
+      fs.appendFileSync(
+        ledgerPath,
+        JSON.stringify({ ...baseRec, outputs: [] }) + "\n",
+      );
+      fs.appendFileSync(
+        ledgerPath,
+        JSON.stringify({ ...baseRec, outputs: [] }) + "\n",
+      );
+      fs.appendFileSync(
+        ledgerPath,
+        JSON.stringify({
+          ...baseRec,
+          outputs: [
+            {
+              kind: "baseline",
+              scope: "node",
+              slug,
+              nodeKey: "baseline-analyzer",
+              invocationId: inv,
+              path: filePath,
+            },
+          ],
+          outcome: "completed",
+          finishedAt: "2026-04-25T20:07:50.345Z",
+          sealed: true,
+        }) + "\n",
+      );
+      const loader = makeLoader(tmpRoot);
+      const loaded = loader.loadBaseline(slug);
+      assert.ok(loaded, "loader must resolve catalog baseline despite earlier non-sealed records");
+      assert.equal(loaded!.console_errors?.[0]?.pattern, "Warning: getServerSnapshot leaked");
+    },
+  );
+
   it("renders a non-empty advisory containing the seeded patterns when only the catalog has the baseline", () => {
     const profile = {
       feature: "advisory-regression",

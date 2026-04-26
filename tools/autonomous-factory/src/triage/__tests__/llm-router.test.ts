@@ -156,3 +156,63 @@ describe("buildTriagePrompt — both-empty path", () => {
     assert.doesNotMatch(prompt, /Do not output any other text\.\n\n\n\nError trace:/);
   });
 });
+
+describe("buildTriagePrompt — end-to-end loader → prompt subtraction (regression)", () => {
+  it(
+    "renders the baseline-noise section when the baseline is resolved via the artifact catalog "
+    + "(pins the catalog-first wiring that fixed the product-quick-view-plp misclassification)",
+    async () => {
+      const fs = await import("node:fs");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const { FileArtifactBus } = await import("../../adapters/file-artifact-bus.js");
+      const { FileBaselineLoader } = await import("../../adapters/file-baseline-loader.js");
+      const { LocalFilesystem } = await import("../../adapters/local-filesystem.js");
+
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "triage-loader-"));
+      try {
+        const slug = "regression-feature";
+        const inv = "inv_01HTRIAGEREGR0000000000A";
+        const outputsDir = path.join(tmpRoot, "in-progress", slug, "baseline-analyzer", inv, "outputs");
+        fs.mkdirSync(outputsDir, { recursive: true });
+        const baselinePath = path.join(outputsDir, "baseline.json");
+        fs.writeFileSync(
+          baselinePath,
+          JSON.stringify({
+            feature: slug,
+            console_errors: [
+              { pattern: "Warning: The result of getServerSnapshot should be cached" },
+            ],
+          }),
+        );
+        const ledgerPath = path.join(tmpRoot, "in-progress", slug, "_invocations.jsonl");
+        fs.writeFileSync(
+          ledgerPath,
+          JSON.stringify({
+            invocationId: inv,
+            nodeKey: "baseline-analyzer",
+            outcome: "completed",
+            finishedAt: "2026-04-25T20:07:50.345Z",
+            sealed: true,
+            outputs: [
+              { kind: "baseline", path: baselinePath, nodeKey: "baseline-analyzer", invocationId: inv },
+            ],
+          }) + "\n",
+        );
+
+        const fsAdapter = new LocalFilesystem();
+        const bus = new FileArtifactBus(tmpRoot, fsAdapter);
+        const loader = new FileBaselineLoader({ appRoot: tmpRoot, bus });
+        const baseline = loader.loadBaseline(slug);
+        assert.ok(baseline, "loader must resolve catalog baseline");
+
+        const prompt = buildTriagePrompt(TRACE, DOMAINS, [], ROUTING, baseline, []);
+        assert.match(prompt, /Pre-existing baseline noise/);
+        assert.match(prompt, /\[console\] Warning: The result of getServerSnapshot/);
+        assert.match(prompt, /must NOT by themselves justify a frontend/);
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    },
+  );
+});
