@@ -252,3 +252,48 @@ You have been re-invoked because a prior cycle's spec failed in a downstream nod
     3. **Scope edits to the failing assertion path.** Only modify the locator chain, wait, setup helper, or assertion that the `triageReason` directly implicates. Untouched tests stay untouched. New defect classes introduced into previously-passing tests are a regression.
     4. **No new test cases during a redev cycle** unless the handoff explicitly calls out missing coverage. The redev surface is "fix what triage flagged", not "expand the suite".
     5. **Re-audit every changed locator against §20 and every page-rooted spec against §19** before committing. Run the §10 / §18 / §19 self-review greps locally; a redev that re-introduces a `networkidle`, a tautological title, a missing `dismissOverlays`, or a strict-mode-unsafe locator will simply triage back to you next cycle.
+
+## Hydration discipline (MANDATORY — gate first interaction on hydration)
+
+PWA Kit ships fully-rendered HTML from the SSR server. Buttons, links, and form controls are present in the DOM **before** React has attached its event handlers on the client. A spec that calls `.click()` / `.fill()` / `.press()` between `page.goto(...)` and React's first `useEffect` will land on a non-interactive element — the click dispatches, the handler is not yet bound, the modal never opens, and Playwright times out 15 s later with a useless `TimeoutError`. Triage classifies that as `test-code` and routes it back to you.
+
+The app shell sets `window.__APP_HYDRATED__ = true` from a single `useEffect` after first client-side mount (see `overrides/app/components/_app/index.jsx`). The `awaitHydrated(page)` helper exported from `./fixtures` polls for that flag with a 10 s timeout.
+
+22. **Every spec MUST `await awaitHydrated(page)` between `page.goto(...)` and the first user-action verb** (`click`, `fill`, `press`, `hover`, `tap`, `dispatchEvent`, `selectOption`, `check`, `setInputFiles`). Place it after `dismissOverlays(page)` (§19) so overlays are dismissed under the SSR DOM and the next interaction lands on a hydrated handler.
+
+    ```ts
+    // ✅ Canonical sequence
+    import { test, expect, awaitHydrated } from './fixtures';
+
+    test('opens quick view modal', async ({ page }) => {
+      await page.goto('/category/womens-jewelry', { waitUntil: 'domcontentloaded' });
+      await dismissOverlays(page);          // §19 — drop intercepting portals
+      await awaitHydrated(page);            // §22 — wait for React to attach handlers
+      await page.getByTestId('product-tile-quick-view-btn-womens-jewelry-bundleM').click();
+      await expect(page.getByTestId('quick-view-modal')).toBeVisible();
+    });
+    ```
+
+    **Pre-hydration shell tests are the only exception.** A spec that deliberately asserts on the SSR-rendered shell *before* hydration (e.g. SEO meta tags, no-JS fallback, server-rendered breadcrumb) MUST omit `awaitHydrated` AND add a one-line comment immediately above `page.goto(...)`:
+
+    ```ts
+    // pre-hydration: asserting SSR-rendered <title> before React mounts.
+    await page.goto('/category/womens-jewelry', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/Women's Jewelry/);
+    ```
+
+    The `// pre-hydration` token is what the self-review grep allowlists — keep the wording exact.
+
+    Self-review grep (run before commit; sets a flag instead of `exit`-ing the parent shell):
+    ```bash
+    # Every spec that calls page.goto must also call awaitHydrated, OR
+    # justify the omission with a `// pre-hydration` comment.
+    missing=0
+    for f in $(grep -lE "page\.goto\(" e2e/*.spec.ts 2>/dev/null); do
+      if ! grep -q "awaitHydrated" "$f" && ! grep -q "// pre-hydration" "$f"; then
+        echo "MISSING awaitHydrated: $f"
+        missing=1
+      fi
+    done
+    [ "$missing" = 0 ] || echo "FAIL: add awaitHydrated(page) per §22 to the files above (or annotate with // pre-hydration)"
+    ```
