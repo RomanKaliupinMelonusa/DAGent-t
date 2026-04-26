@@ -21,8 +21,54 @@
 
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
+import type { ApmConfig } from "../../apm/types.js";
 import { executeHook } from "../../lifecycle/hooks.js";
 import { featurePath } from "../../paths/feature-paths.js";
+
+/**
+ * Node keys that share `apps/<app>/.apm/hooks/e2e-runner-{pre,post}.sh` and
+ * therefore receive the declarative `apm.e2e.readiness.*` env injection.
+ *
+ * The brief named `e2e-runner` exclusively, but in commerce-storefront the
+ * same hook is also reused by `qa-adversary` and `storefront-debug`. Once
+ * the bash-side fallback is dropped (Session B step 5), those callers must
+ * also receive the env vars or their pre-hook fails loudly. Adding more
+ * keys here is the supported way to opt nodes in.
+ */
+const E2E_READINESS_NODE_KEYS = new Set<string>([
+  "e2e-runner",
+  "qa-adversary",
+  "storefront-debug",
+]);
+
+/**
+ * Compute the `apm.e2e.readiness.*` env-var injection for a given node.
+ *
+ * Returns an empty object when:
+ *   - the node key is not in {@link E2E_READINESS_NODE_KEYS}, or
+ *   - `apm.e2e.readiness` is undefined.
+ *
+ * Each declared field maps to one env var; absent fields are left unset so
+ * the bash defaults in `wait-for-app-ready.sh` remain authoritative.
+ *
+ * Exported for unit testing — see
+ * `lifecycle/__tests__/hooks-readiness-env.test.ts`.
+ */
+export function buildE2eReadinessEnv(
+  itemKey: string,
+  config: ApmConfig | undefined,
+): Record<string, string> {
+  if (!E2E_READINESS_NODE_KEYS.has(itemKey)) return {};
+  const readiness = config?.e2e?.readiness;
+  if (!readiness) return {};
+
+  const env: Record<string, string> = {};
+  if (readiness.url !== undefined) env.E2E_READINESS_URL = readiness.url;
+  if (readiness.timeout_s !== undefined) env.READY_TIMEOUT_S = String(readiness.timeout_s);
+  if (readiness.min_bytes !== undefined) env.READY_MIN_BYTES = String(readiness.min_bytes);
+  if (readiness.deny_re !== undefined) env.READY_DENY_RE = readiness.deny_re;
+  return env;
+}
 
 /** Resolve the workflow node definition for the current item, if any. */
 function getNode(ctx: NodeContext) {
@@ -69,6 +115,11 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
   };
   const baseline = readBaselineValidation(ctx);
   if (baseline) env.BASELINE_VALIDATION = baseline;
+
+  // Declarative E2E readiness knobs — gated on node key so non-e2e nodes
+  // never see these vars. See `buildE2eReadinessEnv` for the full rule.
+  Object.assign(env, buildE2eReadinessEnv(ctx.itemKey, ctx.apmContext.config));
+
   return env;
 }
 

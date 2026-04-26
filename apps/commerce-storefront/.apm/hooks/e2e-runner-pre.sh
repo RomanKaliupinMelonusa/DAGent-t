@@ -24,7 +24,6 @@ set -uo pipefail
 
 SERVER_LOG="/tmp/smoke-server-${SLUG:-storefront}.log"
 PID_FILE="/tmp/smoke-server-${SLUG:-storefront}.pid"
-PLP_URL="http://localhost:3000/category/newarrivals"
 
 # ─── 1. Kill stale dev servers + browsers from previous runs ──────────────
 # Port-based kill first — pwa-kit-dev spawns babel-node via cross-env, and the
@@ -84,7 +83,19 @@ echo "Pre: started dev server (PID $SERVER_PID), log $SERVER_LOG"
 # The probe runs as a background subprocess so this hook can keep
 # watching SERVER_PID and surface a server-died-early diagnostic with
 # the same log-tail behaviour as the previous loop.
-READINESS_URL="${E2E_READINESS_URL:-$PLP_URL}"
+#
+# Session B Phase 1: the readiness URL (and optional timeout / min-bytes /
+# deny-regex overrides) is injected by the lifecycle-hooks middleware from
+# the declarative `apm.e2e.readiness.*` block. Fail loudly if it's missing
+# rather than silently falling back to a hard-coded URL — that path was a
+# lie waiting to happen the moment a different app reused this hook.
+if [[ -z "${E2E_READINESS_URL:-}" ]]; then
+  echo "Pre: E2E_READINESS_URL not injected — declare apm.e2e.readiness.url in .apm/apm.yml" >&2
+  kill "$SERVER_PID" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  exit 1
+fi
+READINESS_URL="$E2E_READINESS_URL"
 PROBE="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}/tools/autonomous-factory/scripts/wait-for-app-ready.sh"
 if [[ ! -x "$PROBE" ]]; then
   echo "Pre: readiness probe not found or not executable at $PROBE"

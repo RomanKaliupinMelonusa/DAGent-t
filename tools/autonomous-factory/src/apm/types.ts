@@ -424,6 +424,29 @@ export const ApmConfigSchema = z.object({
      *  drift check is skipped and pinning alone remains in effect. */
     reference_dir: z.string().optional(),
   }).optional(),
+
+  /** Declarative E2E configuration. Lifts URL-shaped readiness knobs out
+   *  of bash hooks so each app declares them in apm.yml without editing
+   *  scripts. The lifecycle-hooks middleware injects these as env vars
+   *  (`E2E_READINESS_URL`, `READY_TIMEOUT_S`, `READY_MIN_BYTES`,
+   *  `READY_DENY_RE`) when spawning pre/post hooks for the e2e-runner
+   *  family of nodes. Absent fields fall through to the bash defaults
+   *  in `tools/autonomous-factory/scripts/wait-for-app-ready.sh`. */
+  e2e: z.object({
+    readiness: z.object({
+      /** Target URL for the body-aware readiness probe. Required when the
+       *  readiness block is declared at all. */
+      url: z.string().url(),
+      /** Overall probe deadline in seconds. Maps to `READY_TIMEOUT_S`. */
+      timeout_s: z.number().int().positive().optional(),
+      /** Minimum response body size (bytes) to consider the page ready.
+       *  Maps to `READY_MIN_BYTES`. */
+      min_bytes: z.number().int().nonnegative().optional(),
+      /** Extended-regex source matching boot-splash bodies that must NOT
+       *  be considered ready. Maps to `READY_DENY_RE`. */
+      deny_re: z.string().optional(),
+    }).optional(),
+  }).optional(),
 });
 
 // ---------------------------------------------------------------------------

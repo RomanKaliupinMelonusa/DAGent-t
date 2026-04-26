@@ -555,6 +555,18 @@ config:
     app: "Deploy Storefront"
     filePatterns: ["deploy-storefront.yml"]
 
+  # Session B Phase 1 — declarative E2E readiness knobs. The lifecycle-hooks
+  # middleware injects these as env vars (E2E_READINESS_URL, READY_TIMEOUT_S,
+  # READY_MIN_BYTES, READY_DENY_RE) when spawning pre/post hooks for the
+  # e2e-runner family of nodes (e2e-runner, qa-adversary, storefront-debug —
+  # all share `.apm/hooks/e2e-runner-{pre,post}.sh`). Lifting them out of bash
+  # lets each app declare its own without editing scripts. Absent fields fall
+  # through to defaults baked into `wait-for-app-ready.sh`.
+  e2e:
+    readiness:
+      url: http://localhost:3000/category/newarrivals
+      timeout_s: 180
+
   # Session C — PWA Kit base-template version pinning. The spec-compiler,
   # storefront-dev, storefront-debug, and e2e-author agents all reason about
   # `@salesforce/retail-react-app` exports; a silent `npm install` bump
