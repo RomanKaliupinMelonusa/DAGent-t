@@ -25,6 +25,7 @@ import { defaultHarnessLimits } from "../../harness/limits.js";
 import type { AgentSandbox } from "../../harness/sandbox.js";
 import type { ItemSummary } from "../../types.js";
 import type { ReportedOutcome } from "../../harness/outcome-tool.js";
+import type { NodeContractGateParams } from "../../handlers/support/node-contract-gate.js";
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -80,10 +81,12 @@ interface MockSessionHandle {
  */
 function makeMockClient(
   script: (telemetry: ItemSummary) => Promise<void> | void,
+  extraScripts: ReadonlyArray<(telemetry: ItemSummary, handle: MockSessionHandle) => Promise<void> | void> = [],
 ): MockSessionHandle {
   const listeners: Record<string, Array<(event: any) => void>> = {};
   let disconnectCount = 0;
   let capturedTelemetry: ItemSummary | undefined;
+  let sendCount = 0;
 
   const session = {
     on: (event: string, cb: (event: any) => void) => {
@@ -91,7 +94,13 @@ function makeMockClient(
     },
     sendAndWait: async (_input: { prompt: string }, _timeoutMs: number) => {
       if (!capturedTelemetry) throw new Error("telemetry not captured");
-      await script(capturedTelemetry);
+      const idx = sendCount++;
+      if (idx === 0) {
+        await script(capturedTelemetry);
+      } else {
+        const extra = extraScripts[idx - 1];
+        if (extra) await extra(capturedTelemetry, handleRef!);
+      }
     },
     disconnect: async () => {
       disconnectCount += 1;
@@ -113,27 +122,30 @@ function makeMockClient(
     },
   };
 
-  return {
+  const handle: MockSessionHandle & { setTelemetry: (t: ItemSummary) => void } = {
     client,
     fireToolStart(toolName: string) {
       const cbs = listeners["tool.execution_start"] ?? [];
       for (const cb of cbs) cb({ data: { toolName, arguments: {} } });
     },
     disconnectCalls: () => disconnectCount,
-    // Expose a setter so runWithMock can stash the telemetry the runner
-    // is about to use.
-    ...({ setTelemetry: (t: ItemSummary) => { capturedTelemetry = t; } } as { setTelemetry: (t: ItemSummary) => void }),
-  } as MockSessionHandle & { setTelemetry: (t: ItemSummary) => void };
+    setTelemetry: (t: ItemSummary) => { capturedTelemetry = t; },
+  };
+  let handleRef: MockSessionHandle | undefined = handle;
+  void handleRef;
+  return handle;
 }
 
 const tmp = os.tmpdir();
 
 interface RunOpts {
   script: (telemetry: ItemSummary) => Promise<void> | void;
+  extraScripts?: ReadonlyArray<(telemetry: ItemSummary, handle: MockSessionHandle) => Promise<void> | void>;
+  nodeContract?: NodeContractGateParams;
 }
 
 async function runWithMock(opts: RunOpts) {
-  const handle = makeMockClient(opts.script) as MockSessionHandle & { setTelemetry: (t: ItemSummary) => void };
+  const handle = makeMockClient(opts.script, opts.extraScripts ?? []) as MockSessionHandle & { setTelemetry: (t: ItemSummary) => void };
   const telemetry = emptyTelemetry("spec-compiler");
   handle.setTelemetry(telemetry);
   const captured: CapturedEvent[] = [];
@@ -155,6 +167,7 @@ async function runWithMock(opts: RunOpts) {
     pipelineSummaries: [],
     fatalPatterns: [],
     logger: makeLogger(captured),
+    ...(opts.nodeContract ? { nodeContract: opts.nodeContract } : {}),
   });
 
   return { result, telemetry, handle, captured };
@@ -253,5 +266,62 @@ describe("runCopilotSession — post-completion session discipline (P1.3)", () =
       (e) => e.event === "breaker.fire" && e.payload.type === "post_completion_tool_call",
     );
     assert.equal(breakerEvents.length, 1);
+  });
+
+  it("suppresses the discipline gate during a contract-recovery nudge", async () => {
+    // Stub bus/fs — never invoked because producesArtifacts is empty.
+    const stubBus = {
+      ref(): never { throw new Error("bus.ref must not be called when producesArtifacts is empty"); },
+    };
+    const stubFs = {
+      exists: async () => false,
+      readFile: async () => "",
+      writeFile: async () => { /* noop */ },
+    };
+    const nodeContract: NodeContractGateParams = {
+      mode: "report_outcome_only",
+      producesArtifacts: [],
+      slug: "feat-x",
+      nodeKey: "spec-compiler",
+      invocationId: "inv-1",
+      strictEnvelope: false,
+      autoSkipped: false,
+      bus: stubBus,
+      fs: stubFs,
+    };
+
+    const { telemetry, captured } = await runWithMock({
+      // Initial sendAndWait: agent does NOT call report_outcome.
+      // The runner-internal gate will detect the missing outcome and nudge.
+      script: () => { /* no-op */ },
+      extraScripts: [
+        // Nudge #1: agent calls write_file (post-completion gate must be
+        // muted), then finalizes with report_outcome.
+        async (t, handle) => {
+          handle.fireToolStart("write_file");
+          t.reportedOutcome = { status: "completed" } satisfies ReportedOutcome;
+          t.reportOutcomeTerminal = true;
+          handle.fireToolStart("report_outcome");
+        },
+      ],
+      nodeContract,
+    });
+
+    const breakerEvents = captured.filter(
+      (e) => e.event === "breaker.fire" && e.payload.type === "post_completion_tool_call",
+    );
+    assert.equal(
+      breakerEvents.length,
+      0,
+      "no post_completion_tool_call breaker.fire during nudge",
+    );
+    assert.equal(
+      telemetry.postCompletionToolCallAnnotation,
+      undefined,
+      "no annotation while contract-recovery is active",
+    );
+    assert.equal(telemetry.outcome, "completed");
+    assert.equal(telemetry.contractRecoveryAttempts, 1);
+    assert.equal(telemetry.contractRecoveryRecovered, true);
   });
 });

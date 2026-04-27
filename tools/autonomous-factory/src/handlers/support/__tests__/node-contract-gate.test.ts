@@ -51,6 +51,9 @@ function makeFs(files: Record<string, string>): ContractGateFs {
       }
       return files[path];
     },
+    async writeFile(path, body) {
+      files[path] = body;
+    },
   };
 }
 
@@ -186,22 +189,35 @@ describe("validateNodeContract", () => {
     assert.equal(result.ok, true);
   });
 
-  it("strict envelope: sidecar missing → malformed", async () => {
-    // `acceptance` is `envelope: "sidecar"`. With strict on, a missing
-    // .meta.json must surface as a malformed gap.
+  it("strict envelope: auto-stamps missing sidecar for envelope-only kinds", async () => {
+    // `acceptance` is `policy: "envelope-only"` + `envelope: "sidecar"`.
+    // With strict on, a missing .meta.json should be auto-stamped in-place
+    // by the gate (mirroring the dispatch-layer auto-stamp) and the
+    // validation should pass.
     const accPath = "/path/acceptance.yml";
+    const sidecar = `${accPath}.meta.json`;
+    const files: Record<string, string> = { [accPath]: "schemaVersion: 1\n" };
     const result = await validateNodeContract({
       ...baseInput,
       strictEnvelope: true,
       producesArtifacts: ["acceptance"],
       reportedOutcome: completedOutcome,
       bus: makeBus({ acceptance: accPath }),
-      fs: makeFs({ [accPath]: "schemaVersion: 1\n" }), // sidecar absent
+      fs: makeFs(files),
     });
-    assert.equal(result.ok, false);
-    if (result.ok) return;
-    assert.equal(result.missing.length, 1);
-    assert.equal(result.missing[0].kind, "artifact-malformed");
+    assert.equal(result.ok, true);
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(files, sidecar),
+      "sidecar file should have been auto-stamped on disk",
+    );
+    const env = JSON.parse(files[sidecar]) as {
+      schemaVersion: number;
+      producedBy: string;
+      producedAt: string;
+    };
+    assert.equal(typeof env.schemaVersion, "number");
+    assert.equal(env.producedBy, baseInput.nodeKey);
+    assert.match(env.producedAt, /^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("non-strict mode does NOT enforce envelopes", async () => {

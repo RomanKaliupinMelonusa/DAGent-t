@@ -1084,6 +1084,22 @@ export function buildSidecarEnvelope(
 }
 
 /**
+ * Render the JSON body (with trailing newline) the bus / gates write to
+ * `<path>.meta.json` for sidecar-envelope artifacts. Pure — no I/O. Both
+ * the post-handler dispatch validator and the in-session node-contract
+ * gate use this when auto-stamping a missing sidecar for `policy:
+ * "envelope-only"` kinds.
+ */
+export function stampSidecarEnvelope(
+  kind: ArtifactKind,
+  producedBy: string,
+  producedAt?: string,
+): string {
+  const envelope = buildSidecarEnvelope(kind, producedBy, producedAt);
+  return JSON.stringify(envelope, null, 2) + "\n";
+}
+
+/**
  * Session A (Item 8) — build the envelope triplet that engine producers
  * of INLINE kinds spread into their JSON body before `bus.write`. Same
  * shape as `buildSidecarEnvelope`; the distinct export exists so producer

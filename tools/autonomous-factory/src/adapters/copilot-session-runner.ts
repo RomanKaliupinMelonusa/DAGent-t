@@ -187,8 +187,13 @@ export async function runCopilotSession(
   // drift past completion until the 90s idle watchdog kills it.
   const POST_COMPLETION_GRACE_MS = 5_000;
   let postCompletionDisconnectTimer: NodeJS.Timeout | undefined;
+  // While the runner is awaiting a contract-recovery nudge, the engine
+  // has officially re-opened the session for more work — agent tool
+  // calls are expected and must not trip the post-completion gate.
+  let contractRecoveryActive = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   session.on("tool.execution_start", (event: any) => {
+    if (contractRecoveryActive) return;
     if (!telemetry.reportOutcomeTerminal) return;
     if (postCompletionDisconnectTimer) return;
     const toolName = event?.data?.toolName;
@@ -304,7 +309,22 @@ export async function runCopilotSession(
 
         const nudgePrompt = buildContractRecoveryPrompt(itemKey, result.missing, nudgesFired);
         const nudgeBudget = Math.min(remaining, PER_NUDGE_CAP_MS);
-        await session.sendAndWait({ prompt: nudgePrompt }, nudgeBudget);
+        // The engine has officially re-opened the session — defensively
+        // clear any already-armed post-completion disconnect timer and
+        // its annotation, then mute the discipline gate for the duration
+        // of this awaited nudge. The `finally` guarantees the gate
+        // re-arms even if `sendAndWait` rejects.
+        if (postCompletionDisconnectTimer) {
+          clearTimeout(postCompletionDisconnectTimer);
+          postCompletionDisconnectTimer = undefined;
+        }
+        telemetry.postCompletionToolCallAnnotation = undefined;
+        contractRecoveryActive = true;
+        try {
+          await session.sendAndWait({ prompt: nudgePrompt }, nudgeBudget);
+        } finally {
+          contractRecoveryActive = false;
+        }
       }
     }
   } catch (err: unknown) {

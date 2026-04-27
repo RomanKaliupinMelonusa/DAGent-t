@@ -25,6 +25,7 @@ import {
   getArtifactKind,
   isArtifactKind,
   sidecarPath,
+  stampSidecarEnvelope,
   validateEnvelope,
 } from "../../apm/artifact-catalog.js";
 
@@ -67,6 +68,7 @@ export interface ContractGatePathResolver {
 export interface ContractGateFs {
   exists(path: string): Promise<boolean>;
   readFile(path: string): Promise<string>;
+  writeFile(path: string, body: string): Promise<void>;
 }
 
 export interface ValidateNodeContractInput {
@@ -193,13 +195,37 @@ export async function validateNodeContract(
         try {
           sidecarBody = await input.fs.readFile(sidecar);
         } catch {
-          missing.push({
-            kind: "artifact-malformed",
-            declaredKind: kindStr,
-            expectedPath: ref.path,
-            reason: `sidecar not found at ${sidecar}`,
-          });
-          continue;
+          // Auto-stamp missing sidecar — only for `policy: "envelope-only"`
+          // kinds. STRICT-policy sidecar kinds would hard-fail here, but
+          // no kind currently combines `policy: "strict"` with
+          // `envelope: "sidecar"` (the catalog deliberately keeps the
+          // STRICT bucket on inline-envelope kinds). This branch is
+          // therefore dead-code-by-policy today; it remains as a guard
+          // for future STRICT+sidecar kinds. Mirrors the dispatch-layer
+          // auto-stamp in `loop/dispatch/item-dispatch.ts`.
+          if (def.policy !== "envelope-only") {
+            missing.push({
+              kind: "artifact-malformed",
+              declaredKind: kindStr,
+              expectedPath: ref.path,
+              reason: `sidecar not found at ${sidecar}`,
+            });
+            continue;
+          }
+          try {
+            sidecarBody = stampSidecarEnvelope(kindStr, input.nodeKey);
+            await input.fs.writeFile(sidecar, sidecarBody);
+          } catch (writeErr) {
+            missing.push({
+              kind: "artifact-malformed",
+              declaredKind: kindStr,
+              expectedPath: ref.path,
+              reason:
+                `sidecar not found at ${sidecar} and auto-stamp failed: ` +
+                `${(writeErr as Error).message}`,
+            });
+            continue;
+          }
         }
         validateEnvelope(kindStr, "", { path: ref.path, sidecarBody });
       } else {

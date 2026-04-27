@@ -291,6 +291,11 @@ export interface PipelineState {
   salvageSurvivors: string[];
   /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
   dormantByActivation?: string[];
+  /** Consumer-key → producer-keys map for `consumes_artifacts` edges with
+   *  `required: true`. Persisted at init from workflows.yml so the salvage
+   *  scheduler can spare producers feeding surviving consumers. Optional
+   *  for backward compatibility with legacy state files. */
+  requiredArtifactProducers?: Record<string, string[]>;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
   /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.

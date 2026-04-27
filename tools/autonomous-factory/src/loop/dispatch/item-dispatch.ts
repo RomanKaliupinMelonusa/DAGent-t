@@ -25,6 +25,7 @@ import {
   isArtifactKind,
   sidecarPath,
   stampEnvelope,
+  stampSidecarEnvelope,
   validateEnvelope,
 } from "../../apm/artifact-catalog.js";
 
@@ -396,15 +397,7 @@ async function detectInvalidEnvelopeOutputs(
             continue;
           }
           try {
-            const envelopeBody = JSON.stringify(
-              {
-                schemaVersion: 1,
-                producedBy: ctx.itemKey,
-                producedAt: new Date().toISOString(),
-              },
-              null,
-              2,
-            ) + "\n";
+            const envelopeBody = stampSidecarEnvelope(kindStr, ctx.itemKey);
             await ctx.filesystem.writeFile(sidecar, envelopeBody);
             ctx.logger.event("node.artifact.write", ctx.itemKey, {
               kind: kindStr,

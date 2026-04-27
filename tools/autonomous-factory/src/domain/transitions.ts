@@ -46,6 +46,13 @@ export interface TransitionState {
   naBySalvage?: string[];
   salvageSurvivors: string[];
   dormantByActivation?: string[];
+  /** Phase 3 — consumer-key → producer-keys for which the consumer declares
+   *  a `consumes_artifacts` edge with `required: true` (or the Zod default).
+   *  Read by `salvageForDraft` to scope demotion: any candidate-for-N/A node
+   *  whose required artifact still feeds a surviving consumer is left in
+   *  its current status (eligible for normal retry) instead of being marked
+   *  N/A. Optional for backward compatibility with legacy state files. */
+  requiredArtifactProducers?: Record<string, string[]>;
   [key: string]: unknown; // allow pass-through of other fields
 }
 
@@ -390,6 +397,12 @@ export interface SalvageResult {
   /** Keys demoted from "force-pending salvage survivor" to N/A by the
    *  deploy-orphan invariant sweep. Subset of `skippedKeys`. */
   demotedKeys: string[];
+  /** Producer keys that would have been demoted but were spared because a
+   *  surviving consumer declares a `consumes_artifacts` edge with
+   *  `required: true` against them. Such producers retain their existing
+   *  status (typically `failed`, eligible for the workflow's normal retry
+   *  policy). Empty when no contract-based sparing applies. */
+  sparedKeys: string[];
 }
 
 /**
@@ -402,6 +415,13 @@ export interface SalvageResult {
  * promotion-only deploy node is left "force-pending" with no upstream
  * producer to promote. Scaffold/finalize survivors are never demoted —
  * by contract they are loss-tolerant and self-contained.
+ *
+ * Required-artifact contract — a candidate node `n` is excluded from
+ * demotion when ANY surviving (non-N/A) consumer `m` declares
+ * `consumes_artifacts: [{ from: n, kind: K, required: true }]`. Spared
+ * producers retain their existing status (typically `failed`, eligible
+ * for the normal retry policy) instead of being marked N/A. Optional
+ * (`required: false`) consumer edges do not block salvage.
  */
 export function salvageForDraft(
   state: TransitionState,
@@ -409,7 +429,7 @@ export function salvageForDraft(
 ): SalvageResult {
   // Idempotency guard
   if (state.errorLog.some((e) => e.itemKey === "salvage-draft")) {
-    return { state, skippedKeys: [], demotedKeys: [] };
+    return { state, skippedKeys: [], demotedKeys: [], sparedKeys: [] };
   }
 
   const skipKeys = new Set(getDownstream(state.dependencies, [failedItemKey]));
@@ -421,13 +441,42 @@ export function salvageForDraft(
           .map((i) => i.key),
   );
 
+  // Naive demotion candidate set — `failedItemKey` ∪ downstream.
+  const candidateKeys = new Set<string>(skipKeys);
+  candidateKeys.add(failedItemKey);
+
+  // Required-artifact contract: any candidate that feeds a `required: true`
+  // `consumes_artifacts` edge of a surviving consumer is spared from
+  // demotion. A "surviving consumer" is one that will still execute after
+  // salvage — either a force-pending salvage survivor (overrides candidate
+  // membership) or any non-candidate node that is not already N/A/dormant.
+  const requiredProducers = state.requiredArtifactProducers ?? {};
+  const sparedSet = new Set<string>();
+  for (const consumer of state.items) {
+    const isForcePending = forcePendingKeys.has(consumer.key);
+    if (!isForcePending) {
+      if (candidateKeys.has(consumer.key)) continue;
+      if (consumer.status === "na" || consumer.status === "dormant") continue;
+    }
+    const producers = requiredProducers[consumer.key];
+    if (!producers || producers.length === 0) continue;
+    for (const p of producers) {
+      if (candidateKeys.has(p)) sparedSet.add(p);
+    }
+  }
+
   const skippedKeys: string[] = [];
   let newItems = state.items.map((i) => {
     if (forcePendingKeys.has(i.key)) {
       return { ...i, status: "pending" as const, error: null };
     }
     if (i.status === "dormant") return i;
-    if ((skipKeys.has(i.key) || i.key === failedItemKey) && i.status !== "done") {
+    if (candidateKeys.has(i.key) && i.status !== "done") {
+      if (sparedSet.has(i.key)) {
+        // Spared by required-artifact contract — leave existing status
+        // intact so the workflow's normal retry policy can recover it.
+        return i;
+      }
       skippedKeys.push(i.key);
       // Sticky salvage marker — subsequent `resetNodes` calls targeting this
       // key will be rejected by the reducer (see ResetResult.rejectedReason).
@@ -462,13 +511,17 @@ export function salvageForDraft(
   // Append demoted keys to skippedKeys for caller-visible accounting.
   for (const k of demotedKeys) skippedKeys.push(k);
 
+  const sparedKeys = [...sparedSet];
   const demotionSuffix = demotedKeys.length > 0
     ? ` (deploy-orphans demoted: ${demotedKeys.join(", ")})`
+    : "";
+  const sparedSuffix = sparedKeys.length > 0
+    ? ` (spared by required-artifact contract: ${sparedKeys.join(", ")})`
     : "";
   const newEntry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     itemKey: "salvage-draft",
-    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.${demotionSuffix}`,
+    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.${demotionSuffix}${sparedSuffix}`,
   };
 
   const nextNaBySalvage = demotedKeys.length > 0
@@ -484,6 +537,7 @@ export function salvageForDraft(
     },
     skippedKeys,
     demotedKeys,
+    sparedKeys,
   };
 }
 

@@ -80,6 +80,9 @@ function makeFs(files: Record<string, string>): ContractGateFs {
       if (v === undefined) throw new Error(`ENOENT: ${path}`);
       return v;
     },
+    async writeFile(path, body) {
+      files[path] = body;
+    },
   };
 }
 

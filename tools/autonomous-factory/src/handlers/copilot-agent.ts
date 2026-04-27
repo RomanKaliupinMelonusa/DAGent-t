@@ -314,6 +314,7 @@ const copilotAgentHandler: NodeHandler = {
       fs: {
         exists: (p) => ctx.filesystem.exists(p),
         readFile: (p) => ctx.filesystem.readFile(p),
+        writeFile: (p, body) => ctx.filesystem.writeFile(p, body),
       },
     };
 

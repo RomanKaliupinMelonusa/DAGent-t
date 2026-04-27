@@ -395,6 +395,56 @@ describe("salvageForDraft", () => {
     assert.equal(c.status, "na");
     assert.equal(c.salvaged, true, "downstream C must also be marked salvaged");
   });
+
+  it("spares a producer whose required artifact still feeds a surviving consumer", () => {
+    // A → B → C, C is a salvage survivor that declares
+    // `consumes_artifacts: [{ from: A, kind: acceptance, required: true }]`.
+    // A fails. Normal salvage would mark A, B, C all N/A; with C as a
+    // surviving consumer of A's required artifact, A must NOT be demoted
+    // (left as `failed` so the workflow's retry policy can recover it).
+    const items = [makeItem("A", "failed"), makeItem("B", "pending"), makeItem("C", "pending")];
+    const state = makeState(items, {
+      salvageSurvivors: ["C"],
+      dependencies: { A: [], B: ["A"], C: ["B"] },
+      nodeCategories: { A: "dev", B: "dev", C: "finalize" },
+      nodeTypes: { A: "agent", B: "agent", C: "agent" },
+      requiredArtifactProducers: { C: ["A"] },
+    });
+    const result = salvageForDraft(state, "A");
+    const a = result.state.items.find((i) => i.key === "A")!;
+    const c = result.state.items.find((i) => i.key === "C")!;
+    assert.equal(a.status, "failed", "spared producer must retain its existing status");
+    assert.notEqual(a.salvaged, true, "spared producer must not carry sticky salvaged flag");
+    assert.ok(!result.skippedKeys.includes("A"), "spared producer must not appear in skippedKeys");
+    assert.deepEqual(result.sparedKeys, ["A"], "sparedKeys must report A");
+    assert.equal(c.status, "pending", "surviving consumer remains force-pending");
+    assert.match(
+      result.state.errorLog.find((e) => e.itemKey === "salvage-draft")!.message,
+      /spared by required-artifact contract: A/,
+    );
+  });
+
+  it("demotes the producer when the surviving consumer marks the edge required: false", () => {
+    // Same shape as the required-spare test, but C declares the edge as
+    // optional. The new contract-based branch must NOT trigger — A is
+    // demoted to N/A as it would be under the legacy salvage policy.
+    const items = [makeItem("A", "failed"), makeItem("B", "pending"), makeItem("C", "pending")];
+    const state = makeState(items, {
+      salvageSurvivors: ["C"],
+      dependencies: { A: [], B: ["A"], C: ["B"] },
+      nodeCategories: { A: "dev", B: "dev", C: "finalize" },
+      nodeTypes: { A: "agent", B: "agent", C: "agent" },
+      // `required: false` → init-state would not record it; mirror that
+      // here by leaving `requiredArtifactProducers` empty.
+      requiredArtifactProducers: {},
+    });
+    const result = salvageForDraft(state, "A");
+    const a = result.state.items.find((i) => i.key === "A")!;
+    assert.equal(a.status, "na", "optional consumer must not block demotion");
+    assert.equal(a.salvaged, true);
+    assert.ok(result.skippedKeys.includes("A"));
+    assert.deepEqual(result.sparedKeys, []);
+  });
 });
 
 // ---------------------------------------------------------------------------
