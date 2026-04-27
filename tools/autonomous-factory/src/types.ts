@@ -580,6 +580,16 @@ export interface ItemSummary {
   toolCounts: Record<string, number>;
   /** Error message if the step failed */
   errorMessage?: string;
+  /**
+   * Stable error fingerprint emitted by the orchestrator (not by the
+   * agent). Set by gates that classify a failure into a known taxonomy
+   * (e.g. `runner.contract_violation`, `missing_required_output:<kind>`,
+   * `invalid_envelope_output:<kind>`) so triage can route deterministically
+   * without substring-matching `errorMessage`. The dispatch-layer
+   * `materializeItemSummary` may override / propagate this from
+   * `result.summary.errorSignature`.
+   */
+  errorSignature?: string;
   /** Git HEAD after this attempt — used for identical-error dedup */
   headAfterAttempt?: string;
   /** Accumulated input tokens from assistant.usage events */
@@ -604,6 +614,18 @@ export interface ItemSummary {
    * Undefined when the agent never called the tool.
    */
   reportedOutcome?: import("./harness/outcome-tool.js").ReportedOutcome;
+  /**
+   * Number of times the runner-internal node-contract gate fired a
+   * recovery nudge into this session. Surfaced into `_FLIGHT.json` for
+   * visibility; absent when the gate was satisfied on the first pass.
+   */
+  contractRecoveryAttempts?: number;
+  /**
+   * True when one of the recovery nudges fixed the gap (i.e. the gate
+   * subsequently returned `ok: true`). Absent when no nudges fired or
+   * when the budget was exhausted without recovery.
+   */
+  contractRecoveryRecovered?: boolean;
 }
 
 export interface ShellEntry {

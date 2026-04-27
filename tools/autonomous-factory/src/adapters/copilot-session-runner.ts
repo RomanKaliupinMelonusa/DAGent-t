@@ -27,6 +27,12 @@ import { captureGitFilesSnapshot, diffGitFilesSnapshots } from "../session/git-f
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
 import { isFatalSdkError } from "../domain/error-classification.js";
 import { writeFlightData } from "../reporting/index.js";
+import {
+  validateNodeContract,
+  summarizeMissing,
+  type NodeContractGateParams,
+} from "../handlers/support/node-contract-gate.js";
+import { buildContractRecoveryPrompt } from "../handlers/support/node-contract-prompt.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -61,6 +67,14 @@ export interface CopilotSessionParams {
    *  that supplies the hint will be rejected by the tool — we'd rather
    *  fail loud than silently accept an unvalidated hint. */
   nextFailureHintValidation?: NextFailureHintValidation;
+  /**
+   * Optional in-session node-contract gate. When supplied, the runner
+   * validates the node's declared output contract after `sendAndWait`
+   * resolves and nudges the SAME session up to 3 times if `report_outcome`
+   * is missing or any declared `produces_artifacts` did not materialise.
+   * See `handlers/support/node-contract-gate.ts` for the full contract.
+   */
+  nodeContract?: NodeContractGateParams;
 }
 
 export interface CopilotSessionResult {
@@ -158,8 +172,96 @@ export async function runCopilotSession(
   // writes (heredocs, sed, tee, …) without parsing arbitrary bash. The
   // delta is merged into telemetry.filesChanged after disconnect.
   const snapshotBefore = captureGitFilesSnapshot(params.repoRoot);
+  const sessionStart = Date.now();
+  const sessionDeadline = sessionStart + params.timeout;
   try {
     await session.sendAndWait({ prompt: params.taskPrompt }, params.timeout);
+
+    // Phase 2 — runner-internal node-contract recovery gate.
+    // After the initial send resolves, validate the node's declared
+    // output contract. Missing report_outcome / artifacts trigger up to
+    // MAX_NUDGES targeted nudges into the SAME live session. The
+    // dispatch-level gates (`detectMissingRequiredOutputs` /
+    // `detectInvalidEnvelopeOutputs`) remain the deterministic backstop
+    // after this returns.
+    const nc = params.nodeContract;
+    if (nc && nc.mode !== "off") {
+      const MAX_NUDGES = 3;
+      const MIN_REMAINING_MS = 30_000;
+      const PER_NUDGE_CAP_MS = 90_000;
+      const enforceArtifacts = nc.mode === "full";
+      const validate = () => validateNodeContract({
+        producesArtifacts: enforceArtifacts ? nc.producesArtifacts : [],
+        slug: nc.slug,
+        nodeKey: nc.nodeKey,
+        invocationId: nc.invocationId,
+        reportedOutcome: telemetry.reportedOutcome,
+        strictEnvelope: enforceArtifacts && nc.strictEnvelope,
+        autoSkipped: nc.autoSkipped,
+        bus: nc.bus,
+        fs: nc.fs,
+      });
+
+      let nudgesFired = 0;
+      while (true) {
+        const result = await validate();
+        if (result.ok) {
+          if (nudgesFired > 0) telemetry.contractRecoveryRecovered = true;
+          break;
+        }
+
+        // Exit conditions, in priority order. Each sets sessionError
+        // with the stable `[runner.contract_violation]` prefix so
+        // downstream triage can fingerprint deterministically.
+        if (nudgesFired >= MAX_NUDGES) {
+          sessionError =
+            `[runner.contract_violation] node-contract recovery exhausted ` +
+            `after ${MAX_NUDGES} nudges: ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+        if (breaker.tripped) {
+          // The cognitive circuit breaker has already disconnected the
+          // session — any further sendAndWait would reject. Surface the
+          // contract violation but defer to the breaker's own message.
+          sessionError = sessionError
+            ?? `[runner.contract_violation] node-contract recovery aborted — ` +
+              `cognitive circuit breaker tripped: ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+        const remaining = sessionDeadline - Date.now();
+        if (remaining < MIN_REMAINING_MS) {
+          sessionError =
+            `[runner.contract_violation] node-contract recovery aborted — ` +
+            `time budget exhausted (${remaining}ms remaining): ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+
+        nudgesFired += 1;
+        telemetry.contractRecoveryAttempts = nudgesFired;
+        logger.event("breaker.fire", itemKey, {
+          type: "node_contract_nudge",
+          attempt: nudgesFired,
+          missing: result.missing.map((m) =>
+            m.kind === "report_outcome"
+              ? "report_outcome"
+              : `${m.kind}:${m.declaredKind}`,
+          ),
+        });
+
+        const nudgePrompt = buildContractRecoveryPrompt(itemKey, result.missing, nudgesFired);
+        const nudgeBudget = Math.min(remaining, PER_NUDGE_CAP_MS);
+        await session.sendAndWait({ prompt: nudgePrompt }, nudgeBudget);
+      }
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logger.event("state.fail", itemKey, { error_preview: message });

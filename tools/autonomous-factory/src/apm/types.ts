@@ -760,6 +760,20 @@ const nodeBodyFields = {
     format: z.enum(["playwright-json"]),
     path: z.string(),
   }).optional(),
+  /** Runner-internal node-contract gate mode (Phase 2 of the agentic
+   *  recovery loop). Controls how the copilot-session-runner validates
+   *  the node's declared output contract after the initial sendAndWait
+   *  resolves and whether it nudges the SAME session to fix gaps.
+   *   - `"off"`: no in-session validation; rely solely on dispatch-level
+   *     gates (`detectMissingRequiredOutputs` / envelope gate).
+   *   - `"report_outcome_only"`: only enforce that `report_outcome` was
+   *     called; ignore `produces_artifacts`.
+   *   - `"full"` (default for agent nodes): enforce `report_outcome`
+   *     AND every declared `produces_artifacts` kind landed at its
+   *     canonical path (envelope-checked under `strict_artifacts`).
+   *  Only consumed by the `copilot-agent` handler — script / triage
+   *  nodes ignore it. */
+  node_contract_gate: z.enum(["off", "report_outcome_only", "full"]).optional(),
 } as const;
 
 // ---------------------------------------------------------------------------

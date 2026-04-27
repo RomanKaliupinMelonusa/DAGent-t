@@ -31,6 +31,8 @@ import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ItemSummary } from "../types.js";
+import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { NodeContractGateParams } from "./support/node-contract-gate.js";
 
 // ---------------------------------------------------------------------------
 // B4 — no-op-dev sanity check (pure helper, exported for tests)
@@ -249,6 +251,32 @@ const copilotAgentHandler: NodeHandler = {
       dagNodeKeys: Object.keys(workflowNodes),
     };
 
+    // Phase 2 — runner-internal node-contract gate. Validates after the
+    // initial sendAndWait and nudges the SAME session up to 3 times when
+    // `report_outcome` or declared `produces_artifacts` are missing. The
+    // dispatch-level gates remain the deterministic backstop.
+    const producesArtifacts = (node as { produces_artifacts?: readonly string[] } | undefined)
+      ?.produces_artifacts ?? [];
+    const gateMode = (node as { node_contract_gate?: NodeContractGateParams["mode"] } | undefined)
+      ?.node_contract_gate ?? "full";
+    const nodeContract: NodeContractGateParams = {
+      mode: gateMode,
+      producesArtifacts,
+      slug,
+      nodeKey: itemKey,
+      invocationId: ctx.executionId,
+      strictEnvelope: apmContext.config?.strict_artifacts === true,
+      autoSkipped: false, // dispatch middleware short-circuits before reaching the runner
+      bus: {
+        ref: (s, kind, opts) =>
+          ctx.artifactBus.ref(s, kind as ArtifactKind, opts),
+      },
+      fs: {
+        exists: (p) => ctx.filesystem.exists(p),
+        readFile: (p) => ctx.filesystem.readFile(p),
+      },
+    };
+
     const { sessionError, fatalError, reportedOutcome } = await ctx.copilotSessionRunner.run(client, {
       slug, itemKey, appRoot, repoRoot,
       model: agentConfig.model,
@@ -268,6 +296,7 @@ const copilotAgentHandler: NodeHandler = {
       runtimeTokenBudget: limits.runtimeTokenBudget,
       logger: ctx.logger,
       nextFailureHintValidation,
+      nodeContract,
     });
 
     // ── 5. Post-session telemetry (via ctx.vcs port) ────────────────────────
