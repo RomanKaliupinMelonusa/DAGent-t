@@ -515,6 +515,8 @@ e2e-runner:
     pkill -f 'node.*ssr' 2>/dev/null || true
 ```
 
+**Shared dev-server lifecycle (commerce-storefront).** Every node that boots PWA Kit locally — `e2e-runner`, `qa-adversary`, `storefront-debug`, `baseline-analyzer`, plus the `storefront-dev-smoke` local-exec script — delegates server boot/teardown to a single shared library at [apps/commerce-storefront/.apm/hooks/lib/dev-server-lifecycle.sh](../../../apps/commerce-storefront/.apm/hooks/lib/dev-server-lifecycle.sh). The lib owns the cgroup-capped launch (`systemd-run --user --scope -p MemoryMax`), the narrow `pkill` regex scoped to `pwa-kit-dev` and `webpack-dev-server` (avoids killing VS Code remote-server helpers), and the PGID-based reap (kills the entire process group, not just the parent — `pwa-kit-dev` forks babel-node, which is what actually holds port 3000). Per-hook concerns (Playwright binary cleanup, QA-adversary artefact removal) stay in the call sites. Black-box tests live alongside at [`__tests__/dev-server-lifecycle.test.mjs`](../../../apps/commerce-storefront/.apm/hooks/lib/__tests__/dev-server-lifecycle.test.mjs).
+
 ### Context Injection (Failure → Redevelopment)
 
 When a test node fails, the error output and triage classification are **injected into the redevelopment agent's prompt by `dispatch/context-builder.ts` via the `NodeContext` downstream-failure field** (previously handled by a dedicated `context-injection.ts`, which was dissolved into the dispatch layer). This prevents the agent from re-investigating the same failure from scratch.

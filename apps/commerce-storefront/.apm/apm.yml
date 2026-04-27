@@ -314,8 +314,11 @@ nodes:
     category: dev
     agent: "@baseline-analyzer"
     timeout_minutes: 10
-    # Bring up the local dev server (same pattern as e2e-runner). The
-    # post-hook tears it down so the next node starts from a clean slate.
+    # Bring up the local dev server (same pattern as e2e-runner). Both
+    # delegate to the shared lifecycle lib at
+    # `.apm/hooks/lib/dev-server-lifecycle.sh` (cgroup-capped boot, narrow
+    # pkill regex, PGID-based reap). The post-hook tears it down so the
+    # next node starts from a clean slate.
     pre: "bash .apm/hooks/baseline-analyzer-pre.sh"
     post: "bash .apm/hooks/baseline-analyzer-post.sh"
     # Pipeline-scope artifact — does not modify feature code.
@@ -362,7 +365,9 @@ nodes:
     # triage handler reroutes a runtime failure onto it and writes
     # pendingContext. Uses the Playwright MCP against the local dev server,
     # so the node reuses the e2e-runner pre/post hooks to bring the server
-    # up and tear it down.
+    # up and tear it down. Both pre/post hooks delegate to the shared
+    # lifecycle lib at `.apm/hooks/lib/dev-server-lifecycle.sh` (cgroup
+    # cap, narrow pkill regex, PGID-based reap).
     type: agent
     category: dev
     agent: "@storefront-debug"
