@@ -498,6 +498,36 @@ export type SmokeReportArtifact = z.infer<typeof SmokeReportArtifactSchema>;
 // Registry
 // ---------------------------------------------------------------------------
 
+/*
+ * Envelope policy decisions (durable):
+ *
+ * Inline envelope (`envelope: "inline"`) — engine-/agent-authored
+ * structured artifacts where the producer can reliably stamp three
+ * fields (`schemaVersion`, `producedBy`, `producedAt`) into the body.
+ * Used for JSON kinds and a small set of schema-free markdown kinds
+ * (`halt`). Markdown kinds with a strict schema are NOT auto-stamped —
+ * the schema is the single source of envelope truth and surfaces
+ * missing front-matter as a validation error.
+ *
+ * Sidecar envelope (`envelope: "sidecar"`) — the envelope lives in a
+ * separate `<path>.meta.json` file co-located with the primary artifact.
+ * Chosen for:
+ *   - Human-authored kinds (`spec`) — we don't force humans to write
+ *     YAML front-matter.
+ *   - External-stream kinds (`playwright-report`, `playwright-log`,
+ *     `terminal-log`) — third-party formats we don't control.
+ *   - YAML kinds the agent emits but whose body is consumed by tooling
+ *     that doesn't tolerate front-matter (`acceptance` — read by a bash
+ *     oracle; `params`, `meta`).
+ *
+ * The `acceptance` sidecar choice is deliberate: the spec-compiler
+ * agent has historically forgotten / mis-quoted inline envelope fields,
+ * and the YAML body is consumed by `validate-acceptance.mjs`, which
+ * does not skip front-matter. The engine auto-stamps the sidecar at
+ * `bus.write` time so producers never need to hand-write the envelope.
+ * The pre-`report_outcome` validation gate (P1.2) checks the BODY
+ * schema; envelope mechanics are entirely engine-side.
+ */
 const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
   {
     id: "spec",
@@ -1002,13 +1032,20 @@ export function stampEnvelope(
     return JSON.stringify(obj, null, 2) + "\n";
   }
 
-  if (def.ext === "md") {
-    // Markdown kinds that already have a strict schema are the single source
-    // of envelope truth \u2014 don't auto-stamp, let the schema surface the
-    // missing front-matter as a validation error. Only fill in gaps for
-    // schema-free markdown kinds (e.g. `halt`).
+  if (def.ext === "md" || def.ext === "yml" || def.ext === "yaml") {
+    // Markdown / YAML kinds that already have a strict body schema are the
+    // single source of envelope truth \u2014 don't auto-stamp, let the schema
+    // surface the missing front-matter as a validation error. Only fill in
+    // gaps for schema-free kinds (e.g. `halt`) or `envelope-only` kinds
+    // whose envelope is plumbing metadata.
+    //
+    // For `.yml` / `.yaml` inline kinds, the envelope lives in a leading
+    // `---\n\u2026\n---\n` front-matter block \u2014 mirroring the markdown
+    // convention. The body below the closing fence is the actual data
+    // document (parsed independently by domain consumers). This keeps
+    // envelope mechanics from contaminating the body schema.
     if (def.schema) return body;
-    const { frontMatter, body: mdBody } = parseFrontMatter(body);
+    const { frontMatter, body: docBody } = parseFrontMatter(body);
     const fm: Record<string, unknown> =
       frontMatter && typeof frontMatter === "object" && !Array.isArray(frontMatter)
         ? { ...(frontMatter as Record<string, unknown>) }
@@ -1022,7 +1059,7 @@ export function stampEnvelope(
     if (fm.producedBy === undefined) fm.producedBy = producedBy;
     if (fm.producedAt === undefined) fm.producedAt = producedAt;
     const yamlText = yaml.dump(fm, { noRefs: true }).trimEnd();
-    const bodyTail = mdBody.startsWith("\n") ? mdBody : `\n${mdBody}`;
+    const bodyTail = docBody.startsWith("\n") ? docBody : `\n${docBody}`;
     return `---\n${yamlText}\n---${bodyTail}`;
   }
 
@@ -1100,7 +1137,13 @@ export function validateEnvelope(
     } else if (def.ext === "json") {
       candidate = JSON.parse(body);
     } else if (def.ext === "yml" || def.ext === "yaml") {
-      candidate = yaml.load(body);
+      // Mirror the markdown branch: an inline yml/yaml envelope is a
+      // leading `---\n…\n---\n` front-matter block. When the body lacks
+      // the front-matter fence, fall back to root-level YAML keys for
+      // backwards compatibility with kinds (if any) that embed the
+      // envelope directly in the data document.
+      const { frontMatter } = parseFrontMatter(body);
+      candidate = frontMatter ?? yaml.load(body);
     } else if (def.ext === "md") {
       candidate = parseFrontMatter(body).frontMatter;
     } else {

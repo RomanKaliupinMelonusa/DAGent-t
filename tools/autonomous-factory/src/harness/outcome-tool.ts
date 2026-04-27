@@ -58,6 +58,25 @@ export interface NextFailureHintValidation {
 }
 
 /**
+ * Pre-completion validation gate. When supplied, the `report_outcome`
+ * tool runs `validate()` before recording a `completed` outcome. On
+ * rejection the outcome is NOT recorded and the agent receives a
+ * structured corrective message inline as the tool result — re-arming
+ * the idle watchdog and giving the session one repair turn.
+ *
+ * After `maxCorrectiveTurns` rejections (default 1), the gate stops
+ * accepting `completed` and records a `failed` outcome carrying the
+ * latest validator error so the dispatch loop fails the invocation
+ * cleanly instead of looping.
+ */
+export interface PrecompletionGate {
+  readonly validate: () =>
+    | { readonly ok: true }
+    | { readonly ok: false; readonly code: string; readonly error: string };
+  readonly maxCorrectiveTurns?: number;
+}
+
+/**
  * Validate a candidate `next_failure_hint` payload. Returns the cleaned
  * hint on success or a tool-error string the SDK handler returns inline
  * so the agent sees the rejection and can retry. Pure — exported for tests.
@@ -184,6 +203,7 @@ export function validateNextFailureHint(
 export function buildReportOutcomeTool(
   telemetry: ItemSummary,
   validation?: NextFailureHintValidation,
+  precompletionGate?: PrecompletionGate,
 ): Tool<any> {
   return defineTool("report_outcome", {
     description:
@@ -279,7 +299,49 @@ export function buildReportOutcomeTool(
         const hintTag = nextFailureHint
           ? ` (hint: ${nextFailureHint.domain} → ${nextFailureHint.target_node})`
           : "";
+        telemetry.reportOutcomeTerminal = true;
         return `Outcome recorded: failed${hintTag}. ${message.length > 120 ? message.slice(0, 117) + "..." : message}`;
+      }
+
+      // Pre-completion validation gate (P1.2). Runs ONLY for
+      // status='completed' so a `failed` outcome can always be recorded
+      // (failures are themselves a terminal signal). When the gate
+      // rejects, the outcome is NOT recorded — the agent reads the
+      // error inline and gets one corrective turn before we hard-fail.
+      //
+      // Invariant — "exactly one corrective turn" (with default cap=1):
+      //   call #1 (prior=0, prior < cap)  → reject, increment to 1
+      //   call #2 (prior=1, prior >= cap) → hard-fail with `failed` outcome
+      // i.e. the AGENT gets one repair attempt; the SECOND rejection is
+      // the trip-wire. Increase `maxCorrectiveTurns` to allow more.
+      if (precompletionGate) {
+        const verdict = precompletionGate.validate();
+        if (!verdict.ok) {
+          const cap = precompletionGate.maxCorrectiveTurns ?? 1;
+          const prior = telemetry.precompletionGateRejections ?? 0;
+          telemetry.precompletionGateRejections = prior + 1;
+
+          if (prior >= cap) {
+            const summary =
+              `Pre-completion gate exhausted after ${prior + 1} rejection(s). ` +
+              `Latest [${verdict.code}]: ${verdict.error}`;
+            telemetry.reportedOutcome = { status: "failed", message: summary };
+            telemetry.reportOutcomeTerminal = true;
+            return (
+              `Outcome recorded: failed (gate exhausted). ${summary.length > 200 ? summary.slice(0, 197) + "..." : summary}`
+            );
+          }
+
+          // First rejection: re-arm the watchdog and tell the agent
+          // exactly what to fix. DO NOT mutate `telemetry.reportedOutcome`.
+          return (
+            `ERROR: report_outcome rejected by pre-completion gate ` +
+            `[code=${verdict.code}]. Outcome NOT recorded. ` +
+            `You have ONE corrective turn — patch the artifact then call ` +
+            `report_outcome({status: "completed"}) again.\n\n` +
+            verdict.error
+          );
+        }
       }
 
       telemetry.reportedOutcome = {
@@ -289,6 +351,7 @@ export function buildReportOutcomeTool(
       const hintTag = nextFailureHint
         ? ` (hint: ${nextFailureHint.domain} → ${nextFailureHint.target_node})`
         : "";
+      telemetry.reportOutcomeTerminal = true;
       return `Outcome recorded: completed${hintTag}.`;
     },
   });

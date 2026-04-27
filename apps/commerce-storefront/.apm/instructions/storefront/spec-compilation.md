@@ -1,5 +1,26 @@
 # Resolving Fixture URLs Against the Running Config (PWA Kit)
 
+## Single-finalization rule (mandatory)
+
+`report_outcome` is your terminal action. Once it returns successfully you are done — do **not** call any further tools. The orchestrator runs a deterministic pre-completion gate when you call `report_outcome({status: "completed"})`:
+
+- The gate re-loads `acceptance.yml` from `$OUTPUTS_DIR`, validates the schema, and checks every `test_fixtures[]` entry against the kickoff baseline.
+- If validation **passes**, the outcome is recorded and the session terminates. Any tool call after that point is a discipline violation and forces a session disconnect within a 5s grace window.
+- If validation **fails**, the tool returns a structured `ERROR: report_outcome rejected by pre-completion gate [code=...]` message. You have **exactly one** corrective turn — patch the offending file (do **not** edit anything else) and call `report_outcome` again. A second rejection becomes a hard `failed` outcome.
+
+Repair workflow on a gate rejection:
+
+1. Read the error code:
+   - `envelope-missing` — `acceptance.yml` was not written to `$OUTPUTS_DIR/acceptance.yml`. Write it now.
+   - `schema-violation` — the YAML is unparseable or rejects against `AcceptanceContractSchema`. Fix the field listed in the error.
+   - `fixture-violation` — a `test_fixtures[]` URL is in the baseline's `network_failures[]` or an assertion uses an unknown `kind`. Pick a different fixture; do not retry the same URL.
+2. Rewrite `acceptance.yml` with `write_file` only.
+3. Call `report_outcome({status: "completed"})` again. Do not run additional reads / shell commands; the watchdog has been re-armed and you have the same session to finalize.
+
+The acceptance contract envelope (`schemaVersion`, `producedBy`, `producedAt`) is **auto-stamped by the engine** into the sidecar `acceptance.yml.meta.json` — you do **not** need to write front-matter into the YAML body.
+
+---
+
 The acceptance contract emits `test_fixtures[]` — resolved URLs plus the runtime preconditions each flow depends on. URLs MUST be valid for the running storefront. Inventing a URL by guessing locale / site prefixes wastes a downstream test cycle and will be re-routed back to you (`fixture-validation-failure` → `$SELF`).
 
 ## Read the running config BEFORE writing acceptance.yml

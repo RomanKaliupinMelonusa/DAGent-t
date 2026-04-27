@@ -33,6 +33,11 @@ import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ItemSummary } from "../types.js";
 import type { ArtifactKind } from "../apm/artifact-catalog.js";
 import type { NodeContractGateParams } from "./support/node-contract-gate.js";
+import type { PrecompletionGate } from "../harness/index.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { featurePath } from "../paths/feature-paths.js";
+import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
+import { SPEC_COMPILER_KEY } from "./middlewares/acceptance-integrity.js";
 
 // ---------------------------------------------------------------------------
 // B4 — no-op-dev sanity check (pure helper, exported for tests)
@@ -83,6 +88,41 @@ function getWorkflowNode(ctx: NodeContext) {
 function getTimeout(ctx: NodeContext): number {
   const node = getWorkflowNode(ctx);
   return (node?.timeout_minutes ?? 15) * 60_000;
+}
+
+/**
+ * Build the optional pre-`report_outcome` validation gate (P1.2). Currently
+ * scoped to `spec-compiler` only — the smallest blast radius. Generalize
+ * after one validated feature run. Returns `undefined` for any other node
+ * so the SDK runner falls through to the existing post-completion
+ * middlewares (defense in depth).
+ */
+function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined {
+  if (ctx.itemKey !== SPEC_COMPILER_KEY) return undefined;
+  const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
+  const nodeAcceptancePath = bus.nodePath(
+    ctx.slug,
+    ctx.itemKey,
+    ctx.executionId,
+    "acceptance",
+  );
+  const kickoffAcceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
+  return {
+    maxCorrectiveTurns: 1,
+    validate: () =>
+      validateSpecCompilerOutput({
+        candidatePaths: [nodeAcceptancePath, kickoffAcceptancePath],
+        existsSync: (p) => ctx.filesystem.existsSync(p),
+        loadBaseline: () => {
+          if (!ctx.baselineLoader) return null;
+          try {
+            return ctx.baselineLoader.loadBaseline(ctx.slug);
+          } catch {
+            return null;
+          }
+        },
+      }),
+  };
 }
 
 /** Initialize a blank ItemSummary for telemetry collection. */
@@ -297,6 +337,7 @@ const copilotAgentHandler: NodeHandler = {
       logger: ctx.logger,
       nextFailureHintValidation,
       nodeContract,
+      precompletionGate: buildPrecompletionGate(ctx),
     });
 
     // ── 5. Post-session telemetry (via ctx.vcs port) ────────────────────────

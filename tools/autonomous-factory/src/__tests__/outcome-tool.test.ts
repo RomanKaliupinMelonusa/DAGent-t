@@ -264,3 +264,101 @@ describe("buildReportOutcomeTool — next_failure_hint validation", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pre-completion validation gate (P1.2) + terminal flag (P1.3)
+// ---------------------------------------------------------------------------
+
+describe("buildReportOutcomeTool — pre-completion gate", () => {
+  it("rejects a `completed` outcome on first failure WITHOUT recording it", async () => {
+    const t = emptyTelemetry();
+    const tool = buildReportOutcomeTool(t, undefined, {
+      validate: () => ({ ok: false, code: "schema-violation", error: "bad field x" }),
+    });
+    const result = await (tool as any).handler({ status: "completed" });
+    assert.equal(t.reportedOutcome, undefined);
+    assert.equal(t.reportOutcomeTerminal, undefined);
+    assert.equal(t.precompletionGateRejections, 1);
+    assert.match(String(result), /rejected by pre-completion gate/i);
+    assert.match(String(result), /code=schema-violation/);
+    assert.match(String(result), /bad field x/);
+    assert.match(String(result), /ONE corrective turn/);
+  });
+
+  it("records `completed` when the gate passes on the second turn", async () => {
+    const t = emptyTelemetry();
+    let calls = 0;
+    const tool = buildReportOutcomeTool(t, undefined, {
+      validate: () => {
+        calls += 1;
+        return calls === 1
+          ? { ok: false, code: "fixture-violation", error: "url 404" } as const
+          : { ok: true } as const;
+      },
+    });
+    await (tool as any).handler({ status: "completed" });
+    assert.equal(t.reportedOutcome, undefined);
+    const result = await (tool as any).handler({ status: "completed" });
+    assert.deepEqual(t.reportedOutcome, { status: "completed" });
+    assert.equal(t.reportOutcomeTerminal, true);
+    assert.match(String(result), /completed/i);
+  });
+
+  it("forces a `failed` outcome after exceeding maxCorrectiveTurns", async () => {
+    const t = emptyTelemetry();
+    const tool = buildReportOutcomeTool(t, undefined, {
+      validate: () => ({ ok: false, code: "schema-violation", error: "still bad" }),
+      maxCorrectiveTurns: 1,
+    });
+    await (tool as any).handler({ status: "completed" });
+    assert.equal(t.precompletionGateRejections, 1);
+    const result = await (tool as any).handler({ status: "completed" });
+    assert.equal(t.precompletionGateRejections, 2);
+    assert.equal(t.reportedOutcome?.status, "failed");
+    assert.match(t.reportedOutcome?.message ?? "", /gate exhausted/i);
+    assert.match(t.reportedOutcome?.message ?? "", /still bad/);
+    assert.equal(t.reportOutcomeTerminal, true);
+    assert.match(String(result), /failed/i);
+  });
+
+  it("invariant: with default cap=1, agent gets exactly ONE repair turn (1st reject = warn, 2nd reject = hard-fail)", async () => {
+    const t = emptyTelemetry();
+    const tool = buildReportOutcomeTool(t, undefined, {
+      validate: () => ({ ok: false, code: "schema-violation", error: "broken" }),
+      // explicit default — documents the invariant in test form
+      maxCorrectiveTurns: 1,
+    });
+    // Call #1: prior=0, prior < cap → corrective error, no recording.
+    const r1 = await (tool as any).handler({ status: "completed" });
+    assert.equal(t.reportedOutcome, undefined);
+    assert.equal(t.reportOutcomeTerminal, undefined);
+    assert.match(String(r1), /ONE corrective turn/);
+    // Call #2: prior=1, prior >= cap → hard-fail.
+    await (tool as any).handler({ status: "completed" });
+    const recorded = t.reportedOutcome as { status: string; message: string } | undefined;
+    assert.equal(recorded?.status, "failed");
+    assert.equal(t.reportOutcomeTerminal, true);
+  });
+
+  it("does NOT run the gate on a `failed` outcome", async () => {
+    const t = emptyTelemetry();
+    let called = 0;
+    const tool = buildReportOutcomeTool(t, undefined, {
+      validate: () => {
+        called += 1;
+        return { ok: false, code: "schema-violation", error: "x" };
+      },
+    });
+    await (tool as any).handler({ status: "failed", message: "real failure" });
+    assert.equal(called, 0);
+    assert.equal(t.reportedOutcome?.status, "failed");
+    assert.equal(t.reportOutcomeTerminal, true);
+  });
+
+  it("sets reportOutcomeTerminal on a successful `completed` even without a gate", async () => {
+    const t = emptyTelemetry();
+    const tool = buildReportOutcomeTool(t);
+    await (tool as any).handler({ status: "completed" });
+    assert.equal(t.reportOutcomeTerminal, true);
+  });
+});

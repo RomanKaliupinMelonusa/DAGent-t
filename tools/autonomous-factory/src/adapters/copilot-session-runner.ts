@@ -18,6 +18,7 @@ import {
   buildReportOutcomeTool,
   type ResolvedHarnessLimits,
   type NextFailureHintValidation,
+  type PrecompletionGate,
 } from "../harness/index.js";
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
@@ -75,6 +76,14 @@ export interface CopilotSessionParams {
    * See `handlers/support/node-contract-gate.ts` for the full contract.
    */
   nodeContract?: NodeContractGateParams;
+  /**
+   * Optional pre-`report_outcome` validation gate (P1.2). When supplied,
+   * the `report_outcome` tool runs `validate()` BEFORE recording a
+   * `completed` outcome — see `harness/outcome-tool.ts`. Currently used
+   * by `spec-compiler` to make acceptance/fixture validation a synchronous
+   * tool-call gate instead of a post-completion middleware.
+   */
+  precompletionGate?: PrecompletionGate;
 }
 
 export interface CopilotSessionResult {
@@ -124,7 +133,11 @@ export async function runCopilotSession(
     // able to signal its outcome to the orchestrator.
     tools: [
       ...(params.tools as any[]),
-      buildReportOutcomeTool(telemetry, params.nextFailureHintValidation),
+      buildReportOutcomeTool(
+        telemetry,
+        params.nextFailureHintValidation,
+        params.precompletionGate,
+      ),
     ],
     hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
@@ -164,6 +177,38 @@ export async function runCopilotSession(
       telemetry.outcome = "error";
       session.disconnect().catch(() => { /* best-effort */ });
     },
+  });
+
+  // Post-completion session discipline (P1.3). Once `report_outcome`
+  // succeeds (and the gate, when present, validated the artifact),
+  // any further tool call is a policy violation: the agent has finalized
+  // and must stop. We disconnect within a short grace window so the
+  // outer loop returns the recorded outcome instead of letting the agent
+  // drift past completion until the 90s idle watchdog kills it.
+  const POST_COMPLETION_GRACE_MS = 5_000;
+  let postCompletionDisconnectTimer: NodeJS.Timeout | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session.on("tool.execution_start", (event: any) => {
+    if (!telemetry.reportOutcomeTerminal) return;
+    if (postCompletionDisconnectTimer) return;
+    const toolName = event?.data?.toolName;
+    // `report_outcome` itself is allowed (last-call-wins idempotency);
+    // anything else after a terminal outcome is a discipline violation.
+    if (toolName === "report_outcome") return;
+    const annotation =
+      `[post-completion-tool-call] Agent invoked '${toolName}' after a ` +
+      `terminal report_outcome. Forcing session disconnect after a ` +
+      `${POST_COMPLETION_GRACE_MS}ms grace window.`;
+    telemetry.postCompletionToolCallAnnotation = annotation;
+    logger.event("breaker.fire", itemKey, {
+      type: "post_completion_tool_call",
+      tool: toolName,
+    });
+    postCompletionDisconnectTimer = setTimeout(() => {
+      session.disconnect().catch(() => { /* best-effort */ });
+    }, POST_COMPLETION_GRACE_MS);
+    // Avoid keeping the event loop alive for the grace window alone.
+    postCompletionDisconnectTimer.unref?.();
   });
 
   let sessionError: string | undefined;
@@ -285,6 +330,7 @@ export async function runCopilotSession(
     }
   } finally {
     isSessionActive = false;
+    if (postCompletionDisconnectTimer) clearTimeout(postCompletionDisconnectTimer);
     await session.disconnect();
     const snapshotAfter = captureGitFilesSnapshot(params.repoRoot);
     const touched = diffGitFilesSnapshots(snapshotBefore, snapshotAfter, params.repoRoot);

@@ -646,6 +646,26 @@ export interface ItemSummary {
    * when the budget was exhausted without recovery.
    */
   contractRecoveryRecovered?: boolean;
+  /**
+   * Pre-`report_outcome` validation gate state (currently used by
+   * `spec-compiler` only). Increments each time the gate rejects a
+   * `completed` outcome; once it exceeds the configured cap the gate
+   * forcibly records a `failed` outcome.
+   */
+  precompletionGateRejections?: number;
+  /**
+   * Set to `true` once `report_outcome` has been recorded with a
+   * passing pre-completion gate (or with no gate). Subsequent tool
+   * calls are then policy-violations — the session-discipline listener
+   * disconnects the session within a short grace window.
+   */
+  reportOutcomeTerminal?: boolean;
+  /**
+   * Annotation set by the post-completion session-discipline listener
+   * when it forcibly disconnects a session that kept calling tools
+   * after a successful `report_outcome`.
+   */
+  postCompletionToolCallAnnotation?: string;
 }
 
 export interface ShellEntry {

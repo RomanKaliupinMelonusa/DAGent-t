@@ -31,6 +31,7 @@ export {
   type ReportedOutcome,
   type NextFailureHint,
   type NextFailureHintValidation,
+  type PrecompletionGate,
 } from "./outcome-tool.js";
 
 /**
