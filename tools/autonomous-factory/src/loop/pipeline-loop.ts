@@ -578,9 +578,11 @@ export async function runPipelineLoop(
     terminationReason = "halted";
     return { reason: "halted" };
   } finally {
-    // ── run.end telemetry ──────────────────────────────────────────
-    logger.event("run.end", null, {
-      outcome: terminationReason,
+    // ── run.end telemetry ──────────────────────────────
+    // Idempotent — if a process-level termination handler already fired
+    // (SIGTERM, uncaught throw), this call is a no-op. Otherwise this is
+    // the primary emitter for natural completions.
+    logger.emitRunEnd(terminationReason, {
       duration_ms: Date.now() - runStartMs,
     });
   }

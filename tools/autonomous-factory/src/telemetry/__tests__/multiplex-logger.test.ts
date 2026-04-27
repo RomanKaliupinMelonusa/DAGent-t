@@ -29,6 +29,7 @@ function makeInner(): { logger: PipelineLogger; calls: Array<[string, unknown[]]
     blob: (eventId, label, content) => { calls.push(["blob", [eventId, label, content]]); },
     query: (filter: EventFilter): PipelineEvent[] => { calls.push(["query", [filter]]); return []; },
     setAttempt: (key, n) => { calls.push(["setAttempt", [key, n]]); },
+    emitRunEnd: (reason, extra) => { calls.push(["emitRunEnd", [reason, extra]]); },
     materializeItemSummary: (key, attempt): ItemSummary | null => {
       calls.push(["materializeItemSummary", [key, attempt]]);
       return null;

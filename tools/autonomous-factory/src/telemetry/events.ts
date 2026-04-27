@@ -138,6 +138,39 @@ export interface EventFilter {
 }
 
 // ---------------------------------------------------------------------------
+// run.end reason discriminator
+// ---------------------------------------------------------------------------
+
+/**
+ * Discriminator stuffed into `run.end.data.reason`. Lets an operator
+ * tell at a glance how the orchestrator terminated:
+ *   - `complete`             — DAG fully finished
+ *   - `halted` / `blocked`   — kernel/loop signalled stop
+ *   - `create-pr`            — terminated to hand off to PR workflow
+ *   - `approval-pending`     — paused awaiting human approval
+ *   - `idle-timeout`         — hardening: no progress for N minutes
+ *   - `failure-budget`       — hardening: total failures exceeded
+ *   - `signal:SIGINT` / `signal:SIGTERM` — process signal
+ *   - `uncaught-exception`   — synchronous throw not caught
+ *   - `unhandled-rejection`  — promise rejection not caught
+ *   - `unknown`              — fallback (process.exit hook fired without
+ *                              any of the above firing first)
+ */
+export type RunEndReason =
+  | "complete"
+  | "halted"
+  | "blocked"
+  | "create-pr"
+  | "approval-pending"
+  | "idle-timeout"
+  | "failure-budget"
+  | "signal:SIGINT"
+  | "signal:SIGTERM"
+  | "uncaught-exception"
+  | "unhandled-rejection"
+  | "unknown";
+
+// ---------------------------------------------------------------------------
 // PipelineLogger interface — the ONLY logging API
 // ---------------------------------------------------------------------------
 
@@ -153,6 +186,18 @@ export interface PipelineLogger {
 
   /** Set the current attempt for an item key (called by kernel on item start). */
   setAttempt(itemKey: string, attempt: number): void;
+
+  /**
+   * Emit the terminal `run.end` event. Idempotent — a second call is a
+   * no-op so multiple termination paths (loop finally, signal handlers,
+   * `process.on('exit')`) can each fire safely without producing
+   * duplicate run.end records.
+   *
+   * Implementations MUST persist the event durably (fsync) before
+   * returning so a subsequent `process.exit` cannot lose it to the
+   * page cache.
+   */
+  emitRunEnd(reason: RunEndReason, extra?: Record<string, unknown>): void;
 
   /**
    * Materialize an ItemSummary from the in-memory event buffer.

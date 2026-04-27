@@ -13,6 +13,7 @@ export type {
   PipelineLogger,
   NodeTrace,
   NodeTraceAttempt,
+  RunEndReason,
 } from "./events.js";
 
 export { JsonlPipelineLogger } from "./jsonl-logger.js";

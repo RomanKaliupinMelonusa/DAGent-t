@@ -121,7 +121,23 @@ A test that passes for both the happy path and the error state is **worse than n
 
 16. **Every happy-path test MUST assert a feature-specific, non-trivial element** — typically a `data-testid` added for the feature under test. If the feature introduces `data-testid="feature-modal"`, the happy-path test must assert that **exact** testid is visible with **feature-specific content** (e.g. a non-empty heading or detail text inside the modal).
 
-17. **Console-error budget.** At the end of every feature test, assert `expect(consoleErrors).toEqual([])` (or an explicit, feature-scoped allowlist). The existing `beforeEach/afterEach` logging is diagnostic — it does not fail the test. You MUST add an explicit assertion on `consoleErrors` in the test body, or the test tolerates uncaught exceptions that real users would see as broken.
+17. **Console-error budget (mechanical derivation, MANDATORY).** Every happy-path test MUST end with an explicit assertion against a baseline-derived allowlist:
+
+    ```ts
+    expect(
+      consoleErrors.filter((e) => !BASELINE_NOISE_PATTERNS.some((re) => re.test(e)))
+    ).toEqual([]);
+    ```
+
+    The `BASELINE_NOISE_PATTERNS` array MUST be derived **mechanically** from `inputs/baseline.json` — the materialised `baseline` input declared by your node in `workflows.yml`. The rule is exact:
+
+    - For every entry in `console_errors[]` whose `volatility` field equals `"persistent"`, emit one regex literal whose source is the entry's `pattern` field with these characters escaped: `.` `?` `+` `*` `(` `)` `[` `]` `{` `}` `|` `^` `$` `\` `/`. Treat the baseline `pattern` as a literal substring, not a compiled regex.
+    - Skip entries whose `volatility` is `"transient"` or absent — a future occurrence of those is a signal, not noise.
+    - Do NOT hand-roll the array from the spec, prior tests, or memory. Do NOT omit any persistent entry. Do NOT invent patterns the baseline does not list.
+
+    If `inputs/baseline.json` is absent (legacy run, `baseline-analyzer` skipped, graceful-degrade), use `const BASELINE_NOISE_PATTERNS: RegExp[] = []` and accept that any console error fails the test.
+
+    Rationale: hand-rolling the allowlist is exactly how the cycle-2 misroute on `product-quick-view-plp` happened — the SDET omitted `/403 Forbidden/` even though `baseline-analyzer` had flagged it `volatility: persistent`. Triage then classified the resulting console-error spew as a `code-defect` and burned a redevelopment cycle on a non-defect. The diagnostic `beforeEach`/`afterEach` capture remains advisory; only this assertion fails the test.
 
 18. **Self-review gate for anti-tautology.** Before committing:
     ```bash

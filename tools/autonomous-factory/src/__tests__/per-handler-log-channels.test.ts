@@ -55,6 +55,7 @@ function makeNoopGlobalLogger(): PipelineLogger {
     blob: () => {},
     query: () => [],
     setAttempt: () => {},
+    emitRunEnd: () => {},
     materializeItemSummary: (): ItemSummary | null => null,
     queryNodeTrace: (key): NodeTrace => ({
       itemKey: key,

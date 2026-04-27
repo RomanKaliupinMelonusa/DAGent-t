@@ -173,6 +173,13 @@ storefront:
       depends_on: [storefront-unit-test]
       consumes_artifacts:
         - { from: spec-compiler, kind: acceptance }
+        # Phase 1 (Apr 2026) — the SDET derives `BASELINE_NOISE_PATTERNS`
+        # mechanically from this artifact (every `console_errors[]` entry
+        # whose `volatility === "persistent"`). Hand-rolling the list led
+        # to the cycle-2 misroute on `product-quick-view-plp` (omitted
+        # `/403 Forbidden/`). `required: false` matches the storefront-dev
+        # / storefront-debug graceful-degrade pattern.
+        - { from: baseline-analyzer, kind: baseline, required: false }
       # SDET is rerouted for `test-code` failures surfaced by e2e-runner,
       # qa-adversary, or storefront-debug.
       consumes_reroute:
@@ -210,6 +217,11 @@ storefront:
         # fresh-slate reverts). When present, the agent prompt requires
         # probes to skip flows whose status is not "live".
         - { from: storefront-dev, kind: implementation-status, required: false }
+        # Phase 1 (Apr 2026) — adversarial console-error oracle derives
+        # its allowlist from persistent baseline entries (same mechanical
+        # rule as e2e-author). Persistent baseline noise is NOT a
+        # violation; novel console errors ARE.
+        - { from: baseline-analyzer, kind: baseline, required: false }
       produces_artifacts: [qa-report]
       consumes_reroute:
         - { kind: triage-handoff, required: true }

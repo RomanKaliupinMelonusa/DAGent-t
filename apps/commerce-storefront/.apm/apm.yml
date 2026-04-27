@@ -158,6 +158,12 @@ agents:
       # Patterns are tested against app-relative paths by checkRbac.
       allowedReadPaths:
         - "^.dagent/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY)\\."
+        # Phase 1 (Apr 2026) — materialized inputs land under
+        # `.dagent/<slug>/<nodeKey>/<invocationId>/inputs/<kind>.<ext>`.
+        # The SDET reads `inputs/baseline.json` (and any future declared
+        # inputs) to derive `BASELINE_NOISE_PATTERNS` mechanically rather
+        # than retyping them from prose. Mirrors qa-adversary's read scope.
+        - "^.dagent/.*/inputs/.*\\.(yml|yaml|json|md)$"
         - "^e2e/"
         - "(^|/)playwright\\.config\\.(ts|js|mjs)$"
         # Session C — vendored PWA Kit reference snapshot. Replaces the

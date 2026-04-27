@@ -30,11 +30,15 @@ import type { JsonlPipelineLogger } from "../telemetry/index.js";
 // ---------------------------------------------------------------------------
 
 let client: CopilotClient | null = null;
-// Captured once bootstrap completes so SIGINT cleanup has access to slug + roots.
+// Captured once bootstrap completes so termination cleanup has access to
+// slug + roots. Also gives signal handlers a non-null logger to flush.
 let activeConfig: PipelineRunConfig | null = null;
-// Guard so the flush only runs once even if both SIGINT and the outer
-// `finally` fire (e.g. SIGINT during `await runWithKernel`).
+// Guard so the flush only runs once even if both a signal handler and the
+// outer `finally` fire (e.g. SIGINT during `await runWithKernel`).
 let flushed = false;
+// Once any termination handler claims ownership of the shutdown sequence,
+// later overlapping signals should not re-enter the flush/stop dance.
+let terminating = false;
 
 async function flushOnce(config: PipelineRunConfig): Promise<void> {
   if (flushed) return;
@@ -53,16 +57,100 @@ async function flushOnce(config: PipelineRunConfig): Promise<void> {
   }
 }
 
-process.on("SIGINT", async () => {
-  console.log("\nShutting down gracefully...");
-  if (activeConfig) {
-    await flushOnce(activeConfig);
-  }
-  if (client) {
-    try { await client.stop(); } catch { /* best effort */ }
-  }
-  process.exit(0);
-});
+/**
+ * Register process-level termination handlers that emit `run.end`
+ * BEFORE doing any async cleanup. The emit is synchronous +
+ * fsync-backed (see `JsonlPipelineLogger.emitRunEnd`) so the outcome
+ * lands on disk even if the subsequent flush hangs and is killed by
+ * the outer 15-s watchdog.
+ *
+ * `JsonlPipelineLogger.emitRunEnd` is idempotent, so it doesn't matter
+ * which path fires first \u2014 the loop's finally, a signal handler, or
+ * the last-chance `process.on('exit')` hook. Whichever arrives first
+ * stamps the `reason` field; later arrivals no-op.
+ */
+function registerTerminationHandlers(): void {
+  const emit = (
+    reason:
+      | "signal:SIGINT"
+      | "signal:SIGTERM"
+      | "uncaught-exception"
+      | "unhandled-rejection"
+      | "unknown",
+    extra: Record<string, unknown> = {},
+  ): void => {
+    const cfg = activeConfig;
+    if (!cfg) return;
+    try {
+      cfg.logger.emitRunEnd(reason, extra);
+    } catch {
+      // Last-resort defence; the logger should never throw upward, but
+      // a thrown emitter must not block the shutdown sequence.
+    }
+  };
+
+  const finalizeAsync = async (exitCode: number): Promise<void> => {
+    const cfg = activeConfig;
+    if (cfg) {
+      await flushOnce(cfg);
+    }
+    if (client) {
+      try { await client.stop(); } catch { /* best effort */ }
+    }
+    if (cfg) {
+      try { (cfg.logger as JsonlPipelineLogger)?.close?.(); } catch { /* best effort */ }
+    }
+    process.exit(exitCode);
+  };
+
+  process.on("SIGINT", () => {
+    if (terminating) return;
+    terminating = true;
+    console.log("\nShutting down gracefully (SIGINT)...");
+    emit("signal:SIGINT");
+    void finalizeAsync(130);
+  });
+
+  process.on("SIGTERM", () => {
+    if (terminating) return;
+    terminating = true;
+    console.log("\nShutting down gracefully (SIGTERM)...");
+    emit("signal:SIGTERM");
+    void finalizeAsync(143);
+  });
+
+  process.on("uncaughtException", (err: Error) => {
+    if (terminating) return;
+    terminating = true;
+    console.error("\n  \u2716 uncaughtException:", err);
+    emit("uncaught-exception", {
+      error: err?.message ?? String(err),
+      stack: err?.stack,
+    });
+    void finalizeAsync(1);
+  });
+
+  process.on("unhandledRejection", (reason: unknown) => {
+    if (terminating) return;
+    terminating = true;
+    console.error("\n  \u2716 unhandledRejection:", reason);
+    const message =
+      reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    emit("unhandled-rejection", { error: message, stack });
+    void finalizeAsync(1);
+  });
+
+  // Last-chance synchronous emitter. Fires for every termination path
+  // including `process.exit()` from main's `finally`. Cannot do async
+  // work here, but `emitRunEnd` is sync + fsync-backed so the file is
+  // already on disk when this returns. Reason `unknown` only sticks
+  // when none of the above fired \u2014 it's the canary that something
+  // bypassed the normal paths.
+  process.on("exit", () => {
+    emit("unknown", { exit_code: process.exitCode ?? 0 });
+  });
+}
 
 async function stopClient(): Promise<void> {
   if (!client) return;
@@ -84,6 +172,10 @@ async function main(): Promise<void> {
   const cli = parseCli(process.argv.slice(2), repoRoot);
   const { config } = await bootstrap(cli);
   activeConfig = config;
+  // Register signal/exception handlers AFTER bootstrap so `activeConfig`
+  // is non-null by the time any of them fire. A bootstrap failure has
+  // no logger to flush, so the default Node behaviour is correct there.
+  registerTerminationHandlers();
 
   client = new CopilotClient();
   await client.start();

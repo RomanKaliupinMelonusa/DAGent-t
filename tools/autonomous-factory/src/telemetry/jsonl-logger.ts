@@ -1,5 +1,25 @@
 /**
  * telemetry/jsonl-logger.ts — JSONL-backed PipelineLogger implementation.
+ *
+ * Durability model
+ * ----------------
+ * Every `event()` call appends one JSON line to `_events.jsonl` via a
+ * synchronous `fs.writeSync`. The bytes land in the OS page cache and
+ * survive `process.exit` but NOT a host crash. For the small set of
+ * events you cannot afford to lose (`run.start`, `run.end`,
+ * `state.salvage`, `breaker.fire`) we additionally call `fs.fsyncSync`
+ * to push the page cache to durable storage before returning.
+ *
+ * Failure recovery
+ * ----------------
+ * If an `fs.writeSync` throws (e.g. EBADF after a host fd-table
+ * shuffle, or ENOSPC), the failing fd is reset to `null` so the next
+ * `event()` call re-opens the file and recovers. Without this, a
+ * single transient I/O error would zombify the sink for the rest of
+ * the run — every subsequent event would silently no-op even though
+ * the in-memory buffer kept growing. We also surface the error via
+ * `console.warn` once per fd lifetime so operators see something in
+ * stderr instead of silent telemetry loss.
  */
 
 import fs from "node:fs";
@@ -14,8 +34,23 @@ import type {
   PipelineLogger,
   NodeTrace,
   NodeTraceAttempt,
+  RunEndReason,
 } from "./events.js";
 import { renderEventToConsole } from "./console-render.js";
+
+/**
+ * Event kinds whose loss would obscure pipeline outcome forensics.
+ * For these, `event()` calls `fs.fsyncSync` after the write to push
+ * the page cache to durable storage. The cost (~1 ms per fsync) is
+ * acceptable for a handful of events per run, but would be ruinous on
+ * a 5000-event production trace \u2014 hence the allowlist.
+ */
+const DURABLE_EVENT_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
+  "run.start",
+  "run.end",
+  "state.salvage",
+  "breaker.fire",
+]);
 
 export class JsonlPipelineLogger implements PipelineLogger {
   readonly runId: string;
@@ -27,6 +62,16 @@ export class JsonlPipelineLogger implements PipelineLogger {
   /** File descriptors (lazy-opened on first write) */
   private eventsFd: number | null = null;
   private blobsFd: number | null = null;
+
+  /** One-shot warning latches \u2014 we surface a write failure exactly once
+   *  per fd lifetime so a flaky disk doesn't spam stderr. */
+  private eventsWriteWarned = false;
+  private blobsWriteWarned = false;
+
+  /** Idempotence guard for `emitRunEnd`. Multiple termination paths
+   *  (loop finally, SIGTERM handler, process.on('exit')) can race each
+   *  other; only the first wins. */
+  private runEndEmitted = false;
 
   /** Current item context for attempt tracking */
   private currentAttempts: Record<string, number> = {};
@@ -297,6 +342,26 @@ export class JsonlPipelineLogger implements PipelineLogger {
     }
   }
 
+  /**
+   * Emit the terminal `run.end` event with a `reason` discriminator,
+   * then flush + close the file descriptors. Idempotent: safe to call
+   * from every overlapping termination path (loop finally, signal
+   * handlers, `process.on('exit')`). Only the first call writes; the
+   * rest no-op.
+   */
+  emitRunEnd(reason: RunEndReason, extra?: Record<string, unknown>): void {
+    if (this.runEndEmitted) return;
+    this.runEndEmitted = true;
+    // `reason` is the new operator-facing discriminator; `outcome` is
+    // kept as an alias so legacy readers (retrospective.ts,
+    // console-render.ts) keep working without a coordinated migration.
+    const data: Record<string, unknown> = { reason, outcome: reason, ...(extra ?? {}) };
+    // Reuse the regular event() path so renderers / in-memory buffer /
+    // file-append logic all run identically. DURABLE_EVENT_KINDS will
+    // fsync the page cache to disk before this returns.
+    this.event("run.end", null, data);
+  }
+
   // --- Private helpers ---
 
   private appendEvent(evt: PipelineEvent): void {
@@ -306,7 +371,30 @@ export class JsonlPipelineLogger implements PipelineLogger {
         this.eventsFd = fs.openSync(this.eventsPath, "a");
       }
       fs.writeSync(this.eventsFd, JSON.stringify(evt) + "\n");
-    } catch { /* non-fatal — in-memory buffer is the primary source */ }
+      if (DURABLE_EVENT_KINDS.has(evt.kind)) {
+        // Push page cache to disk for outcome-forensic events. ~1 ms;
+        // dominated by the syscall, not the bytes.
+        try { fs.fsyncSync(this.eventsFd); } catch { /* best-effort */ }
+      }
+    } catch (err) {
+      // CRITICAL: reset the fd so the next event re-opens the file
+      // instead of silently writing into a permanently-bad descriptor.
+      // This is the bug that truncated `_events.jsonl` to 3 lines on
+      // the product-quick-view-plp run \u2014 a single transient EBADF
+      // zombified the sink for the rest of the orchestrator's life.
+      if (this.eventsFd !== null) {
+        try { fs.closeSync(this.eventsFd); } catch { /* best-effort */ }
+        this.eventsFd = null;
+      }
+      if (!this.eventsWriteWarned) {
+        this.eventsWriteWarned = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[telemetry] events.jsonl write failed (${msg}); will retry on next event. ` +
+          `In-memory buffer remains intact.`,
+        );
+      }
+    }
   }
 
   private appendBlob(b: PipelineBlob): void {
@@ -316,6 +404,16 @@ export class JsonlPipelineLogger implements PipelineLogger {
         this.blobsFd = fs.openSync(this.blobsPath, "a");
       }
       fs.writeSync(this.blobsFd, JSON.stringify(b) + "\n");
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      if (this.blobsFd !== null) {
+        try { fs.closeSync(this.blobsFd); } catch { /* best-effort */ }
+        this.blobsFd = null;
+      }
+      if (!this.blobsWriteWarned) {
+        this.blobsWriteWarned = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[telemetry] blobs.jsonl write failed (${msg}); will retry on next blob.`);
+      }
+    }
   }
 }

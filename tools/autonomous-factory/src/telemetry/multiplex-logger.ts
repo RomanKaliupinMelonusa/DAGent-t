@@ -48,6 +48,7 @@ import type {
   PipelineEvent,
   PipelineLogger,
   NodeTrace,
+  RunEndReason,
 } from "./events.js";
 import type { ItemSummary } from "../types.js";
 import type { InvocationLogger } from "../ports/invocation-logger.js";
@@ -79,6 +80,12 @@ export class MultiplexLogger implements PipelineLogger {
 
   setAttempt(itemKey: string, attempt: number): void {
     this.inner.setAttempt(itemKey, attempt);
+  }
+
+  emitRunEnd(reason: RunEndReason, extra?: Record<string, unknown>): void {
+    // Pure delegation — the per-invocation tee has no business owning
+    // pipeline-wide lifecycle events. Idempotence lives in the inner.
+    this.inner.emitRunEnd(reason, extra);
   }
 
   materializeItemSummary(itemKey: string, attempt?: number): ItemSummary | null {
