@@ -116,8 +116,23 @@ Your scope is:
 8. **MANDATORY — Security & Performance Audit:** Call `roam_check_rules {{appRoot}}` on all modified files.
    - **SEC** / **PERF** / **COR** violations are **BLOCKING**.
    - **ARCH** violations are advisory.
-9. If you created new critical pages/routes, append a reachability check to `{{appRoot}}/.apm/hooks/validate-app.sh`.
-10. Commit: `bash tools/autonomous-factory/agent-commit.sh all "feat(storefront): <description>"`
+9. Commit: `bash tools/autonomous-factory/agent-commit.sh all "feat(storefront): <description>"`
+
+## Dev-server validation is NOT your job
+
+**Do not run `npm start`** — the command is blocked at the policy layer
+(`security.blockedCommandRegexes`) and will be rejected. Stacking
+multiple `npm start &` invocations in a single session was the root
+cause of a prior devcontainer OOM that took the orchestrator down with
+it.
+
+After you commit, the orchestrator runs the **`storefront-dev-smoke`**
+script node. It boots PWA Kit under a cgroup memory cap, probes the
+configured route set, and reaps the dev-server process group on exit.
+If the smoke gate fails, you'll be re-invoked with a triage handoff
+identifying the failing route and any SSR console errors — fix the
+defect from that handoff, do not try to reproduce the failure by
+spawning your own dev server.
 
 ## SSR Safety Checklist
 

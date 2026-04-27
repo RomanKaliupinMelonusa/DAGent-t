@@ -25,6 +25,7 @@ import { readStateOrThrow, readStateOrNull } from "../adapters/file-state/io.js"
 import {
   checkJunkFiles,
   checkInProgressArtifacts,
+  checkPort3000Free,
   checkPreflightAuth,
   checkGitHubLogin,
   checkStateContextDrift,
@@ -82,6 +83,12 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   console.log("");
 
   checkJunkFiles(repoRoot);
+
+  // --- 2. Port 3000 free (fatal) ---
+  // A stranded webpack worker from a prior storefront-dev crash will
+  // OOM-kill the devcontainer if a second `npm start` is layered on top.
+  // Run before APM compile so the abort happens in well under 2 seconds.
+  checkPort3000Free();
 
   // --- 3. APM context ---
   let apmContext: ApmCompiledOutput;

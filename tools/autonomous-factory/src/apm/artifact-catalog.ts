@@ -133,6 +133,7 @@ export type ArtifactKind =
   | "meta"
   | "node-report"
   | "implementation-status"
+  | "smoke-report"
   | "handler-output";
 
 // ---------------------------------------------------------------------------
@@ -458,6 +459,42 @@ export const HandlerOutputArtifactSchema = EnvelopeSchema.extend({
 export type HandlerOutputArtifact = z.infer<typeof HandlerOutputArtifactSchema>;
 
 // ---------------------------------------------------------------------------
+// smoke-report (orchestrator-owned PWA Kit dev-server smoke gate)
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured result of `storefront-dev-smoke` — the orchestrator-owned
+ * script that boots the PWA Kit dev server under a cgroup memory cap,
+ * probes a configured route set, and tears the server down. Replaces
+ * the in-agent `npm start &` validation step that previously OOM-killed
+ * the devcontainer.
+ *
+ * Routes always include the home page; additional routes are sourced
+ * from `$SMOKE_ROUTES` (comma-separated). Each entry records the HTTP
+ * status the smoke probe observed and any SSR console errors written
+ * to the dev-server log while that route was being probed.
+ */
+export const SmokeReportRouteSchema = z.object({
+  url: z.string().min(1),
+  status: z.number().int(),
+  consoleErrors: z.array(z.string()),
+});
+
+export const SmokeReportArtifactSchema = EnvelopeSchema.extend({
+  routes: z.array(SmokeReportRouteSchema),
+  /** Best-effort RSS sample of the dev-server process group (MB). Null
+   *  when `ps` could not enumerate the group (e.g. macOS dev runs). */
+  peakRssMb: z.number().nullable().optional(),
+  /** True when the smoke gate launched `npm start` inside a
+   *  `systemd-run --user --scope` cgroup with `MemoryMax`. Falls back to
+   *  plain `setsid` on environments without user systemd (CI containers,
+   *  some devcontainers). */
+  cgroupApplied: z.boolean(),
+});
+
+export type SmokeReportArtifact = z.infer<typeof SmokeReportArtifactSchema>;
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -692,6 +729,17 @@ const REGISTRY: ReadonlyArray<ArtifactKindDef> = Object.freeze([
       "Producer's self-report of which acceptance flows are live vs gated vs partial. Consumed by qa-adversary so adversarial probes skip flows the dev agent admitted are non-live (e.g. shipped behind a feature flag).",
     policy: "strict",
     schema: ImplementationStatusArtifactSchema,
+    schemaVersion: 1,
+    envelope: "inline",
+  },
+  {
+    id: "smoke-report",
+    ext: "json",
+    scopes: ["node"],
+    description:
+      "Result of the orchestrator-owned `storefront-dev-smoke` script: per-route HTTP status + SSR console errors observed while booting the PWA Kit dev server under a cgroup memory cap. Replaces the in-agent `npm start` validation step.",
+    policy: "strict",
+    schema: SmokeReportArtifactSchema,
     schemaVersion: 1,
     envelope: "inline",
   },

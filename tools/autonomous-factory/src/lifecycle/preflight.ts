@@ -10,9 +10,75 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
-import { StateError } from "../errors.js";
+import { StateError, BootstrapError } from "../errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
 import { featurePath } from "../adapters/feature-paths.js";
+
+/**
+ * Fail fast when something is already listening on port 3000.
+ *
+ * The storefront dev server (PWA Kit / webpack-dev-server) binds port 3000.
+ * If a prior `storefront-dev` agent crashed without reaping its server
+ * (or the orchestrator was OOM-killed mid-validation), the webpack worker
+ * processes survive as orphans and a fresh run will spawn a *second* server
+ * on top — driving the devcontainer to memory exhaustion. This check
+ * refuses to start the pipeline when port 3000 is held, with a one-liner
+ * cleanup hint so the operator can audit the offending PIDs before nuking.
+ *
+ * Non-fatal when `lsof` itself is missing (e.g. a slim CI image) — the
+ * absence of the tool is not the operator's fault, and the storefront
+ * instruction-side cleanup is a sufficient backstop.
+ *
+ * @throws {BootstrapError} when port 3000 is occupied.
+ */
+export type LsofRunner = () => string;
+
+const defaultLsofRunner: LsofRunner = () => {
+  try {
+    return execSync("lsof -ti:3000", {
+      encoding: "utf-8",
+      timeout: 2_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch (err) {
+    // `lsof` exits 1 when no process matches — that's "port free".
+    // Distinguish that from "lsof not installed" (ENOENT) by re-throwing
+    // ENOENT so the caller can treat it as a graceful skip.
+    const e = err as NodeJS.ErrnoException & { status?: number };
+    if (e.code === "ENOENT") throw err;
+    return "";
+  }
+};
+
+export function checkPort3000Free(runner: LsofRunner = defaultLsofRunner): void {
+  let stdout: string;
+  try {
+    stdout = runner();
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
+      console.log("  ⊘ `lsof` not available — skipping port 3000 check\n");
+      return;
+    }
+    // Any other failure shape is treated as "couldn't determine" — log and
+    // continue rather than block the pipeline on a diagnostic tool quirk.
+    console.log("  ⊘ Could not probe port 3000 — skipping check\n");
+    return;
+  }
+
+  if (!stdout) {
+    console.log("  ✔ Port 3000 free");
+    return;
+  }
+
+  const pids = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  throw new BootstrapError(
+    `Port 3000 is already held by PID(s): ${pids.join(", ")}.\n` +
+    `→ A prior dev server (likely from a crashed storefront-dev run) is still running.\n` +
+    `→ Cleanup hint: lsof -ti:3000 | xargs -r kill -KILL\n` +
+    `→ Then re-run the orchestrator.`,
+  );
+}
 
 /**
  * Warn about unexpected untracked files in the repo root.

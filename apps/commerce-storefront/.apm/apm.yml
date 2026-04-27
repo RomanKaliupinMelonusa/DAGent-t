@@ -66,13 +66,32 @@ agents:
       mcp:
         playwright: "*"
   storefront-dev:
-    instructions: [always, storefront, tooling/roam-tool-rules.md, tooling/roam-efficiency.md]
+    # Instruction list is enumerated explicitly (rather than the directory
+    # ref `storefront`) so the dev-server-validation.md fragment can be
+    # excluded — the orchestrator now owns the dev-server lifecycle via
+    # the `storefront-dev-smoke` script node. The file remains on disk
+    # under instructions/storefront/ for the debug agent (which still
+    # references the directory glob); a follow-up task will prune it.
+    instructions:
+      - always
+      - storefront/baseline-volatility-tagging.md
+      - storefront/config-management.md
+      - storefront/data-testid-contract.md
+      - storefront/debugging.md
+      - storefront/e2e-guidelines.md
+      - storefront/pwa-kit-patterns.md
+      - storefront/reuse-audit.md
+      - storefront/spec-compilation.md
+      - storefront/ssr-rendering.md
+      - storefront/testing-mandate.md
+      - tooling/roam-tool-rules.md
+      - tooling/roam-efficiency.md
     promptFile: storefront-dev.agent.md
     mcp: [roam-code]
     skills: [test-storefront-unit, dev-local]
     toolLimits: { soft: 80, hard: 110 }
     security:
-      # Session A Item 9 \u2014 implementation-status output lands in the node's
+      # Session A Item 9 — implementation-status output lands in the node's
       # invocation outputs/ dir. Allow writes into the slot the Declared I/O
       # block points to (any kind under the node's own outputs path).
       allowedWritePaths:
@@ -81,7 +100,10 @@ agents:
         - "^worker/"
         - "^translations/"
         - "(^|/).dagent/[^/]+/storefront-dev/[^/]+/outputs/.*\\.(json|md|yml|yaml)$"
-      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"]
+      # `npm start` is now owned by the orchestrator-run `storefront-dev-smoke`
+      # script. Match the sibling agents' blocklist so the dev agent cannot
+      # spawn a second dev server in-session (the prior OOM root cause).
+      blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start)($|\\s)"]
     tools:
       core: [read_file, file_read, view, write_file, edit_file, bash, write_bash, shell, grep_search, list_dir, report_intent, semantic_search]
       mcp:
@@ -196,7 +218,7 @@ agents:
         - "(^|/)e2e/_qa_.*\\.spec\\.ts$"
       allowedReadPaths:
         - "^.dagent/.*_(SPEC|ACCEPTANCE|CHANGES|SUMMARY|VALIDATION)\\."
-        # Session A \u2014 materialized inputs land under
+        # Session A — materialized inputs land under
         # `.dagent/<slug>/<nodeKey>/<invocationId>/inputs/<kind>.<ext>`.
         # Allow qa-adversary to read everything the Declared I/O block
         # points it at (acceptance, playwright-report, implementation-status).
@@ -313,6 +335,26 @@ nodes:
     circuit_breaker:
       allows_revert_bypass: true
       allows_timeout_salvage: true
+
+  storefront-dev-smoke:
+    # Orchestrator-owned PWA Kit dev-server smoke gate. Replaces the
+    # in-agent `npm start &` validation step that previously OOM-killed
+    # the devcontainer. The script boots `npm start` under `setsid` (in
+    # a `systemd-run --user --scope` cgroup with MemoryMax when
+    # available), polls `/` for HTTP 200, probes the route set declared
+    # by `$SMOKE_ROUTES` (default `/,/category/newarrivals`), and reaps
+    # the process group on exit. Emits a strict `smoke-report` artifact
+    # plus a `handler-output` envelope ingested into NodeResult.handlerOutput.
+    type: script
+    category: test
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/scripts/storefront-smoke.sh"
+    timeout_minutes: 8
+    commit_scope: pipeline
+    diff_attribution_dirs: []
+    circuit_breaker:
+      max_item_failures: 3
+      halt_on_identical: true
 
   storefront-debug:
     # Runtime-defect debugger. Auto-skips on the happy path via

@@ -33,12 +33,13 @@ import { validateArtifactIO } from "../artifact-io-validator.js";
 // ---------------------------------------------------------------------------
 
 const EXPECTED_POLICY: Record<ArtifactKind, "strict" | "envelope-only" | "internal"> = {
-  // STRICT (5) — typed contracts, each already carries a schema.
+  // STRICT (6) — typed contracts, each already carries a schema.
   validation: "strict",
   "qa-report": "strict",
   "triage-handoff": "strict",
   "deployment-url": "strict",
   "implementation-status": "strict",
+  "smoke-report": "strict",
 
   // ENVELOPE-ONLY (12) — envelope enforced, body free-form or externally owned.
   // `acceptance` lives here even though it carries a schema: the body schema
@@ -82,16 +83,16 @@ describe("artifact-catalog policy classification", () => {
     }
   });
 
-  it("classification counts are 5 strict / 12 envelope-only / 5 internal = 22 total", () => {
+  it("classification counts are 6 strict / 12 envelope-only / 5 internal = 23 total", () => {
     const defs = listArtifactKinds();
     const counts = defs.reduce<Record<string, number>>((acc, d) => {
       acc[d.policy] = (acc[d.policy] ?? 0) + 1;
       return acc;
     }, {});
-    assert.equal(counts.strict, 5);
+    assert.equal(counts.strict, 6);
     assert.equal(counts["envelope-only"], 12);
     assert.equal(counts.internal, 5);
-    assert.equal(defs.length, 22);
+    assert.equal(defs.length, 23);
   });
 
   it("every STRICT kind declares a schema", () => {

@@ -122,6 +122,27 @@ storefront:
       consumes_reroute:
         - { kind: triage-handoff, required: true }
 
+    # ── Dev-server smoke gate (orchestrator-owned) ────────────────────
+    # Replaces the in-agent `npm start &` validation step. The script
+    # `tools/autonomous-factory/scripts/storefront-smoke.sh` boots PWA Kit
+    # under a cgroup memory cap (`systemd-run --user --scope`), probes
+    # the configured routes, and reaps the dev-server process group on
+    # exit. Failure is triaged like any other runtime defect: code-defect
+    # routes to storefront-debug for live-browser reproduction; test-data
+    # routes to spec-compiler so it can re-pick the fixture (e.g. the
+    # category URL the smoke probe hits 404 under the running site/locale).
+    storefront-dev-smoke:
+      depends_on: [storefront-dev]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: storefront-dev, kind: implementation-status, required: false }
+      produces_artifacts: [smoke-report]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          code-defect: storefront-debug
+          test-data: spec-compiler
+
     # ── Runtime-defect debugger ───────────────────────────────────────
     # Sits inline between storefront-dev and storefront-unit-test. On the
     # happy path (no triage reroute) the node auto-skips via
@@ -132,7 +153,7 @@ storefront:
     # feature noise), patches the minimum diff, and lets the DAG re-run
     # storefront-unit-test → e2e-author → e2e-runner → qa-adversary.
     storefront-debug:
-      depends_on: [storefront-dev]
+      depends_on: [storefront-dev-smoke]
       consumes_kickoff: [spec]
       consumes_artifacts:
         - { from: spec-compiler, kind: acceptance }
