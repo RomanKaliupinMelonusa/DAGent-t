@@ -10,6 +10,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 import {
   buildLoopAdvisory,
@@ -17,6 +20,8 @@ import {
   extractTestNamesFromMessage,
 } from "../handoff-builder.js";
 import { RESET_OPS } from "../../types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const TEST_NAME = "switch-color-swatch-in-quick-view";
 const PW_LINE = (line: number) =>
@@ -137,5 +142,37 @@ describe("buildLoopAdvisory", () => {
     assert.match(advisory!, new RegExp(TEST_NAME));
     // Joined with a blank line
     assert.match(advisory!, /\n\n/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression — captured fixture from product-quick-view-plp run.
+//
+// The cycle-3 reroute slot in this errorLog is a `storefront-debug` JSON
+// blob (triageDiagnostic) with no Playwright ` › ` lines. Before the
+// `priorFailureMessages` skip-empty fix, that empty-test-name entry was
+// paired with reset 5 and collapsed the lastTwo intersection to ∅,
+// causing the detector to return null at cycle-4 triage despite the
+// `open-quick-view-modal` test having failed in cycles 1, 2, and 4. The
+// fixture is sliced to entries 0..6 (i.e. the state visible to triage
+// at cycle 4, before reset 7 is appended).
+// ---------------------------------------------------------------------------
+
+describe("detectSameTestLoop — product-quick-view-plp regression", () => {
+  const fixturePath = join(__dirname, "fixtures", "product-quick-view-plp-errorlog.json");
+  const errorLog: Array<{ timestamp: string; itemKey: string; message: string }> =
+    JSON.parse(readFileSync(fixturePath, "utf8"));
+
+  it("returns the looping test name despite a non-test entry in cycle 3", () => {
+    assert.equal(errorLog.length, 7);
+    assert.equal(detectSameTestLoop(errorLog, ["open-quick-view-modal"]), "open-quick-view-modal");
+  });
+
+  it("buildLoopAdvisory surfaces fixture re-pick + spec-compiler", () => {
+    const advisory = buildLoopAdvisory(errorLog, "code-defect", ["open-quick-view-modal"]);
+    assert.ok(advisory);
+    assert.match(advisory!, /open-quick-view-modal/);
+    assert.match(advisory!, /fixture/);
+    assert.match(advisory!, /spec-compiler/);
   });
 });

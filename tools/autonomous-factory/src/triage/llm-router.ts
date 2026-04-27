@@ -460,47 +460,27 @@ async function tryClassifyOnce(
 }
 
 /**
- * Walk `priorAttempts` newest-first and return the most recent attempt
- * whose `failingItemKey` matches the current node and whose
- * `[domain:X]` tag resolves to a domain still in the allowed list.
- * Returns `null` when nothing inheritable exists — caller should fall
- * through to the hard `blocked` fallback.
- */
-function inheritPriorVerdict(
-  priorAttempts: readonly PriorAttempt[],
-  failingNodeKey: string | undefined,
-  domains: string[],
-): { fault_domain: string; cycle: number } | null {
-  if (!failingNodeKey || priorAttempts.length === 0) return null;
-  for (let i = priorAttempts.length - 1; i >= 0; i--) {
-    const a = priorAttempts[i];
-    if (a.failingItemKey !== failingNodeKey) continue;
-    const dom = parseDomainTag(a.resetReason);
-    if (!dom || !domains.includes(dom)) continue;
-    return { fault_domain: dom, cycle: a.cycle };
-  }
-  return null;
-}
-
-/**
  * Ask the LLM to classify a novel error trace into a fault domain.
  *
- * Resilience contract (post-A3):
+ * Resilience contract (post Phase 2 — LLM-Unavailable Fallback Policy):
  *   1. First call uses the standard prompt + 60s budget.
- *   2. On parse failure / hallucinated domain / transport error, retry
- *      ONCE with a stricter system+user prompt and a halved budget so
- *      the retry cannot double-stall a node's wall-clock budget.
- *   3. If the retry also fails AND `failingNodeKey` is supplied, look
- *      up the most recent same-item entry in `priorAttempts` whose
- *      `[domain:X]` tag still resolves to an allowed domain; inherit
- *      that classification with an annotated reason.
- *   4. Only when neither retry nor inheritance works does the router
- *      hard-fall-through to `{ fault_domain: "blocked" }`.
+ *   2. On parse failure / hallucinated domain / transport error /
+ *      `baseline-only` rejection, retry ONCE with a stricter
+ *      system+user prompt and a halved budget so the retry cannot
+ *      double-stall a node's wall-clock budget.
+ *   3. If the retry also fails, the router halts the run with
+ *      `fault_domain: "blocked"` and `reason: "llm-unavailable — ..."`
+ *      so the operator can `npm run pipeline:resume` once the LLM
+ *      backend is available again. The router NEVER inherits a prior
+ *      cycle's verdict — evidence may have shifted between cycles
+ *      (e.g. test-code noise vs. genuine code defect), and silently
+ *      reusing a stale classification produced cycle-2 mis-routes in
+ *      the `product-quick-view-plp` run.
  *
  * `baseline` and `priorAttempts` default to "absent" so callers without
  * the data (and existing tests) need no changes. `failingNodeKey` is
- * appended last so prior call sites compile unchanged; absent
- * `failingNodeKey` skips the inheritance step.
+ * retained on the signature for back-compat; `priorAttempts` still
+ * feeds the prompt-construction path for context-rich classification.
  */
 export async function askLlmRouter(
   llm: TriageLlm,
@@ -517,11 +497,6 @@ export async function askLlmRouter(
   filteredStructuredFailure?: unknown,
   fixtureContext?: TriageFixtureContext,
 ): Promise<LlmTriageResult> {
-  const FALLBACK: LlmTriageResult = {
-    fault_domain: "blocked",
-    reason: "LLM classification failed — halting for human review",
-  };
-
   const prompt = buildTriagePrompt(
     trace, domains, topMatches, faultRouting, baseline, priorAttempts, priorDebugRecommendation,
     filteredStructuredFailure, fixtureContext,
@@ -567,27 +542,27 @@ export async function askLlmRouter(
   }
   console.warn(`  ⚠ LLM triage router: retry also failed (${second.kind}: ${second.detail})`);
 
-  // Step 3 — inherit the prior cycle's verdict if one exists for this
-  // failing node and points to a still-allowed domain.
-  const inherited = inheritPriorVerdict(priorAttempts, failingNodeKey, domains);
-  if (inherited) {
-    const result: LlmTriageResult = {
-      fault_domain: inherited.fault_domain,
-      reason:
-        `inherited from cycle ${inherited.cycle} — LLM classification unavailable ` +
-        `(${first.kind} → ${second.kind})`,
-    };
-    appendNovelTriageLog(slug, appRoot, {
-      timestamp: new Date().toISOString(),
-      fault_domain: result.fault_domain,
-      reason: result.reason,
-      trace_excerpt: trace.slice(0, 2000),
-    });
-    return result;
-  }
-
-  // Step 4 — neither retry nor inheritance worked.
-  return FALLBACK;
+  // Step 3 — both attempts failed. Halt the run with `blocked` so the
+  // operator can resume once the LLM backend is healthy. We never
+  // inherit a prior cycle's verdict: evidence may have shifted between
+  // cycles, and silently re-using a stale classification produced
+  // cycle-2 mis-routes (see `product-quick-view-plp` run). The reason
+  // string interpolates both attempt kinds so operators can grep
+  // `_state.json` / `_NOVEL_TRIAGE.jsonl` for `llm-unavailable` and
+  // distinguish this halt from other `blocked` causes.
+  const result: LlmTriageResult = {
+    fault_domain: "blocked",
+    reason:
+      `llm-unavailable — both classification attempts failed ` +
+      `(${first.kind}: ${first.detail} → ${second.kind}: ${second.detail})`,
+  };
+  appendNovelTriageLog(slug, appRoot, {
+    timestamp: new Date().toISOString(),
+    fault_domain: result.fault_domain,
+    reason: result.reason,
+    trace_excerpt: trace.slice(0, 2000),
+  });
+  return result;
 }
 
-export const __test = { buildTriagePrompt, tryClassifyOnce, inheritPriorVerdict };
+export const __test = { buildTriagePrompt, tryClassifyOnce };

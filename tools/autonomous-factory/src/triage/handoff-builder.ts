@@ -131,8 +131,14 @@ export function extractTestNamesFromMessage(message: string): string[] {
 
 /**
  * Walk `errorLog` and pair each `reset-for-reroute` op with the most
- * recent preceding non-reset failure entry — the same pairing the
- * historian uses, but returning the full untruncated message.
+ * recent preceding non-reset failure entry that actually contains
+ * Playwright-style ` › ` test-title lines. Entries with no extractable
+ * test names (e.g. structured `triageDiagnostic` JSON blobs written by
+ * a debug agent, `[session-idle-timeout]` markers) are skipped so the
+ * detector keeps comparing real test runs cycle-over-cycle. The walk
+ * stops at the previous reset (cycle boundary) so a cycle whose only
+ * pre-reset entries lacked test titles contributes nothing rather than
+ * leaking a stale message from an earlier cycle.
  */
 function priorFailureMessages(
   errorLog: readonly HandoffLogEntry[],
@@ -143,10 +149,10 @@ function priorFailureMessages(
     if (!RESET_OP_KEYS.has(entry.itemKey)) continue;
     for (let j = i - 1; j >= 0; j--) {
       const cand = errorLog[j];
-      if (!RESET_OP_KEYS.has(cand.itemKey)) {
-        out.push(cand.message);
-        break;
-      }
+      if (RESET_OP_KEYS.has(cand.itemKey)) break; // cycle boundary
+      if (extractTestNamesFromMessage(cand.message).length === 0) continue;
+      out.push(cand.message);
+      break;
     }
   }
   return out;
