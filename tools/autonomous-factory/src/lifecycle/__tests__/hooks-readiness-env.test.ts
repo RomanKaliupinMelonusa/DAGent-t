@@ -65,13 +65,17 @@ describe("buildE2eReadinessEnv (Session B Phase 1)", () => {
     assert.deepEqual(env, { E2E_READINESS_URL: "http://localhost:3000/" });
   });
 
-  it("injects for qa-adversary and storefront-debug — sibling allow-listed keys", () => {
+  it("injects for qa-adversary, storefront-debug and baseline-analyzer — sibling allow-listed keys", () => {
     assert.equal(
       buildE2eReadinessEnv("qa-adversary", FULL).E2E_READINESS_URL,
       "http://localhost:3000/category/newarrivals",
     );
     assert.equal(
       buildE2eReadinessEnv("storefront-debug", FULL).E2E_READINESS_URL,
+      "http://localhost:3000/category/newarrivals",
+    );
+    assert.equal(
+      buildE2eReadinessEnv("baseline-analyzer", FULL).E2E_READINESS_URL,
       "http://localhost:3000/category/newarrivals",
     );
   });

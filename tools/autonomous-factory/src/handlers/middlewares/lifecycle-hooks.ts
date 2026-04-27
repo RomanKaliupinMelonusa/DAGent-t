@@ -30,15 +30,18 @@ import { featurePath } from "../../paths/feature-paths.js";
  * therefore receive the declarative `apm.e2e.readiness.*` env injection.
  *
  * The brief named `e2e-runner` exclusively, but in commerce-storefront the
- * same hook is also reused by `qa-adversary` and `storefront-debug`. Once
- * the bash-side fallback is dropped (Session B step 5), those callers must
- * also receive the env vars or their pre-hook fails loudly. Adding more
- * keys here is the supported way to opt nodes in.
+ * same hook is also reused by `qa-adversary`, `storefront-debug` and
+ * `baseline-analyzer` (whose pre-hook delegates to the same
+ * `dev-server-lifecycle.sh start` body-aware probe). Once the bash-side
+ * fallback is dropped (Session B step 5), those callers must also receive
+ * the env vars or their pre-hook fails loudly. Adding more keys here is
+ * the supported way to opt nodes in.
  */
 const E2E_READINESS_NODE_KEYS = new Set<string>([
   "e2e-runner",
   "qa-adversary",
   "storefront-debug",
+  "baseline-analyzer",
 ]);
 
 /**
