@@ -67,11 +67,11 @@ agents:
         playwright: "*"
   storefront-dev:
     # Instruction list is enumerated explicitly (rather than the directory
-    # ref `storefront`) so the dev-server-validation.md fragment can be
-    # excluded — the orchestrator now owns the dev-server lifecycle via
-    # the `storefront-dev-smoke` script node. The file remains on disk
-    # under instructions/storefront/ for the debug agent (which still
-    # references the directory glob); a follow-up task will prune it.
+    # ref `storefront`) so the obsolete pre-commit dev-server validation
+    # fragment is no longer pulled in — the orchestrator now owns the
+    # dev-server lifecycle via the `storefront-dev-smoke` script node.
+    # The fragment itself was deleted from instructions/storefront/ in
+    # this PR.
     instructions:
       - always
       - storefront/baseline-volatility-tagging.md

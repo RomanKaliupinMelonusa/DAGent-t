@@ -261,6 +261,40 @@ Zero engine source changes.
 
 ---
 
+## How to Run
+
+Foreground (single feature, blocks the terminal):
+
+```bash
+npm run agent:run -- --app apps/<app> --workflow <name> \
+  --spec-file <path-to-spec> <feature-slug>
+```
+
+### Detached mode
+
+Use `npm run agent:run:detached` when a run is expected to outlive the
+current editor session — e.g. multi-hour storefront workflows, or any
+time VS Code may reload the window (extension upgrade, devcontainer
+rebuild, intermittent SSH). The wrapper at [scripts/run-agent.sh](../../scripts/run-agent.sh)
+forks the orchestrator into a `systemd-run --user --scope` unit when
+available (with a `MemoryMax=${DAGENT_MEMORY_MAX:-2G}` cgroup cap), or
+falls back to `setsid nohup` writing logs into `.dagent/_runs/<slug>.{log,pid}`.
+The wrapper prints the appropriate follow-logs command:
+
+```bash
+# systemd path
+journalctl --user -u <unit-name> -f
+
+# fallback path
+tail -f .dagent/_runs/<slug>.log
+```
+
+Detached and foreground runs share the same `.dagent/<slug>/_state.json`,
+so re-running `npm run agent:run` in the foreground for the same slug
+later resumes cleanly from wherever the detached run left off.
+
+---
+
 ## Reference — Where to Go Next
 
 **Contributor-level docs** (one README per layer boundary — file purposes, public interface, extension recipes):

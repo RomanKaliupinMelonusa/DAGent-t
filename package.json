@@ -22,6 +22,7 @@
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "cd tools/autonomous-factory && npx tsx src/entry/watchdog.ts",
+    "agent:run:detached": "bash scripts/run-agent.sh",
     "agent:supervise": "cd tools/autonomous-factory && npx tsx src/entry/supervise.ts",
     "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
     "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",
