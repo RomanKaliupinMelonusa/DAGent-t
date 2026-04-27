@@ -382,6 +382,58 @@ describe("PipelineKernel — dag-command wrapper", () => {
     assert.equal(snap.items.find((i) => i.key === "B")?.status, "na");
     assert.equal(snap.items.find((i) => i.key === "D")?.status, "na");
   });
+
+  it("processes bypass-node command (failed → na with marker)", () => {
+    const kernel = makeKernel({
+      items: [
+        { key: "A", label: "A", agent: "dev", status: "done", error: null },
+        { key: "B", label: "B", agent: "dev", status: "failed", error: "boom" },
+        { key: "C", label: "C", agent: "test", status: "pending", error: null },
+        { key: "D", label: "D", agent: null, status: "pending", error: null },
+      ],
+    });
+    const cmds = wrapDagCommands([{
+      type: "bypass-node",
+      nodeKey: "B",
+      routeTarget: "D",
+      reason: "code-defect routes to D",
+    }]);
+    const { result, effects } = kernel.process(cmds[0]);
+    assert.equal(result.ok, true);
+    const snap = kernel.dagSnapshot();
+    const b = snap.items.find((i) => i.key === "B")!;
+    assert.equal(b.status, "na");
+    assert.deepEqual(b.bypassedFor, { routeTarget: "D", cycleIndex: 1 });
+    // Telemetry effect emitted
+    const telem = effects.find(
+      (e) => e.type === "telemetry-event" && e.category === "state.bypass",
+    );
+    assert.ok(telem, "telemetry-event state.bypass emitted");
+  });
+
+  it("rejects bypass-node on salvaged items", () => {
+    const kernel = makeKernel({
+      items: [
+        { key: "A", label: "A", agent: "dev", status: "done", error: null },
+        // B is salvaged + failed (degenerate, but the reducer must refuse).
+        { key: "B", label: "B", agent: "dev", status: "failed", error: "x", salvaged: true },
+        { key: "C", label: "C", agent: "test", status: "pending", error: null },
+        { key: "D", label: "D", agent: null, status: "pending", error: null },
+      ],
+    });
+    const cmds = wrapDagCommands([{
+      type: "bypass-node",
+      nodeKey: "B",
+      routeTarget: "D",
+      reason: "should be rejected",
+    }]);
+    const { result } = kernel.process(cmds[0]);
+    assert.equal(result.ok, false);
+    assert.match(result.message ?? "", /salvaged/);
+    // State unchanged.
+    const snap = kernel.dagSnapshot();
+    assert.equal(snap.items.find((i) => i.key === "B")?.status, "failed");
+  });
 });
 
 // ---------------------------------------------------------------------------

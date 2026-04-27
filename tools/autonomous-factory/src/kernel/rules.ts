@@ -11,6 +11,7 @@ import {
   completeItem,
   failItem,
   resetNodes,
+  bypassNode,
   salvageForDraft,
   interpretBatch,
   resolveFailureTarget,
@@ -32,6 +33,7 @@ import {
   type FailResult,
   type FailItemOptions,
   type ResetResult,
+  type BypassResult,
   type SalvageResult,
   type BatchOutcome,
   type BatchSignals,
@@ -62,6 +64,9 @@ export interface KernelRules {
 
   /** Reset a node + downstream cascade. */
   reset(state: TransitionState, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult;
+
+  /** Bypass a failing structural ancestor to unlock a triage reroute. */
+  bypass(state: TransitionState, nodeKey: string, routeTarget: string, reason: string): BypassResult;
 
   /** Graceful degradation for draft PR. */
   salvage(state: TransitionState, failedItemKey: string): SalvageResult;
@@ -243,6 +248,10 @@ export class DefaultKernelRules implements KernelRules {
 
   reset(state: TransitionState, seedKey: string, reason: string, maxCycles?: number, logKey?: string): ResetResult {
     return resetNodes(state, seedKey, reason, maxCycles, logKey, this.signatureFor(seedKey));
+  }
+
+  bypass(state: TransitionState, nodeKey: string, routeTarget: string, reason: string): BypassResult {
+    return bypassNode(state, nodeKey, routeTarget, reason, this.signatureFor(nodeKey));
   }
 
   salvage(state: TransitionState, failedItemKey: string): SalvageResult {

@@ -83,6 +83,11 @@ export type EventKind =
   // source, handoffPath } — single event that fully describes the
   // failing-node → triage → routed-to-node hop.
   | "triage.routed"
+  // Auto-revalidation of a bypassed gate after the triage-reroute target
+  // completes successfully. Stamped with { invocationId, bypassedNode,
+  // routeTarget, cycleIndex } so dashboards can correlate the bypass
+  // → reset-after-fix pair.
+  | "triage.revalidate_bypass"
   // Uniform per-invocation lifecycle (Phase B — fires for every handler type
   // regardless of whether the handler itself emits item.start/item.end).
   // Stamped with { invocationId, nodeKey, trigger, parentInvocationId,

@@ -255,3 +255,30 @@ describe("schedule — producer-cycle gate", () => {
     assert.equal(result.kind, "blocked");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bypass interaction (regression: live-lock when failing parent kept
+// re-entering the dispatchable set ahead of the rerouted child).
+// ---------------------------------------------------------------------------
+
+describe("schedule — bypassed items", () => {
+  it("does not dispatch a bypassed (na) item even if it carries a marker", () => {
+    // Mirrors the original bug: storefront-dev-smoke (B) failed, was
+    // bypassed (status=na, bypassedFor.routeTarget=storefront-debug).
+    // C is the rerouted target. The scheduler must NOT re-dispatch B.
+    const items: SchedulableItem[] = [
+      item("A", "done"),
+      // SchedulableItem doesn't model `bypassedFor` (it's just structural
+      // state for the scheduler) — the marker lives on PipelineItem. The
+      // scheduler invariant is purely: status=na → not dispatchable.
+      item("B", "na"),
+      item("C", "pending"),
+    ];
+    const deps: DependencyGraph = { A: [], B: ["A"], C: ["B"] };
+    const result = schedule(items, deps);
+    assert.equal(result.kind, "items");
+    if (result.kind === "items") {
+      assert.deepEqual(result.items.map((i) => i.key).sort(), ["C"]);
+    }
+  });
+});

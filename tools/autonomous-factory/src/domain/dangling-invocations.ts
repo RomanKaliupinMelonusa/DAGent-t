@@ -53,6 +53,67 @@ export function findDanglingInvocations(
 }
 
 /**
+ * Pure scanner — find items carrying a `bypassedFor` marker whose route
+ * target is in a settled state that will never re-fire the auto-revalidate
+ * seal hook. Surfaces orphan markers left behind by orchestrator crashes
+ * between `bypass-node` and the routed-to seal.
+ *
+ * Three cases are reported with distinct severities:
+ *  - `route-done`: route target is already `done` — the seal hook fired
+ *    but the `reset-after-fix` command never landed (e.g. crash between
+ *    seal and command processing). Caller should re-emit the reset.
+ *  - `route-failed`: route target is `failed` — its own retry / triage
+ *    loop owns recovery. The bypass marker is genuinely orphaned only
+ *    if all retries exhaust.
+ *  - `route-pending`: route target is still pending — quiet case, the
+ *    next dispatch will fire the seal hook normally. Filtered out.
+ */
+export interface DanglingBypass {
+  readonly itemKey: string;
+  readonly routeTarget: string;
+  readonly cycleIndex: number;
+  readonly routeStatus: "done" | "failed" | "na" | "dormant" | "pending";
+  readonly severity: "route-done" | "route-failed" | "route-na";
+}
+
+export function findDanglingBypasses(state: PipelineState): DanglingBypass[] {
+  const statusByKey = new Map(state.items.map((i) => [i.key, i.status]));
+  const out: DanglingBypass[] = [];
+  for (const item of state.items) {
+    if (!item.bypassedFor) continue;
+    const routeStatus = statusByKey.get(item.bypassedFor.routeTarget);
+    if (!routeStatus) continue;
+    if (routeStatus === "done") {
+      out.push({
+        itemKey: item.key,
+        routeTarget: item.bypassedFor.routeTarget,
+        cycleIndex: item.bypassedFor.cycleIndex,
+        routeStatus,
+        severity: "route-done",
+      });
+    } else if (routeStatus === "failed") {
+      out.push({
+        itemKey: item.key,
+        routeTarget: item.bypassedFor.routeTarget,
+        cycleIndex: item.bypassedFor.cycleIndex,
+        routeStatus,
+        severity: "route-failed",
+      });
+    } else if (routeStatus === "na" || routeStatus === "dormant") {
+      out.push({
+        itemKey: item.key,
+        routeTarget: item.bypassedFor.routeTarget,
+        cycleIndex: item.bypassedFor.cycleIndex,
+        routeStatus,
+        severity: "route-na",
+      });
+    }
+    // pending route — quiet case; next dispatch fires seal hook normally.
+  }
+  return out;
+}
+
+/**
  * Pure state-mutation half of `sealInvocationRecord`. Mirrors the adapter's
  * logic but performs no I/O — does not write the JSONL tail. Used by the
  * kernel admin reducer (`recover-dangling`) so the kernel layer stays free

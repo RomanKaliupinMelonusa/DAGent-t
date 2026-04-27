@@ -121,6 +121,24 @@ storefront:
       # `trigger=triage-reroute` runs.
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      # Coverage hole fix (Apr 2026): `storefront-dev` is itself a reroute
+      # target — when the dev session itself fails (compile error, agent
+      # disconnect, contract violation), triage must classify and route.
+      # Without an explicit on_failure block the triage handler had no
+      # routes map and the failing dev session escalated straight to the
+      # global default with no graceful-salvage option.
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Defects in the dev's own output retry the same agent (bounded
+          # by circuit_breaker.max_item_failures in apm.yml).
+          code-defect: "$SELF"
+          # Jest fixtures live next to the implementation — same agent
+          # owns both. (We do not route to e2e-author for unit-test code.)
+          test-code: "$SELF"
+          # Bad fixture pick by spec-compiler — bounce upstream.
+          test-data: spec-compiler
+          blocked: null
 
     # ── Dev-server smoke gate (orchestrator-owned) ────────────────────
     # Replaces the in-agent `npm start &` validation step. The script
@@ -205,6 +223,15 @@ storefront:
       # qa-adversary, or storefront-debug.
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      # Coverage hole fix (Apr 2026): the SDET can fail too — surface it
+      # through triage so test-code errors retry the SDET and test-data
+      # errors bounce back upstream to the spec-compiler.
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-code: "$SELF"
+          test-data: spec-compiler
+          blocked: null
 
     e2e-runner:
       depends_on: [e2e-author]
@@ -274,6 +301,9 @@ storefront:
         - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
+        # Cleanup is non-essential — degrade to Draft PR rather than halt.
+        routes:
+          blocked: null
 
     docs-archived:
       depends_on: [code-cleanup]
@@ -285,6 +315,8 @@ storefront:
         - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
+        routes:
+          blocked: null
 
     doc-architect:
       depends_on: [code-cleanup, docs-archived]
@@ -295,6 +327,8 @@ storefront:
         - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
+        routes:
+          blocked: null
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
     #
@@ -325,6 +359,8 @@ storefront:
         - { from: docs-archived, kind: change-manifest, required: false }
       on_failure:
         triage: triage-storefront
+        routes:
+          blocked: null
 
     # ── Triage ────────────────────────────────────────────────
     triage-storefront:

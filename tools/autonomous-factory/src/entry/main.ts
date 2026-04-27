@@ -40,6 +40,7 @@ import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecy
 import { resolveHandler, inferHandler } from "../handlers/registry.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import { runAdminCommand, type AdminHost } from "../kernel/admin.js";
+import { findDanglingBypasses } from "../domain/dangling-invocations.js";
 
 /** Default threshold (ms) before an unsealed invocation is force-failed
  *  by the dangling-invocation auto-recovery scanner. Mirrored as the
@@ -196,6 +197,28 @@ export async function runWithKernel(
 
   // Load initial DAG state from the persisted _STATE.json
   const initialDagState = await stateStore.getStatus(slug) as PipelineState;
+
+  // Detect dangling bypass markers — items left `na` with `bypassedFor`
+  // set when the orchestrator crashed between the bypass and the
+  // routed-to seal. The seal hook's auto-revalidate path won't fire on
+  // resume because the routed-to invocation is already settled. We
+  // surface this as an operator warning rather than auto-resetting:
+  // the right action depends on whether the route succeeded (re-emit
+  // reset, fixed downstream) or failed (let its retry loop run).
+  const danglingBypasses = findDanglingBypasses(initialDagState);
+  for (const b of danglingBypasses) {
+    if (b.severity === "route-done") {
+      console.warn(
+        `  ⚠ dangling bypass: ${b.itemKey} (na, bypassed → ${b.routeTarget}) but route is already done. ` +
+          `Auto-revalidate likely missed; consider \`pipeline:reset-scripts\` or manual re-emit.`,
+      );
+    } else if (b.severity === "route-na" || b.severity === "route-failed") {
+      console.warn(
+        `  ⚠ dangling bypass: ${b.itemKey} (na, bypassed → ${b.routeTarget}) — route is ${b.routeStatus}. ` +
+          `Gate will not be re-validated until route target seals successfully.`,
+      );
+    }
+  }
 
   // Load prior session telemetry for monotonic accumulation
   const baseTelemetry = telemetry.loadPreviousSummary(appRoot, slug);

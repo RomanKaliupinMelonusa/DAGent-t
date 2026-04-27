@@ -36,6 +36,7 @@ import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestL
 import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
+import { getUpstream } from "../domain/dag-graph.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";
@@ -307,6 +308,31 @@ async function buildRerouteCommands(
   //    artifact by the outer execute wrapper using the `handoff` value
   //    returned from this function — no persistence command needed.)
   const taggedReason = `${formatDomainTag(triageResult.domain)} [source:${triageResult.source}] ${triageResult.reason}`;
+
+  // 0. Bypass the failing node when it is a transitive structural ancestor
+  //    of the reroute target. Without this, the scheduler keeps the route
+  //    target gated behind the still-failed parent and the reroute
+  //    live-locks. The kernel flips the failing item from `failed` → `na`
+  //    with a `bypassedFor: { routeTarget }` marker; the seal hook
+  //    consumes the marker on successful completion of the route target
+  //    to emit `reset-nodes` (logKey `reset-after-fix`) which re-validates
+  //    the gate against the fix.
+  //
+  //    Skip when failing == route target (`$SELF` reroute) or when the
+  //    failing node is downstream of the route target (the upstream node's
+  //    `reset-nodes` cascade already handles re-running the failing one).
+  if (failingNodeKey !== routeToKey) {
+    const ancestors = getUpstream(ctx.pipelineState.dependencies, [routeToKey]);
+    if (ancestors.includes(failingNodeKey)) {
+      commands.push({
+        type: "bypass-node",
+        nodeKey: failingNodeKey,
+        routeTarget: routeToKey,
+        reason: taggedReason,
+      });
+    }
+  }
+
   commands.push({
     type: "reset-nodes",
     seedKey: routeToKey,

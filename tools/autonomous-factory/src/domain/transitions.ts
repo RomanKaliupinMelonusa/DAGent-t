@@ -22,6 +22,8 @@ export interface TransitionItem {
   docNote?: string | null;
   /** Sticky salvage marker — see PipelineItem.salvaged in src/types.ts. */
   salvaged?: boolean;
+  /** Reversible bypass marker — see PipelineItem.bypassedFor in src/types.ts. */
+  bypassedFor?: { routeTarget: string; cycleIndex: number };
 }
 
 export interface ErrorLogEntry {
@@ -269,9 +271,19 @@ export function resetNodes(
   cascadeBarriers(state.dependencies, state.nodeTypes, keysToReset);
 
   const newItems = state.items.map((i) => {
-    if (!keysToReset.has(i.key) || i.status === "na") return i;
+    if (!keysToReset.has(i.key)) return i;
+    // Truly N/A items stay N/A — UNLESS they were temporarily bypassed by a
+    // `bypass-node` to unlock a triage reroute. In that case the bypass
+    // marker is consumed and the item returns to `pending` so the gate is
+    // re-validated against the fix. (Salvaged items don't carry
+    // `bypassedFor` — the salvage check above already short-circuits them.)
+    if (i.status === "na" && !i.bypassedFor) return i;
     // Dormant nodes only activate if they are the explicit seed
     if (i.status === "dormant" && i.key !== seedKey) return i;
+    if (i.bypassedFor) {
+      const { bypassedFor: _bypassed, ...rest } = i;
+      return { ...rest, status: "pending" as const, error: null };
+    }
     return { ...i, status: "pending" as const, error: null };
   });
 
@@ -287,6 +299,84 @@ export function resetNodes(
     cycleCount: cycleCount + 1,
     halted: false,
     resetKeys: [...keysToReset],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bypass node (triage-reroute deadlock unlock)
+// ---------------------------------------------------------------------------
+
+export interface BypassResult {
+  state: TransitionState;
+  /** True when the bypass mutated the item (false on idempotent no-ops). */
+  applied: boolean;
+  /** Set when refused — only `"salvaged"` today (sticky degradation wins). */
+  rejectedReason?: "salvaged" | "unknown-item" | "wrong-status";
+}
+
+/**
+ * Flip a failing structural ancestor from `failed` → `na` so a triage
+ * reroute can dispatch a downstream node that would otherwise be
+ * DAG-locked behind the failure. Stamps `bypassedFor` on the item; the
+ * marker is consumed by `resetNodes` (auto-revalidation path) when the
+ * route target completes successfully.
+ *
+ * Idempotent: applying to an already-bypassed item with the same
+ * `routeTarget` is a no-op. Salvaged items are rejected.
+ *
+ * Cycle counting is bookkeeping-only — no `maxCycles` budget. The
+ * bounded budget lives on the paired `RESET_AFTER_FIX` reset, not here.
+ */
+export function bypassNode(
+  state: TransitionState,
+  nodeKey: string,
+  routeTarget: string,
+  reason: string,
+  signatureFn: (msg: string) => string = computeErrorSignature,
+): BypassResult {
+  const item = state.items.find((i) => i.key === nodeKey);
+  if (!item) {
+    return { state, applied: false, rejectedReason: "unknown-item" };
+  }
+  if (item.salvaged) {
+    return { state, applied: false, rejectedReason: "salvaged" };
+  }
+  // Idempotent: already bypassed for the same target — append a log entry
+  // for diagnostic visibility but no item mutation.
+  if (item.bypassedFor?.routeTarget === routeTarget && item.status === "na") {
+    return { state, applied: false };
+  }
+  // Only meaningful for `failed` items. A bypass on a `done` / `pending`
+  // item is a contract violation; the reducer no-ops rather than corrupt
+  // state.
+  if (item.status !== "failed") {
+    return { state, applied: false, rejectedReason: "wrong-status" };
+  }
+
+  const cycleIndex = state.errorLog.filter(
+    (e) => e.itemKey === "bypass-for-reroute",
+  ).length + 1;
+
+  const newItems = state.items.map((i) =>
+    i.key === nodeKey
+      ? {
+          ...i,
+          status: "na" as const,
+          bypassedFor: { routeTarget, cycleIndex },
+        }
+      : i,
+  );
+
+  const newEntry: ErrorLogEntry = {
+    timestamp: new Date().toISOString(),
+    itemKey: "bypass-for-reroute",
+    message: `Bypass cycle ${cycleIndex}: ${nodeKey} → na to unlock reroute target ${routeTarget}. ${reason}`,
+    errorSignature: reason ? signatureFn(reason) : null,
+  };
+
+  return {
+    state: { ...state, items: newItems, errorLog: [...state.errorLog, newEntry] },
+    applied: true,
   };
 }
 

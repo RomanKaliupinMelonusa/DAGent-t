@@ -495,6 +495,46 @@ export class PipelineKernel {
         };
       }
 
+      case "bypass-node": {
+        const asTransition = this.dagState as unknown as TransitionState;
+        const { state, applied, rejectedReason } = this.rules.bypass(
+          asTransition,
+          inner.nodeKey,
+          inner.routeTarget,
+          inner.reason,
+        );
+        if (applied) {
+          this.dagState = {
+            ...this.dagState,
+            items: state.items,
+            errorLog: state.errorLog,
+          } as PipelineState;
+        }
+        effects.push({
+          type: "telemetry-event",
+          category: "state.bypass",
+          itemKey: inner.nodeKey,
+          context: {
+            nodeKey: inner.nodeKey,
+            routeTarget: inner.routeTarget,
+            applied,
+            reason: inner.reason,
+            ...(rejectedReason ? { rejectedReason } : {}),
+          },
+        });
+        if (rejectedReason === "salvaged") {
+          return {
+            result: {
+              ok: false,
+              halt: false,
+              message: `Bypass of "${inner.nodeKey}" rejected: item is salvaged (sticky)`,
+            },
+            effects,
+          };
+        }
+        return { result: { ok: true }, effects };
+      }
+
       case "salvage-draft": {
         const asTransition = this.dagState as unknown as TransitionState;
         const { state, skippedKeys, demotedKeys } = this.rules.salvage(asTransition, inner.failedItemKey);

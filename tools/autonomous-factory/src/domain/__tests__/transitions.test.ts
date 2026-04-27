@@ -12,6 +12,7 @@ import {
   failItem,
   resetNodes,
   salvageForDraft,
+  bypassNode,
   type TransitionState,
   type TransitionItem,
 } from "../transitions.js";
@@ -424,5 +425,120 @@ describe("resetNodes + sticky salvage", () => {
     assert.equal(result.rejectedReason, undefined);
     assert.equal(result.halted, false);
     assert.ok(result.resetKeys.includes("A"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bypassNode (triage-reroute deadlock unlock)
+// ---------------------------------------------------------------------------
+
+describe("bypassNode", () => {
+  it("flips a failed item to na and stamps bypassedFor", () => {
+    const items = [makeItem("A", "failed"), makeItem("B", "pending")];
+    const state = makeState(items);
+    const result = bypassNode(state, "A", "B", "code-defect");
+    assert.equal(result.applied, true);
+    assert.equal(result.rejectedReason, undefined);
+    const a = result.state.items.find((i) => i.key === "A")!;
+    assert.equal(a.status, "na");
+    assert.deepEqual(a.bypassedFor, { routeTarget: "B", cycleIndex: 1 });
+    assert.equal(result.state.errorLog.length, 1);
+    assert.equal(result.state.errorLog[0]!.itemKey, "bypass-for-reroute");
+  });
+
+  it("is idempotent for same routeTarget", () => {
+    const items = [makeItem("A", "failed")];
+    const state = makeState(items);
+    const r1 = bypassNode(state, "A", "B", "first");
+    const r2 = bypassNode(r1.state, "A", "B", "second");
+    assert.equal(r2.applied, false);
+    assert.equal(r2.state, r1.state);
+  });
+
+  it("rejects salvaged items (sticky degradation wins)", () => {
+    const items: TransitionItem[] = [
+      { ...makeItem("A", "failed"), salvaged: true },
+    ];
+    const state = makeState(items);
+    const result = bypassNode(state, "A", "B", "after-salvage");
+    assert.equal(result.applied, false);
+    assert.equal(result.rejectedReason, "salvaged");
+  });
+
+  it("rejects non-failed items as wrong-status", () => {
+    const items = [makeItem("A", "pending")];
+    const state = makeState(items);
+    const result = bypassNode(state, "A", "B", "premature");
+    assert.equal(result.applied, false);
+    assert.equal(result.rejectedReason, "wrong-status");
+  });
+
+  it("returns unknown-item for missing key", () => {
+    const state = makeState([makeItem("A", "failed")]);
+    const result = bypassNode(state, "Z", "B", "missing");
+    assert.equal(result.applied, false);
+    assert.equal(result.rejectedReason, "unknown-item");
+  });
+
+  it("increments cycleIndex across multiple bypasses", () => {
+    let state = makeState([makeItem("A", "failed"), makeItem("B", "failed")]);
+    state = bypassNode(state, "A", "X", "first").state;
+    state = bypassNode(state, "B", "Y", "second").state;
+    const a = state.items.find((i) => i.key === "A")!;
+    const b = state.items.find((i) => i.key === "B")!;
+    assert.equal(a.bypassedFor?.cycleIndex, 1);
+    assert.equal(b.bypassedFor?.cycleIndex, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetNodes — bypass marker handling
+// ---------------------------------------------------------------------------
+
+describe("resetNodes (bypass interaction)", () => {
+  it("re-pendings a bypassed na item and clears bypassedFor", () => {
+    // Setup: A was failed, then bypassed to unlock route target X.
+    let state = makeState([makeItem("A", "failed"), makeItem("B", "pending")]);
+    state = bypassNode(state, "A", "X", "domain").state;
+    // Now reset A (the auto-revalidate path).
+    const result = resetNodes(state, "A", "reset-after-fix", 3, "reset-after-fix");
+    const a = result.state.items.find((i) => i.key === "A")!;
+    assert.equal(a.status, "pending");
+    assert.equal(a.bypassedFor, undefined);
+    assert.equal(result.halted, false);
+  });
+
+  it("leaves true-na (non-bypassed) items as na", () => {
+    const items = [makeItem("A", "na"), makeItem("B", "done")];
+    const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
+    const result = resetNodes(state, "A", "structural-na");
+    const a = result.state.items.find((i) => i.key === "A")!;
+    assert.equal(a.status, "na");
+  });
+
+  it("preserves bypassedFor marker when reset-after-fix exhausts its budget (halt)", () => {
+    // Decision: when the gate cannot be re-validated within its budget,
+    // we halt with the bypass marker INTACT for diagnostic visibility.
+    // Operators inspecting `_state.json` see the originating reroute and
+    // the matching `errorLog` entries; the `na` status is documented as
+    // "bypassed" by the renderer (see pipeline-state.ts).
+    let state = makeState([makeItem("A", "failed"), makeItem("B", "pending")]);
+    state = bypassNode(state, "A", "X", "domain").state;
+    // Burn the 3-cycle budget by appending fake reset-after-fix log entries.
+    for (let i = 0; i < 3; i++) {
+      state = {
+        ...state,
+        errorLog: [
+          ...state.errorLog,
+          { timestamp: new Date().toISOString(), itemKey: "reset-after-fix", message: `cycle ${i}` },
+        ],
+      };
+    }
+    const result = resetNodes(state, "A", "exhaust", 3, "reset-after-fix");
+    assert.equal(result.halted, true);
+    // Marker preserved on halt — state pointer unchanged.
+    const a = result.state.items.find((i) => i.key === "A")!;
+    assert.equal(a.status, "na");
+    assert.deepEqual(a.bypassedFor, { routeTarget: "X", cycleIndex: 1 });
   });
 });

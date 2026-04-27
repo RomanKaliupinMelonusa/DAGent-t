@@ -133,7 +133,16 @@ function renderTrans(slug: string, state: PipelineState): void {
       item.status === "failed"  ? "[ ] ⚠️" :
       item.status === "dormant" ? "[ ] 💤" :
       "[ ]";
-    lines.push(`- ${box} ${item.label} (${item.agent})`);
+    // Annotate temporarily-bypassed items so operators don't confuse them
+    // with structural N/A or salvage. The marker is consumed when the
+    // routed-to target seals successfully (see `recordInvocationSeal` →
+    // `reset-after-fix`); a halt with the marker still set means the
+    // bypassed gate could not be re-validated within its budget.
+    const bypassNote = item.bypassedFor
+      ? ` (bypassed → ${item.bypassedFor.routeTarget})`
+      : "";
+    const salvageNote = item.salvaged && !item.bypassedFor ? " (salvaged)" : "";
+    lines.push(`- ${box} ${item.label} (${item.agent})${bypassNote}${salvageNote}`);
   }
 
   lines.push("");

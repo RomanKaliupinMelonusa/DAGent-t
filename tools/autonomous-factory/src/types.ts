@@ -20,6 +20,15 @@ export const RESET_OPS = {
   RESET_FOR_DEV: "reset-for-dev",
   /** resetNodes() for triage reroute */
   RESET_FOR_REROUTE: "reset-for-reroute",
+  /** bypassNode() — failing parent flipped to `na` to unlock a downstream
+   *  triage reroute target. Cycle counter is bookkeeping-only (does NOT
+   *  consume the user's `max_reroutes` budget). */
+  BYPASS_FOR_REROUTE: "bypass-for-reroute",
+  /** resetNodes() emitted by the seal hook when a triage-reroute target
+   *  completes successfully — re-pendings the bypassed parent so the
+   *  fix is validated against the gate. Has its own dedicated cycle
+   *  budget (default 3) distinct from `RESET_FOR_REROUTE`. */
+  RESET_AFTER_FIX: "reset-after-fix",
   /** Legacy error-log marker — kept for backward compat with old state files. */
   RESET_PHASES: "reset-phases",
   /** A4 — sentinel itemKey used by the blocked-verdict circuit breaker.
@@ -47,6 +56,17 @@ export interface PipelineItem {
    *  item are rejected by the reducer (no-op) and produce a telemetry signal.
    *  Prevents later triage cycles from resurrecting a gracefully-degraded node. */
   salvaged?: boolean;
+  /** Bypass marker — set when the kernel applies `bypass-node` to this
+   *  failing item so a triage reroute can dispatch a downstream debug
+   *  agent that would otherwise be DAG-locked behind the failure. The
+   *  item's status is flipped from `failed` → `na` for the duration of
+   *  the bypass; on the rerouted target's successful seal, the seal hook
+   *  emits a `reset-nodes` command with logKey `reset-after-fix` to
+   *  re-pending this item and re-validate the gate against the fix. The
+   *  marker is cleared by `resetNodes` when the item transitions back to
+   *  `pending`. Distinct from `salvaged`: bypass is reversible, salvage
+   *  is sticky. */
+  bypassedFor?: { routeTarget: string; cycleIndex: number };
   /** Artifact-bus pointer: invocationId of the most recent (or staged) dispatch
    *  for this item. Points into `PipelineState.artifacts`. Set by the kernel
    *  at dispatch time AND when the triage handler stages a re-entrance via

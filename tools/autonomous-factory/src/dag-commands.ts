@@ -17,6 +17,7 @@ import type { InvocationTrigger } from "./types.js";
 
 export type DagCommand =
   | ResetNodesCommand
+  | BypassNodeCommand
   | SalvageDraftCommand
   | StageInvocationCommand
   | ReindexCommand
@@ -33,6 +34,28 @@ export interface ResetNodesCommand {
   readonly logKey?: string;
   /** Max reset cycles before halt. Resolved from triage profile if omitted. */
   readonly maxCycles?: number;
+}
+
+/** Bypass a failing structural ancestor so a triage reroute can dispatch
+ *  a downstream node that would otherwise be DAG-locked behind the
+ *  failure. The kernel flips the target item's status from `failed` →
+ *  `na` and stamps `bypassedFor: { routeTarget, cycleIndex }` on it.
+ *  The marker is consumed by the seal hook (when the route target
+ *  completes successfully) to emit `reset-nodes` with logKey
+ *  `reset-after-fix`, which re-pendings the bypassed item so the gate
+ *  is re-validated against the fix.
+ *
+ *  Idempotent: applying `bypass-node` to an already-bypassed item is a
+ *  no-op. Salvaged items are rejected (sticky degradation wins). */
+export interface BypassNodeCommand {
+  readonly type: "bypass-node";
+  /** Failing node to bypass (must be a structural ancestor of routeTarget). */
+  readonly nodeKey: string;
+  /** The triage reroute target this bypass is enabling. Persisted on the
+   *  item as `bypassedFor.routeTarget` so the seal hook can locate it. */
+  readonly routeTarget: string;
+  /** Human-readable reason (tagged with domain/source for diagnostics). */
+  readonly reason: string;
 }
 
 /** Graceful degradation — skip remaining nodes, jump to Draft PR. */

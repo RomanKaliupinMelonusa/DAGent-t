@@ -41,6 +41,7 @@ export {
   resetScripts,
   resumeAfterElevated,
   salvageForDraft,
+  bypassNode,
   findInfraPollKey,
   findInfraDevKey,
   type TransitionItem,
@@ -53,6 +54,7 @@ export {
   type ResetScriptsResult,
   type ResumeElevatedResult,
   type SalvageResult,
+  type BypassResult,
 } from "./transitions.js";
 
 export {

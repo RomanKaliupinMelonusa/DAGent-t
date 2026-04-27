@@ -30,6 +30,7 @@ import { isArtifactKind } from "../../apm/artifact-catalog.js";
 import { synthesizeNodeReport, writeNodeReport } from "../../reporting/node-report.js";
 import { computeTriggeredBy, triggeredByFromStaged } from "./triggered-by.js";
 import { getWorkflowNode } from "../../session/dag-utils.js";
+import { RESET_OPS } from "../../types.js";
 
 export type DispatchTuple =
   | readonly [NodeHandler, NodeContext]
@@ -501,6 +502,55 @@ export async function recordInvocationSeal(
         invocationId: ctx.executionId,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+
+    // Auto-revalidate bypassed gate after the route target completes.
+    //
+    // When a triage handler bypassed a failing parent (via `bypass-node`)
+    // to unlock this rerouted target, the parent's gate has not yet been
+    // re-validated against any fix the rerouted agent applied. On
+    // successful seal of the route target — regardless of which trigger
+    // fired this particular invocation — emit `reset-nodes` for each
+    // bypassed parent so the gate re-runs. The reset uses logKey
+    // `reset-after-fix` with its own dedicated cycle budget, distinct
+    // from `reset-for-reroute` so the two budgets don't compete.
+    //
+    // The trigger is intentionally NOT filtered. A common case otherwise
+    // missed: `storefront-debug` is rerouted (cycle 1, trigger=
+    // `triage-reroute`), fails, then a `$SELF` retry succeeds (cycle 2,
+    // trigger=`retry` / `redevelopment-cycle`). The signal is purely
+    // structural: an item carries `bypassedFor.routeTarget === ctx.itemKey`
+    // and we just sealed `completed`. The marker itself proves a triage
+    // reroute happened earlier in the run.
+    //
+    // Skipped on failure / error outcomes: if the rerouted agent failed,
+    // its own retry / triage loop fires; resetting the gate prematurely
+    // would just produce noise.
+    if (outcome === "completed" && kernel) {
+      const liveItems = kernel.dagSnapshot().items;
+      for (const item of liveItems) {
+        if (item.bypassedFor?.routeTarget !== ctx.itemKey) continue;
+        batchResult.commands.push({
+          type: "dag-command",
+          inner: {
+            type: "reset-nodes",
+            seedKey: item.key,
+            reason:
+              `Re-validating bypassed gate "${item.key}" after triage-reroute target `
+              + `"${ctx.itemKey}" completed successfully.`,
+            logKey: RESET_OPS.RESET_AFTER_FIX,
+            // Default budget is 3 — bounded retry of the gate after fixes.
+            // The triage handler's own `max_reroutes` budget is separate.
+            maxCycles: 3,
+          },
+        });
+        logger.event("triage.revalidate_bypass", item.key, {
+          invocationId: ctx.executionId,
+          bypassedNode: item.key,
+          routeTarget: ctx.itemKey,
+          cycleIndex: item.bypassedFor.cycleIndex,
+        });
+      }
     }
     // Phase 1 — mirror the seal on the InvocationFilesystem port so the
     // shared seal cache stops further writes to the invocation dir, and
