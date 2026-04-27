@@ -24,22 +24,37 @@ import { renderInvocationTree } from "../../reporting/trans-tree.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Repo root: this file lives at tools/autonomous-factory/src/adapters/file-state/io.ts → repo is four levels up. */
 export const REPO_ROOT = join(__dirname, "../../../../..");
-/** App root: defaults to repo root unless APP_ROOT env var is set. */
-export const APP_ROOT = process.env.APP_ROOT
-  ? (isAbsolute(process.env.APP_ROOT) ? process.env.APP_ROOT : join(REPO_ROOT, process.env.APP_ROOT))
-  : REPO_ROOT;
-export const WORK_DIR = join(APP_ROOT, ".dagent");
+
+/**
+ * App root: resolved lazily on every access from `process.env.APP_ROOT`,
+ * with a fallback to {@link REPO_ROOT}. Lazy resolution is required because
+ * `bootstrap()` parses the `--app` CLI flag and propagates it into
+ * `process.env.APP_ROOT` *after* this module is first imported. A
+ * module-load-time `const` would lock the value to whatever the env had
+ * (typically empty) when `watchdog.ts` was loaded, causing all `.dagent/`
+ * and `.apm/` lookups to point at the repo root instead of the chosen app.
+ */
+export function getAppRoot(): string {
+  const env = process.env.APP_ROOT;
+  if (!env) return REPO_ROOT;
+  return isAbsolute(env) ? env : join(REPO_ROOT, env);
+}
+
+/** `<APP_ROOT>/.dagent` — resolved lazily; see {@link getAppRoot}. */
+export function getWorkDir(): string {
+  return join(getAppRoot(), ".dagent");
+}
 
 // ─── Path helpers ───────────────────────────────────────────────────────────
 
 /** `<inProgress>/<slug>/_state.json` — nested-layout state path. */
 export function statePath(slug: string): string {
-  return join(WORK_DIR, slug, "_state.json");
+  return join(getWorkDir(), slug, "_state.json");
 }
 
 /** `<inProgress>/<slug>/_trans.md` — nested-layout transition log path. */
 export function transPath(slug: string): string {
-  return join(WORK_DIR, slug, "_trans.md");
+  return join(getWorkDir(), slug, "_trans.md");
 }
 
 export function today(): string {

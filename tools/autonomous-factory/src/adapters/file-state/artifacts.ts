@@ -17,7 +17,7 @@
 
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { WORK_DIR } from "./io.js";
+import { getWorkDir } from "./io.js";
 import type {
   PipelineState,
   InvocationRecord,
@@ -222,7 +222,7 @@ export function attachInvocationRoutedTo(
  */
 function appendInvocationJsonl(slug: string, rec: InvocationRecord): void {
   try {
-    const dir = `${WORK_DIR}/${slug}`;
+    const dir = `${getWorkDir()}/${slug}`;
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

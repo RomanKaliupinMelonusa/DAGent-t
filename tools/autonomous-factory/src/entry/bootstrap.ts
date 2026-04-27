@@ -77,6 +77,16 @@ export interface BootstrapResult {
 export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   const { slug, appRoot, repoRoot, baseBranch, workflowName, specFile } = cli;
 
+  // Propagate appRoot to env IMMEDIATELY so every downstream module
+  // (file-state I/O, hooks, plugin loader, agent subprocesses) resolves
+  // `.dagent/` and `.apm/` against the chosen app — not the repo root.
+  // This must run before any preflight or state-touching code: the
+  // file-state adapter reads `process.env.APP_ROOT` lazily on each call,
+  // and child processes inherit env at spawn time.
+  process.env.APP_ROOT = appRoot;
+  // Allow deploy-manager's poll-ci.sh to poll for up to ~30 min.
+  process.env.POLL_MAX_RETRIES = "60";
+
   // --- 1. CLI auth ---
   console.log("\n  🔐 CLI Authentication Status:");
   checkGitHubLogin();
@@ -225,11 +235,10 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     );
   }
 
-  // Propagate appRoot so the JsonFileStateStore adapter resolves .dagent/
-  // correctly (consumed by the pipeline-state CLI and by agent hooks).
-  process.env.APP_ROOT = appRoot;
-  // Allow deploy-manager's poll-ci.sh to poll for up to ~30 min
-  process.env.POLL_MAX_RETRIES = "60";
+  // Propagation of `appRoot` and `POLL_MAX_RETRIES` to `process.env` was
+  // performed at the top of `bootstrap()` so every preflight step and
+  // every dynamically-imported adapter sees the chosen app from the
+  // first call onwards.
 
   return {
     config: {
