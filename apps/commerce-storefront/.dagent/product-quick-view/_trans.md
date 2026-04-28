@@ -10,7 +10,7 @@
 
 ## Checklist
 - [x] create-branch (null)
-- [ ] stage-spec (null)
+- [x] stage-spec (null)
 - [ ] spec-compiler (@spec-compiler)
 - [ ] baseline-analyzer (@baseline-analyzer)
 - [ ] storefront-dev (@storefront-dev)
@@ -32,11 +32,14 @@
 [No errors recorded]
 
 ## Invocations
+### baseline-analyzer
+- … #1 `inv_01KQB2YM6X13AM9ECCJ9BG8BDM` (initial ← spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH (initial)) [pending @ 2026-04-28T22:21:58.365Z]
+
 ### create-branch
 - ✓ #1 `inv_01KQB2RDQV675YMJ9H5TCT1XSJ` (initial) [completed @ 2026-04-28T22:18:35.875Z]
 
 ### spec-compiler
-- … #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [pending @ 2026-04-28T22:18:38.659Z]
+- ✓ #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [completed @ 2026-04-28T22:21:54.103Z]
 
 ### stage-spec
 - ✓ #1 `inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD` (initial ← create-branch/inv_01KQB2RDQV675YMJ9H5TCT1XSJ (initial)) [completed @ 2026-04-28T22:18:37.268Z]
