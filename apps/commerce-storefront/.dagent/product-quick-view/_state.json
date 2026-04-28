@@ -33,7 +33,7 @@
       "key": "baseline-analyzer",
       "label": "baseline-analyzer",
       "agent": "@baseline-analyzer",
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB2YM6X13AM9ECCJ9BG8BDM"
     },
@@ -456,7 +456,27 @@
           "invocationId": "inv_01KQB2YM6X13AM9ECCJ9BG8BDM"
         }
       ],
-      "outputs": []
+      "outputs": [
+        {
+          "kind": "implementation-status",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev/inv_01KQB36DSFGNJ7V5WEBXMTH46S/outputs/implementation-status.json",
+          "nodeKey": "storefront-dev",
+          "invocationId": "inv_01KQB36DSFGNJ7V5WEBXMTH46S"
+        },
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev/inv_01KQB36DSFGNJ7V5WEBXMTH46S/outputs/node-report.json",
+          "nodeKey": "storefront-dev",
+          "invocationId": "inv_01KQB36DSFGNJ7V5WEBXMTH46S"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-28T22:39:06.679Z",
+      "sealed": true
     }
   }
 }
