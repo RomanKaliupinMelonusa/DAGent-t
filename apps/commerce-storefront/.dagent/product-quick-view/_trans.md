@@ -16,7 +16,7 @@
 - [x] storefront-dev (@storefront-dev)
 - [x] storefront-dev-smoke (null)
 - [x] storefront-debug (@storefront-debug)
-- [ ] storefront-unit-test (@storefront-unit-test)
+- [x] storefront-unit-test (@storefront-unit-test)
 - [ ] e2e-author (@e2e-author)
 - [ ] e2e-runner (null)
 - [ ] qa-adversary (@qa-adversary)
@@ -39,7 +39,7 @@
 - ✓ #1 `inv_01KQB2RDQV675YMJ9H5TCT1XSJ` (initial) [completed @ 2026-04-28T22:18:35.875Z]
 
 ### e2e-author
-- … #1 `inv_01KQB4ESXE58SQDVXNW1R85854` (initial ← storefront-unit-test/inv_01KQB3Z0N4BYF0REM7VRE9CNGM (initial)) [pending @ 2026-04-28T22:48:17.073Z]
+- ✓ #1 `inv_01KQB4ESXE58SQDVXNW1R85854` (initial ← storefront-unit-test/inv_01KQB3Z0N4BYF0REM7VRE9CNGM (initial)) [completed @ 2026-04-28T22:52:34.709Z]
 
 ### spec-compiler
 - ✓ #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [completed @ 2026-04-28T22:21:54.103Z]
