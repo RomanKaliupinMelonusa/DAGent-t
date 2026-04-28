@@ -9,7 +9,7 @@
       "key": "create-branch",
       "label": "create-branch",
       "agent": null,
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ"
     },
@@ -18,14 +18,16 @@
       "label": "stage-spec",
       "agent": null,
       "status": "pending",
-      "error": null
+      "error": null,
+      "latestInvocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD"
     },
     {
       "key": "spec-compiler",
       "label": "spec-compiler",
       "agent": "@spec-compiler",
       "status": "pending",
-      "error": null
+      "error": null,
+      "latestInvocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH"
     },
     {
       "key": "baseline-analyzer",
@@ -300,6 +302,53 @@
       "outcome": "completed",
       "finishedAt": "2026-04-28T22:18:35.875Z",
       "sealed": true
+    },
+    "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD": {
+      "invocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD",
+      "nodeKey": "stage-spec",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "triggeredBy": {
+        "nodeKey": "create-branch",
+        "invocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ",
+        "reason": "initial"
+      },
+      "startedAt": "2026-04-28T22:18:37.251Z",
+      "inputs": [],
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD/outputs/node-report.json",
+          "nodeKey": "stage-spec",
+          "invocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-28T22:18:37.268Z",
+      "sealed": true
+    },
+    "inv_01KQB2RH63KD04266Y3WPMDRSH": {
+      "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH",
+      "nodeKey": "spec-compiler",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "triggeredBy": {
+        "nodeKey": "stage-spec",
+        "invocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD",
+        "reason": "initial"
+      },
+      "startedAt": "2026-04-28T22:18:38.659Z",
+      "inputs": [
+        {
+          "kind": "spec",
+          "scope": "kickoff",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/_kickoff/spec.md"
+        }
+      ],
+      "outputs": []
     }
   }
 }

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "stage-spec",
+  "producedAt": "2026-04-28T22:18:37.268Z",
+  "nodeKey": "stage-spec",
+  "invocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD",
+  "handler": "local-exec",
+  "trigger": "initial",
+  "attempt": 1,
+  "startedAt": "2026-04-28T22:18:37.251Z",
+  "finishedAt": "2026-04-28T22:18:37.268Z",
+  "durationMs": 17,
+  "outcome": "completed",
+  "counters": {
+    "shellCommands": 0,
+    "toolCalls": 0,
+    "messages": 0,
+    "intents": 1,
+    "filesRead": 0,
+    "filesChanged": 0
+  },
+  "tokens": null,
+  "filesRead": [],
+  "filesChanged": [],
+  "intents": [
+    "Native script execution"
+  ],
+  "messages": [],
+  "errorMessage": null,
+  "errorSignature": null,
+  "exitCode": null,
+  "triggeredBy": {
+    "nodeKey": "create-branch",
+    "invocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ",
+    "reason": "initial"
+  }
+}

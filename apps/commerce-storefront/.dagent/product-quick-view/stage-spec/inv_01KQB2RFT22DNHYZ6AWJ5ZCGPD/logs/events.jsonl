@@ -1,0 +1,3 @@
+{"ts":"2026-04-28T22:18:37.254Z","kind":"dispatch.start","invocationId":"inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD","nodeKey":"stage-spec","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:18:37.251Z","attempt":1}
+{"ts":"2026-04-28T22:18:37.268Z","outcome":"completed","note":"local-exec","kind":"item.end","itemKey":"stage-spec"}
+{"ts":"2026-04-28T22:18:37.271Z","kind":"dispatch.end","invocationId":"inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD","nodeKey":"stage-spec","outcome":"completed","finishedAt":"2026-04-28T22:18:37.268Z","outputKinds":["node-report"]}

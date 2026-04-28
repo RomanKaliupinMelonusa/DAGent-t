@@ -1,0 +1,21 @@
+{
+  "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH",
+  "nodeKey": "spec-compiler",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "triggeredBy": {
+    "nodeKey": "stage-spec",
+    "invocationId": "inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD",
+    "reason": "initial"
+  },
+  "startedAt": "2026-04-28T22:18:38.659Z",
+  "inputs": [
+    {
+      "kind": "spec",
+      "scope": "kickoff",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/_kickoff/spec.md"
+    }
+  ],
+  "outputs": []
+}
