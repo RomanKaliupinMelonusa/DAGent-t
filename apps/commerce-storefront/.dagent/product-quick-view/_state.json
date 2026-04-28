@@ -57,7 +57,7 @@
       "key": "storefront-debug",
       "label": "storefront-debug",
       "agent": "@storefront-debug",
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB6B8YDVTV7QQ1VEQCEJW8C"
     },
@@ -930,7 +930,19 @@
           "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH"
         }
       ],
-      "outputs": []
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-unit-test/inv_01KQB6N6RK6P3M1E1CSRC1VJ7S/outputs/node-report.json",
+          "nodeKey": "storefront-unit-test",
+          "invocationId": "inv_01KQB6N6RK6P3M1E1CSRC1VJ7S"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-28T23:33:05.233Z",
+      "sealed": true
     }
   }
 }

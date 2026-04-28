@@ -26,3 +26,7 @@
 {"ts":"2026-04-28T23:32:36.237Z","input_tokens":60030,"output_tokens":166,"cache_read_tokens":55730,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-unit-test"}
 {"ts":"2026-04-28T23:32:44.087Z","input_tokens":60602,"output_tokens":209,"cache_read_tokens":60029,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-unit-test"}
 {"ts":"2026-04-28T23:32:54.252Z","input_tokens":61409,"output_tokens":202,"cache_read_tokens":60601,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-unit-test"}
+{"ts":"2026-04-28T23:32:58.386Z","input_tokens":62329,"output_tokens":68,"cache_read_tokens":61408,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-unit-test"}
+{"ts":"2026-04-28T23:33:05.076Z","input_tokens":62414,"output_tokens":235,"cache_read_tokens":62328,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-unit-test"}
+{"ts":"2026-04-28T23:33:05.232Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"storefront-unit-test"}
+{"ts":"2026-04-28T23:33:05.237Z","kind":"dispatch.end","invocationId":"inv_01KQB6N6RK6P3M1E1CSRC1VJ7S","nodeKey":"storefront-unit-test","outcome":"completed","finishedAt":"2026-04-28T23:33:05.233Z","outputKinds":["node-report"]}

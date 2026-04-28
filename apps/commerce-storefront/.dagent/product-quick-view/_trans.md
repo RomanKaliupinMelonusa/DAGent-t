@@ -15,7 +15,7 @@
 - [x] baseline-analyzer (@baseline-analyzer)
 - [x] storefront-dev (@storefront-dev)
 - [x] storefront-dev-smoke (null)
-- [ ] storefront-debug (@storefront-debug)
+- [x] storefront-debug (@storefront-debug)
 - [ ] storefront-unit-test (@storefront-unit-test)
 - [ ] e2e-author (@e2e-author)
 - [ ] e2e-runner (null)
@@ -203,7 +203,7 @@ Reset cycle 2/5: [domain:code-defect] [source:llm] The storefront application co
 
 ### storefront-unit-test
 - ✓ #1 `inv_01KQB3Z0N4BYF0REM7VRE9CNGM` (initial ← storefront-debug/inv_01KQB3YXY632PMH0ZQVP3VMGD4 (initial)) [completed @ 2026-04-28T22:48:13.157Z]
-- … #2 `inv_01KQB6N6RK6P3M1E1CSRC1VJ7S` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [pending @ 2026-04-28T23:26:43.988Z]
+- ✓ #2 `inv_01KQB6N6RK6P3M1E1CSRC1VJ7S` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [completed @ 2026-04-28T23:33:05.233Z]
 
 ### triage-storefront
 - ✓ #1 `inv_01KQB4SZKWA5CH35NPSN00N18X` (initial ← e2e-runner/inv_01KQB4PRFHH56MTXQKPE4416NA (initial) → storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0) [completed @ 2026-04-28T22:54:38.317Z]
