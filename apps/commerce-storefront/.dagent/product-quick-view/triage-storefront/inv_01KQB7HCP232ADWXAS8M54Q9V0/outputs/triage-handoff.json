@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "triage-storefront",
+  "producedAt": "2026-04-28T23:42:34.294Z",
+  "failingItem": "e2e-runner",
+  "errorExcerpt": "TEST SUMMARY: 5 passed, 1 failed, 6 total\n\nRunning 6 tests using 1 worker\n\n  ✓  1 [chromium] › e2e/product-quick-view.spec.ts:121:7 › Product Quick View › open-quick-view-from-tile (1.8s)\n  ✓  2 [chromium] › e2e/product-quick-view.spec.ts:191:7 › Product Quick View › switch-color-swatch-in-quick-view (2.0s)\n  ✘  3 [chromium] › e2e/product-quick-view.spec.ts:229:7 › Product Quick View › add-to-bag-from-quick-view (5.3s)\n  ✓  4 [chromium] › e2e/product-quick-view.spec.ts:295:7 › Product Quick View › close-quick-view-restores-focus (2.1s)\n  ✓  5 [chromium] › e2e/product-quick-view.spec.ts:330:7 › Product Quick View › no-pickup-ui-in-quick-view (1.2s)\n  ✓  6 [chromium] › e2e/product-quick-view.spec.ts:369:7 › Product Quick View › add-to-bag-disabled-when-unavailable (2.0s)\n\n\n  1) [chromium] › e2e/product-quick-view.spec.ts:229:7 › Product Quick View › add-to-bag-from-quick-view \n\n    Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n    \u001b[32m- Expected  - 1\u001b[39m\n    \u001b[31m+ Received  + 4\u001b[39m\n\n    \u001b[32m- Array []\u001b[39m\n    \u001b[31m+ Array [\u001b[39m\n    \u001b[31m+   \"Failed to load resource: the server responded with a status of 403 (Forbidden)\",\u001b[39m\n    \u001b[31m+   \"Failed to load resource: the server responded with a status of 403 (Forbidden)\",\u001b[39m\n    \u001b[31m+ ]\u001b[39m\n\n      290 |         (e) => !BASELINE_NOISE_PATTERNS.some((re) => re.test(e)),\n      291 |       ),\n    > 292 |     ).toEqual([]);\n          |       ^\n      293 |   });\n      294 |\n      295 |   test('close-quick-view-restores-focus', async ({ page }) => {\n        at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:292:7\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results/product-quick-view-Product-aa7a1--add-to-bag-from-quick-view-chromium/test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    attachment #2: console-errors (text/plain) ─────────────────────────────────────────────────────\n    [error] Warning: The result of getServerSnapshot should be cached to avoid an infinite loop%s at App (http://localhost:3000/mobify/bundle/development/main.js:212:5) at App (http://localhost:3000/mobify/bundle/development/main.js:36404:51) at RouteComponent (http://localhost:3000/mobify/bundle/develo...\n… (12 more lines)",
+  "errorSignature": "08a3d8f61ec001cc",
+  "triageDomain": "test-code",
+  "triageReason": "The test's BASELINE_NOISE_PATTERNS regex array fails to filter the pre-existing 403 Forbidden console errors that are documented baseline noise, causing the empty-array assertion to fail with no new application evidence.",
+  "priorAttemptCount": 2,
+  "touchedFiles": [
+    "apps/commerce-storefront/.dagent/product-quick-view/_events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_invocations.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_kickoff/flight-data.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_state.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_trans.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/inputs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/inputs/acceptance.yml",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/inputs/baseline.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/inputs/params.in.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/logs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/logs/events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/logs/messages.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/logs/tool-calls.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/meta.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB70Y79BJ6PN3K3ZQKXFE5R/outputs/.gitkeep",
+    "apps/commerce-storefront/e2e/product-quick-view.spec.ts"
+  ],
+  "touchedFilesSource": "e2e-author",
+  "baselineRef": {
+    "path": ".dagent/product-quick-view/_kickoff/baseline.json",
+    "consolePatternCount": 12,
+    "networkPatternCount": 7,
+    "uncaughtPatternCount": 0
+  },
+  "triageInvocationId": "inv_01KQB7HCP232ADWXAS8M54Q9V0"
+}
