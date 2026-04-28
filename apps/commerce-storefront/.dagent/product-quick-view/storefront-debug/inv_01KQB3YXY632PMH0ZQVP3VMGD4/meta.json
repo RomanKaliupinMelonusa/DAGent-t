@@ -1,0 +1,26 @@
+{
+  "invocationId": "inv_01KQB3YXY632PMH0ZQVP3VMGD4",
+  "nodeKey": "storefront-debug",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "triggeredBy": {
+    "nodeKey": "storefront-dev-smoke",
+    "invocationId": "inv_01KQB3Y3AY6RKK20X9Q86B3BG0",
+    "reason": "initial"
+  },
+  "startedAt": "2026-04-28T22:39:36.903Z",
+  "finishedAt": "2026-04-28T22:39:36.908Z",
+  "outcome": "completed",
+  "inputs": [],
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-debug/inv_01KQB3YXY632PMH0ZQVP3VMGD4/outputs/node-report.json",
+      "nodeKey": "storefront-debug",
+      "invocationId": "inv_01KQB3YXY632PMH0ZQVP3VMGD4"
+    }
+  ],
+  "sealed": true
+}

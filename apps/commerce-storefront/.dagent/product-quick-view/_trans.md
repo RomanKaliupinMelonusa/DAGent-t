@@ -14,7 +14,7 @@
 - [x] spec-compiler (@spec-compiler)
 - [x] baseline-analyzer (@baseline-analyzer)
 - [x] storefront-dev (@storefront-dev)
-- [ ] storefront-dev-smoke (null)
+- [x] storefront-dev-smoke (null)
 - [ ] storefront-debug (@storefront-debug)
 - [ ] storefront-unit-test (@storefront-unit-test)
 - [ ] e2e-author (@e2e-author)
@@ -43,6 +43,9 @@
 
 ### stage-spec
 - ✓ #1 `inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD` (initial ← create-branch/inv_01KQB2RDQV675YMJ9H5TCT1XSJ (initial)) [completed @ 2026-04-28T22:18:37.268Z]
+
+### storefront-debug
+- ✓ #1 `inv_01KQB3YXY632PMH0ZQVP3VMGD4` (initial ← storefront-dev-smoke/inv_01KQB3Y3AY6RKK20X9Q86B3BG0 (initial)) [completed @ 2026-04-28T22:39:36.908Z]
 
 ### storefront-dev
 - ✓ #1 `inv_01KQB36DSFGNJ7V5WEBXMTH46S` (initial ← baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM (initial)) [completed @ 2026-04-28T22:39:06.679Z]
