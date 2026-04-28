@@ -186,7 +186,7 @@ Reset cycle 1/5: [domain:code-defect] [source:llm] The storefront application co
 
 ### storefront-debug
 - ✓ #1 `inv_01KQB3YXY632PMH0ZQVP3VMGD4` (initial ← storefront-dev-smoke/inv_01KQB3Y3AY6RKK20X9Q86B3BG0 (initial)) [completed @ 2026-04-28T22:39:36.908Z]
-- … #2 `inv_01KQB4TE786WBYS8JSQ30G1XM0` (triage-reroute ← inv_01KQB4SZKWA5CH35NPSN00N18X) [pending]
+- … #2 `inv_01KQB4TE786WBYS8JSQ30G1XM0` (triage-reroute ← inv_01KQB4SZKWA5CH35NPSN00N18X) [pending @ 2026-04-28T22:54:42.304Z]
 
 ### storefront-dev
 - ✓ #1 `inv_01KQB36DSFGNJ7V5WEBXMTH46S` (initial ← baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM (initial)) [completed @ 2026-04-28T22:39:06.679Z]

@@ -61,7 +61,7 @@ const ProductTile = ({product, ...rest}) => {
                 Mobile: always opacity 1. */}
             {isMounted && (
                 <IconButton
-                    data-testid={`quick-view-trigger-${productId}`}
+                    data-testid="quick-view-trigger"
                     aria-label="Quick view"
                     icon={<ViewIcon />}
                     size="sm"

@@ -5,7 +5,7 @@
  * display body and adds Quick-View-specific affordances (custom add-to-cart
  * button, view-full-details link, inventory message) with required data-testids.
  */
-import React, {useState, useCallback} from 'react'
+import React, {useState, useCallback, useRef, useEffect} from 'react'
 import PropTypes from 'prop-types'
 import {useIntl} from 'react-intl'
 import {
@@ -79,6 +79,22 @@ function QuickViewContent({product: initialProduct, onClose}) {
     // Track loading state for add-to-cart
     const [isAddingToCart, setIsAddingToCart] = useState(false)
 
+    // Tag color swatches inside the modal with data-testid for E2E targeting.
+    // Only modal-scoped swatches get this testid to avoid polluting PLP swatches.
+    const productViewRef = useRef(null)
+    useEffect(() => {
+        if (!productViewRef.current) return
+        const swatches = productViewRef.current.querySelectorAll(
+            'button[role="radio"][aria-label]'
+        )
+        swatches.forEach((swatch) => {
+            // Only tag swatches that don't already have a data-testid
+            if (!swatch.hasAttribute('data-testid')) {
+                swatch.setAttribute('data-testid', 'color-swatch')
+            }
+        })
+    }, [product, variationValues])
+
     // Determine if the Add to Cart button should be disabled
     const hasVariations = product?.variationAttributes?.length > 0
     const isVariantSelected = !!variant
@@ -102,7 +118,7 @@ function QuickViewContent({product: initialProduct, onClose}) {
             // Open the global AddToCartModal confirmation surface
             onAddToCartModalOpen({
                 product,
-                itemsAdded: [{productId, quantity}],
+                itemsAdded: [{product, variant, quantity}],
                 selectedQuantity: quantity
             })
 
@@ -137,7 +153,7 @@ function QuickViewContent({product: initialProduct, onClose}) {
                     <Spinner size="xl" />
                 </Flex>
             ) : (
-                <Box>
+                <Box ref={productViewRef}>
                     {/* Base ProductView — handles image gallery, swatches, quantity, price.
                         We do NOT pass addToCart so it renders no button (we render our own below). */}
                     <ProductView
