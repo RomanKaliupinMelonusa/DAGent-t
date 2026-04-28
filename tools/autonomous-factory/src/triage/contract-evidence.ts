@@ -2,7 +2,7 @@
  * triage/contract-evidence.ts — D3.
  *
  * When Phase B oracles (`validate-acceptance.mjs`) and the B2 qa-adversary
- * node run, they deposit structured JSON into the feature's `in-progress/`
+ * node run, they deposit structured JSON into the feature's `.dagent/`
  * directory:
  *
  *   <slug>_VALIDATION.json  — contract oracle verdict
@@ -29,6 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractPrimaryCause } from "./playwright-report.js";
+import { featurePath } from "../adapters/feature-paths.js";
 
 /** Upper bound on how much of each artifact we inline into the prompt.
  *  Keeps the total triage-prompt budget predictable. The artifacts are
@@ -60,15 +61,15 @@ function formatArtifact(label: string, relPath: string, body: string): string {
 /**
  * Load and render the contract-evidence block for a feature.
  *
- * @param appRoot Absolute path to the app root (the directory that contains `in-progress/`).
- * @param slug    Feature slug; the artifact filenames are `${slug}_VALIDATION.json` and `${slug}_QA-REPORT.json`.
+ * @param appRoot Absolute path to the app root (the directory that contains `.dagent/`).
+ * @param slug    Feature slug; artifacts are resolved via `featurePath`.
  */
 export function loadContractEvidence(appRoot: string, slug: string): ContractEvidenceBlock {
   if (!appRoot || !slug) return { text: "", sources: [] };
 
   const entries: Array<{ label: string; file: string }> = [
-    { label: "Acceptance Oracle Verdict", file: path.join(appRoot, "in-progress", `${slug}_VALIDATION.json`) },
-    { label: "QA Adversary Report", file: path.join(appRoot, "in-progress", `${slug}_QA-REPORT.json`) },
+    { label: "Acceptance Oracle Verdict", file: featurePath(appRoot, slug, "validation") },
+    { label: "QA Adversary Report", file: featurePath(appRoot, slug, "qa-report") },
   ];
 
   const sections: string[] = [];

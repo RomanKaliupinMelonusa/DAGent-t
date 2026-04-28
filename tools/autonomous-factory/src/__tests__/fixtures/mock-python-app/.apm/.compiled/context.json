@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-21T17:17:21.477Z",
+  "compiledAt": "2026-04-28T03:39:45.922Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -66,13 +66,16 @@
       "backend": [
         "src/",
         "infra/",
-        "in-progress/"
+        ".dagent/"
       ]
     },
     "max_same_error_cycles": 3,
     "redevelopment_categories": [
       "test"
     ],
+    "strict_consumes_artifacts": false,
+    "strict_artifacts": false,
+    "strict_handler_inference": false,
     "reindex_categories": [
       "dev",
       "test"

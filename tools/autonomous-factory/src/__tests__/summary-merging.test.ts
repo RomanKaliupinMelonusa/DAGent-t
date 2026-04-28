@@ -29,13 +29,13 @@ describe("loadPreviousSummary", () => {
   });
 
   it("reads a valid JSON sidecar", () => {
-    fs.mkdirSync(path.join(tmpDir, "in-progress"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".dagent", "test"), { recursive: true });
     const data: PreviousSummaryTotals = {
       steps: 8, completed: 6, failed: 2,
       durationMs: 765_000, filesChanged: 23, tokens: 1234567, costUsd: 18.5432,
     };
     fs.writeFileSync(
-      path.join(tmpDir, "in-progress", "test_SUMMARY-DATA.json"),
+      path.join(tmpDir, ".dagent", "test/_summary-data.json"),
       JSON.stringify(data, null, 2),
     );
     const result = loadPreviousSummary(tmpDir, "test");
@@ -74,15 +74,15 @@ function makeSummary(overrides: Partial<ItemSummary> = {}): ItemSummary {
 
 describe("baseTelemetry merge", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "base-tel-test-"));
-  // writePipelineSummary expects: appRoot/in-progress/<slug>_SUMMARY.md
+  // writePipelineSummary expects: appRoot/.dagent/<slug>/_summary.md
   const fakeAppRoot = path.join(tmpDir, "app");
   const fakeRepoRoot = tmpDir;
   const slug = "test-merge";
 
-  // Create the in-progress directory
-  fs.mkdirSync(path.join(fakeAppRoot, "in-progress"), { recursive: true });
+  // Create the .dagent directory
+  fs.mkdirSync(path.join(fakeAppRoot, ".dagent"), { recursive: true });
 
-  const summaryFile = path.join(fakeAppRoot, "in-progress", `${slug}_SUMMARY.md`);
+  const summaryFile = path.join(fakeAppRoot, ".dagent", `${slug}/_summary.md`);
 
   it("writes correct totals with null baseTelemetry", () => {
     const summaries = [makeSummary({ durationMs: 30_000 })];

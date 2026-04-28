@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 
 import {
   buildTriageHandoff,
-  buildConsecutiveDomainAdvisory,
   formatDomainTag,
   parseDomainTag,
   truncateError,
@@ -51,54 +50,6 @@ describe("truncateError", () => {
     const out = truncateError(lines, 40);
     assert.match(out, /^l0\n/);
     assert.match(out, /… \(10 more lines\)$/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildConsecutiveDomainAdvisory
-// ---------------------------------------------------------------------------
-
-describe("buildConsecutiveDomainAdvisory", () => {
-  function resetEntry(tag: string, ts: string) {
-    return {
-      timestamp: ts,
-      itemKey: RESET_OPS.RESET_FOR_REROUTE,
-      message: `${tag} [source:llm] something`,
-    };
-  }
-  function failEntry(ts: string) {
-    return { timestamp: ts, itemKey: "dev", message: "previous failure" };
-  }
-
-  it("fires when the last two reroutes and current domain all match", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:01:00Z"),
-      failEntry("2026-04-20T00:02:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:03:00Z"),
-    ];
-    const advisory = buildConsecutiveDomainAdvisory(log, "frontend");
-    assert.ok(advisory);
-    assert.match(advisory!, /third/);
-    assert.match(advisory!, /agent-branch\.sh revert/);
-  });
-
-  it("returns undefined when prior domains differ", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:backend]", "2026-04-20T00:01:00Z"),
-      failEntry("2026-04-20T00:02:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:03:00Z"),
-    ];
-    assert.equal(buildConsecutiveDomainAdvisory(log, "frontend"), undefined);
-  });
-
-  it("returns undefined when there are fewer than 2 prior attempts", () => {
-    const log = [
-      failEntry("2026-04-20T00:00:00Z"),
-      resetEntry("[domain:frontend]", "2026-04-20T00:01:00Z"),
-    ];
-    assert.equal(buildConsecutiveDomainAdvisory(log, "frontend"), undefined);
   });
 });
 
@@ -206,5 +157,45 @@ describe("buildTriageHandoff (Phase A)", () => {
       failingNodeKey: "not-a-real-key",
     });
     assert.deepEqual(h.touchedFiles, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildTriageHandoff — priorDebugRecommendation surfacing
+// ---------------------------------------------------------------------------
+
+describe("buildTriageHandoff — priorDebugRecommendation", () => {
+  const baseArgs2 = {
+    failingNodeKey: "e2e-runner",
+    rawError: "TimeoutError: locator.waitFor",
+    triageRecord: { error_signature: "abc12345" },
+    triageResult: { domain: "test-code", reason: "spec is wrong" },
+    priorAttemptCount: 1,
+    pipelineSummaries: [] as ItemSummary[],
+    errorLog: [],
+    structuredFailure: null,
+  };
+
+  it("passes the structured hint through to the handoff verbatim", () => {
+    const h = buildTriageHandoff({
+      ...baseArgs2,
+      priorDebugRecommendation: {
+        domain: "test-code",
+        note: "The consent dialog timing intercepts pointer events.",
+        cycleIndex: 2,
+      },
+    });
+    assert.ok(h.priorDebugRecommendation);
+    assert.equal(h.priorDebugRecommendation!.domain, "test-code");
+    assert.equal(
+      h.priorDebugRecommendation!.note,
+      "The consent dialog timing intercepts pointer events.",
+    );
+    assert.equal(h.priorDebugRecommendation!.cycleIndex, 2);
+  });
+
+  it("omits the field when no recommendation is supplied", () => {
+    const h = buildTriageHandoff(baseArgs2);
+    assert.equal(h.priorDebugRecommendation, undefined);
   });
 });

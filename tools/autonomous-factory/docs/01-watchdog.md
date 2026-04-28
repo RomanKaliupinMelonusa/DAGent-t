@@ -8,7 +8,7 @@
 > Pure domain (DAG math, transitions, scheduling): `tools/autonomous-factory/src/domain/`
 > Ports / adapters: `tools/autonomous-factory/src/ports/` · `tools/autonomous-factory/src/adapters/`
 > Reactive DAG loop + dispatch: `tools/autonomous-factory/src/loop/` · `tools/autonomous-factory/src/loop/dispatch/`
-> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, barrier, triage-handler)
+> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, triage-handler)
 > Handler support helpers: `tools/autonomous-factory/src/handlers/support/` (agent-context, agent-limits, agent-post-session)
 > Harness: `tools/autonomous-factory/src/harness/` (RBAC, circuit breaker, tool wiring)
 > Supporting modules: `preflight.ts`, `reporting/index.ts`, `auto-skip.ts`, `hooks.ts`, `archive.ts`
@@ -22,19 +22,19 @@
 
 ```mermaid
 flowchart TD
-    START(["npm run agent:run &lt;slug&gt;"])
+    START(["npm run agent:run --workflow ... --spec-file ... &lt;slug&gt;"])
 
-    START --> PARSE["Parse CLI args\nslug, --app path"]
-    PARSE --> BRANCH["Create feature branch\n(agent-branch.sh create slug)"]
-
-    BRANCH --> PREFLIGHT["Pre-flight Checks"]
+    START --> PARSE["Parse CLI args\nslug, --app, --workflow, --spec-file"]
+    PARSE --> PREFLIGHT["Pre-flight Checks"]
 
     subgraph PF["Pre-flight Checks"]
         direction LR
         PF1["Junk file\ndetection"]
-        PF2["APIM route\ncoverage"]
+        PF2["Tool-limits\nhygiene"]
         PF3["In-progress\nartifact scan"]
-        PF4["Azure CLI\nauth verify"]
+        PF4["Cloud CLI auth\n(preflightAuth hook)"]
+        PF5["GitHub CLI\nauth"]
+        PF6["Pinned dependency\nfitness"]
     end
     PREFLIGHT --> PF
 
@@ -62,8 +62,7 @@ flowchart TD
     end
 
     LOOP -->|"all done"| REPORTS["Write Reports\n· _SUMMARY.md\n· _TERMINAL-LOG.md\n· _PLAYWRIGHT-LOG.md"]
-    REPORTS --> ARCHIVE["archiveFeatureFiles()\nin-progress/ → archive/features/slug/"]
-    ARCHIVE --> DONE(["✅ Pipeline Complete"])
+    REPORTS --> DONE(["✅ Pipeline Complete"])
 
     style PF fill:#e8f5e9
     style MAIN_LOOP fill:#e3f2fd
@@ -213,23 +212,30 @@ poll-infra-plan item?
 ```mermaid
 flowchart LR
     PF(["Pre-flight\nChecks"]) --> J["🗑 Junk Files\nDetect leftover temp files\nin working tree"]
-    PF --> AP["🔗 APIM Routes\nVerify all fn-* functions\nhave matching APIM operations"]
+    PF --> TL["🎛 Tool-Limits Hygiene\nWarn on missing\nconfig.defaultToolLimits sub-fields"]
     PF --> IP["📋 In-Progress Scan\nCheck for stale artifacts\nfrom previous runs"]
-    PF --> AZ["🔑 Auth Hook\nRun hooks.preflightAuth\nVerify cloud CLI auth"]
+    PF --> GH["🐙 GitHub CLI\nVerify gh auth status"]
+    PF --> AZ["🔑 Preflight Auth Hook\nRun hooks.preflightAuth\n(cloud-agnostic: az/aws/gcloud/etc.)"]
+    PF --> PIN["📌 Pinned Dependencies\nValidate pinned versions\n(e.g. PWA Kit snapshot)"]
+    PF --> SD["🔄 State-Context Drift\nAuto-heal stale _STATE.json\nwhen workflows.yml changes"]
+    PF --> RI["🧠 Roam Index\nPhase 0 semantic graph build\n(non-fatal)"]
 
     J -->|"found"| WARN1["⚠ Warning logged"]
     J -->|"clean"| OK1["✔"]
-    AP -->|"missing"| WARN2["⚠ Warning logged"]
-    AP -->|"covered"| OK2["✔"]
+    TL -->|"incomplete"| WARN2["⚠ Warning logged"]
+    TL -->|"complete"| OK2["✔"]
     IP -->|"found"| WARN3["⚠ Warning logged"]
     IP -->|"clean"| OK3["✔"]
     AZ -->|"fail"| WARN4["⚠ Warning logged"]
     AZ -->|"valid"| OK4["✔"]
+    PIN -->|"drift"| FATAL["❌ FATAL — abort"]
+    PIN -->|"pinned"| OK5["✔"]
 
     style PF fill:#fff3e0
+    style FATAL fill:#ffcdd2
 ```
 
-> All pre-flight checks are **non-fatal** — failures are logged as warnings and the pipeline continues.
+> Most pre-flight checks are **non-fatal** — failures are logged as warnings and the pipeline continues. `checkPinnedDependencies` is the exception: a pinned-version drift aborts the run so agents cannot silently build against an upgraded framework. APIM-specific route coverage is no longer a built-in check; apps that need endpoint validation wire it into `.apm/hooks/preflight-auth.sh` (or an analogous hook) and the preflight dispatcher runs it.
 
 ---
 
@@ -241,7 +247,7 @@ flowchart LR
 | **Terminal Log** | `_TERMINAL-LOG.md` | Chronological events: shell commands, file ops, intents with timestamps |
 | **Playwright Log** | `_PLAYWRIGHT-LOG.md` | Structured Playwright tool calls with args and results (live-ui phase only) |
 
-All reports saved to `in-progress/<slug>_*.md` before archiving to `archive/features/<slug>/`.
+All reports saved under `.dagent/<slug>/` and stay tracked in Git for PR review and retro analysis.
 
 ### Cross-Session Summary Merging
 
@@ -301,7 +307,6 @@ classDiagram
 | `buildNodeContext()` | dispatch/context-builder.ts | Assemble per-item context: config, compiled APM, upstream artifacts, `vcs`, `stateReader` port references | `dispatchBatch()` |
 | `dispatchItem()` | dispatch/item-dispatch.ts | Per-item lifecycle — circuit breaker → auto-skip → resolve handler → execute → translate result into kernel Commands | `dispatchBatch()` |
 | `translateResult()` | dispatch/result-translator.ts | Map `NodeResult` into kernel Commands (`CompleteItem`, `FailItem`, `ResetForDev`, etc.) | `dispatchItem()` |
-| `archiveFeatureFiles()` | archive.ts | Move `in-progress/` → `archive/features/slug/` after publish-pr | `runPipelineLoop()` |
 | `handleAgent()` | handlers/copilot-agent.ts | Copilot SDK session execution. No direct I/O — uses `ctx.vcs` + `ctx.stateReader`. Delegates context build / limits / post-session enrichment to `handlers/support/` | Handler registry |
 | `buildAgentContext()` | handlers/support/agent-context.ts | Collect upstream artifacts and shape the agent prompt context from `NodeContext` | `handleAgent()` |
 | `resolveAgentLimits()` | handlers/support/agent-limits.ts | APM cascade → tool limits, harness limits, sandbox config, filtered tool list | `handleAgent()` |
@@ -315,7 +320,7 @@ classDiagram
 | `getAgentDirectoryPrefixes()` | session/dag-utils.ts | Map agent item keys to owned directory prefixes for scoped git-diff attribution | Post-session `filesChanged` fallback |
 | `getTimeout()` | session/dag-utils.ts, handlers/copilot-agent.ts | Session timeout by item type (from `timeout_minutes` in `workflows.yml`) | Copilot agent handler |
 | `wireToolLogging()` | harness/ | Tool call logging + cognitive circuit breaker (soft inject + hard kill) + pre-timeout wrap-up signal at 80% of session timeout | Copilot agent handler |
-| `checkJunkFiles()` / `checkApimRoutes()` / `checkInProgressArtifacts()` / `checkPreflightAuth()` / `buildRoamIndex()` | preflight.ts | Pre-flight guards and Phase 0 semantic graph build | `bootstrap()` |
+| `checkJunkFiles()` / `checkInProgressArtifacts()` / `checkToolLimitsHygiene()` / `checkGitHubLogin()` / `checkPreflightAuth()` / `checkPinnedDependencies()` / `checkStateContextDrift()` / `buildRoamIndex()` / `runPreflightBaseline()` | lifecycle/preflight.ts | Pre-flight guards — all non-fatal except `checkPinnedDependencies` (FATAL on drift). Feature-branch creation is a DAG node (`create-branch`), not a preflight step. | `bootstrap()` |
 | `getAutoSkipBaseRef()` / `getGitChangedFiles()` | auto-skip.ts | Git-diff change detection for the auto-skip optimization | `dispatchItem()` |
 | `writePipelineSummary()` / `writeTerminalLog()` / `writePlaywrightLog()` / `parsePreviousSummary()` | reporting/index.ts | Generate/merge `_SUMMARY.md`, `_TERMINAL-LOG.md`, `_PLAYWRIGHT-LOG.md` | `runPipelineLoop()` / Copilot agent handler |
 | `triageFailure()` | handlers/triage-handler.ts | Multi-tier routing of post-deploy failures to dev items (unfixable → JSON → DOMAIN: → RAG retriever → LLM router) | `runPipelineLoop()` on downstream failure |

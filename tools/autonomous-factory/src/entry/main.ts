@@ -23,11 +23,14 @@ import type { PipelineState } from "../types.js";
 import { PipelineKernel } from "../kernel/pipeline-kernel.js";
 import { DefaultKernelRules } from "../kernel/rules.js";
 import { createRunState } from "../kernel/types.js";
-import { compileVolatilePatterns, type VolatilePattern } from "../domain/index.js";
+import { resolveVolatilePatternsFromApmContext } from "./resolve-volatile-patterns.js";
+import { compileConsumesByNode } from "../apm/compile-node-io-contract.js";
 import { JsonlTelemetry } from "../adapters/jsonl-telemetry.js";
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
 import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
 import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 import { NodeCopilotSessionRunner } from "../adapters/copilot-session-runner.js";
 import { CopilotTriageLlm } from "../adapters/copilot-triage-llm.js";
@@ -36,6 +39,13 @@ import { FileBaselineLoader } from "../adapters/file-baseline-loader.js";
 import { runPipelineLoop, type HandlerResolver, type LoopResult, type LoopLifecycle } from "../loop/pipeline-loop.js";
 import { resolveHandler, inferHandler } from "../handlers/registry.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
+import { runAdminCommand, type AdminHost } from "../kernel/admin.js";
+import { findDanglingBypasses } from "../domain/dangling-invocations.js";
+
+/** Default threshold (ms) before an unsealed invocation is force-failed
+ *  by the dangling-invocation auto-recovery scanner. Mirrored as the
+ *  default for `config.staleInvocationMs` in `apm/types.ts`. */
+const DEFAULT_STALE_INVOCATION_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // HandlerResolver adapter — wraps the existing handler registry
@@ -71,7 +81,16 @@ class RegistryHandlerResolver implements HandlerResolver {
     };
 
     return {
-      name: node?.handler ?? inferHandler(node?.type ?? "agent", node?.script_type) ?? "copilot-agent",
+      // Display-only name for the lazy proxy. The real handler is resolved in
+      // doResolve(); if strict mode rejects the inference there, execute() will
+      // surface the failure. We still fall back to "copilot-agent" here purely
+      // for telemetry/display consistency.
+      name: node?.handler ?? inferHandler(
+        node?.type ?? "agent",
+        node?.script_type,
+        this.apmContext.config?.handler_defaults,
+        this.apmContext.config?.strict_handler_inference,
+      ) ?? "copilot-agent",
       async execute(ctx) {
         const handler = await getHandler();
         return handler.execute(ctx);
@@ -85,6 +104,7 @@ class RegistryHandlerResolver implements HandlerResolver {
         node?.type ?? "agent",
         node?.script_type,
         this.apmContext.config?.handler_defaults,
+        this.apmContext.config?.strict_handler_inference,
       )
       ?? "copilot-agent";
 
@@ -127,16 +147,78 @@ export async function runWithKernel(
   const stateStore = new JsonFileStateStore();
   const vcs = new GitShellAdapter(repoRoot, logger);
   const filesystem = new LocalFilesystem();
+  // Session A \u2014 honour `config.strict_artifacts` from the compiled APM
+  // manifest. Default false keeps legacy producers working during rollout;
+  // commerce-storefront (and any app that flips it) gets hard envelope
+  // enforcement at the bus boundary.
+  const strictArtifacts = config.apmContext.config?.strict_artifacts === true;
+  const artifactBus = new FileArtifactBus(appRoot, filesystem, logger, {
+    strict: strictArtifacts,
+  });
+  const invocation = new FileInvocationFilesystem(appRoot, filesystem, artifactBus);
   const shell = new NodeShellAdapter();
   const copilotSessionRunner = new NodeCopilotSessionRunner();
   const telemetry = new JsonlTelemetry(logger);
   const triageLlm = new CopilotTriageLlm(client);
   const triageArtifacts = new FileTriageArtifactLoader({ appRoot });
-  const baselineLoader = new FileBaselineLoader({ appRoot });
+  const baselineLoader = new FileBaselineLoader({ appRoot, bus: artifactBus });
   const effectPorts = { stateStore, telemetry };
+
+  // Auto-recover dangling invocations from a prior killed orchestrator run.
+  // Any unsealed record older than `config.staleInvocationMs` (default 30m)
+  // is force-failed via the kernel admin path so the loop's first tick sees
+  // a fresh slot the triage handler can re-route. Runs BEFORE the kernel is
+  // constructed so `getStatus` reads the post-recovery snapshot.
+  const staleMs =
+    config.apmContext.config?.staleInvocationMs ?? DEFAULT_STALE_INVOCATION_MS;
+  const adminHost: AdminHost = {
+    withLockedWrite: (s, fn) => stateStore.withLockedWrite(s, fn),
+  };
+  try {
+    const recoveryResult = await runAdminCommand(adminHost, slug, {
+      type: "recover-dangling",
+      now: Date.now(),
+      staleMs,
+      slug,
+    });
+    if (recoveryResult.kind === "recover-dangling") {
+      for (const r of recoveryResult.recovered) {
+        console.log(
+          `  ↻ recover-dangling: nodeKey=${r.nodeKey} invocationId=${r.invocationId} ageMs=${r.ageMs}`,
+        );
+      }
+    }
+  } catch (err) {
+    // Non-fatal: a missing _STATE.json (first run) surfaces here. The next
+    // step (`getStatus`) will produce its own error if state is required.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  ⚠ recover-dangling skipped: ${msg}`);
+  }
 
   // Load initial DAG state from the persisted _STATE.json
   const initialDagState = await stateStore.getStatus(slug) as PipelineState;
+
+  // Detect dangling bypass markers — items left `na` with `bypassedFor`
+  // set when the orchestrator crashed between the bypass and the
+  // routed-to seal. The seal hook's auto-revalidate path won't fire on
+  // resume because the routed-to invocation is already settled. We
+  // surface this as an operator warning rather than auto-resetting:
+  // the right action depends on whether the route succeeded (re-emit
+  // reset, fixed downstream) or failed (let its retry loop run).
+  const danglingBypasses = findDanglingBypasses(initialDagState);
+  for (const b of danglingBypasses) {
+    if (b.severity === "route-done") {
+      console.warn(
+        `  ⚠ dangling bypass: ${b.itemKey} (na, bypassed → ${b.routeTarget}) but route is already done. ` +
+          `Auto-revalidate likely missed; consider \`pipeline:reset-scripts\` or manual re-emit.`,
+      );
+    } else if (b.severity === "route-na" || b.severity === "route-failed") {
+      console.warn(
+        `  ⚠ dangling bypass: ${b.itemKey} (na, bypassed → ${b.routeTarget}) — route is ${b.routeStatus}. ` +
+          `Gate will not be re-validated until route target seals successfully.`,
+      );
+    }
+  }
 
   // Load prior session telemetry for monotonic accumulation
   const baseTelemetry = telemetry.loadPreviousSummary(appRoot, slug);
@@ -146,20 +228,52 @@ export async function runWithKernel(
   // Compile volatile-token patterns from APM config (workflow + per-node)
   // and inject into the rules so fail/reset compute stable signatures that
   // normalize framework-specific tokens (session IDs, test UUIDs, etc).
-  const workflowPatterns = compileVolatilePatterns(
-    config.apmContext.config?.error_signature?.volatile_patterns,
+  // Resolution is extracted to a pure helper so the wiring path is testable
+  // independently of the composition root.
+  const { workflowPatterns, perNodePatterns } = resolveVolatilePatternsFromApmContext(
+    config.apmContext,
+    config.workflowName,
   );
-  const perNodePatterns = new Map<string, ReadonlyArray<VolatilePattern>>();
+  // Operational visibility: emit a one-shot telemetry event the first time
+  // each user-supplied pattern collapses a real failure message in this run.
+  // Dedupe is owned by `DefaultKernelRules` (per-instance Set). Without
+  // this, the only externally visible effect of activating new patterns is
+  // an unexplained `halt_on_identical` halt.
+  const firedPatternKeys = new Set<string>();
+  const rules = new DefaultKernelRules({
+    workflowPatterns,
+    perNodePatterns,
+    onUserPatternFired: (event) => {
+      const dedupeKey = event.scope === "workflow"
+        ? `workflow:${event.patternIndex}`
+        : `node:${event.itemKey ?? ""}:${event.patternIndex}`;
+      if (firedPatternKeys.has(dedupeKey)) return;
+      firedPatternKeys.add(dedupeKey);
+      telemetry.event(
+        "error_signature.user_pattern_fired",
+        event.itemKey,
+        {
+          scope: event.scope,
+          patternIndex: event.patternIndex,
+          replacement: event.replacement,
+        },
+      );
+    },
+  });
+  // Project per-consumer upstream artifact edges into the shape the
+  // scheduler's cycle-aware producer gate needs. Closes the window where
+  // a same-tick reroute reset dispatched the consumer against a stale
+  // producer cycle.
   const workflowNodes =
     config.apmContext.workflows?.[config.workflowName]?.nodes ?? {};
-  for (const [nodeKey, node] of Object.entries(workflowNodes)) {
-    const extras = compileVolatilePatterns(
-      node?.error_signature?.volatile_patterns,
-    );
-    if (extras.length > 0) perNodePatterns.set(nodeKey, extras);
-  }
-  const rules = new DefaultKernelRules({ workflowPatterns, perNodePatterns });
-  const kernel = new PipelineKernel(slug, initialDagState, initialRunState, rules);
+  const consumesByNode = compileConsumesByNode(workflowNodes);
+  const kernel = new PipelineKernel(
+    slug,
+    initialDagState,
+    initialRunState,
+    rules,
+    consumesByNode,
+  );
 
   // Handler resolution
   const handlerResolver = new RegistryHandlerResolver(config);
@@ -179,14 +293,6 @@ export async function runWithKernel(
       const currentBranch = await vcs.getCurrentBranch();
       filesystem.commitAndPushState(repoRoot, appRoot, currentBranch, batchNumber);
     },
-    async archiveAndPush(slug: string) {
-      filesystem.archiveFeature(slug, appRoot, repoRoot);
-      try {
-        await vcs.pushWithRetry(baseBranch);
-      } catch (err) {
-        console.error(`  ✖ ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
     getWorkflowNode(itemKey: string) {
       return getWorkflowNode(config.apmContext, config.workflowName, itemKey);
     },
@@ -199,6 +305,7 @@ export async function runWithKernel(
     appRoot,
     repoRoot,
     baseBranch,
+    specFile: config.specFile,
     apmContext: config.apmContext,
     logger,
     client,
@@ -208,9 +315,13 @@ export async function runWithKernel(
     lifecycle,
     vcs,
     stateReader: stateStore,
+    ledger: stateStore,
     shell,
     filesystem,
+    artifactBus,
+    invocation,
     copilotSessionRunner,
+    ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   });
 
   return { loopResult };

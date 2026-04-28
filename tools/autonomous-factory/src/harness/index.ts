@@ -24,7 +24,15 @@ export * from "./rbac.js";
 export { buildSessionHooks } from "./hooks.js";
 export { buildFileReadTool } from "./file-tools.js";
 export { buildShellTool } from "./shell-tools.js";
-export { buildReportOutcomeTool, type ReportedOutcome } from "./outcome-tool.js";
+export {
+  buildReportOutcomeTool,
+  validateNextFailureHint,
+  DEFAULT_NEXT_FAILURE_HINT_SUMMARY_MAX,
+  type ReportedOutcome,
+  type NextFailureHint,
+  type NextFailureHintValidation,
+  type PrecompletionGate,
+} from "./outcome-tool.js";
 
 /**
  * Build custom tools that provide structured, safe alternatives to the

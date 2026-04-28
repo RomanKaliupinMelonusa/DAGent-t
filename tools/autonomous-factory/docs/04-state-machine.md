@@ -1,26 +1,32 @@
 # Pipeline State Machine — DAG & Lifecycle
 
-> 19 items across 6 phases, two-wave DAG with infrastructure-first approval gate, dependency-aware parallel scheduling, workflow type variations.
-> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI)
+> 21 main pipeline items + 2 triage nodes across 7 phases (Wave 0 scaffolding, two-wave app-and-infra architecture, triage rerouting), dependency-aware parallel scheduling, workflow type variations.
+> Source: `tools/autonomous-factory/src/kernel/pipeline-kernel.ts` (state authority) · `tools/autonomous-factory/src/adapters/json-file-state-store.ts` (persistence) · `tools/autonomous-factory/src/cli/pipeline-state.ts` (admin CLI) · `apps/sample-app/.apm/workflows.yml` (full-stack DAG)
 > Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
 
 ---
 
-## Full DAG — 19 Pipeline Items (Two-Wave Architecture)
+## Full DAG — `full-stack` Workflow (Two-Wave + Scaffolding)
 
 > This is the **dependency-level** view — which items depend on which and what can run in parallel. For the full engine architecture see [../README.md](../README.md). For how these items map to traditional SDLC stages, see [07-mental-model.md](07-mental-model.md).
 
-The pipeline is split into **two waves** separated by a **human approval gate**:
+The pipeline has three structural phases:
 
-- **Wave 1 (Infrastructure)** — Schemas, Terraform, push, Draft PR, plan CI, human approval, handoff
-- **Wave 2 (Application)** — Backend + frontend dev/test, deploy, post-deploy verification, finalize
+- **Wave 0 (Scaffolding)** — `create-branch`, `stage-spec`. Pipeline-agnostic bootstrap: creates the feature branch and materialises `_kickoff/spec.md` from the supplied `--spec-file`. Executed as regular DAG nodes (not preflight hooks) so they participate in the invocation ledger.
+- **Wave 1 (Infrastructure)** — Schemas, Terraform, push, Draft PR, plan CI, human approval, handoff.
+- **Wave 2 (Application)** — Backend + frontend dev/test, deploy, post-deploy verification, finalize.
 
-Wave 2 cannot start until the infrastructure approval gate is cleared and `infra-handoff` has written `infra-interfaces.md` with deployed resource URLs.
+Wave 2 cannot start until the infrastructure approval gate is cleared and `infra-handoff` has written `infra-interfaces.md` with deployed resource URLs. Every failure route passes through a dedicated triage node (`triage-full-stack`) which fans back into dev nodes; `deep-debug` is an optional diagnostic companion that can be scheduled by triage.
 
 ```mermaid
 flowchart LR
+    subgraph SCAFFOLD["Wave 0: Scaffolding"]
+        CB["create-branch"]
+        SS["stage-spec"]
+    end
+
     subgraph INFRA["Wave 1: Infrastructure"]
-        SD["schema-dev\n(no deps)"]
+        SD["schema-dev"]
         IA["infra-architect"]
         PI["push-infra"]
         DPR["create-draft-pr"]
@@ -56,7 +62,12 @@ flowchart LR
         PPR["publish-pr"]
     end
 
-    SD --> IA --> PI --> DPR --> PIP --> AIA --> IH
+    subgraph TRIAGE["Triage (on-failure)"]
+        TFS["triage-full-stack"]
+        DD["deep-debug (optional)"]
+    end
+
+    CB --> SS --> SD --> IA --> PI --> DPR --> PIP --> AIA --> IH
     SD & IH --> BD & FD
     BD --> BUT
     FD --> FUT
@@ -67,19 +78,28 @@ flowchart LR
     DA --> DARC
     DARC --> PPR
 
+    POST -.on failure.-> TFS
+    DEPLOY -.on failure.-> TFS
+    PRE -.on failure.-> TFS
+    TFS -.resets dev nodes.-> PRE
+
+    style SCAFFOLD fill:#f5f5f5
     style INFRA fill:#e8f5e9
     style APPROVAL fill:#fff9c4,stroke:#f9a825,stroke-width:2px
     style PRE fill:#e3f2fd
     style DEPLOY fill:#fff9c4
     style POST fill:#fff3e0
     style FINAL fill:#f3e5f5
+    style TRIAGE fill:#ffebee,stroke:#c62828,stroke-width:1px
 ```
 
 ### Dependency Table
 
 | Item | Phase | Depends On | Can Run In Parallel With |
 |------|-------|-----------|------------------------|
-| `schema-dev` | infra | — | (first) |
+| `create-branch` | scaffolding | — | (first) |
+| `stage-spec` | scaffolding | create-branch | — |
+| `schema-dev` | infra | stage-spec | — |
 | `infra-architect` | infra | schema-dev | — |
 | `push-infra` | infra | infra-architect | — |
 | `create-draft-pr` | infra | push-infra | — |
@@ -98,16 +118,20 @@ flowchart LR
 | `docs-archived` | finalize | code-cleanup | — |
 | `doc-architect` | finalize | code-cleanup, docs-archived | — |
 | `publish-pr` | finalize | doc-architect | — |
+| `triage-full-stack` | triage | (activated on `on_failure`) | — |
+| `deep-debug` | triage | (optional, scheduled by triage) | — |
 
 ---
 
 ## Workflow Types
 
-Each workflow type prunes irrelevant items at `pipeline:init`. All types run Wave 1 (infra), approval gate, and finalize phases — the pruning targets Wave 2 app items.
+A "workflow" is a named DAG declared in `<app>/.apm/workflows.yml`. The kernel's `_STATE.json` is seeded with exactly the nodes that workflow lists — there is no global node table that gets pruned. Each app ships its own set of workflows; the engine treats them as opaque.
+
+The repository ships three workflows out of the box:
 
 ```mermaid
 flowchart TB
-    subgraph FS["Full-Stack (all 19 items)"]
+    subgraph FS["sample-app · full-stack (all 19 items)"]
         direction LR
         FS1["schema-dev"] --> FS_IA["infra-architect"] --> FS_PI["push-infra"] --> FS_DPR["create-draft-pr"] --> FS_PIP["poll-infra-plan"] --> FS_AIA["⏸ approval"] --> FS_IH["infra-handoff"]
         FS1 & FS_IH --> FS2["backend-dev"] & FS3["frontend-dev"]
@@ -118,7 +142,7 @@ flowchart TB
         FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS_DARC["doc-architect"] --> FS12["publish-pr"]
     end
 
-    subgraph BE["Backend (N/A: frontend-dev, frontend-unit-test, live-ui)"]
+    subgraph BE["sample-app · backend (skips frontend-dev, frontend-unit-test, live-ui)"]
         direction LR
         BE1["schema-dev"] --> BE_IA["infra-architect"] --> BE_PI["push-infra"] --> BE_DPR["create-draft-pr"] --> BE_PIP["poll-infra-plan"] --> BE_AIA["⏸ approval"] --> BE_IH["infra-handoff"]
         BE1 & BE_IH --> BE2["backend-dev"]
@@ -128,63 +152,22 @@ flowchart TB
         BE8 --> BE10["code-cleanup"] --> BE11["docs-archived"] --> BE_DARC["doc-architect"] --> BE12["publish-pr"]
     end
 
-    subgraph FE["Frontend (N/A: schema-dev, backend-dev, backend-unit-test, integration-test)"]
+    subgraph SF["commerce-storefront · storefront (no infra wave; spec-compiler + adversarial E2E)"]
         direction LR
-        FE_IA["infra-architect"] --> FE_PI["push-infra"] --> FE_DPR["create-draft-pr"] --> FE_PIP["poll-infra-plan"] --> FE_AIA["⏸ approval"] --> FE_IH["infra-handoff"]
-        FE_IH --> FE3["frontend-dev"]
-        FE3 --> FE5["frontend-unit-test"]
-        FE5 --> FE6["push-app"] --> FE7["poll-app-ci"]
-        FE7 --> FE9["live-ui"]
-        FE9 --> FE10["code-cleanup"] --> FE11["docs-archived"] --> FE_DARC["doc-architect"] --> FE12["publish-pr"]
-    end
-
-    subgraph INF["Infra (N/A: all Wave 2 app items + doc-architect)"]
-        direction LR
-        INF1["schema-dev"] --> INF_IA["infra-architect"] --> INF_PI["push-infra"] --> INF_DPR["create-draft-pr"] --> INF_PIP["poll-infra-plan"] --> INF_AIA["⏸ approval"] --> INF_IH["infra-handoff"]
-        INF_IH --> INF11["docs-archived"] --> INF12["publish-pr"]
-    end
-
-    subgraph AO["App-Only (N/A: schema-dev, infra-architect, push-infra, poll-infra-plan, await-infra-approval, infra-handoff)"]
-        direction LR
-        AO_DPR["create-draft-pr"]
-        AO2["backend-dev"] & AO3["frontend-dev"]
-        AO2 --> AO4["backend-unit-test"]
-        AO3 --> AO5["frontend-unit-test"]
-        AO4 & AO5 --> AO6["push-app"] --> AO7["poll-app-ci"]
-        AO7 --> AO8["integration-test"] --> AO9["live-ui"]
-        AO9 --> AO10["code-cleanup"] --> AO11["docs-archived"] --> AO_DARC["doc-architect"] --> AO12["publish-pr"]
-    end
-
-    subgraph BON["Backend-Only (N/A: infra items + frontend-dev, frontend-unit-test, live-ui)"]
-        direction LR
-        BON_DPR["create-draft-pr"]
-        BON2["backend-dev"]
-        BON2 --> BON4["backend-unit-test"]
-        BON4 --> BON6["push-app"] --> BON7["poll-app-ci"]
-        BON7 --> BON8["integration-test"]
-        BON8 --> BON10["code-cleanup"] --> BON11["docs-archived"] --> BON_DARC["doc-architect"] --> BON12["publish-pr"]
+        SC["spec-compiler"] --> BA["baseline-analyzer"] --> SD2["storefront-dev"]
+        SD2 --> SUT["storefront-unit-test"]
+        SUT --> EA["e2e-author"] --> QA["qa-adversary"] --> ER["e2e-runner"]
+        ER --> CC2["code-cleanup"] --> DOC2["docs-archived"] --> DA2["doc-architect"] --> PR2["publish-pr"]
     end
 
     style FS fill:#e8f5e9
     style BE fill:#e3f2fd
-    style FE fill:#fff3e0
-    style INF fill:#f3e5f5
-    style AO fill:#e0f2f1
-    style BON fill:#fce4ec
+    style SF fill:#fff3e0
 ```
 
-### N/A Items Per Workflow Type
+### Authoring a New Workflow
 
-| Workflow | Skipped Items (auto-N/A) | Active Count |
-|----------|-------------------------|:---:|
-| **Full-Stack** | (none) | 19 |
-| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 16 |
-| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 15 |
-| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `code-cleanup`, `push-app`, `poll-app-ci`, `doc-architect` | 9 |
-| **App-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff` | 14 |
-| **Backend-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `frontend-dev`, `frontend-unit-test`, `live-ui` | 11 |
-
-> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for **all** workflow types. `schema-dev` runs for all types except Frontend. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items (except `create-draft-pr`).
+`workflows.yml` is the single source of truth — no engine code change is required to add or prune a workflow. Each top-level key is a workflow name; its `nodes:` block lists the DAG. The kernel rejects a workflow at compile time if any node references a missing dependency or a missing pool entry. Use `npm run pipeline:lint` to validate before running.
 
 ---
 
@@ -319,7 +302,6 @@ classDiagram
         +string feature
         +string workflowType
         +string started
-        +string|null deployedUrl
         +string|null implementationNotes
         +boolean|null elevatedApply
         +PipelineItem[] items
@@ -329,6 +311,7 @@ classDiagram
         +Record~string,string~ nodeTypes
         +Record~string,string~ nodeCategories
         +string[] naByType
+        +Record~string,InvocationRecord~ artifacts
     }
 
     class PipelineItem {
@@ -338,8 +321,6 @@ classDiagram
         +string phase
         +string status
         +string|null error
-        +string|null docNote
-        +string|null handoffArtifact
     }
 
     class ErrorEntry {
@@ -377,12 +358,12 @@ classDiagram
 
 | File | Format | Purpose |
 |------|--------|---------|
-| `in-progress/<slug>_STATE.json` | JSON | Machine-readable state (read by orchestrator) |
-| `in-progress/<slug>_TRANS.md` | Markdown | Human-readable view (auto-generated from state) |
+| `.dagent/<slug>/_state.json` | JSON | Machine-readable state (read by orchestrator) |
+| `.dagent/<slug>/_trans.md` | Markdown | Human-readable view (auto-generated from state) |
 
 > **Never edit state files directly.** Use pipeline commands via `npm run pipeline:*`.
 >
-> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_STATE.json` at `pipeline:init` time. The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
+> **Declarative DAG:** The dependency graph, phases, node types, and node categories are declared in `<appRoot>/.apm/workflows.yml` and persisted into `_state.json` when the state is first seeded (either by `agent:run --workflow <name>` or the admin `pipeline:init` command). The state machine reads these from the state file — the kernel and adapter contain no hardcoded item lists or dependency mappings.
 
 ---
 
@@ -413,22 +394,22 @@ flowchart TD
 
 ## Pipeline Commands (npm scripts)
 
+> **Kernel is the sole writer.** Outcome verbs (`complete`, `fail`, `doc-note`, `set-url`, `set-note`, `handoff-artifact`, `reset-ci`, `reset-infra-plan`, `redevelop-infra`) were removed in Phase A.6. Agents emit kernel commands via the `report_outcome` SDK tool. The CLI exposes only read + admin verbs.
+
 | Command | Purpose |
 |---------|---------|
-| `npm run pipeline:init <slug> <type>` | Initialize state for a new feature |
-| `npm run pipeline:complete <slug> <key>` | Mark item as done |
-| `npm run pipeline:fail <slug> <key> <msg>` | Mark item as failed |
-| `npm run pipeline:reset-ci <slug>` | Reset deploy items (`push-app` + `poll-app-ci`) for CI retry |
-| `npm run pipeline:reset-infra-plan <slug>` | Reset infra deploy items (`push-infra` + `poll-infra-plan`) for re-push |
-| `npm run pipeline:redevelop-infra <slug> <reason>` | Reset Wave 1 infra items for redevelopment cycle |
-| `npm run pipeline:resume <slug>` | Resume pipeline after successful elevated apply |
-| `npm run pipeline:recover-elevated <slug> <msg>` | Recover pipeline after failed elevated apply |
-| `npm run pipeline:status <slug>` | Show current pipeline state |
-| `npm run pipeline:next <slug>` | Get next single item (naive order) |
-| `npm run pipeline:next-available <slug>` | Get all parallelizable items (DAG-aware) |
-| `npm run pipeline:set-note <slug> <note>` | Set implementation notes |
-| `npm run pipeline:doc-note <slug> <key> <note>` | Set per-item doc-note for docs handoff |
-| `npm run pipeline:set-url <slug> <url>` | Set deployed URL after deployment |
+| `npm run pipeline:init <slug> <workflow>` | **Admin escape hatch.** Seed `_STATE.json` + `_TRANS.md` without running the orchestrator. Not needed on the happy path — `agent:run --workflow <name>` seeds state in-process when absent. |
+| `npm run pipeline:status <slug>` | Show current pipeline state. |
+| `npm run pipeline:next <slug>` | Get next single item (read-only). |
+| `npm run pipeline:reset-scripts <slug> <category>` | Reset script-type nodes in a category for re-push. |
+| `npm run pipeline:resume <slug>` | Resume pipeline after a successful elevated apply. |
+| `npm run pipeline:recover-elevated <slug> <msg>` | Recover pipeline after a failed elevated apply. |
+| `npm run pipeline:recover-dangling <slug>` | Reconcile invocations that crashed mid-dispatch. |
+| `npm run pipeline:lint` | Static checks over `apm.yml` / `workflows.yml`. |
+| `npm run pipeline:viz` | Render the workflow DAG to a Mermaid diagram. |
+| `npm run pipeline:lineage <slug>` | Print the per-invocation artefact lineage tree. |
+
+> **No item-scoped CLI verbs.** `docNote`, `handoffArtifact`, and `deployedUrl` are no longer state fields — dev agents emit them as declared artifacts (`outputs/summary.md`, `outputs/<kind>.json`, `outputs/deployment-url.json`). The kernel reads them from disk via the `ArtifactBus` port. See "The Node I/O Contract" below.
 
 ---
 
@@ -496,6 +477,8 @@ e2e-runner:
     pkill -f 'node.*ssr' 2>/dev/null || true
 ```
 
+**Shared dev-server lifecycle (commerce-storefront).** Every node that boots PWA Kit locally — `e2e-runner`, `qa-adversary`, `storefront-debug`, `baseline-analyzer`, plus the `storefront-dev-smoke` local-exec script — delegates server boot/teardown to a single shared library at [apps/commerce-storefront/.apm/hooks/lib/dev-server-lifecycle.sh](../../../apps/commerce-storefront/.apm/hooks/lib/dev-server-lifecycle.sh). The lib owns the cgroup-capped launch (`systemd-run --user --scope -p MemoryMax`), the narrow `pkill` regex scoped to `pwa-kit-dev` and `webpack-dev-server` (avoids killing VS Code remote-server helpers), and the PGID-based reap (kills the entire process group, not just the parent — `pwa-kit-dev` forks babel-node, which is what actually holds port 3000). Per-hook concerns (Playwright binary cleanup, QA-adversary artefact removal) stay in the call sites. Black-box tests live alongside at [`__tests__/dev-server-lifecycle.test.mjs`](../../../apps/commerce-storefront/.apm/hooks/lib/__tests__/dev-server-lifecycle.test.mjs).
+
 ### Context Injection (Failure → Redevelopment)
 
 When a test node fails, the error output and triage classification are **injected into the redevelopment agent's prompt by `dispatch/context-builder.ts` via the `NodeContext` downstream-failure field** (previously handled by a dedicated `context-injection.ts`, which was dissolved into the dispatch layer). This prevents the agent from re-investigating the same failure from scratch.
@@ -512,6 +495,60 @@ When a test node fails, the error output and triage classification are **injecte
 | **3** | Legacy keywords | `api`, `500`, `cors`, `/backend/`, `/frontend/` | Fallback for SDK crashes; no-match → itemKey only |
 
 > **Ambiguous fallback changed:** The zero-match keyword fallback now returns `[itemKey]` only (early return) — it no longer resets all dev items. This prevents a single ambiguous error from triggering a full pipeline reset.
+
+---
+
+## The Node I/O Contract
+
+> Formerly `docs/06-roadmap/artifact-bus.md` Phases 1–6 + "Unified Node I/O + Observability Contract" Phases A–G. Shipped. This section is the mainline reference.
+
+Every DAG node's I/O flows through a single declarative contract — the **artifact bus** — backed by the `ArtifactBus` port ([src/ports/artifact-bus.ts](../src/ports/artifact-bus.ts)) and its filesystem adapter ([src/adapters/file-artifact-bus.ts](../src/adapters/file-artifact-bus.ts)), with the per-invocation directory tree owned by the `InvocationFilesystem` port ([src/ports/invocation-filesystem.ts](../src/ports/invocation-filesystem.ts)). Agents never hardcode filenames; they declare `consumes_kickoff`, `consumes_artifacts`, `consumes_reroute`, and `produces_artifacts` in [workflows.yml](../../../apps/sample-app/.apm/workflows.yml), and the kernel enforces the contract.
+
+### Directory layout
+
+```
+apps/<app>/.dagent/<slug>/
+  _state.json                      # kernel-owned DAG state + invocation ledger
+  _trans.md                        # human-readable transition log
+  _kickoff/                        # feature inputs authored BEFORE any node runs
+    spec.md                        # user-authored feature spec
+  <nodeKey>/
+    <invocationId>/                # immutable once sealed
+      meta.json                    # mirror of InvocationRecord (trigger · parentInvocationId · cycleIndex · outcome · timestamps)
+      inputs/                      # materialized BEFORE handler runs by invocation-builder
+        params.in.json             # resolved input manifest
+        <kind>.<ext>               # one file per resolved consumes_kickoff/consumes_artifacts/consumes_reroute entry
+      outputs/                     # one file per declared produces_artifacts (kernel validates on completion)
+        <kind>.<ext>               # e.g. summary.md, deployment-url.json, ci-result.json, approval.json, triage-handoff.json
+      logs/                        # populated by the InvocationLogger port
+        events.jsonl               # node.* lifecycle events keyed by invocationId
+        tool-calls.jsonl           # SDK tool invocations from the harness
+        messages.jsonl             # LLM message stream
+        stdout.log / stderr.log    # script-node child process output (full stream)
+```
+
+The `_kickoff/` scope is the only non-node path. Re-runs never overwrite: every dispatch creates a new `<invocationId>` directory (ULID-prefix time-sortable). `_state.json.artifacts[invocationId]` is authoritative; `meta.json` is a disk-level mirror for inspection. `INPUTS_DIR`, `OUTPUTS_DIR`, and `LOGS_DIR` env vars exposed to script handlers point at the matching subdirs and are real, file-backed paths.
+
+### The five mechanics
+
+| Mechanic | Where | Contract |
+|---|---|---|
+| **Declare** | `workflows.yml` | Each node lists `consumes_kickoff: [kind]`, `consumes_artifacts: [{from, kind}]`, `consumes_reroute: [kind]` (optional, only resolved when `trigger === "triage-reroute"`), `produces_artifacts: [kind]`. Artifact kinds registered in [artifact-catalog.ts](../src/apm/artifact-catalog.ts). |
+| **Resolve** | `loop/dispatch/invocation-builder.ts` (via `materializeInputsMiddleware`) | At dispatch, the builder walks the ledger, resolves each declared input to an `ArtifactRef`, **copies** the file into `<inv>/inputs/<kind>.<ext>`, and writes `inputs/params.in.json`. Required-but-missing throws `MissingRequiredInputError` → synthetic failed `InvocationRecord` with `errorSignature = missing_required_input:<kind>`. |
+| **Write** | Agent writes to `$OUTPUTS_DIR/<kind>.<ext>`; `harness/outcome-tool.ts` `report_outcome({status, message?})` signals completion | The collapsed `report_outcome` schema carries only control flow — every payload (summary, deployment URL, CI result, approval, triage handoff) is a declared artifact written to `outputs/`. The `ArtifactBus` write path computes `<appRoot>/.dagent/<slug>/<nodeKey>/<invocationId>/outputs/<kind>.<ext>`. |
+| **Enforce** | `kernel/pipeline-kernel.ts` | On `report_outcome(completed)`, the kernel diffs declared `produces_artifacts` against `state.artifacts[inv].outputs`. Missing → `failed` with `errorSignature = missing_required_output:<kind>` → routed through `on_failure.triage`. |
+| **Trace** | `state.artifacts[inv].parentInvocationId` + `cli/pipeline-lineage.ts` | The ledger is the lineage graph. `pipeline:lineage <slug> --tree` renders the ancestry forest; `TriageArtifactLoader.loadEvidenceBundle` produces a `{ invocation, ancestry, events, artifacts }` record for triage agents. Triage re-entrance: triage emits `outputs/triage-handoff.json`; the rerouted dev node declares `consumes_reroute: [triage-handoff]`; the builder copies it into the next invocation's `inputs/triage-handoff.json`. |
+
+### Observability: one event stream, one primary key
+
+Every handler type emits the same baseline `node.*` event schema. Events sink to two places: the global `_EVENTS.jsonl` (via the `PipelineLogger` port, for cross-invocation queries) and the per-invocation `<inv>/logs/events.jsonl` (via the `InvocationLogger` port, for self-contained debugging). Tool calls and LLM messages sink only to `<inv>/logs/`. Script-node stdout/stderr is streamed live into `<inv>/logs/stdout.log` / `stderr.log` while a tail buffer feeds the failure summary. Triage walks `state.artifacts` for lineage and reads `<inv>/logs/` + `<inv>/outputs/` for evidence — never by prose.
+
+### Extension points
+
+- **New artifact kind.** Add to [artifact-catalog.ts](../src/apm/artifact-catalog.ts); declare it in workflow nodes' `produces_artifacts` / `consumes_artifacts`.
+- **New node type.** Register a handler under [src/handlers/](../src/handlers/); it inherits the contract — inputs materialized into `inputs/`, declared `produces_artifacts` written to `outputs/`, uniform event stream into `logs/`.
+- **Schema gate on prompts.** The APM compiler ([src/apm/instruction-lint.ts](../src/apm/instruction-lint.ts)) rejects rendered instructions that hardcode legacy `<slug>_*` paths or unbacked `${SLUG}_*` env vars. Violations fail bootstrap with line refs.
+- **New consumer of the ledger.** Depend on `TriageArtifactLoader` or `ArtifactBus` — never on flat filesystem paths.
 
 ---
 

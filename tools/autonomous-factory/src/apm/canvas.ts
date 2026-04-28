@@ -244,6 +244,10 @@ export function fromCanvas(canvas: ApmCanvas): {
         signals_create_pr: false,
         produces: [],
         consumes: [],
+        consumes_kickoff: [],
+        produces_artifacts: [],
+        consumes_artifacts: [],
+        consumes_reroute: [],
         ...(n.node_kind ? { node_kind: n.node_kind as "agent" | "script" | "control-flow" | "diagnostic" } : {}),
         ...(n.agent ? { agent: n.agent } : {}),
         ...(n.handler ? { handler: n.handler } : {}),
@@ -260,6 +264,7 @@ export function fromCanvas(canvas: ApmCanvas): {
       nodes,
       unfixable_signals: [],
       triage: {},
+      routeProfiles: {},
     } as ApmCompiledOutput["workflows"][string];
 
     for (const tp of wf.triage_profiles) {
@@ -276,6 +281,10 @@ export function fromCanvas(canvas: ApmCanvas): {
         ...(tp.classifier ? { classifier: tp.classifier } : {}),
         max_reroutes: tp.max_reroutes,
         routing,
+        domains: Object.keys(routing),
+        patterns: [],
+        evidence_enrichment: true,
+        baseline_noise_filter: true,
         signatures: [],
       };
     }

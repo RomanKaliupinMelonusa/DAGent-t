@@ -20,6 +20,7 @@
 
 import { JsonFileStateStore } from "../adapters/json-file-state-store.js";
 import { runAdminCommand, type AdminHost } from "../kernel/admin.js";
+import { renderInvocationTree } from "../reporting/trans-tree.js";
 
 const store = new JsonFileStateStore();
 
@@ -94,6 +95,54 @@ async function cmdRecoverElevated(slug: string, errorMessage: string): Promise<v
   );
 }
 
+/** Default threshold (ms) — must match `DEFAULT_STALE_INVOCATION_MS` in
+ *  `entry/main.ts`. The override env var lets operators tighten or loosen
+ *  the threshold ad-hoc without an apm.yml edit. */
+const DEFAULT_STALE_INVOCATION_MS = 30 * 60 * 1000;
+
+async function cmdRecoverDangling(slug: string): Promise<void> {
+  if (!slug) {
+    console.error("Usage: pipeline-state recover-dangling <slug>");
+    process.exit(1);
+  }
+  const envOverride = process.env.STALE_INVOCATION_MS;
+  let staleMs = DEFAULT_STALE_INVOCATION_MS;
+  if (envOverride !== undefined && envOverride !== "") {
+    const parsed = Number(envOverride);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      console.error(
+        `Invalid STALE_INVOCATION_MS=${envOverride!} — must be a positive number of milliseconds.`,
+      );
+      process.exit(1);
+    }
+    staleMs = parsed;
+  }
+  const result = await runAdminCommand(adminHost, slug, {
+    type: "recover-dangling",
+    now: Date.now(),
+    staleMs,
+    slug,
+  });
+  if (result.kind !== "recover-dangling") {
+    // Defensive — the host always returns the variant matching the command.
+    console.error(`Unexpected result kind: ${result.kind}`);
+    process.exit(1);
+  }
+  if (result.recovered.length === 0) {
+    console.log(`✔ No dangling invocations older than ${staleMs}ms for "${slug}".`);
+    return;
+  }
+  for (const r of result.recovered) {
+    console.log(
+      `↻ recover-dangling: nodeKey=${r.nodeKey} invocationId=${r.invocationId} ageMs=${r.ageMs}`,
+    );
+  }
+  console.log(
+    `🔄 Force-failed ${result.recovered.length} dangling invocation(s). ` +
+    `Re-run \`agent:run\` so triage can reroute the freed slot(s).`,
+  );
+}
+
 async function cmdStatus(slug: string): Promise<void> {
   if (!slug) {
     console.error("Usage: pipeline-state status <slug>");
@@ -118,6 +167,28 @@ async function cmdNext(slug: string): Promise<void> {
   console.log(JSON.stringify({ key: null, label: "Pipeline complete", agent: null, status: "complete" }));
 }
 
+/**
+ * Print the invocation lineage tree for a feature — same renderer used
+ * by the `_TRANS.md` writer, surfaced here as a diagnostic command.
+ *
+ * `--with-artifacts` extends each invocation line with its produced
+ * artifact paths (kind + on-disk path), useful when investigating where
+ * a particular artifact actually lives across reroute cycles.
+ */
+async function cmdTree(slug: string, withArtifacts: boolean): Promise<void> {
+  if (!slug) {
+    console.error("Usage: pipeline-state tree <slug> [--with-artifacts]");
+    process.exit(1);
+  }
+  const state = await store.getStatus(slug);
+  const lines = renderInvocationTree(state.artifacts ?? {}, { includeArtifacts: withArtifacts });
+  if (lines.length === 0) {
+    console.log("[No invocations recorded]");
+    return;
+  }
+  for (const line of lines) console.log(line);
+}
+
 // ─── Deprecated verbs (Phase A.6 removal) ───────────────────────────────────
 
 const REMOVED_VERBS = new Set([
@@ -137,8 +208,10 @@ function usage(): never {
   console.error("  reset-scripts     <slug> <category>           — Reset script nodes for re-push");
   console.error("  resume            <slug>                      — Resume after elevated apply");
   console.error("  recover-elevated  <slug> <error-message>      — Recover after failed elevated apply");
+  console.error("  recover-dangling  <slug>                      — Force-fail unsealed dangling invocations");
   console.error("  status            <slug>                      — Print state JSON");
   console.error("  next              <slug>                      — Print next actionable item");
+  console.error("  tree              <slug> [--with-artifacts]   — Print invocation lineage tree");
   console.error("");
   console.error("Item keys are dynamically defined in your app's workflows.yml.");
   process.exit(1);
@@ -173,11 +246,17 @@ async function main(): Promise<void> {
       case "recover-elevated":
         await cmdRecoverElevated(args[0]!, args.slice(1).join(" "));
         break;
+      case "recover-dangling":
+        await cmdRecoverDangling(args[0]!);
+        break;
       case "status":
         await cmdStatus(args[0]!);
         break;
       case "next":
         await cmdNext(args[0]!);
+        break;
+      case "tree":
+        await cmdTree(args[0]!, args.includes("--with-artifacts"));
         break;
       default:
         console.error(`Unknown command: ${command}`);

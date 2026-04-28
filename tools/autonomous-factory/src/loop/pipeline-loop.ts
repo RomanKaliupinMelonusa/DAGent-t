@@ -35,12 +35,19 @@ import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
+import type { ArtifactBus } from "../ports/artifact-bus.js";
 import { buildNodeContext, type ContextBuilderConfig } from "./dispatch/context-builder.js";
+import { buildSecretRedactor } from "../adapters/secret-redactor.js";
 import { dispatchBatch } from "./dispatch/batch-dispatcher.js";
+import {
+  recordInvocationDispatch,
+  recordInvocationSeal,
+} from "./dispatch/invocation-ledger-hooks.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
 import { resolveTriageActivations } from "./triage-activation.js";
 import type { TriageActivation } from "../app-types.js";
@@ -92,8 +99,6 @@ export interface LoopLifecycle {
   syncBranch(): void | Promise<void>;
   /** Commit + push state files after a batch completes. */
   commitState(batchNumber: number): void | Promise<void>;
-  /** Archive feature files and push for PR creation. */
-  archiveAndPush(slug: string): Promise<void>;
   /** Get the workflow node definition for an item key. */
   getWorkflowNode(itemKey: string): ApmWorkflowNode | undefined;
 }
@@ -104,18 +109,29 @@ export interface PipelineLoopConfig {
   readonly appRoot: string;
   readonly repoRoot: string;
   readonly baseBranch: string;
+  readonly specFile: string;
   readonly apmContext: ApmCompiledOutput;
   readonly logger: PipelineLogger;
   readonly client?: CopilotClient;
   readonly triageLlm?: TriageLlm;
-  readonly triageArtifacts?: TriageArtifactLoader;
+  readonly triageArtifacts: TriageArtifactLoader;
   readonly baselineLoader?: BaselineLoader;
   readonly lifecycle: LoopLifecycle;
   readonly vcs: VersionControl;
   readonly stateReader: Pick<StateStore, "getStatus">;
+  readonly ledger: Pick<
+    StateStore,
+    "attachInvocationInputs" | "attachInvocationRoutedTo"
+  >;
   readonly shell: Shell;
   readonly filesystem: FeatureFilesystem;
+  readonly artifactBus: ArtifactBus;
+  readonly invocation: InvocationFilesystem;
   readonly copilotSessionRunner: CopilotSessionRunner;
+  /** Advisory API-drift markdown produced by bootstrap; forwarded to
+   *  agents that consult the vendored reference snapshot. Absent when
+   *  there is no drift or no snapshot configured. */
+  readonly pwaKitDriftReport?: string;
 }
 
 export interface HandlerResolver {
@@ -150,11 +166,16 @@ export async function runPipelineLoop(
   config: PipelineLoopConfig,
 ): Promise<LoopResult> {
   const { slug, logger, lifecycle } = config;
+  // Track B3: build the log redactor once per pipeline run. Reused by
+  // every FileInvocationLogger created in the context builder so all
+  // per-invocation logs get the same denylist treatment.
+  const logRedactor = buildSecretRedactor(config.apmContext.config?.environment);
   const ctxConfig: ContextBuilderConfig = {
     slug: config.slug,
     appRoot: config.appRoot,
     repoRoot: config.repoRoot,
     baseBranch: config.baseBranch,
+    specFile: config.specFile,
     apmContext: config.apmContext,
     logger: config.logger,
     client: config.client,
@@ -163,9 +184,14 @@ export async function runPipelineLoop(
     baselineLoader: config.baselineLoader,
     vcs: config.vcs,
     stateReader: config.stateReader,
+    ledger: config.ledger,
     shell: config.shell,
     filesystem: config.filesystem,
+    artifactBus: config.artifactBus,
+    invocation: config.invocation,
     copilotSessionRunner: config.copilotSessionRunner,
+    logRedactor,
+    ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   };
 
   const policy = config.apmContext.config?.policy;
@@ -282,7 +308,20 @@ export async function runPipelineLoop(
             console.log(`    · ${a.triageNodeKey} ← ${a.failingKey}`);
           }
           console.log(`${"─".repeat(70)}`);
+          const triageStartedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger, kernel);
           const triageResult = await dispatchBatch(triagePairs);
+          await recordInvocationSeal(
+            effectPorts.stateStore,
+            slug,
+            triagePairs,
+            triageResult,
+            logger,
+            {
+              resolveNode: (key) => lifecycle.getWorkflowNode(key),
+              startedAtByItem: triageStartedAtByItem,
+            },
+            kernel,
+          );
           const triageEffects: Effect[] = [];
           let triageHalt = false;
           for (const cmd of triageResult.commands) {
@@ -303,6 +342,14 @@ export async function runPipelineLoop(
 
       // Step 1: Get next batch from kernel
       const batch = kernel.getNextBatch();
+
+      // Drain readiness-gate telemetry effects emitted by the scheduler
+      // (e.g. `dispatch.gated_on_producer_cycle` for consumers held back
+      // by the cycle-aware producer gate). Fire-and-forget: these are
+      // advisory telemetry, they never carry state mutations.
+      if (batch.gateEffects && batch.gateEffects.length > 0) {
+        await executeEffects(batch.gateEffects, effectPorts);
+      }
 
       if (batch.kind === "complete") {
         terminationReason = "complete";
@@ -363,7 +410,20 @@ export async function runPipelineLoop(
       }
 
       // Step 5: Dispatch batch
+      const startedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger, kernel);
       const batchResult = await dispatchBatch(dispatchPairs);
+      await recordInvocationSeal(
+        effectPorts.stateStore,
+        slug,
+        dispatchPairs,
+        batchResult,
+        logger,
+        {
+          resolveNode: (key) => lifecycle.getWorkflowNode(key),
+          startedAtByItem,
+        },
+        kernel,
+      );
 
       // Per-item outcome banner on stdout for operator visibility.
       for (const { itemKey, result } of batchResult.itemResults) {
@@ -487,9 +547,8 @@ export async function runPipelineLoop(
         console.error(`  ✖ Unexpected session error: ${err.message}`);
       }
 
-      // Step 10: Handle create-pr: archive + push
+      // Step 10: Handle create-pr signal
       if (directive.createPr) {
-        await lifecycle.archiveAndPush(slug);
         terminationReason = "create-pr";
         return { reason: "create-pr" };
       }
@@ -519,9 +578,11 @@ export async function runPipelineLoop(
     terminationReason = "halted";
     return { reason: "halted" };
   } finally {
-    // ── run.end telemetry ──────────────────────────────────────────
-    logger.event("run.end", null, {
-      outcome: terminationReason,
+    // ── run.end telemetry ──────────────────────────────
+    // Idempotent — if a process-level termination handler already fired
+    // (SIGTERM, uncaught throw), this call is a no-op. Otherwise this is
+    // the primary emitter for natural completions.
+    logger.emitRunEnd(terminationReason, {
       duration_ms: Date.now() - runStartMs,
     });
   }

@@ -9,7 +9,6 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: "html",
-  outputDir: "./in-progress/screenshots",
   use: {
     baseURL: SWA_URL,
     trace: "on-first-retry",

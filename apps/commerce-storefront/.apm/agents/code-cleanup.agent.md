@@ -7,6 +7,15 @@ description: "Dead code elimination specialist using AST-based analysis"
 You eliminate dead code, orphaned utilities, and unreachable routes from the codebase.
 You run ONLY after all tests pass — your changes must not break anything.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_ACCEPTANCE.yml` → `acceptance` · `_BASELINE.json` → `baseline` · `_DEBUG-NOTES.md` → `debug-notes` · `_QA-REPORT.json` → `qa-report` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 # Context
 
 - Feature: {{featureSlug}}
@@ -21,8 +30,7 @@ You run ONLY after all tests pass — your changes must not break anything.
 
 Scan `{{appRoot}}/app/`, `{{appRoot}}/e2e/`, and `{{appRoot}}/config/`.
 
-Read `{{appRoot}}/in-progress/{{featureSlug}}_CHANGES.json` to see exactly which files were touched.
-Prioritize cleanup in those directories.
+Use the roam MCP tools below to discover dead-code candidates within that scope. (You run *before* `docs-archived`, so no `change-manifest` input is available — the per-feature touched-files list is assembled later in the pipeline.)
 
 ## Roam Cleanup Intelligence (MCP Tools — MANDATORY)
 

@@ -17,14 +17,23 @@ import {
   buildSessionHooks,
   buildReportOutcomeTool,
   type ResolvedHarnessLimits,
+  type NextFailureHintValidation,
+  type PrecompletionGate,
 } from "../harness/index.js";
 import type { AgentSandbox } from "../harness/sandbox.js";
 import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events.js";
+import { captureGitFilesSnapshot, diffGitFilesSnapshots } from "../session/git-files-snapshot.js";
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
 import { isFatalSdkError } from "../domain/error-classification.js";
 import { writeFlightData } from "../reporting/index.js";
+import {
+  validateNodeContract,
+  summarizeMissing,
+  type NodeContractGateParams,
+} from "../handlers/support/node-contract-gate.js";
+import { buildContractRecoveryPrompt } from "../handlers/support/node-contract-prompt.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -54,6 +63,27 @@ export interface CopilotSessionParams {
   preTimeoutPercent?: number;
   runtimeTokenBudget?: number;
   logger: PipelineLogger;
+  /** Validation context for `report_outcome.next_failure_hint`. Resolved
+   *  per-invocation by the copilot-agent handler. When absent, an agent
+   *  that supplies the hint will be rejected by the tool — we'd rather
+   *  fail loud than silently accept an unvalidated hint. */
+  nextFailureHintValidation?: NextFailureHintValidation;
+  /**
+   * Optional in-session node-contract gate. When supplied, the runner
+   * validates the node's declared output contract after `sendAndWait`
+   * resolves and nudges the SAME session up to 3 times if `report_outcome`
+   * is missing or any declared `produces_artifacts` did not materialise.
+   * See `handlers/support/node-contract-gate.ts` for the full contract.
+   */
+  nodeContract?: NodeContractGateParams;
+  /**
+   * Optional pre-`report_outcome` validation gate (P1.2). When supplied,
+   * the `report_outcome` tool runs `validate()` BEFORE recording a
+   * `completed` outcome — see `harness/outcome-tool.ts`. Currently used
+   * by `spec-compiler` to make acceptance/fixture validation a synchronous
+   * tool-call gate instead of a post-completion middleware.
+   */
+  precompletionGate?: PrecompletionGate;
 }
 
 export interface CopilotSessionResult {
@@ -101,7 +131,14 @@ export async function runCopilotSession(
     systemMessage: { mode: "replace", content: params.systemMessage },
     // `report_outcome` is appended unconditionally — every agent must be
     // able to signal its outcome to the orchestrator.
-    tools: [...(params.tools as any[]), buildReportOutcomeTool(telemetry)],
+    tools: [
+      ...(params.tools as any[]),
+      buildReportOutcomeTool(
+        telemetry,
+        params.nextFailureHintValidation,
+        params.precompletionGate,
+      ),
+    ],
     hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);
@@ -142,10 +179,154 @@ export async function runCopilotSession(
     },
   });
 
+  // Post-completion session discipline (P1.3). Once `report_outcome`
+  // succeeds (and the gate, when present, validated the artifact),
+  // any further tool call is a policy violation: the agent has finalized
+  // and must stop. We disconnect within a short grace window so the
+  // outer loop returns the recorded outcome instead of letting the agent
+  // drift past completion until the 90s idle watchdog kills it.
+  const POST_COMPLETION_GRACE_MS = 5_000;
+  let postCompletionDisconnectTimer: NodeJS.Timeout | undefined;
+  // While the runner is awaiting a contract-recovery nudge, the engine
+  // has officially re-opened the session for more work — agent tool
+  // calls are expected and must not trip the post-completion gate.
+  let contractRecoveryActive = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session.on("tool.execution_start", (event: any) => {
+    if (contractRecoveryActive) return;
+    if (!telemetry.reportOutcomeTerminal) return;
+    if (postCompletionDisconnectTimer) return;
+    const toolName = event?.data?.toolName;
+    // `report_outcome` itself is allowed (last-call-wins idempotency);
+    // anything else after a terminal outcome is a discipline violation.
+    if (toolName === "report_outcome") return;
+    const annotation =
+      `[post-completion-tool-call] Agent invoked '${toolName}' after a ` +
+      `terminal report_outcome. Forcing session disconnect after a ` +
+      `${POST_COMPLETION_GRACE_MS}ms grace window.`;
+    telemetry.postCompletionToolCallAnnotation = annotation;
+    logger.event("breaker.fire", itemKey, {
+      type: "post_completion_tool_call",
+      tool: toolName,
+    });
+    postCompletionDisconnectTimer = setTimeout(() => {
+      session.disconnect().catch(() => { /* best-effort */ });
+    }, POST_COMPLETION_GRACE_MS);
+    // Avoid keeping the event loop alive for the grace window alone.
+    postCompletionDisconnectTimer.unref?.();
+  });
+
   let sessionError: string | undefined;
   let fatalError = false;
+  // Boundary-snapshot the working tree so we can attribute shell-driven
+  // writes (heredocs, sed, tee, …) without parsing arbitrary bash. The
+  // delta is merged into telemetry.filesChanged after disconnect.
+  const snapshotBefore = captureGitFilesSnapshot(params.repoRoot);
+  const sessionStart = Date.now();
+  const sessionDeadline = sessionStart + params.timeout;
   try {
     await session.sendAndWait({ prompt: params.taskPrompt }, params.timeout);
+
+    // Phase 2 — runner-internal node-contract recovery gate.
+    // After the initial send resolves, validate the node's declared
+    // output contract. Missing report_outcome / artifacts trigger up to
+    // MAX_NUDGES targeted nudges into the SAME live session. The
+    // dispatch-level gates (`detectMissingRequiredOutputs` /
+    // `detectInvalidEnvelopeOutputs`) remain the deterministic backstop
+    // after this returns.
+    const nc = params.nodeContract;
+    if (nc && nc.mode !== "off") {
+      const MAX_NUDGES = 3;
+      const MIN_REMAINING_MS = 30_000;
+      const PER_NUDGE_CAP_MS = 90_000;
+      const enforceArtifacts = nc.mode === "full";
+      const validate = () => validateNodeContract({
+        producesArtifacts: enforceArtifacts ? nc.producesArtifacts : [],
+        slug: nc.slug,
+        nodeKey: nc.nodeKey,
+        invocationId: nc.invocationId,
+        reportedOutcome: telemetry.reportedOutcome,
+        strictEnvelope: enforceArtifacts && nc.strictEnvelope,
+        autoSkipped: nc.autoSkipped,
+        bus: nc.bus,
+        fs: nc.fs,
+      });
+
+      let nudgesFired = 0;
+      while (true) {
+        const result = await validate();
+        if (result.ok) {
+          if (nudgesFired > 0) telemetry.contractRecoveryRecovered = true;
+          break;
+        }
+
+        // Exit conditions, in priority order. Each sets sessionError
+        // with the stable `[runner.contract_violation]` prefix so
+        // downstream triage can fingerprint deterministically.
+        if (nudgesFired >= MAX_NUDGES) {
+          sessionError =
+            `[runner.contract_violation] node-contract recovery exhausted ` +
+            `after ${MAX_NUDGES} nudges: ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+        if (breaker.tripped) {
+          // The cognitive circuit breaker has already disconnected the
+          // session — any further sendAndWait would reject. Surface the
+          // contract violation but defer to the breaker's own message.
+          sessionError = sessionError
+            ?? `[runner.contract_violation] node-contract recovery aborted — ` +
+              `cognitive circuit breaker tripped: ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+        const remaining = sessionDeadline - Date.now();
+        if (remaining < MIN_REMAINING_MS) {
+          sessionError =
+            `[runner.contract_violation] node-contract recovery aborted — ` +
+            `time budget exhausted (${remaining}ms remaining): ${summarizeMissing(result.missing)}`;
+          telemetry.errorMessage = sessionError;
+          telemetry.errorSignature = "runner.contract_violation";
+          telemetry.outcome = "error";
+          break;
+        }
+
+        nudgesFired += 1;
+        telemetry.contractRecoveryAttempts = nudgesFired;
+        logger.event("breaker.fire", itemKey, {
+          type: "node_contract_nudge",
+          attempt: nudgesFired,
+          missing: result.missing.map((m) =>
+            m.kind === "report_outcome"
+              ? "report_outcome"
+              : `${m.kind}:${m.declaredKind}`,
+          ),
+        });
+
+        const nudgePrompt = buildContractRecoveryPrompt(itemKey, result.missing, nudgesFired);
+        const nudgeBudget = Math.min(remaining, PER_NUDGE_CAP_MS);
+        // The engine has officially re-opened the session — defensively
+        // clear any already-armed post-completion disconnect timer and
+        // its annotation, then mute the discipline gate for the duration
+        // of this awaited nudge. The `finally` guarantees the gate
+        // re-arms even if `sendAndWait` rejects.
+        if (postCompletionDisconnectTimer) {
+          clearTimeout(postCompletionDisconnectTimer);
+          postCompletionDisconnectTimer = undefined;
+        }
+        telemetry.postCompletionToolCallAnnotation = undefined;
+        contractRecoveryActive = true;
+        try {
+          await session.sendAndWait({ prompt: nudgePrompt }, nudgeBudget);
+        } finally {
+          contractRecoveryActive = false;
+        }
+      }
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logger.event("state.fail", itemKey, { error_preview: message });
@@ -169,7 +350,13 @@ export async function runCopilotSession(
     }
   } finally {
     isSessionActive = false;
+    if (postCompletionDisconnectTimer) clearTimeout(postCompletionDisconnectTimer);
     await session.disconnect();
+    const snapshotAfter = captureGitFilesSnapshot(params.repoRoot);
+    const touched = diffGitFilesSnapshots(snapshotBefore, snapshotAfter, params.repoRoot);
+    for (const f of touched) {
+      if (!telemetry.filesChanged.includes(f)) telemetry.filesChanged.push(f);
+    }
   }
 
   return { sessionError, fatalError, reportedOutcome: telemetry.reportedOutcome };

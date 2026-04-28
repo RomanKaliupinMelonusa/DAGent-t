@@ -14,13 +14,17 @@ This layer is the reason the engine is stack-agnostic. All cloud/framework-speci
 |---|---|
 | [compiler.ts](compiler.ts) | `compileApm(appRoot)` — the main compile function. Parses `apm.yml`, resolves instructions, validates with Zod, enforces token budgets, returns `ApmCompiledOutput`. |
 | [context-loader.ts](context-loader.ts) | `loadApmContext(appRoot)` — loads cached `context.json`; re-compiles on mtime staleness; defense-in-depth schema + budget re-validation. Used at bootstrap. |
-| [agents.ts](agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + pending context injection). |
+| [agents.ts](agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + declared `inputs/` block + re-invocation lineage block when triage rerouted). |
 | [types.ts](types.ts) | Zod schemas + types: `ApmManifestSchema`, `ApmWorkflowSchema`, `ApmCompiledOutputSchema`, `CompiledTriageProfile`, `ApmMcpFileSchema`, `ApmSkillFrontmatterSchema`, `TriagePackSchema`. Errors: `ApmCompileError`, `ApmBudgetExceededError`. |
 | [acceptance-schema.ts](acceptance-schema.ts) | Schema for the acceptance block in `apm.yml`. |
 | [canvas.ts](canvas.ts) | DAG visualization export helpers consumed by `scripts/export-canvas.ts`. |
 | [capability-profiles.ts](capability-profiles.ts) | Resolves and renders capability profiles (grouped instruction preferences). |
 | [plugin-loader.ts](plugin-loader.ts) | Loads app-local plugin modules (middlewares, handlers) at bootstrap. |
 | [local-path-validator.ts](local-path-validator.ts) | Path security: resolves user-provided paths against `appRoot`/`repoRoot`, rejects directory traversal. Used by `plugin-loader` and the handler registry. |
+| [artifact-catalog.ts](artifact-catalog.ts) | Declared artefact-kind registry. Every `kind` referenced in `consumes_*` / `produces_artifacts` must be catalogued here with its file extension, schema, and reserved keys (e.g. `spec`, `change-manifest`, `triage-handoff`, `handler-output`). |
+| [artifact-io-validator.ts](artifact-io-validator.ts) | Compile-time validator that every node's `consumes_*` / `produces_artifacts` references a known kind, and that producers exist for every consumed artefact in the workflow DAG. |
+| [compile-node-io-contract.ts](compile-node-io-contract.ts) | Compiles each node's I/O contract from `workflows.yml` into a typed structure consumed by the dispatcher and the contract gate. |
+| [instruction-lint.ts](instruction-lint.ts) | Lints instruction `.md` fragments for stale slugs, banned literals (e.g. `{{featureSlug}}_*` paths), and deprecated patterns. Reported by `pipeline:lint`. |
 | [index.ts](index.ts) | Barrel: `compileApm`, `loadApmContext`, `getAgentConfig`, `buildTaskPrompt`, all types. |
 
 ## Public interface
@@ -34,7 +38,7 @@ const apmContext = await loadApmContext(appRoot);
 const agentConfig = getAgentConfig("backend-dev", nodeContext, apmContext);
 //   → { systemMessage, model, mcpServers, timeout, toolLimits, … }
 
-const taskPrompt = buildTaskPrompt(itemKey, nodeContext, apmContext, pendingContext);
+const taskPrompt = buildTaskPrompt(itemKey, nodeContext, apmContext);
 //   → Final string the SDK session receives as the first user message.
 ```
 

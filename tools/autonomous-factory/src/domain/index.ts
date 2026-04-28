@@ -25,8 +25,13 @@ export {
 
 export {
   schedule,
+  isProducerCycleReady,
   type SchedulableItem,
   type ScheduleResult,
+  type ScheduleOptions,
+  type ConsumesEdge,
+  type ProducerCycleSummary,
+  type GateDiagnosis,
 } from "./scheduling.js";
 
 export {
@@ -36,6 +41,7 @@ export {
   resetScripts,
   resumeAfterElevated,
   salvageForDraft,
+  bypassNode,
   findInfraPollKey,
   findInfraDevKey,
   type TransitionItem,
@@ -48,6 +54,7 @@ export {
   type ResetScriptsResult,
   type ResumeElevatedResult,
   type SalvageResult,
+  type BypassResult,
 } from "./transitions.js";
 
 export {

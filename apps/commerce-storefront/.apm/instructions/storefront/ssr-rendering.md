@@ -76,3 +76,34 @@ PWA Kit runs the same React source code in two contexts:
 - Static assets go in `app/static/` — served via `/mobify/bundle/`.
 - Use the `ssrShared` config to control which files are accessible via CDN.
 - Never import large libraries in the critical rendering path.
+
+### Interactive Affordances in SSR
+
+After SSR, the browser receives fully-rendered HTML — buttons, links, and form controls are visible and focusable **before** React has attached its event handlers on the client. A user (or a Playwright spec) who clicks during this window dispatches a click against a non-interactive element: the `onClick` is not yet bound, no handler runs, and the interaction is silently dropped. The same race causes E2E flakiness and real-user "the button doesn't work on first click" reports.
+
+5. **Any element with an `onClick` (or app-behavioural `onSubmit` / `onChange`) that is reachable in the SSR render tree MUST be either:**
+
+    1. **Gated behind `useState(false)` + `useEffect(() => setMounted(true), [])`** — the "isMounted" pattern — so the interactive affordance is **absent** from the server-rendered HTML and only appears after hydration:
+       ```jsx
+       const [isMounted, setIsMounted] = useState(false)
+       useEffect(() => { setIsMounted(true) }, [])
+
+       return (
+         <ProductTile product={product}>
+           {isMounted && (
+             <IconButton
+               data-testid={`product-tile-quick-view-btn-${product.id}`}
+               aria-label="Quick view"
+               icon={<EyeIcon />}
+               onClick={() => onQuickView(product)}
+             />
+           )}
+         </ProductTile>
+       )
+       ```
+
+    2. **OR replaced with `<a href>` / a pure-DOM affordance** that works without JS. Native links navigate on click without needing a React handler attached, so the SSR→hydration race does not exist. Prefer this when the click *can* be expressed as a navigation (e.g. "open product detail page" → `<a href={productUrl}>`).
+
+    **Canonical example.** The PLP Quick View trigger (`overrides/app/components/product-tile/index.jsx`) is interactive (opens a modal that fetches data) and **cannot** be expressed as `<a href>`. It MUST use the isMounted pattern. Rendering the `<button>` unconditionally puts it in the SSR HTML, which is exactly the failure mode the `awaitHydrated` test fixture (see `e2e-guidelines.md` §22) was added to detect at the spec layer — fix it at the component layer too.
+
+    Rationale: `awaitHydrated` is a **defensive** gate at the test boundary. The component-side isMounted pattern is the **structural** fix. Both layers exist on purpose: the component-side rule prevents real users from hitting the race; the fixture-side rule prevents specs from racing in CI even when a component author forgets the gate.

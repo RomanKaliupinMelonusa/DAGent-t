@@ -37,6 +37,11 @@ export const autoSkipMiddleware: NodeMiddleware = {
       return {
         outcome: "completed",
         errorMessage: `Skipped: ${decision.skip.reason}`,
+        // Tag the result so the dispatcher's `produces_artifacts`
+        // presence gate and `strict_artifacts` envelope gate can exempt
+        // no-op invocations. A skipped node, by definition, never wrote
+        // its declared outputs — demanding them would loop the pipeline.
+        signals: { skipped: true },
         summary: {
           outcome: "completed",
           errorMessage: `Skipped: ${decision.skip.reason}`,

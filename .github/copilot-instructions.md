@@ -59,7 +59,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/` |
 | Parallel batch dispatch & context assembly | `tools/autonomous-factory/src/loop/dispatch/` |
-| Handler plugins (agent, poll, local-exec, triage, approval, barrier) | `tools/autonomous-factory/src/handlers/` |
+| Handler plugins (copilot-agent, local-exec, github-ci-poll, approval, triage) | `tools/autonomous-factory/src/handlers/` |
 | Copilot-agent support helpers (context, limits, post-session) | `tools/autonomous-factory/src/handlers/support/` |
 | Workflow node helpers (shared, dag-utils) | `tools/autonomous-factory/src/session/` |
 | Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
@@ -78,14 +78,14 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
 | Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
 | APM compiler & context loader | `tools/autonomous-factory/src/apm/compiler.ts` · `src/apm/context-loader.ts` |
-| Active feature workspace | `apps/sample-app/in-progress/` |
+| Active feature workspace | `apps/sample-app/.dagent/` |
 | Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
 | Commerce storefront DAG definition | `apps/commerce-storefront/.apm/workflows.yml` |
 | Commerce storefront instruction fragments | `apps/commerce-storefront/.apm/instructions/**/*.md` |
 | Commerce storefront lifecycle hooks | `apps/commerce-storefront/.apm/hooks/*.sh` |
 | Commerce storefront skill declarations | `apps/commerce-storefront/.apm/skills/*.skill.md` |
 | Commerce storefront MCP declarations | `apps/commerce-storefront/.apm/mcp/*.mcp.yml` |
-| Commerce storefront active workspace | `apps/commerce-storefront/in-progress/` |
+| Commerce storefront active workspace | `apps/commerce-storefront/.dagent/` |
 | CI/CD: Integration tests & builds | `.github/workflows/ci-integration.yml` |
 | CI/CD: Backend deploy | `.github/workflows/deploy-backend.yml` |
 | CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
@@ -116,7 +116,7 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 | Adapters (state store, git, CI, FS, SDK runner, telemetry) | `tools/autonomous-factory/src/adapters/` |
 | Reactive DAG loop | `tools/autonomous-factory/src/loop/pipeline-loop.ts` |
 | Batch dispatcher & NodeContext builder | `tools/autonomous-factory/src/loop/dispatch/` |
-| Handler plugins (agent, push, poll, PR, local-exec, triage) | `tools/autonomous-factory/src/handlers/` |
+| Handler plugins (copilot-agent, local-exec, github-ci-poll, approval, triage) | `tools/autonomous-factory/src/handlers/` |
 | Copilot agent support helpers | `tools/autonomous-factory/src/handlers/support/` |
 | Failure triage & routing | `tools/autonomous-factory/src/handlers/triage-handler.ts` · `src/triage/` |
 | Agent prompt factory | `tools/autonomous-factory/src/apm/agents.ts` |
@@ -134,10 +134,14 @@ The agentic pipeline is driven by a headless TypeScript orchestrator using `@git
 
 **Locally (devcontainer):**
 ```bash
-npm run pipeline:init <slug> <type>   # Initialize pipeline state
-npm run agent:run -- --app apps/sample-app <slug>   # Run for sample-app
-npm run agent:run -- --app apps/commerce-storefront <slug>   # Run for commerce-storefront
-# Optional: BASE_BRANCH=develop npm run agent:run -- --app apps/sample-app <slug>
+# Single command — no separate pipeline:init needed.
+# Branch creation & spec staging are now DAG nodes (create-branch, stage-spec).
+npm run agent:run -- --app apps/sample-app --workflow full-stack --spec-file /path/to/spec.md <slug>
+npm run agent:run -- --app apps/commerce-storefront --workflow storefront --spec-file /path/to/spec.md <slug>
+# Optional: --base-branch develop (or BASE_BRANCH=develop env var)
+
+# Admin escape hatch (rarely needed — bootstrap auto-seeds when state is absent):
+# APP_ROOT=apps/sample-app npm run pipeline:init <slug> full-stack
 ```
 
 **In CI (GitHub Actions):**
@@ -148,7 +152,7 @@ Trigger the `agentic-feature.yml` workflow via `workflow_dispatch` with a featur
 The orchestrator is a deterministic `while` loop that:
 1. Builds the roam-code semantic graph index (Phase 0, non-fatal)
 2. Compiles APM context — resolves `.apm/apm.yml` instructions, MCP servers, and skills into a cached `context.json`, validates all agent token budgets (fatal on exceed)
-3. Runs pre-flight checks: junk file detection, in-progress artifact scan, cloud CLI auth via `hooks.preflightAuth`
+3. Runs pre-flight checks: junk file detection, .dagent artifact scan, cloud CLI auth via `hooks.preflightAuth`
 4. Reads pipeline state via `getNextAvailable()` to find parallelizable items
 5. Routes each item to a handler plugin via `resolveHandler()` — `copilot-agent` (LLM sessions), `github-ci-poll` (CI polling), `local-exec` (script execution — push, publish, tests, builds)
 6. For LLM agents: builds prompt via `getAgentConfig(key, context, compiled)` — thin template + APM-assembled rules, then spins up `@github/copilot-sdk` sessions — in parallel when multiple items are ready
@@ -156,14 +160,15 @@ The orchestrator is a deterministic `while` loop that:
 8. For script nodes: runs optional `pre` hook before the handler body (e.g. environment health check), then runs the handler, then runs optional `post` hook (e.g. cleanup/validation). Failed output flows to the triage system for fault classification.
 9. Waits for handlers to complete or fail
 10. Advances to the next batch of ready items
-11. After `publish-pr` completes, deterministically archives feature files from `in-progress/` to `archive/features/<slug>/`
+11. After `publish-pr` completes, the feature's `.dagent/<slug>/` directory remains tracked in Git for PR review and retro analysis
 12. Injects downstream failure context into dev agents during redevelopment cycles
 
 ### Hard Rules
 
-- **State management:** Pipeline state is owned by `PipelineKernel` and persisted via `JsonFileStateStore`. Admin operations go through `tools/autonomous-factory/src/cli/pipeline-state.ts` (use `npm run pipeline:init/status/next/resume/reset-scripts/recover-elevated`). Never edit `_TRANS.md` or `_STATE.json` directly.
+- **State management:** Pipeline state is owned by `PipelineKernel` and persisted via `JsonFileStateStore`. On the happy path `agent:run` seeds `_STATE.json` in-process using `--workflow`; `pipeline:init` remains only as an admin escape hatch. Other admin verbs (`status`, `next`, `resume`, `reset-scripts`, `recover-elevated`) route through `tools/autonomous-factory/src/cli/pipeline-state.ts`. Never edit `_TRANS.md` or `_STATE.json` directly.
+- **Scaffolding as nodes:** Feature-branch creation and spec staging are DAG nodes (`create-branch`, `stage-spec`) at the head of every workflow. The kernel + bootstrap are pipeline-agnostic — they never shell out to `agent-branch.sh` directly.
 - **Git operations:** Use `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push`.
-- **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `BASE_BRANCH` env var) is the final administrative step.
+- **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `--base-branch` or `BASE_BRANCH` env var) is the final administrative step.
 - **Prompt rules:** Coding rules live in `apps/<your-app>/.apm/instructions/` (single source of truth), declared in `.apm/apm.yml`. The APM compiler resolves per-agent instruction sets and validates token budgets.
 - **Post-deploy failure rerouting:** When `live-ui` or `integration-test` fails, the orchestrator triages the error and resets the appropriate dev items for redevelopment. Max 5 redevelopment cycles.
 - **Clean-slate revert:** When a dev agent fails ≥ 3 times (in-memory attempts or persisted redevelopment cycles), the orchestrator injects a warning advising `agent-branch.sh revert` to wipe the feature branch and rebuild from scratch. The circuit breaker grants one bypass to allow this.

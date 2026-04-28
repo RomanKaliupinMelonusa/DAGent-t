@@ -38,12 +38,24 @@ export type EventKind =
   | "triage.evaluate"
   | "triage.enqueue"
   | "triage.dispatch"
+  | "triage.handoff.skipped_non_completed"
+  // Phase D — same-test loop override events. Fired when triage detects
+  // 2 prior cycles failing the same test name and either (a) overrides
+  // the LLM verdict to `test-data` because the failing node has a
+  // `test-data` route declared, or (b) skips the override because no
+  // such route exists.
+  | "triage.override.same_test_loop"
+  | "triage.override.same_test_loop_skipped"
   // Handoff
   | "handoff.emit"
   | "handoff.inject"
   // Git
   | "git.commit"
   | "git.push"
+  // Terminal flush — best-effort push of stranded local commits in the
+  // orchestrator's outer `finally` (see lifecycle/flush-branch.ts).
+  // Fires for every termination path: completed / halted / blocked / crash / SIGINT.
+  | "pipeline.flush.push"
   // Breaker
   | "breaker.fire"
   // Retry backoff (loop-level exponential sleep between failed batches)
@@ -54,7 +66,44 @@ export type EventKind =
   | "hook.post.start"
   | "hook.post.end"
   // Metrics (structured observation, emitted by the metrics middleware)
-  | "node.metric";
+  | "node.metric"
+  // Artifact bus / invocation ledger (Phase 4)
+  | "invocation.append_failed"
+  | "invocation.seal_failed"
+  | "invocation.seal.outcome_missing"
+  | "invocation.params_write_failed"
+  | "invocation.meta_write_failed"
+  | "invocation.meta_seal_failed"
+  | "invocation.node_report_failed"
+  | "invocation.attach_inputs_failed"
+  | "invocation.attach_routed_to_failed"
+  // Lineage hop emitted by the triage handler when a successful reroute
+  // is decided. Carries { triageInvocationId, failingNodeKey,
+  // failingInvocationId, routedToNodeKey, routedToInvocationId, domain,
+  // source, handoffPath } — single event that fully describes the
+  // failing-node → triage → routed-to-node hop.
+  | "triage.routed"
+  // Auto-revalidation of a bypassed gate after the triage-reroute target
+  // completes successfully. Stamped with { invocationId, bypassedNode,
+  // routeTarget, cycleIndex } so dashboards can correlate the bypass
+  // → reset-after-fix pair.
+  | "triage.revalidate_bypass"
+  // Uniform per-invocation lifecycle (Phase B — fires for every handler type
+  // regardless of whether the handler itself emits item.start/item.end).
+  // Stamped with { invocationId, nodeKey, trigger, parentInvocationId,
+  // cycleIndex, attempt }. Triage filters by invocationId for lineage.
+  | "node.start"
+  | "node.end"
+  | "node.artifact.write"
+  | "node.artifact.seal"
+  // Script handler-output envelope (symmetric counterpart to handoff.emit
+  // for the agent path). Fired by local-exec when a script writes
+  // `$OUTPUTS_DIR/handler-output.json` and the envelope is ingested.
+  // `handler-output.invalid` / `handler-output.reserved_key` are advisory
+  // warnings that never fail the script.
+  | "node.handler_output"
+  | "handler-output.invalid"
+  | "handler-output.reserved_key";
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -94,6 +143,39 @@ export interface EventFilter {
 }
 
 // ---------------------------------------------------------------------------
+// run.end reason discriminator
+// ---------------------------------------------------------------------------
+
+/**
+ * Discriminator stuffed into `run.end.data.reason`. Lets an operator
+ * tell at a glance how the orchestrator terminated:
+ *   - `complete`             — DAG fully finished
+ *   - `halted` / `blocked`   — kernel/loop signalled stop
+ *   - `create-pr`            — terminated to hand off to PR workflow
+ *   - `approval-pending`     — paused awaiting human approval
+ *   - `idle-timeout`         — hardening: no progress for N minutes
+ *   - `failure-budget`       — hardening: total failures exceeded
+ *   - `signal:SIGINT` / `signal:SIGTERM` — process signal
+ *   - `uncaught-exception`   — synchronous throw not caught
+ *   - `unhandled-rejection`  — promise rejection not caught
+ *   - `unknown`              — fallback (process.exit hook fired without
+ *                              any of the above firing first)
+ */
+export type RunEndReason =
+  | "complete"
+  | "halted"
+  | "blocked"
+  | "create-pr"
+  | "approval-pending"
+  | "idle-timeout"
+  | "failure-budget"
+  | "signal:SIGINT"
+  | "signal:SIGTERM"
+  | "uncaught-exception"
+  | "unhandled-rejection"
+  | "unknown";
+
+// ---------------------------------------------------------------------------
 // PipelineLogger interface — the ONLY logging API
 // ---------------------------------------------------------------------------
 
@@ -109,6 +191,18 @@ export interface PipelineLogger {
 
   /** Set the current attempt for an item key (called by kernel on item start). */
   setAttempt(itemKey: string, attempt: number): void;
+
+  /**
+   * Emit the terminal `run.end` event. Idempotent — a second call is a
+   * no-op so multiple termination paths (loop finally, signal handlers,
+   * `process.on('exit')`) can each fire safely without producing
+   * duplicate run.end records.
+   *
+   * Implementations MUST persist the event durably (fsync) before
+   * returning so a subsequent `process.exit` cannot lose it to the
+   * page cache.
+   */
+  emitRunEnd(reason: RunEndReason, extra?: Record<string, unknown>): void;
 
   /**
    * Materialize an ItemSummary from the in-memory event buffer.

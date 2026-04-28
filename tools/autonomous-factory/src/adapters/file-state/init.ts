@@ -13,7 +13,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PipelineState, InitResult } from "../../types.js";
-import { APP_ROOT, statePath, transPath, today, writeState } from "./io.js";
+import { getAppRoot, statePath, transPath, today, writeState } from "./io.js";
 import { buildInitialState, type CompiledNode } from "../../domain/init-state.js";
 import { compileApm } from "../../apm/compiler.js";
 
@@ -42,11 +42,12 @@ export function initState(
     throw new Error("initState requires slug and workflowName");
   }
 
-  const ctxPath = contextJsonPath ?? join(APP_ROOT, ".apm", ".compiled", "context.json");
+  const appRoot = getAppRoot();
+  const ctxPath = contextJsonPath ?? join(appRoot, ".apm", ".compiled", "context.json");
 
   if (!existsSync(ctxPath)) {
     // Auto-compile APM context if missing.
-    const apmYml = join(APP_ROOT, ".apm", "apm.yml");
+    const apmYml = join(appRoot, ".apm", "apm.yml");
     if (!existsSync(apmYml)) {
       throw new Error(
         `No APM manifest found at ${apmYml}. Each app must have .apm/apm.yml.`,
@@ -54,12 +55,12 @@ export function initState(
     }
     console.log("ℹ  APM compiled context not found — compiling automatically…");
     try {
-      compileApm(APP_ROOT);
+      compileApm(appRoot);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
         `APM auto-compilation failed: ${msg}\n` +
-        `You can compile manually: cd ${join(__dirname, "../../..")} && npx tsx -e 'import{compileApm}from"./src/apm-compiler.ts";compileApm("${APP_ROOT}");'`,
+        `You can compile manually: cd ${join(__dirname, "../../..")} && npx tsx -e 'import{compileApm}from"./src/apm-compiler.ts";compileApm("${appRoot}");'`,
       );
     }
     if (!existsSync(ctxPath)) {

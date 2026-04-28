@@ -9,6 +9,7 @@ import type {
   PipelineEvent,
   PipelineLogger,
   NodeTrace,
+  RunEndReason,
 } from "./events.js";
 
 export class NoopPipelineLogger implements PipelineLogger {
@@ -19,6 +20,7 @@ export class NoopPipelineLogger implements PipelineLogger {
   blob(_eventId: string, _label: string, _content: string): void {}
   query(_filter: EventFilter): PipelineEvent[] { return []; }
   setAttempt(_itemKey: string, _attempt: number): void {}
+  emitRunEnd(_reason: RunEndReason, _extra?: Record<string, unknown>): void {}
   materializeItemSummary(_itemKey: string, _attempt?: number): ItemSummary | null { return null; }
   queryNodeTrace(itemKey: string): NodeTrace {
     return { itemKey, totalAttempts: 0, attempts: [], upstreamNodes: [], downstreamNodes: [] };

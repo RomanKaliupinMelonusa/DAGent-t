@@ -20,8 +20,22 @@ export const RESET_OPS = {
   RESET_FOR_DEV: "reset-for-dev",
   /** resetNodes() for triage reroute */
   RESET_FOR_REROUTE: "reset-for-reroute",
+  /** bypassNode() — failing parent flipped to `na` to unlock a downstream
+   *  triage reroute target. Cycle counter is bookkeeping-only (does NOT
+   *  consume the user's `max_reroutes` budget). */
+  BYPASS_FOR_REROUTE: "bypass-for-reroute",
+  /** resetNodes() emitted by the seal hook when a triage-reroute target
+   *  completes successfully — re-pendings the bypassed parent so the
+   *  fix is validated against the gate. Has its own dedicated cycle
+   *  budget (default 3) distinct from `RESET_FOR_REROUTE`. */
+  RESET_AFTER_FIX: "reset-after-fix",
   /** Legacy error-log marker — kept for backward compat with old state files. */
   RESET_PHASES: "reset-phases",
+  /** A4 — sentinel itemKey used by the blocked-verdict circuit breaker.
+   *  Each $BLOCKED triage outcome appends one entry tagged with this
+   *  itemKey + a `[failing:<nodeKey>] [domain:<domain>] reason` message.
+   *  Counted per-failing-node by the triage handler to halt on repeat. */
+  TRIAGE_BLOCKED: "triage-blocked",
 } as const;
 
 /** All reset-operation keys that indicate a redevelopment cycle */
@@ -37,19 +51,169 @@ export interface PipelineItem {
   status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
-  /** Structured handoff artifact (JSON string) for downstream agent contracts.
-   *  Dev agents use this to communicate typed data (testid maps, affected routes,
-   *  SSR-safety flags) to SDET and test runner agents. */
-  handoffArtifact?: string | null;
-  /** Pre-built prompt context written by the triage handler (or node wrapper)
-   *  for injection into the next attempt of this item. Consumed and cleared
-   *  by the node wrapper before handler execution. */
-  pendingContext?: string | null;
   /** Sticky salvage marker — set when the kernel applies `salvage-draft` to
    *  this item. Subsequent `reset-nodes` dag-commands targeting a salvaged
    *  item are rejected by the reducer (no-op) and produce a telemetry signal.
    *  Prevents later triage cycles from resurrecting a gracefully-degraded node. */
   salvaged?: boolean;
+  /** Bypass marker — set when the kernel applies `bypass-node` to this
+   *  failing item so a triage reroute can dispatch a downstream debug
+   *  agent that would otherwise be DAG-locked behind the failure. The
+   *  item's status is flipped from `failed` → `na` for the duration of
+   *  the bypass; on the rerouted target's successful seal, the seal hook
+   *  emits a `reset-nodes` command with logKey `reset-after-fix` to
+   *  re-pending this item and re-validate the gate against the fix. The
+   *  marker is cleared by `resetNodes` when the item transitions back to
+   *  `pending`. Distinct from `salvaged`: bypass is reversible, salvage
+   *  is sticky. */
+  bypassedFor?: { routeTarget: string; cycleIndex: number };
+  /** Artifact-bus pointer: invocationId of the most recent (or staged) dispatch
+   *  for this item. Points into `PipelineState.artifacts`. Set by the kernel
+   *  at dispatch time AND when the triage handler stages a re-entrance via
+   *  the `stage-invocation` command. The dispatcher reads this to adopt the
+   *  staged record (carrying `parentInvocationId` + `trigger`) instead of
+   *  allocating a fresh invocationId. Re-entrance prose lives in declared
+   *  artifacts (e.g. `triage-handoff` JSON), not on the record itself. */
+  latestInvocationId?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Artifact Bus — invocation ledger (Phase 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialized reference to an artifact owned by the Artifact Bus. Mirrors the
+ * `ArtifactRef` union on `ports/artifact-bus.ts` but is the plain-data form
+ * persisted inside `InvocationRecord`. The `path` is absolute and recomputable
+ * from the other fields via `ArtifactBus.ref()` — stored for convenience so
+ * consumers reading state don't need an `ArtifactBus` instance to locate a
+ * file on disk.
+ */
+export interface ArtifactRefSerialized {
+  /** Stable kind id — see `apm/artifact-catalog.ts`. */
+  readonly kind: string;
+  readonly scope: "kickoff" | "node";
+  readonly slug: string;
+  readonly nodeKey?: string;
+  readonly invocationId?: string;
+  readonly path: string;
+}
+
+/**
+ * Trigger that caused an invocation to be created. Mirrors the failure-loop
+ * vocabulary the kernel already uses elsewhere (reset-for-dev, reset-for-reroute).
+ */
+export type InvocationTrigger =
+  | "initial"
+  | "triage-reroute"
+  | "retry"
+  | "redevelopment-cycle";
+
+/**
+ * Persisted metadata for a single invocation of a DAG node. Authoritative
+ * record under `PipelineState.artifacts[invocationId]`; the matching
+ * `<nodeKey>/<invocationId>/meta.json` file is a mirror, not the source of
+ * truth.
+ *
+ * Supplants per-item `handoffArtifact` and the legacy `pendingContext`
+ * string field: emitted handoffs live in `outputs`
+ * with their declared kind. Re-entrance context (e.g. triage handoffs)
+ * also flows through declared artifacts — the dispatcher's input
+ * materialization middleware copies them into `<inv>/inputs/` before the
+ * handler runs.
+ */
+export interface InvocationRecord {
+  /** Unique id — see `kernel/invocation-id.ts`. Lexicographically time-sortable. */
+  readonly invocationId: string;
+  /** Owning DAG node (e.g. "storefront-dev"). */
+  readonly nodeKey: string;
+  /** 1-based sequence index among invocations of the same node, assigned at
+   *  dispatch from the pre-existing `cycleCounters[nodeKey]`. Human-readable;
+   *  not a uniqueness key. */
+  readonly cycleIndex: number;
+  /** Why this invocation was created. */
+  readonly trigger: InvocationTrigger;
+  /** The invocation that caused this one (e.g. the triage invocation that
+   *  routed here). Absent for the first invocation of a node. */
+  readonly parentInvocationId?: string;
+  /** Item key that produced this invocation's pending context, if any.
+   *  Human-oriented convenience ("triage-storefront#inv_01H…"). */
+  readonly producedBy?: string;
+  /** Uniform causality envelope: which invocation caused this one to be
+   *  dispatched, and why. Populated for every dispatch flavour:
+   *    - `initial`: the most recent upstream completion among `depends_on`
+   *      whose seal unblocked this item.
+   *    - `retry`: the most recent failed invocation of THIS node.
+   *    - `redevelopment-cycle`: the failing invocation in a previous cycle
+   *      that triggered the reset (often a `publish-pr` or `live-ui` fail).
+   *    - `triage-reroute`: the triage invocation that routed here.
+   *  Optional for back-compat with archived runs. */
+  readonly triggeredBy?: {
+    readonly nodeKey: string;
+    readonly invocationId: string;
+    readonly reason: InvocationTrigger;
+  };
+  /** Inverse of `triggeredBy` — when this invocation dispatched a child
+   *  (currently only triage handlers do this when they reroute). Lets the
+   *  triage record self-describe its callee instead of forcing readers to
+   *  scan the staged downstream invocation for `parentInvocationId`. */
+  readonly routedTo?: {
+    readonly nodeKey: string;
+    readonly invocationId: string;
+  };
+  /** ISO timestamp at dispatch. May be absent for staged records that have
+   *  not yet been picked up — the dispatch hook stamps this when the
+   *  handler actually starts. */
+  readonly startedAt?: string;
+  /** ISO timestamp when the invocation terminated (sealed). */
+  readonly finishedAt?: string;
+  /** Outcome of the owning handler. */
+  readonly outcome?: "completed" | "failed" | "error";
+  /** Artifacts the invocation consumed (resolved from declared `consumes` /
+   *  `consumes_kickoff`). Phase 2 ships the container; population happens
+   *  in Phase 4. */
+  readonly inputs: ArtifactRefSerialized[];
+  /** Artifacts the invocation produced. Populated by the kernel from
+   *  `report_outcome` in Phase 4. */
+  readonly outputs: ArtifactRefSerialized[];
+  /** `true` once the invocation dir is sealed — any subsequent `ArtifactBus.write`
+   *  targeting this invocation will throw. Mirrors the adapter's in-memory
+   *  cache so seal state survives orchestrator restarts. */
+  readonly sealed?: boolean;
+  /** Optional structured next-failure hint emitted via `report_outcome`.
+   *  Replaces the markdown heading parser the triage handoff builder used
+   *  to apply to `debug-notes.md`. Producer-agnostic — any sealed,
+   *  completed invocation whose agent supplied the field is eligible
+   *  for downstream triage's `priorDebugRecommendation` lookup. */
+  readonly nextFailureHint?: import("./harness/outcome-tool.js").NextFailureHint;
+}
+
+export interface AppendInvocationInput {
+  readonly invocationId: string;
+  readonly nodeKey: string;
+  readonly trigger: InvocationTrigger;
+  readonly parentInvocationId?: string;
+  readonly producedBy?: string;
+  readonly triggeredBy?: InvocationRecord["triggeredBy"];
+  readonly startedAt?: string;
+  readonly inputs?: ArtifactRefSerialized[];
+  /** Optional cycleIndex override. Defaults to the current count of
+   *  invocations for `nodeKey` (plus one) as derived from `state.artifacts`. */
+  readonly cycleIndex?: number;
+}
+
+export interface SealInvocationInput {
+  readonly invocationId: string;
+  readonly outcome: "completed" | "failed" | "error";
+  readonly finishedAt?: string;
+  readonly outputs?: ArtifactRefSerialized[];
+  /** Optional update to the `routedTo` field (used by the triage handler
+   *  on a successful reroute to record its callee). */
+  readonly routedTo?: InvocationRecord["routedTo"];
+  /** Optional structured next-failure hint reported by the agent via
+   *  `report_outcome`. Persisted on the InvocationRecord and read by
+   *  downstream triage to populate `priorDebugRecommendation`. */
+  readonly nextFailureHint?: InvocationRecord["nextFailureHint"];
 }
 
 // ---------------------------------------------------------------------------
@@ -118,12 +282,25 @@ export interface PipelineState {
   jsonGated: Record<string, boolean>;
   /** Item keys marked N/A due to workflow type (not salvage) — for resumeAfterElevated */
   naByType: string[];
+  /** Item keys demoted to N/A by the salvage scheduler (A5) — distinct from
+   *  `naByType` (workflow-shape elision) so retrospective tooling can tell
+   *  the two apart. Populated by `salvageForDraft` when a deploy-category
+   *  salvage survivor's full dependency chain is N/A. */
+  naBySalvage?: string[];
   /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
   salvageSurvivors: string[];
+  /** Node keys exempt from the salvage deploy-orphan demotion sweep — persisted
+   *  at init from `salvage_immune: true` in workflows.yml. Only meaningful in
+   *  combination with `salvageSurvivors`. Optional for backward compatibility
+   *  with legacy state files (treated as empty when absent). */
+  salvageImmune?: string[];
   /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
   dormantByActivation?: string[];
-  /** Last triage record — persisted for downstream context injection. */
-  lastTriageRecord?: TriageRecord | null;
+  /** Consumer-key → producer-keys map for `consumes_artifacts` edges with
+   *  `required: true`. Persisted at init from workflows.yml so the salvage
+   *  scheduler can spare producers feeding surviving consumers. Optional
+   *  for backward compatibility with legacy state files. */
+  requiredArtifactProducers?: Record<string, string[]>;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
   /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.
@@ -131,6 +308,11 @@ export interface PipelineState {
    *  and persisted via `StateStore.persistDagSnapshot`. Legacy state files without
    *  this field are backfilled on read from `errorLog` reset entries. */
   cycleCounters?: Record<string, number>;
+  /** Artifact-bus (Phase 2) invocation ledger, keyed by invocationId.
+   *  Authoritative index for per-dispatch artifacts + lineage. `items[].latestInvocationId`
+   *  points here. Absent on legacy state files; the adapter backfills an empty
+   *  object on read. */
+  artifacts?: Record<string, InvocationRecord>;
 }
 
 /** Status values for pipeline items in the DAG scheduler. */
@@ -193,7 +375,9 @@ export interface TriageResult {
 /**
  * Full triage record assembled by the triage handler (handlers/triage.ts).
  * Captures everything about a failure classification for retrospective analysis.
- * Persisted to `_STATE.json.lastTriageRecord` and emitted as a `triage.evaluate` event.
+ * Serialised to the `triage-handoff` artifact at
+ * `<slug>/<triage-nodeKey>/<invocationId>/triage-handoff.json` and emitted as
+ * a `triage.evaluate` event.
  */
 export interface TriageRecord {
   /** The DAG node that failed. */
@@ -202,7 +386,7 @@ export interface TriageRecord {
   error_signature: string;
 
   /** Pre-guard result (set by triage handler, not evaluateTriage). */
-  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted";
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted" | "blocked_repeat";
   guard_detail?: string;
 
   /** RAG layer matches (up to 3, ranked by specificity). */
@@ -230,14 +414,18 @@ export interface TriageRecord {
 
 /**
  * Structured handoff payload emitted by the triage handler when it reroutes
- * a failure to a dev agent. Consumed by the adapter that persists
- * `pendingContext` for the target node. Carries the diagnosis up-front so
- * the receiving agent does not have to re-discover it from raw logs.
- *
- * Backward compat: the pendingContext surface still accepts plain strings;
- * this is an additive, opt-in upgrade (B1).
+ * a failure to a dev agent. Serialized to the `triage-handoff` JSON
+ * artifact that the materialize-inputs middleware copies into the
+ * rerouted node's `inputs/` directory (declared via `consumes_reroute`).
+ * Carries the diagnosis up-front so the receiving agent does not have to
+ * re-discover it from raw logs.
  */
 export interface TriageHandoff {
+  /** On-disk wire-format version. Producers stamp the catalog's canonical
+   *  value (currently `1`); consumers treat an absent field as `1`
+   *  (pre-versioning artifacts on disk). Bumping requires either a
+   *  backwards-compatible schema union or a parallel major. */
+  readonly schemaVersion?: 1;
   /** The item whose failure triggered this handoff (upstream of route-to). */
   readonly failingItem: string;
   /** Trimmed error excerpt (first N lines) — no secrets, deterministic. */
@@ -265,7 +453,7 @@ export interface TriageHandoff {
   readonly advisory?: string;
   /** Level-1 screenshot/trace evidence harvested from a Playwright JSON
    *  reporter artifact. Paths are absolute and point to copies persisted
-   *  under `<appRoot>/in-progress/<slug>_evidence/` so they survive the
+   *  under `<appRoot>/.dagent/<slug>_evidence/` so they survive the
    *  Playwright cleanup of `test-results/` between runs. Omitted when
    *  the failure is not a Playwright-json failure or no binary
    *  attachments were present. */
@@ -327,7 +515,7 @@ export interface TriageHandoff {
     readonly error: string;
   }>;
   /** Pointer to the pre-feature noise catalogue captured by
-   *  `baseline-analyzer` (`in-progress/<slug>_BASELINE.json`). The
+   *  `baseline-analyzer` (`.dagent/<slug>_BASELINE.json`). The
    *  current dev-agent prompt does not filter via this file (the
    *  compact `failedTests` list replaces raw stdout), but a future
    *  debug agent with Playwright MCP access will need to consult it
@@ -343,17 +531,40 @@ export interface TriageHandoff {
     readonly networkPatternCount: number;
     readonly uncaughtPatternCount: number;
   };
-}
-
-/**
- * Structured pendingContext payload — narrative + handoff diagnosis.
- * Accepted anywhere a plain string pendingContext is accepted.
- */
-export interface PendingContextPayload {
-  /** Pre-composed prose block (existing `composeTriageContext` output). */
-  readonly narrative: string;
-  /** Structured diagnosis rendered as markdown by the adapter. */
-  readonly handoff: TriageHandoff;
+  /** Invocation id assigned to this triage run itself (Phase 5). Downstream
+   *  dispatches caused by this handoff record it as their
+   *  `parentInvocationId`, giving lineage queries a traversable chain from
+   *  the original failure through every reroute. Absent during the Phase 5
+   *  rollout window — consumers must treat this as optional. */
+  readonly triageInvocationId?: string;
+  /** True when this handoff was emitted from a graceful-degradation exit
+   *  (no reroute target). The triage node still owes the ledger a
+   *  `triage-handoff` artifact because it declares
+   *  `produces_artifacts: [triage-handoff]`, so we write one for the
+   *  record even when no downstream dev agent will consume it. Absent /
+   *  false means the handoff is carrying a live reroute target. */
+  readonly degraded?: boolean;
+  /** Recommendation parsed out of the most recent `storefront-debug`
+   *  `debug-notes.md` artifact when its body included a recognised
+   *  recommendation marker. The debug specialist's diagnosis that the next failure
+   *  will actually be in test code, not the component itself —
+   *  surfaced here so the next triage cycle can prefer the
+   *  recommended classification instead of looping back to debug.
+   *  Absent when no recognised heading was present, the body was
+   *  empty, or the recommended domain is not in the failing node's
+   *  routing table. */
+  readonly priorDebugRecommendation?: {
+    /** Inferred fault domain from the heading. Currently always
+     *  `"test-code"` — both supported headings map to the same domain. */
+    readonly domain: string;
+    /** Heading body, trimmed. Free-form prose copied verbatim from the
+     *  debug-notes artifact. */
+    readonly note: string;
+    /** `cycleIndex` of the source `storefront-debug` invocation —
+     *  rendered alongside the recommendation so the LLM router and
+     *  dev agent can tell how recent the diagnosis is. */
+    readonly cycleIndex: number;
+  };
 }
 
 /**
@@ -399,6 +610,16 @@ export interface ItemSummary {
   toolCounts: Record<string, number>;
   /** Error message if the step failed */
   errorMessage?: string;
+  /**
+   * Stable error fingerprint emitted by the orchestrator (not by the
+   * agent). Set by gates that classify a failure into a known taxonomy
+   * (e.g. `runner.contract_violation`, `missing_required_output:<kind>`,
+   * `invalid_envelope_output:<kind>`) so triage can route deterministically
+   * without substring-matching `errorMessage`. The dispatch-layer
+   * `materializeItemSummary` may override / propagate this from
+   * `result.summary.errorSignature`.
+   */
+  errorSignature?: string;
   /** Git HEAD after this attempt — used for identical-error dedup */
   headAfterAttempt?: string;
   /** Accumulated input tokens from assistant.usage events */
@@ -423,6 +644,38 @@ export interface ItemSummary {
    * Undefined when the agent never called the tool.
    */
   reportedOutcome?: import("./harness/outcome-tool.js").ReportedOutcome;
+  /**
+   * Number of times the runner-internal node-contract gate fired a
+   * recovery nudge into this session. Surfaced into `_FLIGHT.json` for
+   * visibility; absent when the gate was satisfied on the first pass.
+   */
+  contractRecoveryAttempts?: number;
+  /**
+   * True when one of the recovery nudges fixed the gap (i.e. the gate
+   * subsequently returned `ok: true`). Absent when no nudges fired or
+   * when the budget was exhausted without recovery.
+   */
+  contractRecoveryRecovered?: boolean;
+  /**
+   * Pre-`report_outcome` validation gate state (currently used by
+   * `spec-compiler` only). Increments each time the gate rejects a
+   * `completed` outcome; once it exceeds the configured cap the gate
+   * forcibly records a `failed` outcome.
+   */
+  precompletionGateRejections?: number;
+  /**
+   * Set to `true` once `report_outcome` has been recorded with a
+   * passing pre-completion gate (or with no gate). Subsequent tool
+   * calls are then policy-violations — the session-discipline listener
+   * disconnects the session within a short grace window.
+   */
+  reportOutcomeTerminal?: boolean;
+  /**
+   * Annotation set by the post-completion session-discipline listener
+   * when it forcibly disconnects a session that kept calling tools
+   * after a successful `report_outcome`.
+   */
+  postCompletionToolCallAnnotation?: string;
 }
 
 export interface ShellEntry {

@@ -3,13 +3,18 @@
  *
  * Compiles Handlebars templates from `.apm/agents/<promptFile>` with runtime
  * context to produce per-agent system messages. The completion partial and
- * helpers are registered at module load time.
+ * helpers are registered at module load time; app-declared partials from
+ * `config.handlebarsPartials` are registered per-render inside
+ * `getAgentConfig`.
  *
  * Rule content lives in `.apm/instructions/` and is compiled by the APM compiler.
  * Template content lives in `.apm/agents/` and is injected via `systemPromptTemplate`.
  */
 
-import type { ApmCompiledOutput, ApmMcpConfig } from "./types.js";
+import type { ApmCompiledOutput, ApmMcpConfig, ApmWorkflowNode } from "./types.js";
+import type { PipelineState, InvocationRecord } from "../types.js";
+import type { ArtifactBus } from "../ports/artifact-bus.js";
+import { isArtifactKind, type ArtifactKind } from "./artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,11 +23,16 @@ import type { ApmCompiledOutput, ApmMcpConfig } from "./types.js";
 export interface AgentContext {
   featureSlug: string;
   specPath: string;
-  /** Path to the machine-checkable acceptance contract produced by the
-   *  `spec-compiler` agent. Present on every feature run that uses a
-   *  workflow with a `spec-compiler` node; absent otherwise. Consumers
-   *  should read this BEFORE `specPath` — it is the source of truth for
-   *  "what does done mean". */
+  /** Path to the machine-checkable acceptance contract. Populated when any
+   *  node in the active workflow declares `produces_artifacts: [acceptance]`
+   *  (detection is driven by the declared contract, not by hard-coding a
+   *  specific node key).
+   *
+   *  @deprecated Legacy path-form shortcut. For content-inline access prefer
+   *  the typed `{{artifact "<producer>" "acceptance"}}` helper in agent
+   *  templates — it validates the consumes_artifacts edge and returns the
+   *  parsed contract body. Keep using `{{acceptancePath}}` only when the
+   *  agent needs the on-disk path (e.g. to pass to a CLI tool). */
   acceptancePath?: string;
   deployedUrl: string | null;
   workflowName: string;
@@ -41,6 +51,19 @@ export interface AgentContext {
   commitScopes?: Record<string, string[]>;
   /** Structured handoff artifacts from upstream completed items (parsed JSON). */
   upstreamArtifacts?: Record<string, unknown>;
+  /** Session C: optional advisory markdown reporting API-surface drift of a
+   *  pinned runtime dependency against its vendored snapshot (see
+   *  `lifecycle/dependency-pinning.ts`). Surfaced to templates as
+   *  `{{{pwa_kit_drift_report}}}`; agents that do not mention the variable
+   *  simply ignore it. */
+  pwaKitDriftReport?: string;
+  /** Absolute path to this dispatch's per-invocation directory
+   *  (`<appRoot>/.dagent/<slug>/<itemKey>/<invocationId>/`). Used by
+   *  `resolveMcpPlaceholders` to slug- and invocation-scope MCP server
+   *  arguments (e.g. Playwright `--output-dir`). Optional so unit tests
+   *  that build a minimal AgentContext continue to work; callers that
+   *  declare MCP configs referencing `{invocationDir}` MUST populate it. */
+  invocationDir?: string;
 }
 
 export interface McpLocalServerConfig {
@@ -92,14 +115,25 @@ When you have finished your task and verified it works:
    \`\`\`
    report_outcome({ status: "completed" })
    \`\`\`
-   Optional fields: \`docNote\` (1-2 sentence architectural summary), \`handoffArtifact\` (JSON for downstream items), \`deployedUrl\` (deploy nodes only).
+   For rich content (notes, deployed URLs), write a declared artifact instead:
+   - \`outputs/summary.md\` — short architectural summary / decisions. MUST start with a YAML front-matter envelope:
+     \`\`\`
+     ---
+     schemaVersion: 1
+     producedBy: <your-node-key>
+     producedAt: <ISO-8601 UTC timestamp>
+     ---
+     <free-form markdown body>
+     \`\`\`
+     Declare \`produces_artifacts: ["summary"]\`.
+   - \`outputs/deployment-url.json\` — \`{ "url": "..." }\` for deploy nodes (declare \`produces_artifacts: ["deployment-url"]\`).
 
 If you cannot complete the task:
 \`\`\`
 report_outcome({ status: "failed", message: "<detailed reason — ideally a TriageDiagnostic JSON with stack trace, error message, URL, or status code>" })
 \`\`\`
 
-**DO NOT** call \`npm run pipeline:complete\`, \`npm run pipeline:fail\`, \`npm run pipeline:doc-note\`, \`npm run pipeline:set-url\`, \`npm run pipeline:set-note\`, or \`npm run pipeline:handoff-artifact\` from bash. Use \`report_outcome\` instead. The kernel is the sole writer of pipeline state.
+**DO NOT** call \`npm run pipeline:complete\` or \`npm run pipeline:fail\` from bash. Use \`report_outcome\` instead. The kernel is the sole writer of pipeline state.
 `);
 
 /**
@@ -107,6 +141,78 @@ report_outcome({ status: "failed", message: "<detailed reason — ideally a Tria
  */
 Handlebars.registerHelper('eq', function (a: unknown, b: unknown) {
   return a === b;
+});
+
+/**
+ * Phase 3 — typed artifact accessor: `{{artifact "<producerKey>" "<kind>"}}`.
+ *
+ * Resolves to the parsed content of an upstream node's handoff artifact.
+ * Fails at RENDER time with an actionable error when:
+ *   (a) the producer+kind was not declared in the consuming node's
+ *       `consumes_artifacts` (`@root.__declaredConsumes`), or
+ *   (b) no content was collected for that producer (e.g. upstream never
+ *       produced the expected kind).
+ *
+ * This helper is the typed alternative to bare `{{upstreamArtifacts.<key>}}`
+ * access — the latter skips the contract check and silently interpolates
+ * `undefined` when the edge is undeclared. The companion instruction-lint
+ * rule flags the bare form so authors migrate to this helper.
+ */
+Handlebars.registerHelper('artifact', function (
+  this: unknown,
+  producer: unknown,
+  kind: unknown,
+  options: Handlebars.HelperOptions,
+) {
+  if (typeof producer !== "string" || producer.length === 0) {
+    throw new Error(
+      `{{artifact}} helper requires a non-empty producer node key as the first argument.`,
+    );
+  }
+  if (typeof kind !== "string" || kind.length === 0) {
+    throw new Error(
+      `{{artifact}} helper requires a non-empty kind string as the second argument.`,
+    );
+  }
+  const root = (options.data?.root ?? {}) as {
+    __declaredConsumes?: ReadonlyArray<{ from: string; kind: string }>;
+    __upstreamArtifacts?: Record<string, unknown>;
+    itemKey?: string;
+  };
+  const declared = root.__declaredConsumes;
+  if (!declared) {
+    throw new Error(
+      `{{artifact "${producer}" "${kind}"}} called but no declared consumes_artifacts ` +
+        `were threaded into template data. This indicates a caller bug — every template ` +
+        `render must populate \`__declaredConsumes\` from the workflow node.`,
+    );
+  }
+  const match = declared.find((c) => c.from === producer && c.kind === kind);
+  if (!match) {
+    const declaredStr = declared.length > 0
+      ? declared.map((c) => `"${c.from}:${c.kind}"`).join(", ")
+      : "(none)";
+    throw new Error(
+      `{{artifact "${producer}" "${kind}"}} references an undeclared edge for node ` +
+        `"${root.itemKey ?? "<unknown>"}". Declared consumes_artifacts: ${declaredStr}. ` +
+        `Add \`{ from: "${producer}", kind: "${kind}" }\` to the node's consumes_artifacts ` +
+        `in workflows.yml, or remove this helper call.`,
+    );
+  }
+  const content = root.__upstreamArtifacts?.[producer];
+  if (content === undefined) {
+    // Declared but not produced (upstream not completed or schema mismatch).
+    // Required edges are enforced elsewhere (Phase 2.1 fail-fast + I/O
+    // validator) — the helper returns an empty string so optional edges
+    // degrade gracefully.
+    const isOptional = (match as { required?: boolean }).required === false;
+    return isOptional ? "" : `[artifact ${producer}:${kind} unresolved]`;
+  }
+  // Objects → JSON; primitives → String().
+  if (typeof content === "object" && content !== null) {
+    return JSON.stringify(content, null, 2);
+  }
+  return String(content);
 });
 
 // ---------------------------------------------------------------------------
@@ -127,33 +233,59 @@ function validateRuntimePath(label: string, p: string): void {
 }
 
 /**
- * Resolves APM MCP configs by replacing {repoRoot} and {appRoot} placeholders
- * with actual runtime paths. Returns undefined if the agent has no MCP servers.
+ * Resolves APM MCP configs by replacing `{repoRoot}`, `{appRoot}`, `{slug}`,
+ * and `{invocationDir}` placeholders with actual runtime paths. The slug and
+ * invocation directory let MCP servers (e.g. Playwright) write under the
+ * per-invocation tree (`<inv>/outputs/...`) so their artefacts archive with
+ * the feature instead of leaking into a shared `.dagent/screenshots/`.
+ *
+ * Returns undefined if the agent has no MCP servers.
+ *
+ * NOTE: per-MCP env-var injection (e.g. `INVOCATION_DIR`, `OUTPUTS_DIR`) is
+ * intentionally deferred — the SDK's `MCPLocalServerConfig` supports `env`
+ * but no current MCP consumer needs it. Argument-level templating is
+ * sufficient for screenshots.
  */
 function resolveMcpPlaceholders(
   mcp: Record<string, ApmMcpConfig>,
   repoRoot: string,
   appRoot: string,
+  slug: string,
+  invocationDir: string | undefined,
 ): Record<string, McpServerConfig> | undefined {
   const entries = Object.entries(mcp);
   if (entries.length === 0) return undefined;
   validateRuntimePath("repoRoot", repoRoot);
   validateRuntimePath("appRoot", appRoot);
+  validateRuntimePath("slug", slug);
+  if (invocationDir !== undefined) validateRuntimePath("invocationDir", invocationDir);
   const resolved: Record<string, McpServerConfig> = {};
   for (const [name, config] of entries) {
     if (config.type === "remote") {
       resolved[name] = { type: "remote", url: config.url, tools: config.tools };
-    } else {
-      const resolve = (s: string) =>
-        s.replace(/\{repoRoot\}/g, repoRoot).replace(/\{appRoot\}/g, appRoot);
-      resolved[name] = {
-        type: config.type,
-        command: resolve(config.command),
-        args: config.args.map(resolve),
-        tools: config.tools,
-        ...(config.cwd ? { cwd: resolve(config.cwd) } : {}),
-      };
+      continue;
     }
+    const resolve = (s: string) => {
+      const out = s
+        .replace(/\{repoRoot\}/g, repoRoot)
+        .replace(/\{appRoot\}/g, appRoot)
+        .replace(/\{slug\}/g, slug)
+        .replace(/\{invocationDir\}/g, invocationDir ?? "");
+      if (invocationDir === undefined && /\{invocationDir\}/.test(s)) {
+        throw new Error(
+          `MCP server "${name}" references {invocationDir} but no invocationDir was provided ` +
+          `in the agent context. Ensure the dispatcher populates AgentContext.invocationDir.`,
+        );
+      }
+      return out;
+    };
+    resolved[name] = {
+      type: config.type,
+      command: resolve(config.command),
+      args: config.args.map(resolve),
+      tools: config.tools,
+      ...(config.cwd ? { cwd: resolve(config.cwd) } : {}),
+    };
   }
   return resolved;
 }
@@ -234,17 +366,25 @@ function buildTemplateData(ctx: AgentContext, apmContext: ApmCompiledOutput): Re
     // Pre-rendered environment context string
     environmentContext: environmentContext(ctx),
 
+    // Session C — advisory drift report (empty string when absent so the
+    // Handlebars `{{#if}}` block collapses cleanly for runs without drift).
+    pwa_kit_drift_report: ctx.pwaKitDriftReport ?? "",
+
     // Generic resolved test commands — templates use {{resolvedTestCommands.<name>}} etc.
     resolvedTestCommands,
 
     // Generic resolved commit paths — templates use {{resolvedCommitPaths.<scope>}} etc.
     resolvedCommitPaths,
 
-    // Upstream handoff artifacts — templates use {{handoffArtifacts.<itemKey>.<field>}}
-    handoffArtifacts: ctx.upstreamArtifacts ?? {},
-
     // Scope for the completion partial (driven by workflow manifest)
     scope: apmContext.workflows?.[ctx.workflowName]?.nodes?.[ctx.itemKey]?.commit_scope ?? "all",
+
+    // Phase 3 — typed artifact helper context. Reserved keys (leading
+    // double-underscore) used by the `{{artifact}}` helper to validate
+    // declared edges and resolve parsed upstream content. Not intended
+    // for direct template consumption.
+    __declaredConsumes: (apmContext.workflows?.[ctx.workflowName]?.nodes?.[ctx.itemKey]?.consumes_artifacts ?? []) as ReadonlyArray<{ from: string; kind: string; required?: boolean }>,
+    __upstreamArtifacts: ctx.upstreamArtifacts ?? {},
   };
 }
 
@@ -268,14 +408,34 @@ export function getAgentConfig(
     );
   }
 
+  // Register app-declared Handlebars partials for this render. Built-in
+  // names (`completion`, `eq`, `artifact`) are guarded at compile time in
+  // compiler.ts — by the time we reach here, every app partial is safe to
+  // register. Re-registration is idempotent (Handlebars overwrites the
+  // same name); a future optimisation could cache by compile timestamp.
+  const appPartials = apmContext.config?.handlebarsPartials;
+  if (appPartials) {
+    for (const [name, source] of Object.entries(appPartials)) {
+      Handlebars.registerPartial(name, source);
+    }
+  }
+
   // Compile and evaluate the Handlebars template
   const templateString = agentEntry.systemPromptTemplate;
   const template = Handlebars.compile(templateString, { noEscape: true });
   const data = buildTemplateData(context, apmContext);
   let systemMessage = template(data);
 
-  // Resolve MCP server placeholders
-  const mcpServers = resolveMcpPlaceholders(agentEntry.mcp, context.repoRoot, context.appRoot);
+  // Resolve MCP server placeholders (slug + invocationDir let MCP-side
+  // artefacts like Playwright screenshots land under the per-invocation
+  // tree instead of a shared scratch dir).
+  const mcpServers = resolveMcpPlaceholders(
+    agentEntry.mcp,
+    context.repoRoot,
+    context.appRoot,
+    context.featureSlug,
+    context.invocationDir,
+  );
 
   // Inject tool budget into system message — resolved from apm.yml
   // Resolution order: per-agent toolLimits → config.defaultToolLimits
@@ -306,6 +466,160 @@ Plan your work to finish — including the final commit and the \`report_outcome
 }
 
 /**
+ * Options for declarative Inputs/Outputs rendering (Phase 4).
+ *
+ * When `node`, `pipelineState`, and `artifactBus` are supplied AND the node
+ * declares any of `consumes_kickoff` / `produces_artifacts` / `consumes_artifacts`,
+ * `buildTaskPrompt` will append an **Inputs/Outputs** block that lists
+ * concrete on-disk paths per artifact kind. Absent these, the prompt
+ * degrades gracefully to its legacy form so apps can migrate incrementally.
+ */
+export interface BuildTaskPromptOptions {
+  readonly node?: ApmWorkflowNode;
+  readonly pipelineState?: PipelineState;
+  readonly artifactBus?: ArtifactBus;
+  /** The current dispatch invocation id (used to render own-output paths). */
+  readonly invocationId?: string;
+}
+
+/**
+ * Render the declarative Inputs/Outputs section. Phase C: always renders at
+ * minimum the kickoff spec path so the agent never has to guess where the
+ * feature brief lives, and renders a Re-invocation lineage block when the
+ * current dispatch was routed here by triage (or a prior cycle).
+ */
+function renderIoBlock(
+  slug: string,
+  itemKey: string,
+  opts: BuildTaskPromptOptions | undefined,
+): string {
+  if (!opts?.artifactBus) return "";
+  const bus = opts.artifactBus;
+  const node = opts.node;
+  const kickoff = node?.consumes_kickoff ?? [];
+  const produces = node?.produces_artifacts ?? [];
+  const consumes = node?.consumes_artifacts ?? [];
+  const invocationId = opts.invocationId ?? "<this-invocation>";
+  const lines: string[] = [];
+
+  lines.push("", "**Declared Inputs / Outputs (from `workflows.yml`):**", "");
+
+  // Kickoff block. If the node declared `consumes_kickoff`, render those
+  // kinds. Otherwise fall back to the default feature spec kickoff path so
+  // the agent always knows where the brief lives — preserves behaviour of
+  // the legacy hardcoded "Read the feature spec: …_SPEC.md" step.
+  if (kickoff.length > 0) {
+    lines.push("Kickoff inputs (read-only, produced once at pipeline start):");
+    for (const kindStr of kickoff) {
+      if (!isArtifactKind(kindStr)) {
+        lines.push(`  · ${kindStr} (unknown kind — skipped)`);
+        continue;
+      }
+      const kind: ArtifactKind = kindStr;
+      lines.push(`  · ${kind} → ${bus.kickoffPath(slug, kind)}`);
+    }
+  } else {
+    lines.push("Kickoff inputs:");
+    lines.push(`  · spec → ${bus.kickoffPath(slug, "spec")}`);
+  }
+  lines.push("");
+
+  if (consumes.length > 0) {
+    lines.push("Upstream node artifacts:");
+    for (const entry of consumes) {
+      if (!isArtifactKind(entry.kind)) {
+        lines.push(`  · ${entry.kind} from ${entry.from} (unknown kind — skipped)`);
+        continue;
+      }
+      const kind: ArtifactKind = entry.kind;
+      const upstream = opts.pipelineState?.artifacts
+        ? Object.values(opts.pipelineState.artifacts).find(
+            (rec) => rec.nodeKey === entry.from,
+          )
+        : undefined;
+      if (upstream) {
+        const p = bus.nodePath(slug, entry.from, upstream.invocationId, kind);
+        lines.push(`  · ${kind} from ${entry.from} → ${p}`);
+      } else if (entry.required !== false) {
+        lines.push(`  · ${kind} from ${entry.from} (REQUIRED — not yet produced)`);
+      } else {
+        lines.push(`  · ${kind} from ${entry.from} (optional — not produced)`);
+      }
+    }
+    lines.push("");
+  }
+
+  if (produces.length > 0) {
+    lines.push(
+      "Outputs YOU must write (under YOUR invocation dir — the pipeline seals it at handler exit):",
+    );
+    for (const kindStr of produces) {
+      if (!isArtifactKind(kindStr)) {
+        lines.push(`  · ${kindStr} (unknown kind — skipped)`);
+        continue;
+      }
+      const kind: ArtifactKind = kindStr;
+      lines.push(`  · ${kind} → ${bus.nodePath(slug, itemKey, invocationId, kind)}`);
+    }
+    lines.push("");
+  } else {
+    lines.push("Outputs: (none declared — this node has no persistent artifact contract)");
+    lines.push("");
+  }
+
+  // Re-invocation lineage — ancestry tree when this dispatch was re-routed
+  // by triage or a prior cycle. Rendered only when an ancestor exists.
+  const lineage = renderLineageBlock(slug, itemKey, opts);
+  if (lineage) lines.push(lineage);
+
+  return lines.join("\n");
+}
+
+/**
+ * Walk `state.artifacts[...].parentInvocationId` backwards from the current
+ * item's staged invocation record and render a compact ancestry block.
+ * Returns an empty string when no ancestor exists.
+ */
+function renderLineageBlock(
+  slug: string,
+  itemKey: string,
+  opts: BuildTaskPromptOptions | undefined,
+): string {
+  const state = opts?.pipelineState;
+  if (!state) return "";
+  const item = state.items.find((i) => i.key === itemKey);
+  const records: Record<string, InvocationRecord> = state.artifacts ?? {};
+  const staged = item?.latestInvocationId ? records[item.latestInvocationId] : undefined;
+  const firstParentId = staged?.parentInvocationId;
+  if (!firstParentId) return "";
+  const chain: Array<{ id: string; nodeKey: string; outcome?: string }> = [];
+  let cursor: string | undefined = firstParentId;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const rec: InvocationRecord | undefined = records[cursor];
+    if (!rec) {
+      chain.push({ id: cursor, nodeKey: "unknown" });
+      break;
+    }
+    chain.push({ id: rec.invocationId, nodeKey: rec.nodeKey, outcome: rec.outcome });
+    cursor = rec.parentInvocationId;
+  }
+  if (chain.length === 0) return "";
+  const out: string[] = [];
+  out.push("**Re-invocation context** (this dispatch was routed here — lineage newest→oldest):");
+  for (const link of chain) {
+    const outcome = link.outcome ? ` [${link.outcome}]` : "";
+    out.push(`  · ${link.nodeKey}${outcome}  (${link.id.slice(0, 16)}…)`);
+  }
+  out.push(
+    "  Read the predecessor artifacts above (Declared Inputs) — when this is a triage reroute the `triage-handoff` JSON in `inputs/` carries the diagnosis — before changing any code.",
+  );
+  out.push("");
+  return out.join("\n");
+}
+
+/**
  * Builds the per-session user message that tells the agent what to do.
  */
 export function buildTaskPrompt(
@@ -313,6 +627,7 @@ export function buildTaskPrompt(
   slug: string,
   appRoot: string,
   apmContext: ApmCompiledOutput,
+  opts?: BuildTaskPromptOptions,
 ): string {
   const hasRoam = !!apmContext.agents[item.key]?.mcp?.["roam-code"];
   const roamPreamble = hasRoam ? `
@@ -327,8 +642,8 @@ export function buildTaskPrompt(
 ` : "";
 
   return `Your task: Complete the "${item.label}" step for feature "${slug}".
-${roamPreamble}
-1. Read the feature spec: ${appRoot}/in-progress/${slug}_SPEC.md
+${roamPreamble}${renderIoBlock(slug, item.key, opts)}
+1. Read the inputs declared above (the Declared Inputs block lists concrete on-disk paths).
 2. Execute your assigned workflow as described in your system instructions.
 3. Commit your changes via \`bash tools/autonomous-factory/agent-commit.sh <scope> "<message>"\`.
 4. As your LAST action, call the \`report_outcome\` tool exactly once: \`report_outcome({ status: "completed" })\` on success, or \`report_outcome({ status: "failed", message: "<detailed reason>" })\` if you cannot complete the task.

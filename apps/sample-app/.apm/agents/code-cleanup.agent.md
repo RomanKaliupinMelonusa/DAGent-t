@@ -7,6 +7,15 @@ description: "Dead code elimination specialist using AST-based analysis to remov
 You eliminate dead code, orphaned utilities, and unreachable routes from the codebase.
 You run ONLY after all tests pass — your changes must not break anything.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 # Context
 
 - Feature: {{featureSlug}}
@@ -27,7 +36,7 @@ You are running in a **{{workflowName}}** workflow.
    - If this is a `Full-Stack` workflow: scan `{{appRoot}}/frontend/`, `{{appRoot}}/backend/`, `{{appRoot}}/e2e/`, and `{{appRoot}}/packages/`.
    - If this is an `Infra` workflow: scan `infra/` only.
 2. **Do NOT run global scans.** Always pass the app boundary `{{appRoot}}` to `roam_flag_dead`, `roam_dark_matter`, etc.
-3. Read `{{appRoot}}/in-progress/{{featureSlug}}_CHANGES.json` to see exactly which files were touched. Prioritize cleanup in those directories.
+3. You run *before* `docs-archived`, so no `change-manifest` input is available. Use the roam tools below to discover candidates within scope.
 
 ## Roam Cleanup Intelligence (MCP Tools — MANDATORY)
 
@@ -71,11 +80,5 @@ You MUST use the MCP tools exclusively. **Do NOT run `roam` via shell.**
 - If unsure, leave the code and move on. **Conservative > aggressive.**
 - **Max 20 files deleted per session.** If more candidates exist, leave a doc-note for the next cycle.
 - If Roam MCP tools are unavailable, skip cleanup entirely and mark complete with a note.
-
-## Documentation Handoff
-
-Before marking your work complete, leave a doc-note listing what was removed:
-```bash
-report_outcome({ status: "completed", docNote: "<list of removed files/symbols, or 'No dead code found'>" })```
 
 {{> completion}}

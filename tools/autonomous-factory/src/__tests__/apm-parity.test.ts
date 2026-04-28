@@ -281,12 +281,13 @@ report_outcome({ status: "failed", message: "<detailed reason>" })
       const template = Handlebars.compile(agent.systemPromptTemplate, { noEscape: true });
       const mockData = {
         featureSlug: "test-feature",
-        specPath: "apps/sample-app/in-progress/test-feature_SPEC.md",
+        specPath: "apps/sample-app/.dagent/test-feature/_kickoff/spec.md",
         workflowName: "full-stack",
         repoRoot: "/workspaces/test",
         appRoot: "/workspaces/test/apps/sample-app",
         itemKey: agentKey,
         baseBranch: "main",
+        specFile: "/tmp/spec.md",
         forceRunChanges: false,
         deployedUrl: "https://example.com",
         apimUrl: "https://apim.example.com",

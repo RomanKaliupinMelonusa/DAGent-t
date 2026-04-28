@@ -1,14 +1,13 @@
 # Ignore Roam Semantic Graph (Binary/DB)
 **/.roam/**
 
-# Ignore all app-scoped pipeline state and massive logs
-in-progress/*.json
-in-progress/*.mjs
-in-progress/*.ts
-in-progress/*_PLAYWRIGHT-LOG.md
-in-progress/*_TERMINAL-LOG.md
-in-progress/screenshots/
-**/archive/**
+# Ignore transient pipeline junk that may leak into .dagent/ slug roots
+.dagent/*.json
+.dagent/*.mjs
+.dagent/*.ts
+.dagent/*_PLAYWRIGHT-LOG.md
+.dagent/*_TERMINAL-LOG.md
+.dagent/screenshots/
 
 # Ignore Dependencies
 **/node_modules/**

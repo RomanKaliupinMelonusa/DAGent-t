@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ItemSummary } from "../types.js";
 import type { PreviousSummaryTotals } from "../app-types.js";
+import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 
 export type { PreviousSummaryTotals } from "../app-types.js";
 
@@ -14,7 +15,7 @@ export type { PreviousSummaryTotals } from "../app-types.js";
  * Returns null if the file doesn't exist (no Markdown fallback).
  */
 export function loadPreviousSummary(appRoot: string, slug: string): PreviousSummaryTotals | null {
-  const dataPath = path.join(appRoot, "in-progress", `${slug}_SUMMARY-DATA.json`);
+  const dataPath = featurePath(appRoot, slug, "summary-data");
   try {
     const raw = fs.readFileSync(dataPath, "utf-8");
     return JSON.parse(raw) as PreviousSummaryTotals;
@@ -34,7 +35,8 @@ export function writeFlightData(
   summaries: readonly ItemSummary[],
   silent = false,
 ): void {
-  const flightDataPath = path.join(appRoot, "in-progress", `${featureSlug}_FLIGHT_DATA.json`);
+  const flightDataPath = featurePath(appRoot, featureSlug, "flight-data");
+  ensureFeatureDir(appRoot, featureSlug, "flight-data");
   const tmpPath = `${flightDataPath}.tmp`;
   try {
     const envelope = {

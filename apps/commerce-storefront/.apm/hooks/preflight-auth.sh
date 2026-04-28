@@ -19,7 +19,10 @@ if [[ -n "${MOBIFY_API_KEY:-}" ]]; then
   exit 0
 fi
 
-# Neither found — warn but don't block (local dev doesn't need deploy creds)
-echo "No Managed Runtime credentials found (neither ~/.mobify nor MOBIFY_API_KEY)"
-echo "Bundle push to Managed Runtime will fail. Run: npx @salesforce/pwa-kit-dev save-credentials"
-exit 1
+# Neither found — warn on stderr but don't block. Most nodes don't need
+# deploy creds; the `push-app` node has its own pre-hook (push-app-pre.sh)
+# that fails fast with an actionable message if creds are still missing
+# at dispatch time.
+echo "WARNING: No Managed Runtime credentials found (neither ~/.mobify nor MOBIFY_API_KEY)" >&2
+echo "Bundle push to Managed Runtime will fail. Run: npx @salesforce/pwa-kit-dev save-credentials" >&2
+exit 0

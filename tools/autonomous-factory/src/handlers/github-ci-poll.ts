@@ -22,6 +22,7 @@ import {
   runPollWithRetries,
 } from "../session/transient-poll.js";
 import { postCiArtifactToPr } from "../session/ci-artifact-poster.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // Workflow node helper
@@ -61,8 +62,8 @@ const githubCiPollHandler: NodeHandler = {
       };
     }
 
-    const inProgressDir = filesystem.joinPath(appRoot, "in-progress");
-    const diagFile = filesystem.joinPath(inProgressDir, `${slug}_CI-FAILURE.log`);
+    const inProgressDir = filesystem.joinPath(appRoot, ".dagent");
+    const diagFile = featurePath(appRoot, slug, "ci-failure");
 
     // Resolve the pushed SHA from the corresponding push item's handler output
     const lastPushedSha = (ctx.handlerData[`${pollTarget}:lastPushedSha`] as string) ?? null;

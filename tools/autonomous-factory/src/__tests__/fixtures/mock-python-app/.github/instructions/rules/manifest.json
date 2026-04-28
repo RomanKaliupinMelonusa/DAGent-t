@@ -19,7 +19,7 @@
     "integration": "cd {appRoot} && pytest tests/integration -v"
   },
   "commitScopes": {
-    "backend": ["src/", "infra/", "in-progress/"]
+    "backend": ["src/", "infra/", ".dagent/"]
   },
   "personas": {
     "backend-dev": { "include": ["always"] },

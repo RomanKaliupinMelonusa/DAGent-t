@@ -133,12 +133,36 @@ Violations of this direction are the main source of tech debt (see [Rough edges]
    - `approval`: wait on a human gate (elevated-infra).
    - `triage`: classify a prior failure, emit DAG reset commands.
 6. **Commands back to kernel**
-   Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `set-pending-context`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
+   Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `stage-invocation`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
 7. **Effect execution** ([kernel/effect-executor.ts](src/kernel/effect-executor.ts))
    `persist-state`, `persist-execution-record`, `telemetry-event`, `reindex`, `write-halt-artifact` flow to adapters.
-8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `in-progress/`.
+8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `.dagent/`.
 
 **Failure path**: if post-deploy verification (`integration-test`, `live-ui`) fails, the `triage` handler runs the [2-layer classifier](src/triage/index.ts) (RAG substring → optional LLM fallback), emits a `reset-nodes` command with the responsible domain's items, and the loop picks them up on the next batch. Bounded by 5 redevelopment cycles.
+
+---
+
+## The Node I/O Contract
+
+Every DAG node's I/O flows through one declarative contract backed by the [`ArtifactBus`](src/ports/artifact-bus.ts) port. Agents declare `consumes_kickoff`, `consumes_artifacts`, and `produces_artifacts` in `workflows.yml`; the kernel resolves inputs, enforces declared outputs, and indexes every dispatch in `state.artifacts[invocationId]` — the authoritative lineage ledger. No handler hardcodes filenames.
+
+```
+apps/<app>/.dagent/<slug>/
+  _state.json                      # DAG state + invocation ledger (artifacts[inv])
+  _kickoff/<kind>.<ext>            # feature inputs authored BEFORE any node runs
+  <nodeKey>/<invocationId>/        # immutable once sealed
+    meta.json                      # mirror of InvocationRecord
+    inputs/                        # materialized from declared consumes_*
+      params.in.json               # resolved input manifest
+      <kind>.<ext>                 # one file per resolved input (copied, not symlinked)
+    outputs/                       # one file per declared produces_artifacts
+      <kind>.<ext>                 # e.g. summary.md, deployment-url.json, ci-result.json, triage-handoff.json
+      screenshots/                 # MCP-side scratch evidence (e.g. Playwright `--output-dir`); slug-scoped via `{invocationDir}` placeholder, archived with the feature
+    logs/
+      events.jsonl · tool-calls.jsonl · messages.jsonl · stdout.log · stderr.log
+```
+
+Re-runs never overwrite — each dispatch creates a fresh invocation dir. `report_outcome` is now `{ status, message? }` only; everything else is a declared artifact. The kernel hard-fails when declared `produces_artifacts` are missing (errorSignature `missing_required_output:<kind>`) and routes through `on_failure.triage`. Inputs are materialized into `<inv>/inputs/` *before* the handler runs — `INPUTS_DIR`, `OUTPUTS_DIR`, and `LOGS_DIR` env vars are real, file-backed paths. Every handler emits the same `node.*` event schema keyed by `invocationId`; per-invocation logs sink to `<inv>/logs/` via the `InvocationLogger` port. Triage hands off to retried dev agents through `outputs/triage-handoff.json` — no prose injection, no `pendingContext` string. See [`docs/04-state-machine.md` → "The Node I/O Contract"](docs/04-state-machine.md#the-node-io-contract) for the full reference.
 
 ---
 
@@ -169,7 +193,7 @@ These are invariants the engine currently upholds. If you change code in a way t
 
 1. **Kernel is the sole state writer.** No adapter, handler, or loop module mutates `PipelineState` directly. Enforce: grep for `state.items[...] =` outside `kernel/` and `domain/transitions.ts`.
 2. **Kernel is synchronous and pure.** No `async`, no I/O. `PipelineKernel.process()` returns within microseconds.
-3. **Handlers are observers, not writers.** Handlers return `DagCommand[]` describing desired state changes; the kernel decides whether to apply them. Agents never call `pipeline:complete` / `pipeline:fail` directly from within a session — they use the `report_outcome` SDK tool, which the handler translates into a command.
+3. **Handlers are observers, not writers.** Handlers return `DagCommand[]` describing desired state changes; the kernel decides whether to apply them. Agents never write state directly — they call the `report_outcome` SDK tool, which the handler translates into a kernel command. The shell-level outcome verbs (`pipeline:complete` / `pipeline:fail` / `pipeline:doc-note` / `pipeline:set-url` / `pipeline:set-note` / `pipeline:handoff-artifact`) were removed in Phase A.6.
 4. **Ports define I/O boundaries.** Every file-system, subprocess, or network call in the engine flows through a port. The domain and kernel layers have zero `node:fs` / `node:child_process` imports.
 5. **APM manifest is the single source of truth for agent context.** No agent prompt text is hardcoded in the engine. `agents.ts` is a generic prompt assembler; all identity, rules, and MCP bindings come from `.apm/apm.yml`.
 6. **Git operations go through wrappers.** `agent-commit.sh` and `agent-branch.sh` are the only sanctioned git entry points for agents. The engine's own git calls go through `ports/version-control.ts` → `adapters/git-shell-adapter.ts`.
@@ -183,7 +207,7 @@ Candid tech-debt notes based on a code audit. These are real; each cites a file 
 ### Layering
 
 - **`loop/dispatch/` location drift.** Historically referenced as `src/dispatch/` (see the older project docs). It currently lives nested under [src/loop/dispatch/](src/loop/dispatch/), which makes the dependency arrow "loop → dispatch" implicit rather than explicit. Candidate for promotion to a sibling folder.
-- **Dual supervisor entry points.** Both [entry/supervise.ts](src/entry/supervise.ts) and [entry/supervisor.ts](src/entry/supervisor.ts) exist alongside [entry/watchdog.ts](src/entry/watchdog.ts). At least one is legacy; consolidating would clarify the composition-root story.
+- **Two entry points, two scopes.** [entry/watchdog.ts](src/entry/watchdog.ts) runs one feature per process (`npm run agent:run`). [entry/supervise.ts](src/entry/supervise.ts) + [entry/supervisor.ts](src/entry/supervisor.ts) run multiple features in parallel by spawning child orchestrators (`npm run agent:supervise`, used by `.github/workflows/agentic-supervisor.yml`). Both are active; no consolidation planned. The supervisor uses [adapters/subprocess-feature-runner.ts](src/adapters/subprocess-feature-runner.ts) to isolate `APP_ROOT` and the middleware registry per-slug.
 - **`src/agents.ts` lives in [src/apm/agents.ts](src/apm/agents.ts).** The top-level `agents.ts` referenced in older docs has moved; external docs still point to the old path.
 
 ### Adapter boundary leaks
@@ -198,7 +222,7 @@ Both layers wrap handler execution with safety concerns. [handlers/middleware.ts
 
 ### Schema validation gaps
 
-- **`workflows.yml` has no schema validation**. `apm.yml` is Zod-validated ([apm-types.ts](src/app-types.ts)); `workflows.yml` is parsed but not type-checked at load time. Malformed `depends_on` or missing nodes surface as runtime errors deep in `domain/scheduling.ts`.
+- **`workflows.yml` has no schema validation**. `apm.yml` is Zod-validated ([apm/types.ts](src/apm/types.ts)); `workflows.yml` is parsed but not type-checked at load time. Malformed `depends_on` or missing nodes surface as runtime errors deep in `domain/scheduling.ts`.
 - **Triage pack JSON** (`.apm/triage-packs/*.json`) has a schema ([apm/types.ts](src/apm/types.ts) `CompiledTriageProfile`) but authoring errors are caught late.
 
 ### Other
@@ -234,6 +258,40 @@ To port to AWS Lambda + CloudFront (or any other stack):
 4. Point `config.ciWorkflows` at your GitHub Actions workflow filenames.
 
 Zero engine source changes.
+
+---
+
+## How to Run
+
+Foreground (single feature, blocks the terminal):
+
+```bash
+npm run agent:run -- --app apps/<app> --workflow <name> \
+  --spec-file <path-to-spec> <feature-slug>
+```
+
+### Detached mode
+
+Use `npm run agent:run:detached` when a run is expected to outlive the
+current editor session — e.g. multi-hour storefront workflows, or any
+time VS Code may reload the window (extension upgrade, devcontainer
+rebuild, intermittent SSH). The wrapper at [scripts/run-agent.sh](../../scripts/run-agent.sh)
+forks the orchestrator into a `systemd-run --user --scope` unit when
+available (with a `MemoryMax=${DAGENT_MEMORY_MAX:-2G}` cgroup cap), or
+falls back to `setsid nohup` writing logs into `.dagent/_runs/<slug>.{log,pid}`.
+The wrapper prints the appropriate follow-logs command:
+
+```bash
+# systemd path
+journalctl --user -u <unit-name> -f
+
+# fallback path
+tail -f .dagent/_runs/<slug>.log
+```
+
+Detached and foreground runs share the same `.dagent/<slug>/_state.json`,
+so re-running `npm run agent:run` in the foreground for the same slug
+later resumes cleanly from wherever the detached run left off.
 
 ---
 

@@ -1,7 +1,7 @@
 /**
  * ports/triage-artifact-loader.ts — Triage-specific artifact loader port.
  *
- * Decouples `triage-handler.ts` from the `in-progress/<slug>_*.{yml,json}`
+ * Decouples `triage-handler.ts` from the `.dagent/<slug>_*.{yml,json}`
  * filesystem convention. The triage handler must not know where
  * acceptance contracts, validation verdicts, or rejection-context logs
  * live on disk — it asks this port.
@@ -11,12 +11,35 @@
  */
 
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
+import type { InvocationRecord, ArtifactRefSerialized } from "../types.js";
+import type { ArtifactKind } from "../apm/artifact-catalog.js";
 
 export interface ContractEvidenceResult {
   /** Raw error trace with the oracle evidence block prepended. */
   readonly trace: string;
   /** Relative paths of the artifacts that were found and inlined. */
   readonly sources: readonly string[];
+}
+
+/**
+ * Structured triage evidence bundle (Phase F) — replaces the pre-artifact-bus
+ * scroll of concatenated file contents that triage used to assemble by hand.
+ *
+ * `invocation` is the failing invocation under investigation. `ancestry` walks
+ * `parentInvocationId` backward from it (newest → oldest), giving the triage
+ * agent the full cycle trail (triage ← runner[fail] ← unit-test ← debug ← triage).
+ * `artifacts` is the flattened union of all `outputs` across the lineage, so a
+ * triage agent can reach any prior artifact by kind without re-walking the chain.
+ * `events` — reserved for invocation-filtered event streams once the telemetry
+ * logger grows `listEventsForInvocation(inv)` (Phase B follow-up); today it is
+ * always `[]`, which is the explicit "ledger present, no event filter yet"
+ * contract.
+ */
+export interface TriageEvidenceBundle {
+  readonly invocation: InvocationRecord;
+  readonly ancestry: readonly InvocationRecord[];
+  readonly events: readonly unknown[];
+  readonly artifacts: readonly ArtifactRefSerialized[];
 }
 
 export interface TriageArtifactLoader {
@@ -58,4 +81,34 @@ export interface TriageArtifactLoader {
     slug: string,
     allowsRevertBypass?: boolean,
   ): Promise<number>;
+
+  /**
+   * List every invocation record for a slug, ordered by `startedAt`
+   * ascending. Returns `[]` when the artifact ledger is empty or
+   * unavailable (pre-Phase-2 features, missing state, etc.). Never
+   * throws — triage must degrade gracefully.
+   */
+  listInvocations(slug: string): Promise<readonly InvocationRecord[]>;
+
+  /**
+   * List invocation records that produced an artifact of `kind`,
+   * ordered by `startedAt` ascending. Pass `kind = undefined` to match
+   * any kind. Returns `[]` on I/O failures or missing ledger.
+   *
+   * Consumers: triage routing, redevelopment-cycle counters, lineage
+   * CLI — anywhere a chronological per-kind view is needed.
+   */
+  listArtifacts(slug: string, kind?: ArtifactKind): Promise<readonly InvocationRecord[]>;
+
+  /**
+   * Build the structured triage-evidence bundle for a feature. When
+   * `invocationId` is omitted, the adapter picks the most recent failed
+   * invocation (the conventional target of a triage reroute). Returns `null`
+   * when the ledger is empty or `invocationId` cannot be located — triage
+   * must degrade gracefully to the legacy prose path.
+   */
+  loadEvidenceBundle(
+    slug: string,
+    invocationId?: string,
+  ): Promise<TriageEvidenceBundle | null>;
 }

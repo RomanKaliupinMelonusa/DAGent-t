@@ -21,9 +21,57 @@
 
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
+import type { ApmConfig } from "../../apm/types.js";
 import { executeHook } from "../../lifecycle/hooks.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { featurePath } from "../../paths/feature-paths.js";
+
+/**
+ * Node keys that share `apps/<app>/.apm/hooks/e2e-runner-{pre,post}.sh` and
+ * therefore receive the declarative `apm.e2e.readiness.*` env injection.
+ *
+ * The brief named `e2e-runner` exclusively, but in commerce-storefront the
+ * same hook is also reused by `qa-adversary`, `storefront-debug` and
+ * `baseline-analyzer` (whose pre-hook delegates to the same
+ * `dev-server-lifecycle.sh start` body-aware probe). Once the bash-side
+ * fallback is dropped (Session B step 5), those callers must also receive
+ * the env vars or their pre-hook fails loudly. Adding more keys here is
+ * the supported way to opt nodes in.
+ */
+const E2E_READINESS_NODE_KEYS = new Set<string>([
+  "e2e-runner",
+  "qa-adversary",
+  "storefront-debug",
+  "baseline-analyzer",
+]);
+
+/**
+ * Compute the `apm.e2e.readiness.*` env-var injection for a given node.
+ *
+ * Returns an empty object when:
+ *   - the node key is not in {@link E2E_READINESS_NODE_KEYS}, or
+ *   - `apm.e2e.readiness` is undefined.
+ *
+ * Each declared field maps to one env var; absent fields are left unset so
+ * the bash defaults in `wait-for-app-ready.sh` remain authoritative.
+ *
+ * Exported for unit testing — see
+ * `lifecycle/__tests__/hooks-readiness-env.test.ts`.
+ */
+export function buildE2eReadinessEnv(
+  itemKey: string,
+  config: ApmConfig | undefined,
+): Record<string, string> {
+  if (!E2E_READINESS_NODE_KEYS.has(itemKey)) return {};
+  const readiness = config?.e2e?.readiness;
+  if (!readiness) return {};
+
+  const env: Record<string, string> = {};
+  if (readiness.url !== undefined) env.E2E_READINESS_URL = readiness.url;
+  if (readiness.timeout_s !== undefined) env.READY_TIMEOUT_S = String(readiness.timeout_s);
+  if (readiness.min_bytes !== undefined) env.READY_MIN_BYTES = String(readiness.min_bytes);
+  if (readiness.deny_re !== undefined) env.READY_DENY_RE = readiness.deny_re;
+  return env;
+}
 
 /** Resolve the workflow node definition for the current item, if any. */
 function getNode(ctx: NodeContext) {
@@ -35,10 +83,10 @@ function getNode(ctx: NodeContext) {
  *  that were already failing on the BASE branch. Returns a JSON string
  *  or empty string when no baseline was captured. */
 function readBaselineValidation(ctx: NodeContext): string {
-  const flightPath = path.join(ctx.appRoot, "in-progress", `${ctx.slug}_FLIGHT_DATA.json`);
-  if (!fs.existsSync(flightPath)) return "";
+  const flightPath = featurePath(ctx.appRoot, ctx.slug, "flight-data");
+  if (!ctx.filesystem.existsSync(flightPath)) return "";
   try {
-    const parsed = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
+    const parsed = JSON.parse(ctx.filesystem.readFileSync(flightPath)) as Record<string, unknown>;
     const baseline = parsed["baselineValidation"];
     if (!baseline || typeof baseline !== "object") return "";
     return JSON.stringify(baseline);
@@ -49,6 +97,11 @@ function readBaselineValidation(ctx: NodeContext): string {
 
 /** Env passed to every pre/post hook — merges apm config env + pipeline context. */
 function buildHookEnv(ctx: NodeContext): Record<string, string> {
+  // Invocation-scoped env vars expose the canonical per-invocation directory
+  // layout owned by the Artifact Bus. Hook scripts consume them to read
+  // declared inputs / write declared outputs / append logs without
+  // reconstructing paths from slug + node key + invocation id.
+  const invocationDir = ctx.filesystem.joinPath(ctx.appRoot, ".dagent", ctx.slug, ctx.itemKey, ctx.executionId);
   const env: Record<string, string> = {
     ...ctx.environment,
     SLUG: ctx.slug,
@@ -56,9 +109,20 @@ function buildHookEnv(ctx: NodeContext): Record<string, string> {
     REPO_ROOT: ctx.repoRoot,
     BASE_BRANCH: ctx.baseBranch,
     ITEM_KEY: ctx.itemKey,
+    NODE_KEY: ctx.itemKey,
+    INVOCATION_ID: ctx.executionId,
+    INVOCATION_DIR: invocationDir,
+    INPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "inputs"),
+    OUTPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "outputs"),
+    LOGS_DIR: ctx.filesystem.joinPath(invocationDir, "logs"),
   };
   const baseline = readBaselineValidation(ctx);
   if (baseline) env.BASELINE_VALIDATION = baseline;
+
+  // Declarative E2E readiness knobs — gated on node key so non-e2e nodes
+  // never see these vars. See `buildE2eReadinessEnv` for the full rule.
+  Object.assign(env, buildE2eReadinessEnv(ctx.itemKey, ctx.apmContext.config));
+
   return env;
 }
 

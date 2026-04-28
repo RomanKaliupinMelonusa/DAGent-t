@@ -27,7 +27,7 @@ The SDET agent relies **entirely** on these attributes to author E2E tests using
 
 7. **Collective testids in repeating lists — contract-gated.** Interactive elements inside a `.map(...)` (one per tile/row/hit) MUST use a per-instance testid suffix — `action-btn-${productId}`, `add-to-cart-btn-${productId}`, `remove-item-btn-${lineItemId}`. A bare collective testid on every instance trips Playwright strict-mode and is forbidden **unless** the acceptance contract declares it with `cardinality: many`; in that case the bare form is permitted (the E2E author targets `.first()` / `.nth()`).
 
-   Before implementing, read `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml`. For every `required_dom` entry you render, confirm `cardinality` matches the DOM shape. If the contract says `cardinality: one` but the element sits inside a list render, either suffix the testid per instance, or call `report_outcome({ status: "failed", message: "Acceptance contract mismatch: <testid> declared cardinality:one but appears in repeating list" })` so spec-compiler can repair the contract.
+   Before implementing, read `{{appRoot}}/.dagent/{{featureSlug}}/_kickoff/acceptance.yml`. For every `required_dom` entry you render, confirm `cardinality` matches the DOM shape. If the contract says `cardinality: one` but the element sits inside a list render, either suffix the testid per instance, or call `report_outcome({ status: "failed", message: "Acceptance contract mismatch: <testid> declared cardinality:one but appears in repeating list" })` so spec-compiler can repair the contract.
 
 ## PWA Kit Override Prop-Spread Footgun
 
@@ -56,4 +56,4 @@ For example, the PLP page passes `data-testid={`sf-product-tile-${product.id}`}`
 
 3. **If the base component already has a `data-testid`**, verify whether parent pages overwrite it via prop spread. If they do, your override MUST add a stable testid on a wrapper.
 
-4. **Document your testid contract** in a `report_outcome` (with docNote) so the SDET agent knows exactly which testids to target.
+4. **Document your testid contract** in `$OUTPUTS_DIR/summary.md` so the SDET agent knows exactly which testids to target. The file MUST start with the YAML front-matter envelope (`---\nschemaVersion: 1\nproducedBy: <node-key>\nproducedAt: <ISO-8601>\n---`) — see the global completion block for the canonical `cat <<EOF` form.

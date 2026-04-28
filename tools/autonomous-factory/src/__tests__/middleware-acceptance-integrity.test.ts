@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acceptanceIntegrityMiddleware } from "../handlers/middlewares/acceptance-integrity.js";
 import type { NodeContext, NodeResult } from "../handlers/types.js";
+import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { newInvocationId } from "../kernel/invocation-id.js";
 
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   const logger = {
@@ -22,11 +24,12 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   };
   const ctx: NodeContext = {
     itemKey: "storefront-dev",
-    executionId: "exec-1",
+    executionId: newInvocationId(),
     slug: "feat-x",
     appRoot: "/app",
     repoRoot: "/repo",
     baseBranch: "main",
+    specFile: "/tmp/spec.md",
     attempt: 1,
     effectiveAttempts: 1,
     environment: {},
@@ -39,9 +42,14 @@ function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
     logger: logger as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    ledger: {} as NodeContext["ledger"],
     shell: {} as NodeContext["shell"],
-    filesystem: {} as NodeContext["filesystem"],
+    filesystem: new LocalFilesystem(),
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
+    invocation: {} as NodeContext["invocation"],
+    invocationLogger: {} as NodeContext["invocationLogger"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
     ...overrides,
   };
   return ctx;
@@ -70,16 +78,15 @@ let acceptancePath: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "acc-integrity-"));
-  acceptancePath = join(tmpDir, "in-progress", "feat-x_ACCEPTANCE.yml");
+  acceptancePath = join(tmpDir, ".dagent", "feat-x/_kickoff/acceptance.yml");
 });
 afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
 describe("acceptanceIntegrityMiddleware — spec-compiler phase", () => {
   it("attaches acceptanceHash + acceptancePath on success", async () => {
-    // spec-compiler runs with appRoot=tmpDir so the middleware looks in tmpDir/in-progress/.
+    // spec-compiler runs with appRoot=tmpDir so the middleware looks in tmpDir/.dagent/.
     const ctx = makeCtx({ itemKey: "spec-compiler", appRoot: tmpDir });
-    const subdir = join(tmpDir, "in-progress");
-    mkdtempSync(subdir); // ensure dir exists
+    const subdir = join(tmpDir, ".dagent", "feat-x", "_kickoff");
     // Simulate spec-compiler writing the file before returning.
     const next = async () => {
       const fs = await import("node:fs");
@@ -105,7 +112,7 @@ describe("acceptanceIntegrityMiddleware — spec-compiler phase", () => {
   it("fails when spec-compiler wrote an invalid acceptance file", async () => {
     const ctx = makeCtx({ itemKey: "spec-compiler", appRoot: tmpDir });
     const fs = await import("node:fs");
-    fs.mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    fs.mkdirSync(join(tmpDir, ".dagent", "feat-x", "_kickoff"), { recursive: true });
     writeFileSync(acceptancePath, "feature: \"\"\nsummary: \"\"\n", "utf-8");
     const res = await acceptanceIntegrityMiddleware.run(ctx, async () => ok());
     assert.equal(res.outcome, "failed");
@@ -147,7 +154,7 @@ describe("acceptanceIntegrityMiddleware — downstream pre-check", () => {
 
   it("halts when the contract was edited mid-run (hash mismatch)", async () => {
     const fs = await import("node:fs");
-    fs.mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    fs.mkdirSync(join(tmpDir, ".dagent", "feat-x", "_kickoff"), { recursive: true });
     writeFileSync(acceptancePath, VALID_YAML, "utf-8");
     const ctx = makeCtx({
       handlerData: {
@@ -164,7 +171,7 @@ describe("acceptanceIntegrityMiddleware — downstream pre-check", () => {
   it("passes through when the hash still matches", async () => {
     const fs = await import("node:fs");
     const { loadAcceptanceContract, hashAcceptanceContract } = await import("../apm/acceptance-schema.js");
-    fs.mkdirSync(join(tmpDir, "in-progress"), { recursive: true });
+    fs.mkdirSync(join(tmpDir, ".dagent", "feat-x", "_kickoff"), { recursive: true });
     writeFileSync(acceptancePath, VALID_YAML, "utf-8");
     const hash = hashAcceptanceContract(loadAcceptanceContract(acceptancePath));
     const ctx = makeCtx({

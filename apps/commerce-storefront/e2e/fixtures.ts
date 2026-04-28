@@ -169,3 +169,34 @@ export const test = base.extend<Signals>({
 });
 
 export { expect };
+
+// ---------------------------------------------------------------------------
+// Hydration gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Wait for the storefront app shell to finish its first client-side mount,
+ * indicated by `window.__APP_HYDRATED__ === true` (set from a useEffect in
+ * `overrides/app/components/_app/index.jsx`).
+ *
+ * Use this between `page.goto(...)` and the first user-action verb on any
+ * spec that interacts with React-attached handlers (click, fill, hover,
+ * tap, press, dispatchEvent, selectOption, check, setInputFiles). Without
+ * this gate, Playwright can act on SSR-rendered DOM before React has
+ * attached `onClick` and the event is silently dropped.
+ *
+ * Explicit by design — pre-hydration shell tests must NOT call this. See
+ * `apps/commerce-storefront/.apm/instructions/storefront/e2e-guidelines.md`
+ * §22 for usage rules and the self-review grep.
+ */
+export async function awaitHydrated(
+  page: Page,
+  opts?: { timeout?: number },
+): Promise<void> {
+  await page.waitForFunction(
+    () => (window as unknown as { __APP_HYDRATED__?: boolean }).__APP_HYDRATED__ === true,
+    undefined,
+    { timeout: opts?.timeout ?? 10_000 },
+  );
+}
+

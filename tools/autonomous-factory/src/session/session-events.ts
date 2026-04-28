@@ -10,7 +10,6 @@
 import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
-import { extractShellWrittenFiles } from "../harness/index.js";
 import {
   SessionCircuitBreaker,
   TOOL_LIMIT_FALLBACK_SOFT,
@@ -191,15 +190,13 @@ export function wireToolLogging(
           isPipelineOp,
         });
 
-        // Detect shell-based file writes (replaces the removed git diff augmentation)
-        const shellCwd = args?.cwd ? path.resolve(repoRoot, String(args.cwd)) : repoRoot;
-        const shellFiles = extractShellWrittenFiles(cmd, repoRoot, shellCwd);
-        for (const sf of shellFiles) {
-          if (!itemSummary.filesChanged.includes(sf)) {
-            itemSummary.filesChanged.push(sf);
-          }
-          fileWriteCounts.set(sf, (fileWriteCounts.get(sf) ?? 0) + 1);
-        }
+        // NOTE: shell-based file-write detection is performed via a session-
+        // boundary `git diff` snapshot in `runCopilotSession` (see
+        // `session/git-files-snapshot.ts`). The previous regex-based
+        // `extractShellWrittenFiles` heuristic misparsed `>` characters
+        // inside heredoc bodies that contained JSX/HTML, polluting
+        // `filesChanged` with fragments like `data-product-id={produ` —
+        // which then poisoned downstream triage `touchedFiles` evidence.
       }
     }
 

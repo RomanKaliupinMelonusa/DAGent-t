@@ -84,6 +84,9 @@ export function resolveTriageActivations(
     byFailingKey.set(failingKey, {
       triageNodeKey,
       failingKey,
+      ...(item?.latestInvocationId
+        ? { failingInvocationId: item.latestInvocationId }
+        : {}),
       rawError,
       errorSignature,
       failureRoutes,

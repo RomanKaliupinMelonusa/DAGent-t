@@ -6,7 +6,15 @@
  * an in-memory stub.
  */
 
-import type { PipelineState, FailResult, ResetResult, InitResult, TriageRecord, PendingContextPayload } from "../types.js";
+import type {
+  PipelineState,
+  FailResult,
+  ResetResult,
+  InitResult,
+  InvocationRecord,
+  AppendInvocationInput,
+  SealInvocationInput,
+} from "../types.js";
 
 /**
  * Port for all pipeline state read/write operations.
@@ -42,30 +50,19 @@ export interface StateStore {
   /** Set a doc note on a pipeline item. */
   setDocNote(slug: string, itemKey: string, note: string): Promise<PipelineState>;
 
-  /** Set a structured handoff artifact on a pipeline item. */
-  setHandoffArtifact(slug: string, itemKey: string, artifactJson: string): Promise<PipelineState>;
-
   /** Append an implementation note. */
   setNote(slug: string, note: string): Promise<PipelineState>;
 
   /** Set the deployed URL. */
   setUrl(slug: string, url: string): Promise<PipelineState>;
 
-  /** Inject pre-built context into a node for its next attempt.
-   *  Accepts a plain string (legacy) or a structured `PendingContextPayload`;
-   *  adapters are responsible for rendering the structured form to markdown. */
-  setPendingContext(slug: string, itemKey: string, context: string | PendingContextPayload): Promise<PipelineState>;
-
-  /** Persist a triage record for retrospective analysis. */
-  setLastTriageRecord(slug: string, record: TriageRecord): Promise<PipelineState>;
-
   /**
    * Persist the kernel's in-memory DAG snapshot to disk. Overwrites only
    * the DAG-shaped fields (`items`, `errorLog`, `cycleCounters`,
    * `implementationNotes`, `deployedUrl`) from the snapshot — any fields
-   * that only side-setters touch (e.g. `lastTriageRecord`, `executionLog`,
-   * per-item `pendingContext`/`handoffArtifact`/`docNote`) are preserved
-   * from the on-disk state so in-flight writes are not clobbered.
+   * that only side-setters touch (e.g. `executionLog`, per-item `docNote`)
+   * are preserved from the on-disk state so in-flight writes are not
+   * clobbered.
    *
    * This is the bridge between the command-sourced kernel (which holds
    * authoritative state in memory) and the on-disk `_STATE.json` that
@@ -78,9 +75,71 @@ export interface StateStore {
 
   /**
    * Write a human-readable halt-escalation artifact to
-   * `in-progress/<slug>_HALT.md`. Best-effort; failures must not break the
+   * `.dagent/<slug>_HALT.md`. Best-effort; failures must not break the
    * halt itself (the kernel halt signal is authoritative — this is just
    * for operator visibility and resume pointers).
    */
   writeHaltArtifact(slug: string, content: string): Promise<void>;
+
+  // ── Artifact Bus — invocation ledger (Phase 2) ────────────────────────────
+
+  /**
+   * Create a new `InvocationRecord` in `state.artifacts`, set the owning
+   * item's `latestInvocationId` pointer, and tail `_invocations.jsonl`.
+   *
+   * Invoked by the kernel at dispatch time, once per handler execution.
+   * The record is returned for inspection; its sealed / outputs fields are
+   * populated later via `sealInvocation`.
+   */
+  appendInvocationRecord(slug: string, input: AppendInvocationInput): Promise<InvocationRecord>;
+
+  /**
+   * Stamp `startedAt` on a previously-staged unsealed invocation record.
+   * Used by the dispatch hook when adopting a record that was created
+   * upfront by `stage-invocation` (e.g. by the triage handler) instead
+   * of being appended fresh at dispatch time.
+   *
+   * Throws if the invocationId is unknown or the record is already
+   * started/sealed.
+   */
+  stampInvocationStart(slug: string, invocationId: string, startedAt: string): Promise<InvocationRecord>;
+
+  /**
+   * Finalize an existing invocation: set outcome, finishedAt, sealed flag,
+   * and any produced outputs. After sealing, `ArtifactBus.write` calls
+   * targeting the same `invocationId` will reject.
+   *
+   * Idempotent: sealing an already-sealed record is a no-op.
+   */
+  sealInvocation(slug: string, input: SealInvocationInput): Promise<InvocationRecord>;
+
+  /**
+   * Attach resolved `inputs[]` onto an unsealed invocation record. Called
+   * by the `materialize-inputs` middleware so the persisted ledger carries
+   * the producer (`nodeKey`+`invocationId`) lineage of every artifact the
+   * invocation consumed. Idempotent — re-runs overwrite.
+   */
+  attachInvocationInputs(
+    slug: string,
+    invocationId: string,
+    inputs: InvocationRecord["inputs"],
+  ): Promise<InvocationRecord>;
+
+  /**
+   * Attach a `routedTo` field onto an invocation record. Used by the
+   * triage handler when it reroutes so the triage record self-describes
+   * its callee (inverse of the staged downstream record's
+   * `parentInvocationId`).
+   */
+  attachInvocationRoutedTo(
+    slug: string,
+    invocationId: string,
+    routedTo: NonNullable<InvocationRecord["routedTo"]>,
+  ): Promise<InvocationRecord>;
+
+  /** Read a single invocation record (returns `null` when absent). */
+  getInvocationRecord(slug: string, invocationId: string): Promise<InvocationRecord | null>;
+
+  /** Enumerate all invocation records for a node, ordered chronologically. */
+  listInvocationRecords(slug: string, nodeKey: string): Promise<InvocationRecord[]>;
 }

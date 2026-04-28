@@ -13,6 +13,7 @@ function makeItemResult(
   return {
     itemKey: key,
     result: {
+      outcome: "completed",
       commands: [],
       summary: {},
       ...overrides,

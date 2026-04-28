@@ -41,7 +41,23 @@ function makeApmContext(nodeOverrides?: Record<string, unknown>): ApmCompiledOut
   } as unknown as ApmCompiledOutput;
 }
 
-function makeState(itemOverrides?: Partial<PipelineState["items"][number]>[]): PipelineState {
+function makeState(opts?: {
+  staged?: { trigger?: "initial" | "triage-reroute" | "retry" | "redevelopment-cycle"; sealed?: boolean };
+}): PipelineState {
+  const inv = "inv_01H000000000000000000000";
+  const hasStaged = !!opts?.staged;
+  const stagedRecord = opts?.staged
+    ? {
+      invocationId: inv,
+      nodeKey: "debug-node",
+      cycleIndex: 1,
+      trigger: (opts.staged.trigger ?? "triage-reroute") as
+        | "initial" | "triage-reroute" | "retry" | "redevelopment-cycle",
+      inputs: [],
+      outputs: [],
+      ...(opts.staged.sealed ? { sealed: true } : {}),
+    }
+    : undefined;
   return {
     feature: "test",
     workflowName: "test",
@@ -55,7 +71,7 @@ function makeState(itemOverrides?: Partial<PipelineState["items"][number]>[]): P
         agent: "@debug",
         status: "pending",
         error: null,
-        ...(itemOverrides?.[0] ?? {}),
+        ...(hasStaged ? { latestInvocationId: inv } : {}),
       },
     ],
     errorLog: [],
@@ -65,6 +81,7 @@ function makeState(itemOverrides?: Partial<PipelineState["items"][number]>[]): P
     jsonGated: {},
     naByType: [],
     salvageSurvivors: [],
+    ...(stagedRecord ? { artifacts: { [inv]: stagedRecord } } : {}),
   } as PipelineState;
 }
 
@@ -73,7 +90,7 @@ function makeState(itemOverrides?: Partial<PipelineState["items"][number]>[]): P
 // ---------------------------------------------------------------------------
 
 describe("evaluateAutoSkip — auto_skip_unless_triage_reroute", () => {
-  it("skips when pendingContext is absent", () => {
+  it("skips when there is no staged invocation record", () => {
     const decision = evaluateAutoSkip(
       "debug-node",
       makeApmContext(),
@@ -84,11 +101,11 @@ describe("evaluateAutoSkip — auto_skip_unless_triage_reroute", () => {
       "test",
       makeState(),
     );
-    assert.ok(decision.skip, "should skip when no pendingContext");
+    assert.ok(decision.skip, "should skip when no staged record");
     assert.ok(decision.skip!.reason.includes("auto_skip_unless_triage_reroute"));
   });
 
-  it("skips when pendingContext is empty string", () => {
+  it("skips when the staged record's trigger is not triage-reroute", () => {
     const decision = evaluateAutoSkip(
       "debug-node",
       makeApmContext(),
@@ -97,12 +114,12 @@ describe("evaluateAutoSkip — auto_skip_unless_triage_reroute", () => {
       "/workspaces/DAGent-t/apps/sample-app",
       {},
       "test",
-      makeState([{ pendingContext: "" }]),
+      makeState({ staged: { trigger: "initial" } }),
     );
-    assert.ok(decision.skip, "should skip when pendingContext is empty");
+    assert.ok(decision.skip, "should skip when trigger != triage-reroute");
   });
 
-  it("skips when pendingContext is whitespace-only", () => {
+  it("skips when the staged record is already sealed", () => {
     const decision = evaluateAutoSkip(
       "debug-node",
       makeApmContext(),
@@ -111,12 +128,16 @@ describe("evaluateAutoSkip — auto_skip_unless_triage_reroute", () => {
       "/workspaces/DAGent-t/apps/sample-app",
       {},
       "test",
-      makeState([{ pendingContext: "   \n  " }]),
+      makeState({ staged: { trigger: "triage-reroute", sealed: true } }),
     );
-    assert.ok(decision.skip, "should skip when pendingContext is whitespace");
+    assert.ok(decision.skip, "should skip when staged record is sealed");
   });
 
-  it("does NOT skip when pendingContext has triage handoff content", () => {
+  it("does NOT skip when an unsealed triage-reroute record is staged", () => {
+    // Triage stages an unsealed `InvocationRecord` with trigger
+    // "triage-reroute" and points `item.latestInvocationId` at it. The
+    // re-entrance prose lives in the `triage-handoff` JSON artifact,
+    // not on the record itself (Phase 6).
     const decision = evaluateAutoSkip(
       "debug-node",
       makeApmContext(),
@@ -125,25 +146,9 @@ describe("evaluateAutoSkip — auto_skip_unless_triage_reroute", () => {
       "/workspaces/DAGent-t/apps/sample-app",
       {},
       "test",
-      makeState([{ pendingContext: "## Redevelopment Context\nTriage handoff for frontend defect." }]),
+      makeState({ staged: { trigger: "triage-reroute" } }),
     );
-    assert.equal(decision.skip, null, "should NOT skip when pendingContext has content");
-  });
-
-  it("does NOT skip when pendingContext is a non-empty string (kernel in-memory)", () => {
-    // This simulates the fix: kernel mirrors pendingContext into dagState
-    // as a plain string, which the auto-skip evaluator reads.
-    const decision = evaluateAutoSkip(
-      "debug-node",
-      makeApmContext(),
-      "/workspaces/DAGent-t",
-      "main",
-      "/workspaces/DAGent-t/apps/sample-app",
-      {},
-      "test",
-      makeState([{ pendingContext: "Redevelopment context for B" }]),
-    );
-    assert.equal(decision.skip, null, "should NOT skip when pendingContext is populated");
+    assert.equal(decision.skip, null, "should NOT skip when staged reroute is unsealed");
   });
 
   it("does not apply triage gate when flag is false", () => {

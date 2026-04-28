@@ -3,7 +3,7 @@
  *
  * Produced by the `spec-compiler` agent at feature-init from the
  * human-readable `_SPEC.md`, and written to
- * `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`.
+ * `<appRoot>/.dagent/<slug>_ACCEPTANCE.yml`.
  *
  * Consumed by:
  *   - The dev agent — injected into the prompt alongside the spec.
@@ -99,6 +99,52 @@ export const RequiredFlowSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   steps: z.array(FlowStepSchema).min(1),
+  /** Optional reference to a `test_fixtures[].id`. When set, e2e-author
+   *  reads the fixture's URL / asserts from the contract instead of
+   *  inlining them in the spec file. The root-level superRefine on
+   *  `AcceptanceContractSchema` enforces that the id resolves to a
+   *  declared fixture. */
+  fixture: z.string().min(1).optional(),
+});
+
+/** Allowed comparators on a fixture assertion. `eq` is the default
+ *  semantic when omitted. */
+export const FixtureAssertComparatorSchema = z.enum(["eq", "gte", "lte", "matches"]);
+
+/**
+ * One declarative assertion on a test fixture. Two classes:
+ *
+ * - **Deterministic** (e.g. `http_status`) — the fixture validator can
+ *   evaluate these against the kickoff baseline alone.
+ * - **Runtime** (e.g. `first_tile_swatch_count`, `in_stock`) — require
+ *   live browser evidence and are checked by `e2e-runner` /
+ *   `qa-adversary`. The validator only enforces that the `kind` is
+ *   in the catalogue.
+ *
+ * The catalogue lives in `lifecycle/fixture-validator.ts`
+ * (`KNOWN_ASSERT_KINDS`) and is owned by the autonomous-factory engine.
+ * Stack-specific kinds are added there, not here.
+ */
+export const FixtureAssertSchema = z.object({
+  kind: z.string().min(1),
+  value: z.unknown(),
+  comparator: FixtureAssertComparatorSchema.optional(),
+});
+
+/**
+ * One named test fixture — a resolved URL plus the runtime preconditions
+ * it must satisfy for the flows that reference it. Spec-compiler emits
+ * these once, after resolving the URL against the running config
+ * (`url.locale`, `url.site`) and cross-referencing the kickoff baseline.
+ * Downstream agents (`e2e-author`, `e2e-runner`, `qa-adversary`) consume
+ * fixtures by id; they MUST NOT re-resolve URLs themselves.
+ */
+export const TestFixtureSchema = z.object({
+  id: z.string().min(1),
+  url: z.string().min(1),
+  base_sha: z.string().min(1),
+  asserted_at: z.string().datetime({ offset: true }),
+  asserts: z.array(FixtureAssertSchema).default([]),
 });
 
 export const AcceptanceContractSchema = z.object({
@@ -129,12 +175,45 @@ export const AcceptanceContractSchema = z.object({
     package: z.string().min(1),
     rationale: z.string().min(1),
   })).default([]),
+  /** Resolved test fixtures referenced by `required_flows[].fixture`.
+   *  Spec-compiler emits these after resolving URLs against the running
+   *  config and cross-referencing the kickoff baseline. Optional for
+   *  back-compat with pre-fixture acceptance contracts. */
+  test_fixtures: z.array(TestFixtureSchema).default([]),
+}).superRefine((c, ctx) => {
+  // Reject duplicate fixture ids — id is the lookup key, must be unique.
+  const seen = new Set<string>();
+  for (let i = 0; i < c.test_fixtures.length; i++) {
+    const id = c.test_fixtures[i]!.id;
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["test_fixtures", i, "id"],
+        message: `duplicate fixture id "${id}"`,
+      });
+    }
+    seen.add(id);
+  }
+  // Every `required_flows[].fixture` must reference a declared fixture id.
+  for (let i = 0; i < c.required_flows.length; i++) {
+    const ref = c.required_flows[i]!.fixture;
+    if (ref !== undefined && !seen.has(ref)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["required_flows", i, "fixture"],
+        message: `fixture id "${ref}" not declared in test_fixtures[]`,
+      });
+    }
+  }
 });
 
 export type AcceptanceContract = z.infer<typeof AcceptanceContractSchema>;
 export type RequiredDom = z.infer<typeof RequiredDomSchema>;
 export type RequiredFlow = z.infer<typeof RequiredFlowSchema>;
 export type FlowStep = z.infer<typeof FlowStepSchema>;
+export type TestFixture = z.infer<typeof TestFixtureSchema>;
+export type FixtureAssert = z.infer<typeof FixtureAssertSchema>;
+export type FixtureAssertComparator = z.infer<typeof FixtureAssertComparatorSchema>;
 
 // ---------------------------------------------------------------------------
 // Loader — parse + validate from disk.

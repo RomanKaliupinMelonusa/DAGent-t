@@ -59,7 +59,7 @@ case "$COMMAND" in
     # Restore stashed changes (handle conflicts aggressively)
     if ! git stash pop 2>/dev/null; then
       echo "⚠️  Stash pop conflict detected. Forcing stashed state to win."
-      git checkout --theirs in-progress/ 2>/dev/null || true
+      git checkout --theirs .dagent/ 2>/dev/null || true
       git reset 2>/dev/null || true
     fi
 
@@ -115,7 +115,7 @@ case "$COMMAND" in
     # This is the "clean slate" escape hatch for agents stuck in a hallucination loop.
     #
     # SAFETY: Pipeline state files (_STATE.json, _TRANS.md) and the feature spec
-    # (_SPEC.md) live in in-progress/ and would be destroyed by git reset.
+    # (_SPEC.md) live in .dagent/ and would be destroyed by git reset.
     # We stash them to a temp dir and restore after the reset.
     CURRENT=$(git branch --show-current)
     if [ "$CURRENT" = "$BASE" ]; then
@@ -127,7 +127,7 @@ case "$COMMAND" in
 
     # Preserve pipeline state & spec files before destructive reset
     PRESERVE_DIR=$(mktemp -d)
-    IN_PROGRESS_DIR=$(find . -maxdepth 3 -type d -name "in-progress" | head -1)
+    IN_PROGRESS_DIR=$(find . -maxdepth 3 -type d -name ".dagent" | head -1)
     if [ -n "$IN_PROGRESS_DIR" ]; then
       for pattern in "*_STATE.json" "*_TRANS.md" "*_SPEC.md" "*_SUMMARY.md" "*_CHANGES.json"; do
         find "$IN_PROGRESS_DIR" -maxdepth 1 -name "$pattern" -exec cp {} "$PRESERVE_DIR/" \; 2>/dev/null || true

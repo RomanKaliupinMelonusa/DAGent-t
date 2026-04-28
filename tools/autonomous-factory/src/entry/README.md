@@ -6,29 +6,28 @@
 
 `entry/` is where the engine turns from a pile of pure logic + interfaces into a running program. It parses CLI args, runs preflight checks, compiles APM, instantiates adapters, constructs the `PipelineKernel`, and hands off to the loop.
 
-Three files do real work; the remaining are shells or legacy:
+Two CLI shapes are supported:
 
-- [watchdog.ts](watchdog.ts) — entry point (`npm run agent:run`).
-- [bootstrap.ts](bootstrap.ts) — preflight + config assembly.
-- [main.ts](main.ts) — composition root.
+- **Single feature** (`npm run agent:run`) — [watchdog.ts](watchdog.ts) → [bootstrap.ts](bootstrap.ts) → [main.ts](main.ts). One feature per process.
+- **Multi-feature supervisor** (`npm run agent:supervise`) — [supervise.ts](supervise.ts) → [supervisor.ts](supervisor.ts) fans out one child `agent:run` per feature via [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts) with bounded parallelism.
 
 ## Files
 
 | File | Role |
 |---|---|
 | [watchdog.ts](watchdog.ts) | Process entry point. Parses CLI via `cli.ts`, calls `bootstrap()`, creates a `CopilotClient`, starts the SDK, calls `runWithKernel()`, handles SIGINT for graceful shutdown. |
-| [cli.ts](cli.ts) | Argv parsing. Returns a typed `CliArgs` (feature slug, app path, base branch, flags). |
-| [bootstrap.ts](bootstrap.ts) | Runs every preflight check in order: feature branch creation, GitHub auth, preflight cloud auth hook, APM compile + validation, state/context drift check, junk-file scan, in-progress artifact scan, roam index build, baseline load. Returns a fully-assembled `PipelineRunConfig` + `baseTelemetry`. Throws `FatalPipelineError` subtypes on failure (no `process.exit`). |
+| [cli.ts](cli.ts) | Argv parsing. Returns a typed `CliArgs` (feature slug, app path, `--workflow` name, `--spec-file` path, base branch, flags). Validates that the spec file exists before bootstrap runs. |
+| [bootstrap.ts](bootstrap.ts) | Runs every preflight check in order: GitHub auth, preflight cloud auth hook, APM compile + validation, workflow lookup, state seeding (when `_STATE.json` is absent) or schema/workflow drift check (when resuming), junk-file scan, .dagent artifact scan, roam index build, baseline load. Feature-branch creation is **not** a preflight step — it is a DAG node (`create-branch`). Returns a fully-assembled `PipelineRunConfig` + `baseTelemetry`. Throws `FatalPipelineError` subtypes on failure (no `process.exit`). |
 | [main.ts](main.ts) | Composition root. Constructs all adapters, the `PipelineKernel`, `RegistryHandlerResolver`, `LoopLifecycle`, and calls `runPipelineLoop()`. |
-| [supervise.ts](supervise.ts) | Legacy / alternate entry point. Candidate for removal — see AF README tech-debt. |
-| [supervisor.ts](supervisor.ts) | Legacy / alternate entry point. Candidate for removal. |
+| [supervise.ts](supervise.ts) | Multi-slug supervisor CLI (`npm run agent:supervise`). Parses an intake JSON of `{ slug, app }` entries and delegates to `runSupervisor()`. Used by [.github/workflows/agentic-supervisor.yml](../../../../.github/workflows/agentic-supervisor.yml). |
+| [supervisor.ts](supervisor.ts) | Supervisor engine. `runSupervisor(intake, runner, { maxConcurrent })` drives a bounded-parallel scheduler over features, each executed by a `FeatureRunner` (typically [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts) — one child `agent:run` per feature so `APP_ROOT` and the middleware registry stay isolated). |
 
 ## Public interface
 
 From the command line:
 
 ```bash
-npm run agent:run -- --app apps/sample-app my-feature
+npm run agent:run -- --app apps/sample-app --workflow full-stack --spec-file /tmp/spec.md my-feature
 #   → watchdog.ts → bootstrap() → runWithKernel()
 ```
 
@@ -55,7 +54,7 @@ const result = await runWithKernel(config, client, logger, baseTelemetry);
 **Add a new preflight check:**
 
 1. Add the check function to [src/lifecycle/preflight.ts](../lifecycle/preflight.ts).
-2. Call it from [bootstrap.ts](bootstrap.ts) in the right phase order (branch → auth → APM → state → junk → roam).
+2. Call it from [bootstrap.ts](bootstrap.ts) in the right phase order (auth → APM → state → junk → roam). Scaffolding work that needs to run per-feature (branch creation, spec staging) belongs in the DAG, not here.
 3. If it's fatal, throw a `BootstrapError` (or a new typed subclass).
 
 **Swap an adapter implementation:**
@@ -76,10 +75,10 @@ const result = await runWithKernel(config, client, logger, baseTelemetry);
 
 ## Gotchas
 
-- **Two "supervisor" files are tech debt.** [supervise.ts](supervise.ts) and [supervisor.ts](supervisor.ts) exist alongside [watchdog.ts](watchdog.ts). If you touch them, clarify which is canonical or delete the stale one.
+- **Two entry points, two scopes.** [watchdog.ts](watchdog.ts) runs one feature per process. [supervise.ts](supervise.ts) + [supervisor.ts](supervisor.ts) run many features in parallel by spawning child `agent:run` processes via [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts). They are not redundant — each has a distinct CLI (`agent:run` vs `agent:supervise`) and workflow consumer.
 - **`repoRoot` is computed relative to `import.meta.dirname`.** The `"../../../.."` hop count is brittle — moving this file breaks that path.
 - **Bootstrap does a lot.** Ten-plus checks run sequentially. Keep new checks fast; anything > 5s should be optional or parallelised.
-- **`createFeatureBranch` runs before git auth is verified.** Ordering matters — it has its own internal checks but relies on `gh auth status` being good from the devcontainer.
+- **Branch creation is a DAG node, not a preflight.** `create-branch` runs `agent-branch.sh create-feature` as the first workflow node; `stage-spec` materializes `--spec-file` into `_kickoff/spec.md`. Bootstrap no longer shells out to `agent-branch.sh`.
 - **The roam index build is non-fatal.** If roam-code bootstrap fails, the run continues without structural intelligence. Watch for this in logs if agents start behaving like it's 2024.
 
 ## Related layers

@@ -10,8 +10,75 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
-import { StateError } from "../errors.js";
+import { StateError, BootstrapError } from "../errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
+import { featurePath } from "../adapters/feature-paths.js";
+
+/**
+ * Fail fast when something is already listening on port 3000.
+ *
+ * The storefront dev server (PWA Kit / webpack-dev-server) binds port 3000.
+ * If a prior `storefront-dev` agent crashed without reaping its server
+ * (or the orchestrator was OOM-killed mid-validation), the webpack worker
+ * processes survive as orphans and a fresh run will spawn a *second* server
+ * on top — driving the devcontainer to memory exhaustion. This check
+ * refuses to start the pipeline when port 3000 is held, with a one-liner
+ * cleanup hint so the operator can audit the offending PIDs before nuking.
+ *
+ * Non-fatal when `lsof` itself is missing (e.g. a slim CI image) — the
+ * absence of the tool is not the operator's fault, and the storefront
+ * instruction-side cleanup is a sufficient backstop.
+ *
+ * @throws {BootstrapError} when port 3000 is occupied.
+ */
+export type LsofRunner = () => string;
+
+const defaultLsofRunner: LsofRunner = () => {
+  try {
+    return execSync("lsof -ti:3000", {
+      encoding: "utf-8",
+      timeout: 2_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch (err) {
+    // `lsof` exits 1 when no process matches — that's "port free".
+    // Distinguish that from "lsof not installed" (ENOENT) by re-throwing
+    // ENOENT so the caller can treat it as a graceful skip.
+    const e = err as NodeJS.ErrnoException & { status?: number };
+    if (e.code === "ENOENT") throw err;
+    return "";
+  }
+};
+
+export function checkPort3000Free(runner: LsofRunner = defaultLsofRunner): void {
+  let stdout: string;
+  try {
+    stdout = runner();
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
+      console.log("  ⊘ `lsof` not available — skipping port 3000 check\n");
+      return;
+    }
+    // Any other failure shape is treated as "couldn't determine" — log and
+    // continue rather than block the pipeline on a diagnostic tool quirk.
+    console.log("  ⊘ Could not probe port 3000 — skipping check\n");
+    return;
+  }
+
+  if (!stdout) {
+    console.log("  ✔ Port 3000 free");
+    return;
+  }
+
+  const pids = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  throw new BootstrapError(
+    `Port 3000 is already held by PID(s): ${pids.join(", ")}.\n` +
+    `→ A prior dev server (likely from a crashed storefront-dev run) is still running.\n` +
+    `→ Cleanup hint: lsof -ti:3000 | xargs -r kill -KILL\n` +
+    `→ Then re-run the orchestrator.`,
+  );
+}
 
 /**
  * Warn about unexpected untracked files in the repo root.
@@ -34,11 +101,11 @@ export function checkJunkFiles(repoRoot: string): void {
 }
 
 /**
- * Scan in-progress/ for non-standard files (temp scripts, etc.).
+ * Scan .dagent/ for non-standard files (temp scripts, etc.).
  */
 export function checkInProgressArtifacts(repoRoot: string, appRoot: string): void {
   try {
-    const inProgressFiles = execSync(`ls ${path.relative(repoRoot, path.join(appRoot, "in-progress/"))} 2>/dev/null || true`, {
+    const inProgressFiles = execSync(`ls ${path.relative(repoRoot, path.join(appRoot, ".dagent/"))} 2>/dev/null || true`, {
       cwd: repoRoot, encoding: "utf-8", timeout: 5_000,
     }).trim();
     if (inProgressFiles) {
@@ -47,12 +114,69 @@ export function checkInProgressArtifacts(repoRoot: string, appRoot: string): voi
         (f) => f && !allowedPatterns.test(f),
       );
       if (junkInProgress.length > 0) {
-        console.warn(`\n  ⚠ WARNING: Non-standard files in in-progress/:`);
+        console.warn(`\n  ⚠ WARNING: Non-standard files in .dagent/:`);
         junkInProgress.forEach((f) => console.warn(`      - ${f}`));
         console.warn(`    These may be temp scripts from agent workarounds. Consider deleting them.\n`);
       }
     }
   } catch { /* non-fatal */ }
+}
+
+/**
+ * Warn when `config.defaultToolLimits` is absent or incomplete in apm.yml.
+ *
+ * Agents resolve limits as: per-agent `toolLimits` → `config.defaultToolLimits`
+ * → code fallback constants. Missing a sub-field silently lands on the code
+ * fallback, which is discoverable only by reading source. This check lists
+ * every missing sub-field and the exact fallback value so new apps can opt
+ * in deliberately.
+ *
+ * Non-fatal — console.warn only. No-op when every sub-field is present.
+ */
+export function checkToolLimitsHygiene(apmContext: ApmCompiledOutput): void {
+  // Sub-field descriptors; values mirror the runtime fallbacks in
+  // harness/limits.ts, adapters/session-circuit-breaker.ts, and
+  // handlers/support/agent-limits.ts. Kept inline (string literals) so a
+  // drift between this list and the fallback sources is caught by the
+  // hygiene warning test and is cheap to audit.
+  const fields: Array<{ name: string; fallback: string }> = [
+    { name: "soft",              fallback: "TOOL_LIMIT_FALLBACK_SOFT (30)" },
+    { name: "hard",              fallback: "TOOL_LIMIT_FALLBACK_HARD (40)" },
+    { name: "fileReadLineLimit", fallback: "DEFAULT_FILE_READ_LINE_LIMIT (500)" },
+    { name: "maxFileSize",       fallback: "DEFAULT_MAX_FILE_SIZE (5,242,880 = 5 MB)" },
+    { name: "shellOutputLimit",  fallback: "DEFAULT_SHELL_OUTPUT_LIMIT (64,000)" },
+    { name: "shellTimeoutMs",    fallback: "DEFAULT_SHELL_TIMEOUT_MS (600,000)" },
+    { name: "idleTimeoutLimit",  fallback: "IDLE_TIMEOUT_LIMIT_FALLBACK (2)" },
+    { name: "writeThreshold",    fallback: "code default (3)" },
+    { name: "preTimeoutPercent", fallback: "code default (0.8)" },
+  ];
+
+  const limits = apmContext.config?.defaultToolLimits as
+    | Record<string, unknown>
+    | undefined;
+
+  if (limits === undefined) {
+    const lines = fields.map((f) => `      - ${f.name} → ${f.fallback}`).join("\n");
+    console.warn(
+      "\n  ⚠ WARNING: `config.defaultToolLimits` is not declared in apm.yml.\n" +
+      "    Every agent without a per-agent `toolLimits` override will silently\n" +
+      "    fall back to code-level defaults:\n" +
+      `${lines}\n` +
+      "    Declare `config.defaultToolLimits` in apm.yml to set these explicitly.\n",
+    );
+    return;
+  }
+
+  const missing = fields.filter((f) => (limits as Record<string, unknown>)[f.name] === undefined);
+  if (missing.length === 0) return;
+
+  const lines = missing.map((f) => `      - ${f.name} → ${f.fallback}`).join("\n");
+  console.warn(
+    "\n  ⚠ WARNING: `config.defaultToolLimits` is missing sub-fields in apm.yml.\n" +
+    "    The following will fall back to code-level defaults:\n" +
+    `${lines}\n` +
+    "    Declare them in apm.yml to set explicit values.\n",
+  );
 }
 
 /**
@@ -118,7 +242,7 @@ export function checkPreflightAuth(repoRoot: string, appRoot: string, apmContext
  * identifiers to `"pass"` or `"fail"`. Any other output is treated as
  * "no baseline captured" (non-fatal — the orchestrator continues).
  *
- * Results are persisted to `<appRoot>/in-progress/<slug>_FLIGHT_DATA.json`
+ * Results are persisted to `<appRoot>/.dagent/<slug>_FLIGHT_DATA.json`
  * under the `baselineValidation` key, merging with any existing flight data.
  */
 export function runPreflightBaseline(
@@ -170,8 +294,8 @@ export function runPreflightBaseline(
     return null;
   }
 
-  // Persist to _FLIGHT_DATA.json — merge with any existing content.
-  const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+  // Persist to the feature's flight-data sidecar — merge with any existing content.
+  const flightPath = featurePath(appRoot, slug, "flight-data");
   try {
     let existing: Record<string, unknown> = {};
     if (fs.existsSync(flightPath)) {

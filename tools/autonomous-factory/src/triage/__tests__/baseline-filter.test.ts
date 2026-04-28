@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { filterNoise } from "../baseline-filter.js";
+import { filterNoise, getLastDropCounts, matchesAnyBaselinePattern } from "../baseline-filter.js";
 import type { StructuredFailure } from "../playwright-report.js";
 import type { BaselineProfile } from "../../ports/baseline-loader.js";
 
@@ -237,5 +237,80 @@ describe("filterNoise", () => {
     const out = filterNoise(payload, baseline) as StructuredFailure;
     assert.equal(out.failedRequests.length, 1);
     assert.match(out.failedRequests[0], /products\/ABC/);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // product-quick-view-plp regression — the exact baseline pattern and
+  // runtime console-error string captured during cycle-2. Pins the
+  // structured filter against re-occurrence of the misclassification.
+  // ─────────────────────────────────────────────────────────────────────
+
+  it("drops the getServerSnapshot warning recorded by cycle-2 of product-quick-view-plp", () => {
+    const payload: StructuredFailure = {
+      ...BASE,
+      consoleErrors: [
+        // Verbatim from triage-handoff.json errorExcerpt of cycle-2.
+        "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop%s at App (http://localhost:3000/mobify/bundle/development/main.js:212:5) at RouteComponent (http://localhost:3000/mobify/bundle/development/vendor.js:23025:7)",
+        "TypeError: feature-specific regression",
+      ],
+    };
+    // Verbatim from baseline-analyzer/.../baseline.json console_errors.
+    const baseline: BaselineProfile = {
+      feature: "product-quick-view-plp",
+      console_errors: [
+        { pattern: "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop" },
+      ],
+    };
+    const out = filterNoise(payload, baseline) as StructuredFailure;
+    assert.notEqual(out, payload);
+    assert.equal(out.consoleErrors.length, 1);
+    assert.match(out.consoleErrors[0], /feature-specific regression/);
+    assert.equal(getLastDropCounts().console, 1);
+  });
+});
+
+describe("matchesAnyBaselinePattern — shared single-message matcher", () => {
+  it("returns true when message matches a console pattern (normalised)", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [
+        { pattern: "Warning: The result of getServerSnapshot should be cached" },
+      ],
+    };
+    assert.equal(
+      matchesAnyBaselinePattern(
+        "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+        baseline,
+      ),
+      true,
+    );
+  });
+
+  it("returns true when message matches a network pattern (raw substring)", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      network_failures: [{ pattern: "/api/v1/recommendations", kind: "network" }],
+    };
+    assert.equal(
+      matchesAnyBaselinePattern("GET /api/v1/recommendations failed 500", baseline),
+      true,
+    );
+  });
+
+  it("returns false when no baseline pattern applies", () => {
+    const baseline: BaselineProfile = {
+      feature: "x",
+      console_errors: [{ pattern: "something else entirely" }],
+    };
+    assert.equal(matchesAnyBaselinePattern("genuine feature error", baseline), false);
+  });
+
+  it("returns false when baseline is null/undefined or message is empty", () => {
+    assert.equal(matchesAnyBaselinePattern("anything", null), false);
+    assert.equal(matchesAnyBaselinePattern("anything", undefined), false);
+    assert.equal(
+      matchesAnyBaselinePattern("", { feature: "x", console_errors: [{ pattern: "y" }] }),
+      false,
+    );
   });
 });

@@ -14,6 +14,7 @@ function makeCtx(key: string): NodeContext {
     appRoot: "/app",
     repoRoot: "/repo",
     baseBranch: "main",
+    specFile: "/tmp/spec.md",
     attempt: 1,
     effectiveAttempts: 1,
     environment: {},
@@ -26,8 +27,13 @@ function makeCtx(key: string): NodeContext {
     logger: { event: () => {}, warn: () => {}, error: () => {}, info: () => {} } as unknown as NodeContext["logger"],
     vcs: {} as NodeContext["vcs"],
     stateReader: {} as NodeContext["stateReader"],
+    ledger: {} as NodeContext["ledger"],
     shell: {} as NodeContext["shell"],
     filesystem: {} as NodeContext["filesystem"],
+    invocation: {} as NodeContext["invocation"],
+    invocationLogger: {} as NodeContext["invocationLogger"],
+    triageArtifacts: {} as NodeContext["triageArtifacts"],
+    artifactBus: {} as NodeContext["artifactBus"],
     copilotSessionRunner: {} as NodeContext["copilotSessionRunner"],
   };
 }

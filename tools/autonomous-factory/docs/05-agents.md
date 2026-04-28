@@ -1,7 +1,7 @@
 # Specialist Agents — Catalog & Configuration
 
-> 19 pipeline items across 6 phases (two-wave architecture). 13 LLM-driven agents, 5 deterministic script bypasses, and one human approval gate. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
-> Source: `tools/autonomous-factory/src/apm/agents.ts` (prompt factory) · `tools/autonomous-factory/src/handlers/` (execution handlers)
+> 21 main pipeline items + 2 triage nodes across 7 phases (Wave 0 scaffolding + two-wave app-and-infra + triage). 14 LLM-driven agents, 7 deterministic script/handler bypasses, and one human approval gate. Each LLM agent gets its own Copilot SDK session with tailored prompt, model, and MCP servers.
+> Source: `tools/autonomous-factory/src/apm/agents.ts` (prompt factory) · `tools/autonomous-factory/src/handlers/` (execution handlers) · `apps/sample-app/.apm/workflows.yml` (full-stack DAG)
 
 ---
 
@@ -9,6 +9,12 @@
 
 ```mermaid
 flowchart TB
+    subgraph SCAFFOLD["Wave 0: Scaffolding"]
+        direction LR
+        A0A["🌱 create-branch\nDeterministic\nagent-branch.sh"]
+        A0B["📄 stage-spec\nDeterministic\nspec file → _kickoff/spec.md"]
+    end
+
     subgraph INFRA["Wave 1: Infrastructure"]
         direction LR
         A1["🔧 schema-dev\nShared Zod v4 schemas\n(@branded/schemas)"]
@@ -52,14 +58,24 @@ flowchart TB
         A18["📦 publish-pr\nPromote Draft PR\n+ risk assessment"]
     end
 
-    INFRA --> APPROVAL --> PRE --> DEP --> POST --> FIN
+    subgraph TRIAGE["Triage (on-failure)"]
+        direction LR
+        A19["🩺 triage-full-stack\n2-layer RAG+LLM\nclassifier"]
+        A20["🔍 deep-debug\n(optional diagnostic\ncompanion)"]
+    end
 
+    SCAFFOLD --> INFRA --> APPROVAL --> PRE --> DEP --> POST --> FIN
+    POST -.on failure.-> TRIAGE
+    TRIAGE -.resets.-> PRE
+
+    style SCAFFOLD fill:#f5f5f5
     style INFRA fill:#e8f5e9
     style APPROVAL fill:#fff9c4,stroke:#f9a825,stroke-width:2px
     style PRE fill:#e3f2fd
     style DEP fill:#fff9c4
     style POST fill:#fff3e0
     style FIN fill:#f3e5f5
+    style TRIAGE fill:#ffebee,stroke:#c62828,stroke-width:1px
 ```
 
 ---
@@ -68,31 +84,35 @@ flowchart TB
 
 | # | Agent | Phase | Type | MCP Servers | Timeout | Model | Roam Rules |
 |---|-------|-------|------|-------------|---------|-------|------------|
-| 1 | `schema-dev` | infra | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 2 | `infra-architect` | infra | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 3 | `push-infra` | infra | **Script** | — | 15 min | — | (deterministic bypass) |
-| 4 | `create-draft-pr` | infra | LLM | — | 15 min | claude-opus-4.6 | (always only) |
-| 5 | `poll-infra-plan` | infra | **Script** | — | 15 min | — | (deterministic bypass) |
-| 6 | `await-infra-approval` | approval | **Human gate** | — | ∞ | — | (no agent — pipeline pauses) |
-| 7 | `infra-handoff` | approval | LLM | — | 20 min | claude-opus-4.6 | (always only) |
-| 8 | `backend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
-| 9 | `frontend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
-| 10 | `backend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
-| 11 | `frontend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
-| 12 | `push-app` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
-| 13 | `poll-app-ci` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
-| 14 | `integration-test` | post-deploy | LLM | — | 20 min | claude-opus-4.6 | integration-testing |
-| 15 | `live-ui` | post-deploy | LLM | playwright, roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
-| 16 | `code-cleanup` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 17 | `docs-archived` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 18 | `doc-architect` | finalize | LLM | roam, mermaid | 20 min | claude-opus-4.6 | roam-tool-rules |
-| 19 | `publish-pr` | finalize | **Script** | — | 15 min | — | (deterministic bypass) |
+| 1 | `create-branch` | scaffolding | **Script** | — | 5 min | — | (deterministic bypass — `agent-branch.sh`) |
+| 2 | `stage-spec` | scaffolding | **Script** | — | 5 min | — | (deterministic bypass — copies `--spec-file` → `_kickoff/spec.md`) |
+| 3 | `schema-dev` | infra | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 4 | `infra-architect` | infra | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 5 | `push-infra` | infra | **Script** | — | 15 min | — | (deterministic bypass) |
+| 6 | `create-draft-pr` | infra | LLM | — | 15 min | claude-opus-4.6 | (always only) |
+| 7 | `poll-infra-plan` | infra | **Script** | — | 15 min | — | (deterministic bypass) |
+| 8 | `await-infra-approval` | approval | **Human gate** | — | ∞ | — | (no agent — pipeline pauses) |
+| 9 | `infra-handoff` | approval | LLM | — | 20 min | claude-opus-4.6 | (always only) |
+| 10 | `backend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
+| 11 | `frontend-dev` | pre-deploy | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-efficiency |
+| 12 | `backend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
+| 13 | `frontend-unit-test` | pre-deploy | LLM | roam | 10 min | claude-opus-4.6 | roam-test-intelligence |
+| 14 | `push-app` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
+| 15 | `poll-app-ci` | deploy | **Script** | — | 15 min | — | (deterministic bypass) |
+| 16 | `integration-test` | post-deploy | LLM | — | 20 min | claude-opus-4.6 | integration-testing |
+| 17 | `live-ui` | post-deploy | LLM | playwright, roam | 20 min | claude-opus-4.6 | roam-tool-rules, roam-test-intelligence, e2e-testing-mandate |
+| 18 | `code-cleanup` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 19 | `docs-archived` | finalize | LLM | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 20 | `doc-architect` | finalize | LLM | roam, mermaid | 20 min | claude-opus-4.6 | roam-tool-rules |
+| 21 | `publish-pr` | finalize | **Script** | — | 15 min | — | (deterministic bypass) |
+| T1 | `triage-full-stack` | triage | **Triage handler** (RAG + LLM fallback) | — | 10 min | claude-opus-4.6 (fallback only) | (no agent session — invoked via `handlers/triage-handler.ts`) |
+| T2 | `deep-debug` | triage | LLM (optional) | roam | 20 min | claude-opus-4.6 | roam-tool-rules |
 
-> **Script** items execute deterministic shell commands — zero LLM tokens consumed. **Human gate** pauses the orchestrator and logs a message prompting for `/dagent approve-infra` on the Draft PR.
+> **Script** items execute deterministic shell commands — zero LLM tokens consumed. **Human gate** pauses the orchestrator and logs a message prompting for `/dagent approve-infra` on the Draft PR. **Triage handler** is a dedicated, non-agent node type that runs the 2-layer classifier from [`src/triage/`](../src/triage/README.md) and emits `reset-nodes` DAG commands — no Copilot session unless the LLM-fallback layer is reached.
 >
-> **Scripts:** `push-infra`, `poll-infra-plan`, `push-app`, `poll-app-ci`, `publish-pr`
+> **Scripts:** `create-branch`, `stage-spec`, `push-infra`, `poll-infra-plan`, `push-app`, `poll-app-ci`, `publish-pr`
 >
-> **Handler Plugin System:** Each item type is dispatched to a registered handler in `handlers/`: `copilot-agent.ts` (LLM sessions), `local-exec.ts` (script execution — push, publish, tests, builds), `github-ci-poll.ts` (CI polling), `approval.ts` / `barrier.ts` (gates), `triage-handler.ts` (failure routing). Handlers implement the `NodeHandler` interface and return structured `NodeResult` objects — the reactive loop (`loop/pipeline-loop.ts`) + dispatch layer (`dispatch/`) manage all state transitions via the Pipeline Kernel.
+> **Handler Plugin System:** Each item type is dispatched to a registered handler in `handlers/`: `copilot-agent.ts` (LLM sessions), `local-exec.ts` (script execution — push, publish, tests, builds, `create-branch`, `stage-spec`), `github-ci-poll.ts` (CI polling), `approval.ts` (human gate), `triage-handler.ts` (failure routing). Handlers implement the `NodeHandler` interface and return structured `NodeResult` objects — the reactive loop (`loop/pipeline-loop.ts`) + dispatch layer (`loop/dispatch/`) manage all state transitions via the Pipeline Kernel.
 
 ---
 
@@ -159,7 +179,7 @@ flowchart TD
         B2["📋 Context Block\nFeature slug, spec path,\nrepo root, app root,\nworkflow type"]
         B3["📏 Assembled Rules\nFrom APM compiled output\n(apm.yml → persona → rules)\nToken-budgeted, cached"]
         B4["📝 Workflow Steps\nNumbered step-by-step\ninstructions (5–12 steps)\nagent-specific"]
-        B5["✅ Completion Block\npipeline:complete/fail commands\npipeline:doc-note for handoff\n(scoped to agent type)"]
+        B5["✅ Completion Block\nreport_outcome SDK tool\n+ summary.md / declared\nproduces_artifacts (per agent)"]
     end
 
     B1 --> B2 --> B3 --> B4 --> B5
@@ -175,7 +195,7 @@ flowchart TD
 
 | Step | Action |
 |------|--------|
-| 1 | Read feature spec from `in-progress/` |
+| 1 | Read feature spec from `.dagent/` |
 | 2 | `roam_understand` — codebase briefing |
 | 3 | `roam_context` — locate relevant symbols |
 | 4 | `roam_preflight` — blast radius check |
@@ -184,55 +204,58 @@ flowchart TD
 | 7 | Write/update tests |
 | 8 | `roam_check_rules` — SEC/PERF/COR/ARCH gate |
 | 9 | `agent-commit.sh` — scoped commit |
-| 10 | `pipeline:doc-note` — architectural summary for docs-archived |
+| 10 | Write architectural summary to `$OUTPUTS_DIR/summary.md`; call `report_outcome({status: "completed"})` |
 
 ---
 
-## Doc-Note Handoff Pattern
+## Summary Handoff Pattern
 
 ```mermaid
 sequenceDiagram
     participant BD as backend-dev
-    participant PS as pipeline-state
+    participant FS as $OUTPUTS_DIR
     participant CJ as _CHANGES.json
     participant DA as docs-archived
 
-    BD->>PS: pipeline:doc-note slug backend-dev<br/>"Added fn-generate with structured<br/>outputs via BrandedAgentService"
-    PS->>PS: Store in _STATE.json<br/>item.docNote
+    BD->>FS: echo "Added fn-generate with structured<br/>outputs via BrandedAgentService"<br/>> $OUTPUTS_DIR/summary.md
+    BD->>BD: report_outcome({status: "completed"})
 
-    Note over CJ: Watchdog writes<br/>_CHANGES.json before<br/>docs-archived session
+    Note over CJ: Watchdog writes _CHANGES.json<br/>before docs-archived session<br/>(walks state.artifacts for each<br/>node's outputs/summary.md)
 
-    PS-->>CJ: All doc-notes collected
-    CJ-->>DA: Read _CHANGES.json<br/>+ per-item doc-notes
-    DA->>DA: Update architecture docs<br/>based on change summaries
+    FS-->>CJ: Per-node summaries collected
+    CJ-->>DA: docs-archived reads<br/>_CHANGES.json + the per-node<br/>summary.md files in inputs/
+    DA->>DA: Update architecture docs
 ```
 
-> Dev agents leave 1–2 sentence architectural summaries via `pipeline:doc-note`. The `docs-archived` agent reads all doc-notes via `_CHANGES.json` to update documentation without re-analyzing the entire codebase.
+> Dev agents leave 1–2 sentence architectural summaries as a declared `summary` artifact (`outputs/summary.md`). The `docs-archived` agent declares `consumes_artifacts: [{from: <each-dev-node>, kind: summary}]`; the dispatcher copies each upstream summary into `docs-archived`'s `inputs/` before the session starts. No CLI verb — the file *is* the handoff.
 
-### Handoff Artifact Pattern
+### Typed Handoff Artifacts
 
-For structured inter-agent contracts beyond free-text doc-notes, dev agents can set a **typed JSON handoff artifact** on their pipeline item via `pipeline:handoff-artifact`. Unlike doc-notes (human-readable summaries), handoff artifacts carry machine-parseable data — testid maps, affected routes, SSR-safety flags — that downstream agents (SDET, test runners) can consume programmatically.
+For structured inter-agent contracts beyond free-text summaries, dev agents emit **typed JSON handoff artifacts** as declared `produces_artifacts`. Unlike `summary.md` (human-readable), typed artifacts carry machine-parseable data — testid maps, affected routes, SSR-safety flags, deployment URLs — that downstream agents (SDET, test runners, deploy pollers) consume programmatically.
 
 ```mermaid
 sequenceDiagram
     participant SD as storefront-dev
-    participant PS as pipeline-state
+    participant FS as $OUTPUTS_DIR
+    participant DISP as dispatcher<br/>(invocation-builder)
     participant SDET as @sdet-expert
 
-    SD->>PS: pipeline:handoff-artifact slug storefront-dev<br/>'{"affectedRoutes":["/list","/detail"],<br/>"newTestIds":["widget-open-button","widget-modal"]}'
-    PS->>PS: Validate JSON, store in<br/>item.handoffArtifact
+    SD->>FS: write $OUTPUTS_DIR/storefront-handoff.json<br/>{"affectedRoutes":["/list","/detail"],<br/>"newTestIds":["widget-open-button","widget-modal"]}
+    SD->>SD: report_outcome({status: "completed"})
 
-    Note over PS,SDET: Watchdog reads handoffArtifact<br/>when building SDET prompt
+    Note over DISP: Kernel validates declared<br/>produces_artifacts; SDET node<br/>declares consumes_artifacts: [{from: storefront-dev,<br/>kind: storefront-handoff}]
 
-    PS-->>SDET: Agent prompt includes<br/>structured handoff data
-    SDET->>SDET: Generate E2E tests targeting<br/>exact routes + testids
+    DISP-->>SDET: Copies storefront-handoff.json<br/>into SDET's inputs/<br/>+ inputs/params.in.json manifest
+    SDET->>SDET: Read inputs/storefront-handoff.json<br/>→ generate E2E tests targeting<br/>exact routes + testids
 ```
 
-| CLI | `npm run pipeline:handoff-artifact <slug> <item-key> <json>` |
-|-----|--------------------------------------------------------------|
-| **Validation** | Must be parseable JSON (rejects malformed strings) |
-| **Storage** | `_STATE.json` → `item.handoffArtifact` |
-| **Consumers** | Downstream agents via prompt injection |
+| Mechanism | Declared `produces_artifacts: [<kind>]` on the producer + `consumes_artifacts: [{from, kind}]` on the consumer |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| **Validation** | Kernel verifies `outputs/<kind>.<ext>` exists on `report_outcome(completed)`; missing → `errorSignature: missing_required_output:<kind>` |
+| **Storage** | `<inv>/outputs/<kind>.<ext>` (canonical) → copied into next dispatch's `<inv>/inputs/<kind>.<ext>` |
+| **Consumers** | Downstream agents read from `inputs/`; script handlers via `$INPUTS_DIR/<kind>.<ext>` |
+
+> Triage handoff uses this same channel: triage emits `outputs/triage-handoff.json`; rerouted dev nodes declare `consumes_reroute: [triage-handoff]` and read from `inputs/triage-handoff.json`. No `pendingContext` string — the JSON artifact is the only re-entrance contract.
 
 ---
 

@@ -19,7 +19,7 @@ Each file declares exactly one port interface (plus supporting types). Nothing e
 | [ci-gateway.ts](ci-gateway.ts) | `CiGateway` — CI run polling and status | `adapters/github-ci-adapter.ts` |
 | [hook-executor.ts](hook-executor.ts) | `HookExecutor` — runs `.apm/hooks/*.sh` lifecycle scripts | `adapters/shell-hook-executor.ts` |
 | [shell.ts](shell.ts) | `Shell` — generic subprocess execution with stderr/stdout/timeout | `adapters/node-shell-adapter.ts` |
-| [feature-filesystem.ts](feature-filesystem.ts) | `FeatureFilesystem` — feature workspace file ops (`in-progress/`, `archive/`) | `adapters/local-filesystem.ts` |
+| [feature-filesystem.ts](feature-filesystem.ts) | `FeatureFilesystem` — feature workspace file ops (`.dagent/`, `archive/`) | `adapters/local-filesystem.ts` |
 | [context-compiler.ts](context-compiler.ts) | `ContextCompiler` — APM compile entry point | `adapters/apm-file-compiler.ts` |
 | [telemetry.ts](telemetry.ts) | `Telemetry` — structured event emission | `adapters/jsonl-telemetry.ts` |
 | [triage-llm.ts](triage-llm.ts) | `TriageLlm` — LLM-based failure classification fallback | `adapters/copilot-triage-llm.ts` |
@@ -27,6 +27,9 @@ Each file declares exactly one port interface (plus supporting types). Nothing e
 | [baseline-loader.ts](baseline-loader.ts) | `BaselineLoader` — loads previous-pass evidence for baseline advisories | `adapters/file-baseline-loader.ts` |
 | [copilot-session-runner.ts](copilot-session-runner.ts) | `CopilotSessionRunner` — one agent session lifecycle | `adapters/copilot-session-runner.ts` |
 | [cognitive-breaker.ts](cognitive-breaker.ts) | `CognitiveBreaker` — per-session tool-call limits | `adapters/session-circuit-breaker.ts` |
+| [artifact-bus.ts](artifact-bus.ts) | `ArtifactBus` — declared `consumes_*` / `produces_artifacts` resolution + per-invocation materialization | `adapters/file-artifact-bus.ts` |
+| [invocation-filesystem.ts](invocation-filesystem.ts) | `InvocationFilesystem` — per-invocation `inputs/` / `outputs/` / `logs/` tree operations | `adapters/file-invocation-filesystem.ts` |
+| [invocation-logger.ts](invocation-logger.ts) | `InvocationLogger` — multiplex per-invocation log sinks (`events.jsonl`, `tool-calls.jsonl`, `messages.jsonl`, `stdout.log`, `stderr.log`) | `adapters/file-invocation-logger.ts` |
 | [index.ts](index.ts) | Barrel re-exports. | — |
 
 ## Public interface

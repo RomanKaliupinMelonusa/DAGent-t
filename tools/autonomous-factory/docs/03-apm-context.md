@@ -461,7 +461,7 @@ classDiagram
     ApmCompiledOutput ..> ApmBudgetExceededError : compiler throws
 ```
 
-All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
+All schemas validated by Zod (`ApmCompiledOutputSchema` in [`src/apm/types.ts`](../src/apm/types.ts)).
 
 ---
 
@@ -482,6 +482,9 @@ All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
 | **3-layer architecture** | Node Pool (what), Agent Configs (brain), Workflow DAGs (how connected) — eliminates config duplication |
 | **Type-agnostic node pool** | All node types (agent, script, barrier, triage, approval) are equal pool citizens. Only `type: agent` needs an `agents:` declaration |
 | **Workflow-level `default_on_failure`** | Common triage routes declared once per workflow, merged into per-node `on_failure`. Scales O(1) instead of O(nodes) |
+| **Named `routeProfiles` with `extends:`** | Reusable `on_failure.routes` bundles. Nodes reference them with `on_failure.extends: <profile>`; profiles chain via their own `extends:`. Merge precedence (lowest→highest): profile chain → `default_on_failure` → node override. Inheritance cycles and unknown parents fail at compile time |
+| **Compile-time domain-key validation** | Every key in any `on_failure.routes` is checked against the triage profile's declared (or derived) `domains:` set. Typos produce an `ApmCompileError` with a Levenshtein-based "Did you mean ...?" suggestion, closing the silent-misroute leak where `front-end` would resolve to `null` |
+| **Declarative L0 triage patterns** | Triage profiles can list `patterns:` (discriminated union: `match_kind: raw-regex \| structured-field`) to short-circuit before RAG/LLM. Three built-ins ship with the engine (uncaught browser errors, Playwright testid timeouts, spec-compiler schema violations) and auto-merge unless `builtin_patterns: false`. Built-ins whose `domain` is not in the profile are silently dropped; user-declared patterns emitting an unrouted domain fail compile |
 | **`_node` directive** | Explicit catalog reference for aliased nodes (e.g. `push-infra: { _node: push-code }`). Replaces implicit `_template` |
 
 ---
@@ -568,6 +571,31 @@ All node types are first-class pool citizens — agent, script, barrier, triage,
 | `halt_on_identical` | bool | — | Identical error + identical HEAD → immediate halt on attempt 2+. For deterministic scripts |
 | `revert_warning_at` | number | `3` | Attempt count at which revert warning is injected (when `allows_revert_bypass: true`) |
 
+#### Error-signature Volatile Patterns
+
+The fingerprinter that powers `halt_on_identical.threshold` strips
+volatile tokens (timestamps, PIDs, UUIDs, paths, …) from raw error
+messages before hashing. User-supplied patterns extend the built-in
+baseline at two scopes — and **only** these two scopes are read by the
+runtime ([entry/main.ts](../src/entry/main.ts)):
+
+| Active path | Read by |
+|---|---|
+| `apm.yml` → `config.error_signature.volatile_patterns` | every node's signature |
+| `workflows.yml` → `<workflow>.nodes.<key>.error_signature.volatile_patterns` | that node only (additive on top of workflow scope) |
+
+`workflows.yml` → `<workflow>.error_signature` (the **workflow root**, no
+`nodes.` prefix) is **dead config** — the runtime does not read it. Do
+not author patterns there. The resolution is locked in by
+[entry/__tests__/resolve-volatile-patterns.test.ts](../src/entry/__tests__/resolve-volatile-patterns.test.ts).
+
+When a pattern fires for the first time in a run, the kernel emits a
+`error_signature.user_pattern_fired` telemetry event (deduped per
+`(scope, patternIndex)` per run) so operators can see which patterns
+actually collapsed signatures. `npm run pipeline:lint` warns on
+patterns that matched zero `errorLog` messages in the most recent run
+(possible dead config).
+
 #### Node Type Constraints
 
 These are enforced at compile time by the constraint system:
@@ -620,6 +648,7 @@ These are enforced at compile time by the constraint system:
 | `redevelopment_categories` | string[] | `["test"]` | Node categories whose failures trigger redevelopment context injection |
 | `phase_labels` | map | — | Human-readable labels for phase slugs (e.g. `{ "pre-deploy": "Pre-Deploy" }`) |
 | `handler_defaults` | map | — | Type → handler key inference map. Extends built-in defaults |
+| `strict_handler_inference` | bool | `false` | Disable the built-in inference fallback — every node must set `handler:` or match `handler_defaults` |
 | `handlers` | map | — | Custom handler declarations with metadata |
 | `reindex_categories` | string[] | `["dev", "test"]` | Categories that trigger roam-code re-index after triage reroute |
 
@@ -754,10 +783,11 @@ When a node doesn't declare an explicit `handler` field, the kernel infers it:
 | `script` | `local-exec` | `local-exec` | Shell command execution |
 | `script` | `poll` | `github-ci-poll` | Polls GitHub Actions for CI run status |
 | `approval` | — | `approval` | Waits for human ChatOps command |
-| `barrier` | — | `barrier` | No-op DAG sync point |
 | `triage` | — | `triage` | Error classification via RAG + LLM |
 
-Custom types extend this via `config.handler_defaults` or per-node `handler` fields.
+Custom types extend this via `config.handler_defaults` or per-node `handler` fields. `barrier` nodes are domain-only constructs — they cascade in [`domain/dag-graph.ts`](../src/domain/dag-graph.ts) (`cascadeBarriers`) but have no executable handler; declare `handler:` (or `handler_defaults["barrier"]`) explicitly if a workflow needs to use them.
+
+Set `config.strict_handler_inference: true` to disable the built-in fallback table above — every node must then either declare `handler:` explicitly or match a key in `handler_defaults`. Catches typos like `type: "scripts"` at lint time (`npm run pipeline:lint`) instead of silently at dispatch.
 
 ---
 

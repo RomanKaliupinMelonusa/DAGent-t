@@ -8,7 +8,7 @@
  * Pure types only — zero executable code.
  */
 
-import type { ItemSummary, TriageRecord, ExecutionRecord } from "../types.js";
+import type { ItemSummary, TriageRecord, ExecutionRecord, AppendInvocationInput, SealInvocationInput } from "../types.js";
 import type { DagCommand } from "../dag-commands.js";
 import type { HandlerOutputBag } from "../app-types.js";
 
@@ -34,6 +34,9 @@ export type Command =
   | RecordPreStepRefCommand
   | RecordForceRunCommand
   | RecordExecutionCommand
+  // Invocation lifecycle (Artifact Bus / Node I/O Contract)
+  | RegisterInvocationCommand
+  | SealInvocationCommand
   // Delegated handler commands (from handler DagCommand[])
   | DagCommandWrapper
   ;
@@ -113,6 +116,32 @@ export interface RecordForceRunCommand {
 export interface RecordExecutionCommand {
   readonly type: "record-execution";
   readonly record: ExecutionRecord;
+}
+
+// ---------------------------------------------------------------------------
+// Invocation lifecycle commands — Node I/O Contract
+// ---------------------------------------------------------------------------
+
+/**
+ * Allocate a fresh `InvocationRecord` in `state.artifacts` and stamp the
+ * owning item's `latestInvocationId` pointer. Emitted by the dispatch
+ * layer once per handler dispatch, before the handler runs. Translates
+ * to an `append-invocation-record` Effect that hits the StateStore.
+ */
+export interface RegisterInvocationCommand {
+  readonly type: "register-invocation";
+  readonly input: AppendInvocationInput;
+}
+
+/**
+ * Finalize an in-flight invocation: write outcome + finishedAt, merge
+ * declared outputs, lock the invocation directory against further writes.
+ * Emitted by the dispatch layer when a handler terminates (completed,
+ * failed, or error). Translates to a `seal-invocation` Effect.
+ */
+export interface SealInvocationCommand {
+  readonly type: "seal-invocation";
+  readonly input: SealInvocationInput;
 }
 
 // ---------------------------------------------------------------------------

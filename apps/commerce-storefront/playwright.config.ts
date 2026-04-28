@@ -16,10 +16,15 @@ export default defineConfig({
   // Always emit a JSON report alongside the human-readable reporter so the
   // orchestrator can parse structured failures for triage. See
   // `tools/autonomous-factory/src/triage/playwright-report.ts`.
-  // PLAYWRIGHT_JSON_OUTPUT_NAME controls the JSON reporter's output file.
+  // PLAYWRIGHT_JSON_OUTPUT_NAME controls the JSON reporter's output file —
+  // the orchestrator's `local-exec` handler sets it to the per-invocation
+  // outputs directory when the e2e-runner node declares
+  // `structured_failure: { format: playwright-json, ... }`. The fallback
+  // points at `test-results/` (already gitignored and matching Playwright's
+  // own convention) so an ad-hoc CLI invocation can't pollute the app root.
   reporter: process.env.CI
-    ? [['github'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'playwright-report.json' }]]
-    : [['list'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'playwright-report.json' }]],
+    ? [['github'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/playwright-report.json' }]]
+    : [['list'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/playwright-report.json' }]],
   timeout: 60_000,
 
   use: {

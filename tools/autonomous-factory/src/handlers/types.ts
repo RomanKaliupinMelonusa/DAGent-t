@@ -18,17 +18,20 @@
  */
 
 import type { ApmCompiledOutput } from "../apm/types.js";
-import type { PipelineState, ItemSummary } from "../types.js";
+import type { PipelineState, ItemSummary, ArtifactRefSerialized, InvocationRecord } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
 import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
+import type { InvocationLogger } from "../ports/invocation-logger.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
+import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { DagCommand } from "../dag-commands.js";
 
 // Re-export for backwards compatibility — the authoritative types live in
@@ -38,8 +41,7 @@ export type {
   DagCommand,
   ResetNodesCommand,
   SalvageDraftCommand,
-  SetPendingContextCommand,
-  SetTriageRecordCommand,
+  StageInvocationCommand,
   ReindexCommand,
 } from "../dag-commands.js";
 
@@ -66,6 +68,12 @@ export interface NodeContext {
   readonly repoRoot: string;
   /** Target branch for PRs (e.g. "main") */
   readonly baseBranch: string;
+  /**
+   * Absolute path to the user-supplied feature spec markdown. Exposed
+   * to `local-exec` handlers as the `SPEC_FILE` env var so scaffolding
+   * scripts (e.g. `stage-spec.sh`) can copy it into `_kickoff/spec.md`.
+   */
+  readonly specFile: string;
   /** Current in-memory attempt number (1-based) */
   readonly attempt: number;
   /** Combined in-memory + persisted redevelopment cycle count */
@@ -76,6 +84,17 @@ export interface NodeContext {
   readonly apmContext: ApmCompiledOutput;
   /** Pipeline state snapshot at dispatch time (read-only) */
   readonly pipelineState: Readonly<PipelineState>;
+  /** Staged or in-flight `InvocationRecord` for this dispatch.
+   *  Populated by the dispatch context-builder when `item.latestInvocationId`
+   *  points at an unsealed record (either a fresh staged reroute slot from
+   *  the triage handler, or the record that the dispatch hook is about to
+   *  stamp `startedAt` on). Carries `parentInvocationId` and `trigger`.
+   *  Re-entrance context (e.g. triage handoff JSON) flows through declared
+   *  `consumes_reroute` artifacts that the materialize-inputs middleware
+   *  copies into `<inv>/inputs/` before the handler runs.
+   *  and `trigger` for classification. Undefined for the first dispatch of
+   *  a node before any record has been allocated. */
+  readonly currentInvocation?: Readonly<InvocationRecord>;
   /** Summary from the most recent failed attempt for this item, if any */
   readonly previousAttempt?: Readonly<ItemSummary>;
   /** Summaries from downstream items that failed (for redevelopment context) */
@@ -114,11 +133,11 @@ export interface NodeContext {
    */
   readonly triageLlm?: TriageLlm;
   /**
-   * Triage artifact loader port. Hides the `in-progress/<slug>_*.{yml,json}`
+   * Triage artifact loader port. Hides the `.dagent/<slug>_*.{yml,json}`
    * filesystem convention from the triage handler so the handler stays a
    * pure classifier + command builder.
    */
-  readonly triageArtifacts?: TriageArtifactLoader;
+  readonly triageArtifacts: TriageArtifactLoader;
   /**
    * Baseline loader port. Optional, advisory — supplies a pre-feature
    * page-error baseline (console / network / uncaught) that the triage
@@ -140,6 +159,21 @@ export interface NodeContext {
    */
   readonly stateReader: Pick<StateStore, "getStatus">;
   /**
+   * Narrow ledger-mutation port. Lets middleware / handlers attach
+   * lineage metadata onto an in-flight invocation record without taking
+   * a dependency on the full StateStore surface. Two operations only:
+   *   - `attachInvocationInputs` — called by the `materialize-inputs`
+   *     middleware after it has resolved the declared `consumes_*`
+   *     against the on-disk artifact tree, so the persisted record
+   *     carries the producer (`nodeKey`+`invocationId`) lineage.
+   *   - `attachInvocationRoutedTo` — called by the triage handler when
+   *     it reroutes, so the triage record self-describes its callee.
+   */
+  readonly ledger: Pick<
+    StateStore,
+    "attachInvocationInputs" | "attachInvocationRoutedTo"
+  >;
+  /**
    * Shell port — handlers that need to shell out (local-exec, CI poll,
    * artifact download) must go through this port rather than importing
    * `node:child_process` directly.
@@ -147,10 +181,35 @@ export interface NodeContext {
   readonly shell: Shell;
   /**
    * Feature workspace filesystem — handlers must read/write feature files
-   * (in-progress/ diagnostics, CI artifact staging, tmp dirs) through
+   * (.dagent/ diagnostics, CI artifact staging, tmp dirs) through
    * this port rather than importing `node:fs` / `node:path` directly.
    */
   readonly filesystem: FeatureFilesystem;
+  /**
+   * Artifact Bus — canonical port for reading/writing declared feature
+   * artifacts (kickoff-scope and per-invocation node-scope). Handlers
+   * must route artifact I/O through this port rather than constructing
+   * a `FileArtifactBus` directly, which would reach across the
+   * handlers→adapters layer boundary.
+   */
+  readonly artifactBus: ArtifactBus;
+  /**
+   * Per-invocation directory port (Phase 1). Owns the `<inv>/`,
+   * `<inv>/inputs/`, `<inv>/outputs/`, `<inv>/logs/` layout + meta mirror.
+   * Handlers read declared inputs from `inputsDir`, write declared outputs
+   * to `outputsDir`, and append logs to `logsDir`. The dispatch hook calls
+   * `ensureInvocationDir` before invoking the handler.
+   */
+  readonly invocation: InvocationFilesystem;
+  /**
+   * Per-invocation, append-only logger writing into `<inv>/logs/`. The
+   * dispatch hook constructs one of these per dispatch and stamps it
+   * into the context. Handlers should use it for any record they want
+   * co-located with the invocation (tool calls, child-process stdout,
+   * agent messages); the global `PipelineLogger` continues to own the
+   * pipeline-level event stream.
+   */
+  readonly invocationLogger: InvocationLogger;
   /**
    * Copilot SDK session runner — the copilot-agent handler delegates the
    * actual `sendAndWait` lifecycle to this port. The composition root
@@ -162,6 +221,10 @@ export interface NodeContext {
 
   /** Key of the node that failed and triggered this dispatch (on_failure only). */
   readonly failingNodeKey?: string;
+  /** InvocationId of the failing node's most recent attempt (on_failure
+   *  only). Lets the triage handler stamp `triggeredBy` and the staged
+   *  reroute's `routedTo` without scanning state. */
+  readonly failingInvocationId?: string;
   /** Raw error message from the failing node (on_failure only). */
   readonly rawError?: string;
   /** Computed error signature from the failing node (on_failure only). */
@@ -175,6 +238,16 @@ export interface NodeContext {
    *  (e.g. Playwright JSON reporter). Forwarded from `TriageActivation`.
    *  Kept as `unknown` at this layer — triage narrows on consumption. */
   readonly structuredFailure?: unknown;
+
+  /**
+   * Session C: advisory API-surface drift report for pinned runtime deps
+   * (see `lifecycle/dependency-pinning.ts`). Produced once at bootstrap
+   * and forwarded through the context builder. Consumed by
+   * `handlers/support/agent-context.ts#buildAgentContext` which hands it
+   * to the agent-prompt factory as `AgentContext.pwaKitDriftReport`.
+   * Absent for runs without drift or without a reference snapshot.
+   */
+  readonly pwaKitDriftReport?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +286,17 @@ export interface NodeResult {
    * Example: `{ lastPushedSha: "abc123" }` auto-captured by kernel for deploy nodes.
    */
   handlerOutput?: Record<string, unknown>;
+  /**
+   * Artifact refs the handler materialised during this invocation, beyond
+   * those picked up from the node's declared `produces_artifacts` by the
+   * seal hook's filesystem probe. The ledger merges both sources.
+   *
+   * Use this for outputs that are only decided at runtime (e.g. the
+   * `params` artifact written from `report_outcome.handoffArtifact`).
+   * Declared-and-written artifacts don't need to appear here — the seal
+   * hook resolves them from disk regardless.
+   */
+  producedArtifacts?: ArtifactRefSerialized[];
   /**
    * Extracted diagnostic trace from a structured TriageDiagnostic JSON failure.
    * Populated by the copilot-agent handler when the agent's failure message
@@ -307,7 +391,7 @@ export interface HandlerMetadata {
  *   `loop/dispatch/item-dispatch.ts` — handlers stay focused on their work
  * - Handlers are OBSERVERS and must NOT call completeItem/failItem, with one
  *   exception: the triage handler has exclusive state mutation authority
- *   (resetNodes, salvageForDraft, setLastTriageRecord, setPendingContext)
+ *   (resetNodes, salvageForDraft)
  * - Handlers may call shell commands, read/write files, and interact with external APIs
  * - The kernel is the sole owner of pipeline state transitions for all other handlers
  */

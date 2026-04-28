@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { compileApm } from "../src/apm/compiler.js";
 import { inferHandler } from "../src/handlers/registry.js";
+import { compileVolatilePatterns, DEFAULT_VOLATILE_PATTERNS } from "../src/domain/index.js";
 
 interface LintIssue {
   readonly app: string;
@@ -51,6 +52,146 @@ function findApps(repoRoot: string): string[] {
   return apps;
 }
 
+/**
+ * Aggregate every `errorLog[*].message` across all .dagent slugs for
+ * an app. Best-effort: returns `[]` when no `.dagent/` directory or
+ * no `_state.json` files exist (pre-first-run apps), suppressing the
+ * dead-pattern lint silently.
+ */
+function readRecentErrorMessages(appRoot: string): string[] {
+  const workDir = path.join(appRoot, ".dagent");
+  if (!fs.existsSync(workDir)) return [];
+  const messages: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(workDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const stateFile = path.join(workDir, e.name, "_state.json");
+    if (!fs.existsSync(stateFile)) continue;
+    try {
+      const raw = fs.readFileSync(stateFile, "utf8");
+      const parsed = JSON.parse(raw) as { errorLog?: Array<{ message?: unknown }> };
+      for (const entry of parsed.errorLog ?? []) {
+        if (typeof entry.message === "string") messages.push(entry.message);
+      }
+    } catch {
+      // Corrupt or partial state file — ignore.
+    }
+  }
+  return messages;
+}
+
+/**
+ * Warn on user-declared volatile patterns whose regex matched zero error
+ * messages in the most recent run(s). Catches both authoring mistakes
+ * (pattern targets the wrong shape) and patterns whose triggering
+ * failure no longer occurs in the corpus. Built-in defaults are NOT
+ * checked — they are stack-agnostic and assumed good.
+ *
+ * Patterns are run against the same intermediate string the kernel
+ * fingerprinter sees: defaults applied first, then workflow patterns
+ * applied as we walk through them so per-node patterns observe the
+ * post-workflow form (mirrors `DefaultKernelRules.maybeReportFires`).
+ */
+function lintDeadVolatilePatterns(
+  appRoot: string,
+  appRel: string,
+  compiled: ReturnType<typeof compileApm>,
+): LintIssue[] {
+  const issues: LintIssue[] = [];
+  const userWorkflowRaw = compiled.config?.error_signature?.volatile_patterns;
+  let workflowCompiled;
+  try {
+    workflowCompiled = compileVolatilePatterns(userWorkflowRaw);
+  } catch (err) {
+    // compileApm should have caught invalid regex sources, but be defensive.
+    issues.push({
+      app: appRel,
+      kind: "error",
+      message: `config.error_signature.volatile_patterns: ${(err as Error).message}`,
+    });
+    return issues;
+  }
+
+  // Collect per-node patterns by (workflow, node).
+  const perNode: Array<{ wf: string; node: string; compiled: ReturnType<typeof compileVolatilePatterns> }> = [];
+  for (const [wfName, wf] of Object.entries(compiled.workflows)) {
+    for (const [nodeKey, node] of Object.entries(wf.nodes)) {
+      const raw = (node as { error_signature?: { volatile_patterns?: typeof userWorkflowRaw } })
+        .error_signature?.volatile_patterns;
+      if (!raw || raw.length === 0) continue;
+      try {
+        perNode.push({ wf: wfName, node: nodeKey, compiled: compileVolatilePatterns(raw) });
+      } catch (err) {
+        issues.push({
+          app: appRel,
+          kind: "error",
+          message: `${wfName}.${nodeKey}.error_signature.volatile_patterns: ${(err as Error).message}`,
+        });
+      }
+    }
+  }
+
+  if (workflowCompiled.length === 0 && perNode.length === 0) return issues;
+
+  const messages = readRecentErrorMessages(appRoot);
+  if (messages.length === 0) return issues;  // No corpus, can't judge.
+
+  // Pre-normalize via defaults once per message, then walk workflow
+  // patterns detect-then-apply, then per-node patterns against the
+  // post-workflow form.
+  const workflowNormalized = messages.map((m) => {
+    let cur = m;
+    for (const [re, repl] of DEFAULT_VOLATILE_PATTERNS) cur = cur.replace(re, repl);
+    return cur;
+  });
+  // Walk workflow patterns once across all messages, tracking whether
+  // each fired anywhere; afterwards, mutate `workflowNormalized` so
+  // per-node patterns see the same intermediate the kernel sees.
+  for (let i = 0; i < workflowCompiled.length; i++) {
+    const [re, repl] = workflowCompiled[i]!;
+    let fired = false;
+    for (let m = 0; m < workflowNormalized.length; m++) {
+      re.lastIndex = 0;
+      if (re.test(workflowNormalized[m]!)) fired = true;
+      re.lastIndex = 0;
+      workflowNormalized[m] = workflowNormalized[m]!.replace(re, repl);
+    }
+    if (!fired) {
+      const src = (userWorkflowRaw?.[i] as { pattern?: string } | undefined)?.pattern ?? "?";
+      issues.push({
+        app: appRel,
+        kind: "warning",
+        message: `config.error_signature.volatile_patterns[${i}] (/${src}/) matched no errorLog messages in the most recent run(s) — possibly dead config or stale pattern.`,
+      });
+    }
+  }
+
+  for (const { wf, node, compiled: patterns } of perNode) {
+    for (let i = 0; i < patterns.length; i++) {
+      const [re] = patterns[i]!;
+      let fired = false;
+      for (const norm of workflowNormalized) {
+        re.lastIndex = 0;
+        if (re.test(norm)) { fired = true; break; }
+      }
+      if (!fired) {
+        issues.push({
+          app: appRel,
+          kind: "warning",
+          message: `${wf}.${node}.error_signature.volatile_patterns[${i}] matched no errorLog messages in the most recent run(s) — possibly dead config.`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
 function lintApp(appRoot: string): LintReport {
   const appRel = path.relative(process.cwd(), appRoot) || appRoot;
   const issues: LintIssue[] = [];
@@ -62,10 +203,11 @@ function lintApp(appRoot: string): LintReport {
     workflows = Object.keys(compiled.workflows).length;
     agents = Object.keys(compiled.agents).length;
     const handlerDefaults = compiled.config?.handler_defaults;
+    const strict = compiled.config?.strict_handler_inference;
     for (const [wfName, wf] of Object.entries(compiled.workflows)) {
       for (const [nodeKey, node] of Object.entries(wf.nodes)) {
         nodes++;
-        const handlerRef = node.handler ?? inferHandler(node.type, node.script_type, handlerDefaults);
+        const handlerRef = node.handler ?? inferHandler(node.type, node.script_type, handlerDefaults, strict);
         if (!handlerRef) {
           issues.push({
             app: appRel,
@@ -111,6 +253,13 @@ function lintApp(appRoot: string): LintReport {
         message: `config.policy has no max_idle_minutes or max_total_failures set — pipeline cannot self-terminate on stall or failure storm.`,
       });
     }
+
+    // Dead volatile_patterns check — flag user-supplied patterns that
+    // matched zero observed signatures in the most recent run. Catches
+    // both authoring mistakes (pattern targets the wrong shape) and
+    // patterns whose triggering failure no longer occurs. Best-effort:
+    // requires a recent `_state.json` under `.dagent/` for the app.
+    issues.push(...lintDeadVolatilePatterns(appRoot, appRel, compiled));
   } catch (err) {
     issues.push({
       app: appRel,

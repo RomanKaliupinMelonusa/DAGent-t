@@ -26,6 +26,22 @@ export interface PipelineRunConfig {
   readonly apmContext: ApmCompiledOutput;
   readonly roamAvailable: boolean;
   readonly logger: PipelineLogger;
+  /**
+   * Absolute path to the user-supplied feature spec markdown. Forwarded
+   * to local-exec handlers as the `SPEC_FILE` env var so scripts like
+   * `stage-spec.sh` can copy it into `_kickoff/spec.md`.
+   */
+  readonly specFile: string;
+  /**
+   * Optional advisory markdown produced by the pinned-dependency preflight
+   * (see `lifecycle/dependency-pinning.ts`). When present, the context
+   * builder forwards it to the `AgentContext` of agents that consult the
+   * vendored reference snapshot (storefront-dev, storefront-debug,
+   * e2e-author) so their prompt templates can surface it as an "Upstream
+   * API Drift Notice". Absent when no drift was detected or no snapshot
+   * is configured.
+   */
+  readonly pwaKitDriftReport?: string;
 }
 
 /** All mutable state that persists across pipeline iterations. */
@@ -117,11 +133,18 @@ export type AvailableItem = NextAction & { key: string };
 /**
  * Discriminated union returned by `getNextBatch()`. Eliminates sentinel
  * detection (key === null) from the main loop.
+ *
+ * Variants optionally carry a `gateEffects` array: side-effect descriptors
+ * the kernel emitted while computing readiness (e.g. a
+ * `dispatch.gated_on_producer_cycle` telemetry event for every consumer
+ * held back by the cycle-aware producer gate). The loop drains these
+ * before executing any item-level dispatch; legacy callers that ignore
+ * them still see correct behaviour — the effects are advisory telemetry.
  */
 export type SchedulerResult =
-  | { readonly kind: "items"; readonly items: AvailableItem[] }
-  | { readonly kind: "complete" }
-  | { readonly kind: "blocked" };
+  | { readonly kind: "items"; readonly items: AvailableItem[]; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> }
+  | { readonly kind: "complete"; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> }
+  | { readonly kind: "blocked"; readonly gateEffects?: ReadonlyArray<import("./kernel/effects.js").Effect> };
 
 // ---------------------------------------------------------------------------
 // BatchSignals — pure result of interpreting a batch of session outcomes
@@ -150,6 +173,11 @@ export interface TriageActivation {
   triageNodeKey: string;
   /** Key of the node that failed. */
   failingKey: string;
+  /** InvocationId of the failing node's most-recent attempt. Lets the
+   *  triage handler stamp its `triggeredBy` lineage envelope without
+   *  scanning state. Optional for back-compat with older activation
+   *  call sites and fixtures. */
+  failingInvocationId?: string;
   /** Raw error message from the failing node. */
   rawError: string;
   /** Stable error fingerprint (SHA-256 prefix). */

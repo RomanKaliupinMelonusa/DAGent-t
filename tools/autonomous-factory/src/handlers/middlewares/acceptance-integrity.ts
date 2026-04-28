@@ -25,10 +25,11 @@
  * entries, changed testids, changed flow steps) all change the hash.
  */
 
-import fs from "node:fs";
 import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
 import type { NodeContext, NodeResult } from "../types.js";
 import { hashAcceptanceContract, loadAcceptanceContract } from "../../apm/acceptance-schema.js";
+import { featurePath } from "../../paths/feature-paths.js";
+import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 
 export const SPEC_COMPILER_KEY = "spec-compiler";
 
@@ -62,7 +63,7 @@ export const acceptanceIntegrityMiddleware: NodeMiddleware = {
       if (recorded) {
         // Re-hash the on-disk file. If it's missing, this is a defect —
         // something deleted the contract mid-run.
-        if (!fs.existsSync(recorded.path)) {
+        if (!ctx.filesystem.existsSync(recorded.path)) {
           return {
             outcome: "failed",
             signal: "halt",
@@ -108,16 +109,29 @@ export const acceptanceIntegrityMiddleware: NodeMiddleware = {
     const result = await next();
     if (result.outcome !== "completed") return result;
 
-    // The spec-compiler is expected to have written
-    // `<appRoot>/in-progress/<slug>_ACCEPTANCE.yml`. If it didn't, we
-    // fail the node — completion without the artifact is a contract
-    // violation against the agent's job description.
-    const acceptancePath = `${ctx.appRoot}/in-progress/${ctx.slug}_ACCEPTANCE.yml`;
-    if (!fs.existsSync(acceptancePath)) {
+    // The spec-compiler writes `acceptance.yml` as a node-scope artifact
+    // at `<slug>/spec-compiler/<invocationId>/outputs/acceptance.yml`
+    // (per its agent prompt: "$OUTPUTS_DIR/acceptance.yml"). Resolve that
+    // canonical path via the artifact bus; the legacy `_kickoff/acceptance.yml`
+    // location is accepted as a compatibility fallback for any producer
+    // that still writes there directly.
+    const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
+    const nodeAcceptancePath = bus.nodePath(
+      ctx.slug,
+      ctx.itemKey,
+      ctx.executionId,
+      "acceptance",
+    );
+    const kickoffAcceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
+    const acceptancePath = ctx.filesystem.existsSync(nodeAcceptancePath)
+      ? nodeAcceptancePath
+      : kickoffAcceptancePath;
+    if (!ctx.filesystem.existsSync(acceptancePath)) {
       return {
         outcome: "failed",
         errorMessage:
-          `spec-compiler reported success but did not produce ${acceptancePath}. ` +
+          `spec-compiler reported success but did not produce acceptance.yml at ` +
+          `${nodeAcceptancePath} (or legacy ${kickoffAcceptancePath}). ` +
           `The acceptance contract is required for downstream nodes.`,
         summary: { intents: [`spec-compiler produced no acceptance contract`] },
       };

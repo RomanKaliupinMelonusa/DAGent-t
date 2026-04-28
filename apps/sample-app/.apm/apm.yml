@@ -171,6 +171,25 @@ agents:
 # Nodes define WHAT to execute; workflows define HOW to connect them.
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
+  # ── Scaffolding ────────────────────────────────────────────────────
+  # Pipeline-specific side-effects the kernel must not own. `create-branch`
+  # materializes the feature branch; `stage-spec` copies the user-supplied
+  # spec (SPEC_FILE) into `_kickoff/spec.md` so downstream agents consume it
+  # via their declared `consumes_kickoff: [spec]`.
+  create-branch:
+    type: script
+    category: scaffold
+    timeout_minutes: 2
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}"
+
+  stage-spec:
+    type: script
+    category: scaffold
+    timeout_minutes: 2
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh"
+
   schema-dev:
     type: agent
     category: dev
@@ -207,7 +226,7 @@ nodes:
   create-draft-pr:
     type: agent
     category: deploy
-    agent: "@pr-creator"
+    agent: "@create-draft-pr"
     timeout_minutes: 15
     commit_scope: pipeline
 
@@ -265,7 +284,7 @@ nodes:
   backend-unit-test:
     type: agent
     category: test
-    agent: "@backend-test"
+    agent: "@backend-unit-test"
     timeout_minutes: 10
     auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
     commit_scope: backend
@@ -274,7 +293,7 @@ nodes:
   frontend-unit-test:
     type: agent
     category: test
-    agent: "@frontend-ui-test"
+    agent: "@frontend-unit-test"
     timeout_minutes: 10
     auto_skip_if_no_changes_in: [frontend, e2e]
     commit_scope: frontend
@@ -305,7 +324,7 @@ nodes:
   integration-test:
     type: agent
     category: test
-    agent: "@backend-test"
+    agent: "@integration-test"
     timeout_minutes: 20
     requires_data_plane_ready: true
     auto_skip_if_no_changes_in: [backend, infra, schemas, packages]
@@ -316,7 +335,7 @@ nodes:
   live-ui:
     type: agent
     category: test
-    agent: "@frontend-ui-test"
+    agent: "@live-ui"
     timeout_minutes: 20
     requires_data_plane_ready: true
     auto_skip_if_no_changes_in: [frontend, infra, e2e]
@@ -336,7 +355,7 @@ nodes:
   docs-archived:
     type: agent
     category: finalize
-    agent: "@docs-expert"
+    agent: "@docs-archived"
     timeout_minutes: 20
     commit_scope: docs
     generates_change_manifest: true
@@ -357,6 +376,22 @@ nodes:
     command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/publish-pr.sh"
     signals_create_pr: true
     salvage_survivor: true
+    # publish-pr is a Draft-PR creator. After a salvage pass its only
+    # upstream is N/A by design, so the deploy-orphan sweep must not
+    # demote it. Symmetric with the storefront workflow.
+    salvage_immune: true
+    circuit_breaker:
+      halt_on_identical: true
+
+  mark-pr-ready:
+    type: script
+    category: finalize
+    timeout_minutes: 5
+    script_type: local-exec
+    command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/mark-pr-ready.sh"
+    # Salvaged runs intentionally leave the PR in Draft state. mark-pr-ready
+    # is the final tail node and must not survive degradation.
+    salvage_survivor: false
     circuit_breaker:
       halt_on_identical: true
 

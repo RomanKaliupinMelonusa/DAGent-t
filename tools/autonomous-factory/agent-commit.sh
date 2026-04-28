@@ -14,17 +14,17 @@
 #   paths   — Optional explicit paths to stage. If omitted, uses scope defaults.
 #
 # Scope defaults (all paths relative to APP_ROOT when set):
-#   backend  → backend/ packages/ infra/ in-progress/
-#   frontend → frontend/ packages/ e2e/ in-progress/
-#   infra    → infra/ in-progress/
-#   cicd     → .github/ in-progress/
-#   docs     → docs/ archive/ in-progress/ README.md frontend/README.md .github/
-#   pipeline → in-progress/
+#   backend  → backend/ packages/ infra/ .dagent/
+#   frontend → frontend/ packages/ e2e/ .dagent/
+#   infra    → infra/ .dagent/
+#   cicd     → .github/ .dagent/
+#   docs     → docs/ .dagent/ README.md frontend/README.md .github/
+#   pipeline → .dagent/
 #
 # Examples:
 #   bash scripts/agent-commit.sh backend "feat(backend): add bulk export endpoint"
 #   bash scripts/agent-commit.sh pipeline "chore(pipeline): mark Unit Tests Passed"
-#   bash scripts/agent-commit.sh frontend "fix(frontend): selector update" frontend/ in-progress/
+#   bash scripts/agent-commit.sh frontend "fix(frontend): selector update" frontend/ .dagent/
 # =============================================================================
 
 set -euo pipefail
@@ -46,28 +46,28 @@ if [ $# -gt 0 ]; then
 else
   case "$SCOPE" in
     backend)
-      PATHS=("${AR}/backend/" "${AR}/packages/" "${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/in-progress/")
+      PATHS=("${AR}/backend/" "${AR}/packages/" "${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/.dagent/")
       ;;
     frontend)
-      PATHS=("${AR}/frontend/" "${AR}/packages/" "${AR}/e2e/" "${AR}/in-progress/")
+      PATHS=("${AR}/frontend/" "${AR}/packages/" "${AR}/e2e/" "${AR}/.dagent/")
       ;;
     infra)
-      PATHS=("${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/in-progress/")
+      PATHS=("${AR}/infra/" "${AR}/.apm/hooks/" "${AR}/.dagent/")
       ;;
     cicd)
-      PATHS=(".github/" "${AR}/in-progress/")
+      PATHS=(".github/" "${AR}/.dagent/")
       ;;
     docs)
-      PATHS=("${AR}/docs/" "${AR}/archive/" "${AR}/in-progress/" README.md "${AR}/frontend/README.md" "${AR}/.github/")
+      PATHS=("${AR}/docs/" "${AR}/.dagent/" README.md "${AR}/frontend/README.md" "${AR}/.github/")
       ;;
     pipeline)
-      PATHS=("${AR}/in-progress/")
+      PATHS=("${AR}/.dagent/")
       ;;
     pr)
-      PATHS=("${AR}/archive/" "${AR}/in-progress/")
+      PATHS=("${AR}/.dagent/")
       ;;
     e2e)
-      PATHS=("${AR}/e2e/" "${AR}/in-progress/")
+      PATHS=("${AR}/e2e/" "${AR}/.dagent/")
       ;;
     all)
       # Stage the entire app root, excluding heavy/generated dirs.
@@ -101,12 +101,11 @@ if [ "$ALL_SCOPE" = true ]; then
   done
 fi
 
-# Exclude pipeline state files from in-progress/ — committed exclusively by the
-# orchestrator (mutex).  Only reset files under in-progress/, NOT archive/ where
-# they belong after archiveFeatureFiles() moves them.
+# Exclude pipeline state files from .dagent/ — committed exclusively by the
+# orchestrator (mutex). Only the orchestrator should ever stage _STATE.json
+# or _TRANS.md.
 # State-aware: only unstage if the file still exists on disk (agent mutation case).
-# When files have been physically moved to archive/, their deletions must commit.
-for _pattern in "${AR}/in-progress/*_STATE.json" "${AR}/in-progress/*_TRANS.md"; do
+for _pattern in "${AR}/.dagent/*_STATE.json" "${AR}/.dagent/*_TRANS.md"; do
   for _staged in $(git diff --cached --name-only -- "$_pattern" 2>/dev/null); do
     if [ -f "$_staged" ]; then
       git reset HEAD -- "$_staged" 2>/dev/null || true

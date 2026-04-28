@@ -19,10 +19,10 @@ import { join } from "node:path";
 import { evaluateTriage } from "../index.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
 
-// LLM router appends to <appRoot>/in-progress/<slug>_NOVEL_TRIAGE.jsonl on
+// LLM router appends to <appRoot>/.dagent/<slug>/_novel-triage.jsonl on
 // every invocation; the directory must exist.
 const TMP_APP_ROOT = mkdtempSync(join(tmpdir(), "triage-classifier-test-"));
-mkdirSync(join(TMP_APP_ROOT, "in-progress"), { recursive: true });
+mkdirSync(join(TMP_APP_ROOT, ".dagent"), { recursive: true });
 
 function makeStubLlm(responseDomain: string, responseReason: string): TriageLlm {
   return {
@@ -45,6 +45,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
         frontend: { description: "UI errors" },
         environment: { description: "Transient infra glitches" },
       },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [
         {
           error_snippet: "net::ERR_NAME_NOT_RESOLVED",
@@ -52,6 +54,8 @@ describe("evaluateTriage — classifier=llm-only", () => {
           reason: "DNS resolution failed",
         },
       ],
+      domains: ["frontend", "environment"],
+      patterns: [],
     };
 
     const trace =
@@ -73,7 +77,11 @@ describe("evaluateTriage — classifier=llm-only", () => {
       llm_fallback: true, // should be ignored — classifier wins
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
+      domains: ["frontend"],
+      patterns: [],
     };
 
     const llm = makeStubLlm("frontend", "should not be called");
@@ -88,7 +96,11 @@ describe("evaluateTriage — classifier=llm-only", () => {
       llm_fallback: true,
       max_reroutes: 5,
       routing: { frontend: { description: "UI errors" } },
+      evidence_enrichment: true,
+      baseline_noise_filter: true,
       signatures: [],
+      domains: ["frontend"],
+      patterns: [],
     };
 
     const llm = makeStubLlm("frontend", "classified by llm");

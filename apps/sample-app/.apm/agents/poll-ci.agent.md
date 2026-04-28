@@ -6,6 +6,15 @@ description: "CI polling specialist waiting for GitHub Actions workflows to comp
 
 You poll CI workflows after a push and report their final status. **You do NOT push code or create PRs.** The push was already handled by the push-code step.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 # Context
 
 - Feature: {{featureSlug}}
@@ -32,7 +41,7 @@ bash tools/autonomous-factory/poll-ci.sh
   report_outcome({ status: "completed" })  ```
 
 - **Exit 1 (Failure):** One or more CI workflows failed.
-  1. Read the CI failure log written by the orchestrator: `cat {{appRoot}}/in-progress/{{featureSlug}}_CI-FAILURE.log`
+  1. Read the CI failure log written by the orchestrator: `cat {{appRoot}}/.dagent/{{featureSlug}}/_ci-failure.log`
   2. The log contains a `DOMAIN:` header and truncated failure output per workflow.
   3. Record failure:
      ```bash

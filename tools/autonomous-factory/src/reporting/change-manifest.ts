@@ -6,6 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ItemSummary } from "../types.js";
+import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
+import { buildEnvelope } from "../apm/artifact-catalog.js";
 
 /**
  * Write the change manifest JSON for the docs-expert agent.
@@ -19,7 +21,8 @@ export async function writeChangeManifest(
   pipelineSummaries: readonly ItemSummary[],
   readStateFn: (slug: string) => Promise<{ items: Array<{ key: string; docNote?: string | null }> }>,
 ): Promise<void> {
-  const manifestPath = path.join(appRoot, "in-progress", `${slug}_CHANGES.json`);
+  const manifestPath = featurePath(appRoot, slug, "change-manifest");
+  ensureFeatureDir(appRoot, slug, "change-manifest");
   let stateItems: Array<{ key: string; docNote?: string | null }> = [];
   try {
     const currentState = await readStateFn(slug);
@@ -40,13 +43,17 @@ export async function writeChangeManifest(
     }).trim();
 
     if (diff) {
-      allFilesChanged = diff.split("\n").filter(f => !f.includes("in-progress/"));
+      allFilesChanged = diff.split("\n").filter(f => !f.includes(".dagent/"));
     }
   } catch {
     console.warn("  ⚠ Could not compute full git diff for _CHANGES.json. Falling back to session memory.");
     allFilesChanged = [...new Set(pipelineSummaries.flatMap((s) => s.filesChanged))];
   }
   const manifest = {
+    // Session A (Item 8) — emit the envelope natively so the change
+    // manifest is strict_artifacts-compatible even though this writer
+    // predates the bus migration.
+    ...buildEnvelope("change-manifest", "docs-archived"),
     feature: slug,
     stepsCompleted: pipelineSummaries
       .filter((s) => s.outcome === "completed")

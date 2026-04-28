@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { ItemSummary } from "../types.js";
 import type { PreviousSummaryTotals } from "../app-types.js";
+import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 import { computeStepCost } from "./pricing.js";
 import { formatDuration, formatUsd, stepIcon } from "./format.js";
 import { buildCostAnalysisLines } from "./cost.js";
@@ -26,7 +27,8 @@ export function writeTerminalLog(
   apmCtx?: ApmCompiledOutput,
   baseTelemetry?: PreviousSummaryTotals | null,
 ): void {
-  const logPath = path.join(appRoot, "in-progress", `${featureSlug}_TERMINAL-LOG.md`);
+  const logPath = featurePath(appRoot, featureSlug, "terminal-log");
+  ensureFeatureDir(appRoot, featureSlug, "terminal-log");
 
   const totalMs = summaries.reduce((sum, s) => sum + s.durationMs, 0);
   const completed = summaries.filter((s) => s.outcome === "completed").length;
@@ -51,7 +53,7 @@ export function writeTerminalLog(
   try {
     const remoteBranch = `origin/${baseBranch}`;
     gitDiffStat = execSync(
-      `git diff --stat ${remoteBranch}..HEAD -- . ':!**/in-progress' ':!**/archive'`,
+      `git diff --stat ${remoteBranch}..HEAD -- . ':!**/.dagent'`,
       { cwd: repoRoot, encoding: "utf-8", timeout: 10_000 },
     ).trim();
   } catch { /* non-fatal */ }

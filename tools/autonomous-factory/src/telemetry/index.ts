@@ -13,8 +13,10 @@ export type {
   PipelineLogger,
   NodeTrace,
   NodeTraceAttempt,
+  RunEndReason,
 } from "./events.js";
 
 export { JsonlPipelineLogger } from "./jsonl-logger.js";
 export { NoopPipelineLogger } from "./noop-logger.js";
+export { MultiplexLogger } from "./multiplex-logger.js";
 export { createPipelineLogger } from "./factory.js";

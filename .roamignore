@@ -14,7 +14,7 @@ node_modules/
 # Test artifacts
 test-results/
 frontend/test-results/
-in-progress/screenshots/
+.dagent/screenshots/
 playwright-report/
 blob-report/
 coverage/
@@ -24,10 +24,6 @@ infra/.terraform/
 *.tfstate
 *.tfstate.backup
 tfplan*
-
-# Archives (not current code)
-docs/archive/
-archive/
 
 # Generated / lock files
 package-lock.json

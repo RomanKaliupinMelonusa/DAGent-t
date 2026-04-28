@@ -4,7 +4,7 @@
  * Verifies that the pre-flight baseline hook:
  *  - No-ops when no hook is configured.
  *  - Skips (non-fatal) when BASE_BRANCH is unset.
- *  - Writes the parsed route→pass/fail map to _FLIGHT_DATA.json on success.
+ *  - Writes the parsed route→pass/fail map to /_kickoff/flight-data.json on success.
  *  - Ignores malformed stdout without throwing.
  *  - Merges into existing flight data instead of clobbering it.
  */
@@ -33,7 +33,7 @@ function makeCtx(hookCmd: string | undefined): ApmCompiledOutput {
 
 function makeTempAppRoot(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-baseline-"));
-  fs.mkdirSync(path.join(dir, "in-progress"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".dagent"), { recursive: true });
   return dir;
 }
 
@@ -58,7 +58,7 @@ describe("runPreflightBaseline (A2)", () => {
     const result = runPreflightBaseline(slug, "main", "/tmp", appRoot, makeCtx(hookCmd));
     assert.deepEqual(result, { "/": "pass", "/category/foo": "fail" });
 
-    const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     const on_disk = JSON.parse(fs.readFileSync(flightPath, "utf-8")) as Record<string, unknown>;
     assert.deepEqual(on_disk.baselineValidation, { "/": "pass", "/category/foo": "fail" });
   });
@@ -72,7 +72,8 @@ describe("runPreflightBaseline (A2)", () => {
 
   it("merges into existing flight data without clobbering other keys", () => {
     const slug = "slug5";
-    const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
+    fs.mkdirSync(path.dirname(flightPath), { recursive: true });
     fs.writeFileSync(flightPath, JSON.stringify({ existingKey: "keepme" }), "utf-8");
 
     const hookCmd = `printf '%s' '{"/home":"pass"}'`;
@@ -88,7 +89,7 @@ describe("runPreflightBaseline (A2)", () => {
     const hookCmd = `echo boom && exit 2`;
     const result = runPreflightBaseline(slug, "main", "/tmp", appRoot, makeCtx(hookCmd));
     assert.equal(result, null);
-    const flightPath = path.join(appRoot, "in-progress", `${slug}_FLIGHT_DATA.json`);
+    const flightPath = path.join(appRoot, ".dagent", `${slug}/_kickoff/flight-data.json`);
     assert.equal(fs.existsSync(flightPath), false);
   });
 });

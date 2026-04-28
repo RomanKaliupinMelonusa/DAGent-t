@@ -35,6 +35,7 @@ function makeConfig(): PipelineRunConfig {
     appRoot: "/tmp/app",
     repoRoot: "/tmp/repo",
     baseBranch: "main",
+    specFile: "/tmp/spec.md",
     apmContext: { agents: {}, config: {} } as any,
     roamAvailable: false,
     logger: { event: () => "noop", blob: () => {}, query: () => [], setAttempt: () => {}, materializeItemSummary: () => null, runId: "test" } as any,

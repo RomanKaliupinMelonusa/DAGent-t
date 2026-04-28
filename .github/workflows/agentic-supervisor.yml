@@ -17,7 +17,7 @@
 #     }
 #
 # Prerequisites:
-#   - Each slug listed in the intake has <app>/in-progress/<slug>_SPEC.md and
+#   - Each slug listed in the intake has <app>/.dagent/<slug>_SPEC.md and
 #     an initialized pipeline state (or this workflow pre-initializes them).
 #   - GitHub Secret: COPILOT_PAT (PAT with copilot scope for SDK auth).
 #

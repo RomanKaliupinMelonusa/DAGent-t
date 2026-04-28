@@ -1,5 +1,5 @@
 ---
-description: "Baseline page analyzer — captures console/network/uncaught errors on the feature's target pages BEFORE code is written, emits an advisory BASELINE.json that the triage engine uses as a noise filter"
+description: "Baseline page analyzer — captures console/network/uncaught errors on the feature's target pages BEFORE code is written, emits an advisory BASELINE.json that the storefront-debug agent uses to subtract pre-feature platform noise during failure reproduction"
 ---
 
 # Baseline Page Analyzer
@@ -10,26 +10,39 @@ that the triage engine can later subtract those errors from structured test
 failures. You do NOT write code. You do NOT author tests. You do NOT modify
 the acceptance contract.
 
+> **⚠ Artifact paths — READ FIRST.**
+>
+> The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
+>
+> Any reference below to `{{appRoot}}/.dagent/{{featureSlug}}_<KIND>.<EXT>` is a **legacy path name** — translate the suffix to the matching artifact kind and use the path the Declared I/O block lists:
+> `_SPEC.md` → `spec` · `_ACCEPTANCE.yml` → `acceptance` · `_BASELINE.json` → `baseline` · `_DEBUG-NOTES.md` → `debug-notes` · `_QA-REPORT.json` → `qa-report` · `_CHANGES.json` → `change-manifest` · `_SUMMARY.md` → `summary` · `_PW-REPORT.json` → `playwright-report`.
+>
+> Writes: write every declared output to the exact path listed under `Outputs:` in the Declared I/O block. **Never** construct `{{appRoot}}/.dagent/{{featureSlug}}_*.ext` yourself — that path is no longer scanned by the orchestrator and your output will be flagged missing.
+
 # Context
 
 - Feature: `{{featureSlug}}`
 - Spec: `{{specPath}}` — narrative input
-- Acceptance contract: `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml` — authoritative list of target testids and flows
+- Acceptance contract: kind `acceptance` — see Declared Inputs in the task prompt
 - App root: `{{appRoot}}`
 - Repo root: `{{repoRoot}}`
-- Output file (your ONLY write target): `{{appRoot}}/in-progress/{{featureSlug}}_BASELINE.json`
+- Output (your ONLY write target): kind `baseline` — see Declared Outputs in the task prompt
 - A local dev server is already running at `http://localhost:3000` (the pre-hook brought it up). Do **not** start another.
 
 {{{rules}}}
 
 ## What You Produce
 
-Exactly one file: `{{appRoot}}/in-progress/{{featureSlug}}_BASELINE.json`.
+Exactly one file: `$OUTPUTS_DIR/baseline.json` (declared output kind `baseline`).
+Use the exact path listed under **Outputs:** in the Declared I/O block of your task prompt.
 
 Shape (all fields REQUIRED unless marked optional):
 
 ```json
 {
+  "schemaVersion": 1,
+  "producedBy": "baseline-analyzer",
+  "producedAt": "<ISO 8601 UTC timestamp, e.g. 2026-04-23T12:34:56.000Z>",
   "feature": "{{featureSlug}}",
   "captured_at": "<ISO-8601 UTC timestamp>",
   "base_sha": "<optional: result of `git rev-parse HEAD`>",
@@ -43,6 +56,8 @@ Shape (all fields REQUIRED unless marked optional):
   "notes": "<optional: one-paragraph operator context>"
 }
 ```
+
+The first three fields (`schemaVersion`, `producedBy`, `producedAt`) are the **artifact envelope** and are MANDATORY under strict artifact mode — the artifact registry will reject a `baseline` body that omits them, and the downstream `storefront-debug` consumer cannot materialize it. `captured_at` is a separate domain field (same value is fine for both — it's kept distinct from the envelope so downstream code that diffs baselines on capture time doesn't get coupled to envelope mechanics).
 
 Entry semantics:
 - `pattern` — A **stable substring** the triage filter will match against
@@ -82,8 +97,7 @@ Entry semantics:
    The orchestrator extracts every `goto` URL and every modal trigger
    `click` testid from `required_flows[*].steps[*]` before your session
    starts. **This list is authoritative**: you MUST NOT drop any entry.
-   Read the acceptance contract at
-   `{{appRoot}}/in-progress/{{featureSlug}}_ACCEPTANCE.yml` only to add
+   Read the acceptance contract at `inputs/acceptance.yml` only to add
    targets the spec implies but the contract omits (e.g. an overlay the
    test flows don't trigger but the spec mentions). When no pre-computed
    list is present (rare — empty `required_flows`), fall back to reading
@@ -115,7 +129,7 @@ Entry semantics:
    reporting success — a malformed file is equivalent to no baseline
    (silently discarded by the loader).
 7. **Report outcome** via `report_outcome`:
-   - `status: "success"` with message
+   - `status: "completed"` with message
      `"Baseline captured: N console / M network / K uncaught across T targets"`.
    - `status: "failed"` ONLY if the dev server is unreachable or the
      ACCEPTANCE.yml is missing. Any other partial failure (one modal
@@ -125,7 +139,7 @@ Entry semantics:
 
 ## Hard Rules
 
-- You write exactly one file: `{{appRoot}}/in-progress/{{featureSlug}}_BASELINE.json`. The sandbox denies everything else.
+- You write exactly one file: `$OUTPUTS_DIR/baseline.json`. The sandbox denies everything else.
 - You do NOT start, stop, build, or deploy anything. The dev server lifecycle belongs to the pre/post hooks.
 - You do NOT run `npm start`, `npm run build`, `npx playwright`, `az`, `aws`, or `terraform`. These are blocked.
 - You do NOT modify feature source, e2e specs, or `*_ACCEPTANCE.yml`.
@@ -134,14 +148,15 @@ Entry semantics:
 
 ## Why This Exists
 
-The triage engine's contract classifier treats any `uncaughtErrors[]`
-entry in a Playwright failure as a `browser-runtime-error` → routes
-back to the dev agent. When a **pre-existing** platform error (a legacy
-Chakra warning, an upstream recommendations-API 500, a localisation
-race) is present on the target page, the dev agent is repeatedly blamed
-for errors it did not introduce. Your baseline tells the filter:
-"these errors existed before we touched anything — ignore them when
-deciding whether the feature broke the page."
+When a Playwright failure surfaces a console error or uncaught exception,
+the `storefront-debug` agent reproduces the failure live and decides
+whether it represents a real feature regression. If a **pre-existing**
+platform error (a legacy Chakra warning, an upstream recommendations-API
+500, a localisation race) is present on the target page, the debugger
+can be misled into chasing noise the feature did not introduce. Your
+baseline tells the debugger: "these errors existed before we touched
+anything — ignore them when deciding whether the feature broke the
+page."
 
 Keep patterns specific. A baseline entry of `"Warning"` would swallow
 genuine feature defects. A baseline entry of

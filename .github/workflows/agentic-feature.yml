@@ -5,7 +5,7 @@
 # Triggered manually via workflow_dispatch with a feature slug and workflow type.
 #
 # Prerequisites:
-#   1. Feature spec exists: <app-path>/in-progress/<slug>_SPEC.md
+#   1. Feature spec exists: <app-path>/.dagent/<slug>_SPEC.md
 #   2. GitHub Secret: COPILOT_PAT (PAT with copilot scope for SDK auth)
 #
 # References:
@@ -82,7 +82,7 @@ jobs:
 
       - name: Initialize pipeline
         run: |
-          STATE_FILE="${{ inputs.app-path }}/in-progress/${{ inputs.feature-slug }}_STATE.json"
+          STATE_FILE="${{ inputs.app-path }}/.dagent/${{ inputs.feature-slug }}_STATE.json"
           if [ -f "$STATE_FILE" ]; then
             echo "✔ Pipeline state already exists — preserving existing state"
           else

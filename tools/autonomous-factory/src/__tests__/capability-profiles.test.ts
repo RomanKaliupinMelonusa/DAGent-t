@@ -45,10 +45,10 @@ describe("flattenProfile", () => {
 describe("resolveCapabilityProfile", () => {
   it("translates filesystem.write → security.allowedWritePaths", () => {
     const r = resolveCapabilityProfile(
-      { filesystem: { write: ["apps/sample-app/**", "in-progress/**"], read: [], deny: [] } },
+      { filesystem: { write: ["apps/sample-app/**", ".dagent/**"], read: [], deny: [] } },
       {},
     );
-    assert.deepEqual(r.security!.allowedWritePaths, ["apps/sample-app/**", "in-progress/**"]);
+    assert.deepEqual(r.security!.allowedWritePaths, ["apps/sample-app/**", ".dagent/**"]);
   });
 
   it("translates shell.deny → security.blockedCommandRegexes", () => {

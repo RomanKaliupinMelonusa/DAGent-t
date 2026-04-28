@@ -47,7 +47,7 @@
 
    The triage layer parses these attachments deterministically via
    `tools/autonomous-factory/src/triage/playwright-report.ts` and
-   subtracts the pre-feature `<slug>_BASELINE.json` before the dev agent
+   subtracts the pre-feature `<slug>/_kickoff/baseline.json` before the dev agent
    ever sees them. **Do NOT** roll your own `page.on('console')` handlers
    — they produce non-standard attachment names the parser won't match.
 
@@ -98,7 +98,7 @@
     }
     // Outcome 1 or 2 are both valid — test logic decides which is expected
     ```
-    An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode.
+    An unexplained 15-second timeout provides **zero triage value**. Always explicitly detect the failure mode so the LLM classifier can decide between `test-code` (route back to the SDET) and `code-defect` (route to `@storefront-debug`).
 
 ## Anti-Tautology Rules (MANDATORY — tests that cannot fail are forbidden)
 
@@ -121,7 +121,23 @@ A test that passes for both the happy path and the error state is **worse than n
 
 16. **Every happy-path test MUST assert a feature-specific, non-trivial element** — typically a `data-testid` added for the feature under test. If the feature introduces `data-testid="feature-modal"`, the happy-path test must assert that **exact** testid is visible with **feature-specific content** (e.g. a non-empty heading or detail text inside the modal).
 
-17. **Console-error budget.** At the end of every feature test, assert `expect(consoleErrors).toEqual([])` (or an explicit, feature-scoped allowlist). The existing `beforeEach/afterEach` logging is diagnostic — it does not fail the test. You MUST add an explicit assertion on `consoleErrors` in the test body, or the test tolerates uncaught exceptions that real users would see as broken.
+17. **Console-error budget (mechanical derivation, MANDATORY).** Every happy-path test MUST end with an explicit assertion against a baseline-derived allowlist:
+
+    ```ts
+    expect(
+      consoleErrors.filter((e) => !BASELINE_NOISE_PATTERNS.some((re) => re.test(e)))
+    ).toEqual([]);
+    ```
+
+    The `BASELINE_NOISE_PATTERNS` array MUST be derived **mechanically** from `inputs/baseline.json` — the materialised `baseline` input declared by your node in `workflows.yml`. The rule is exact:
+
+    - For every entry in `console_errors[]` whose `volatility` field equals `"persistent"`, emit one regex literal whose source is the entry's `pattern` field with these characters escaped: `.` `?` `+` `*` `(` `)` `[` `]` `{` `}` `|` `^` `$` `\` `/`. Treat the baseline `pattern` as a literal substring, not a compiled regex.
+    - Skip entries whose `volatility` is `"transient"` or absent — a future occurrence of those is a signal, not noise.
+    - Do NOT hand-roll the array from the spec, prior tests, or memory. Do NOT omit any persistent entry. Do NOT invent patterns the baseline does not list.
+
+    If `inputs/baseline.json` is absent (legacy run, `baseline-analyzer` skipped, graceful-degrade), use `const BASELINE_NOISE_PATTERNS: RegExp[] = []` and accept that any console error fails the test.
+
+    Rationale: hand-rolling the allowlist is exactly how the cycle-2 misroute on `product-quick-view-plp` happened — the SDET omitted `/403 Forbidden/` even though `baseline-analyzer` had flagged it `volatility: persistent`. Triage then classified the resulting console-error spew as a `code-defect` and burned a redevelopment cycle on a non-defect. The diagnostic `beforeEach`/`afterEach` capture remains advisory; only this assertion fails the test.
 
 18. **Self-review gate for anti-tautology.** Before committing:
     ```bash
@@ -131,3 +147,231 @@ A test that passes for both the happy path and the error state is **worse than n
     grep -nL "consoleErrors" e2e/*.spec.ts
     ```
     If the first command prints any line, rewrite the test title and split the assertions. If the second command lists any feature spec file, add a `consoleErrors` assertion to every happy-path test in that file.
+
+## Overlay Dismissal (MANDATORY — call before first interaction)
+
+PWA Kit mounts cookie/consent, locale-onboarding, and similar dialogs into a `chakra-portal` host that sits **on top of the PLP / PDP / cart page roots**. These portals intercept pointer events on tiles, swatches, ATC buttons, and any other actionable target. A spec that calls `.click()` / `.hover()` / `.fill()` without dismissing them first will retry for 60 s and time out with `<div class="chakra-portal">…</div> subtree intercepts pointer events`. Triage classifies that as `test-code` and routes it back to you.
+
+19. **Every spec rooted at a storefront page (PLP, PDP, cart, checkout, search, account) MUST call `dismissOverlays(page)` immediately after `page.goto(...)` and BEFORE the first interaction.** This applies even on tests that target a "should not crash" outcome — the overlay still intercepts.
+
+    Generic catalog of overlays the helper MUST handle (PWA-Kit-wide, not feature-specific):
+    - **Tracking / cookie consent** — `role="dialog"` whose accessible name matches `/consent|cookie|tracking/i`, primary CTA matches `/accept|decline|got it|dismiss/i`.
+    - **Locale / region / currency onboarding** — `role="dialog"` with primary CTA matching `/continue|confirm|select/i`.
+    - **Any other `chakra-portal`-mounted dialog** with a primary CTA matching the union pattern below.
+
+    **The helper is inlined per spec.** Do NOT modify `e2e/fixtures.ts` — fixtures.ts is treated as PWA-Kit framework code and is out of bounds for feature work. Add **only** the `Page` type import and the helper function below to each spec file that navigates to a storefront page (your spec already imports `test`/`expect` from `'./fixtures'` per rule §9 — do not duplicate that import).
+
+    ```ts
+    import type { Page } from '@playwright/test';
+
+    /**
+     * Dismiss any Chakra-portal-mounted dialog (consent, locale, onboarding)
+     * that intercepts pointer events on PLP/PDP/cart roots. PWA-Kit-generic;
+     * idempotent; never throws; bounded total wall time (~1.5s worst case,
+     * <50 ms when no overlay is present). Uses only `@playwright/test`
+     * primitives — no `waitForTimeout`, no `networkidle` (per rules §1–§2).
+     */
+    async function dismissOverlays(page: Page): Promise<void> {
+      const ctaPattern = /accept|decline|close|continue|got it|dismiss|confirm|select/i;
+      // Up to 3 passes — stacked portals (consent + locale) need sequential dismiss.
+      // Each pass blocks at most ~500 ms (one CTA click attempt @ 400 ms +
+      // one short locator wait), so worst case is ~1.5 s without timers.
+      for (let pass = 0; pass < 3; pass++) {
+        const dialogs = await page.getByRole('dialog').all();
+        let dismissed = false;
+        for (const dialog of dialogs) {
+          if (!(await dialog.isVisible().catch(() => false))) continue;
+          const cta = dialog.getByRole('button', { name: ctaPattern }).first();
+          const clicked = await cta
+            .click({ timeout: 400 })
+            .then(() => true)
+            .catch(() => false);
+          if (!clicked) {
+            await page.keyboard.press('Escape').catch(() => {});
+          }
+          // Wait for THIS dialog to detach before scanning again. Bounded
+          // by an explicit locator wait (rule §3-style) — no waitForTimeout.
+          await dialog.waitFor({ state: 'hidden', timeout: 400 }).catch(() => {});
+          dismissed = true;
+        }
+        if (!dismissed) return;
+      }
+    }
+    ```
+
+    Self-review grep (run before commit; sets a flag instead of `exit`-ing the parent shell):
+    ```bash
+    # Every spec that calls page.goto must also call dismissOverlays.
+    missing=0
+    for f in $(grep -lE "page\.goto\(" e2e/*.spec.ts 2>/dev/null); do
+      if ! grep -q "dismissOverlays" "$f"; then
+        echo "MISSING dismissOverlays: $f"
+        missing=1
+      fi
+    done
+    [ "$missing" = 0 ] || echo "FAIL: add dismissOverlays(page) per §19 to the files above"
+    ```
+
+## Strict-Mode-Safe Locators (MANDATORY)
+
+Playwright runs every actionable locator (`.click`, `.hover`, `.fill`, `.tap`, `.dispatchEvent`, `.press`) under **strict mode**. If the locator resolves to ≥ 2 elements, the action throws `strict mode violation: <selector> resolved to N elements`. Triage classifies that as `test-code` and routes it back to you.
+
+20. **Cardinality discipline rules:**
+
+    1. **Every actionable locator MUST resolve to exactly one element.** If you build a locator with `.filter({ has })`, `.locator(...)`, `getByRole(...)`, or `getByText(...)` and you intend to act on it, end the chain with `.first()` / `.nth(i)` OR pair it with `await expect(loc).toHaveCount(1)` before the action verb. The `.toHaveCount(1)` form doubles as a regression assertion: if the DOM grows to two matches in the future, the test fails loudly instead of silently acting on the first.
+    2. **Prefer feature-scoped `data-testid` over prefix-stem matchers for actions.** Feature-scoped testids (e.g. `product-tile-quick-view-btn-${productId}`, `cart-line-remove-btn-${lineId}`) name a single instance. Prefix-stem matchers (`[data-testid^="product-tile-"]`, `getByTestId(/^cart-line-/)`) are for **enumeration only** — never for action. If your spec needs to act on "the first tile", reach for the feature-scoped child testid directly, not the parent stem + filter.
+    3. **`.filter({ has })` on prefix-stem testids is a smell when the goal is action.** It typically resolves to N parents (one per tile / cart line / etc.) and forces you to bolt `.first()` onto the chain to satisfy strict mode — at which point the prefix-stem is doing no work. Collapse to the child testid.
+    4. **When iterating multi-resolution locators, materialise first.** Use `for (const el of await loc.all()) { … }`. Never rely on Playwright's implicit fan-out for actionable verbs — strict mode rejects it, and the failure mode is non-obvious.
+
+    **Worked counter-example (real cycle-2 regression).**
+
+    ❌ Failing — strict mode rejected (resolved to 50 elements):
+    ```ts
+    await page
+      .locator('[data-testid^="product-tile-"]')
+      .filter({ has: page.getByTestId('quick-view-trigger').first() })
+      .hover();
+    // Error: strict mode violation: locator(...).filter({ has: ... }) resolved to 50 elements
+    ```
+
+    ✅ Corrected (Strategy A — explicit `.first()`, accepts N matches): when the spec only needs to act on "any one" tile, pick one explicitly. Cardinality is intentional, no count assertion needed.
+    ```ts
+    const trigger = page.getByTestId(/^product-tile-quick-view-btn-/).first();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    ```
+
+    ✅ Corrected (Strategy B — exact-one assertion, fails loudly): when the spec must guarantee a single instance (e.g. an acceptance criterion says "the page shows exactly one Quick View trigger for the featured product"), assert the count first. Do **not** wrap it in `.catch()` — that defeats the regression guard.
+    ```ts
+    const trigger = page.getByTestId(`product-tile-quick-view-btn-${productId}`);
+    await expect(trigger).toHaveCount(1);
+    await trigger.click();
+    ```
+
+    Pick **one** strategy per call site. Never combine `.toHaveCount(1).catch(...)` with `.first()` — the catch swallows the regression signal and the `.first()` makes the assertion redundant.
+
+    ✅ Alternative — when the design genuinely requires hovering the parent tile to reveal the trigger, hover the **specific** tile (feature-scoped tile testid), not the prefix stem:
+    ```ts
+    const productId = 'womens-jewelry-bundleM';
+    await page.getByTestId(`product-tile-${productId}`).hover();
+    await page.getByTestId(`product-tile-quick-view-btn-${productId}`).click();
+    ```
+
+## Fixture References (MANDATORY when the contract declares test_fixtures)
+
+The acceptance contract resolves URLs / product / locale concerns ONCE in `test_fixtures[]`. Each `required_flow` may carry an optional `fixture: <id>` reference. Your spec consumes fixtures **by reference** — you do NOT re-resolve URLs and you do NOT inline data assumptions.
+
+23. **Read fixtures from acceptance.yml; never inline URLs for fixture-bound flows.**
+
+    - For every flow whose `fixture:` field is set, the URL belongs in `test_fixtures[<id>].url` — your `goto` step copies it from there at test setup. Do not hard-code `/category/newarrivals` (or worse, `/uk/en-GB/category/...`) inline when a fixture exists.
+    - The `e2e/fixtures.ts` file is treated as PWA-Kit framework code and is out of bounds. **Do NOT modify it.** Add a per-spec `loadFixture(id)` helper inlined in your spec file (mirrors the `dismissOverlays` pattern in §19).
+
+    ```ts
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import yaml from 'js-yaml';
+
+    type Fixture = {
+      id: string;
+      url: string;
+      base_sha: string;
+      asserted_at: string;
+      asserts: Array<{ kind: string; value: unknown; comparator?: string }>;
+    };
+
+    function loadFixture(id: string): Fixture {
+      const acceptancePath = process.env.ACCEPTANCE_PATH
+        ?? path.join(process.cwd(), '..', '..', '.dagent', process.env.FEATURE_SLUG ?? '', '_kickoff', 'acceptance.yml');
+      const doc = yaml.load(fs.readFileSync(acceptancePath, 'utf-8')) as { test_fixtures?: Fixture[] };
+      const f = (doc.test_fixtures ?? []).find((x) => x.id === id);
+      if (!f) throw new Error(`fixture id "${id}" not found in acceptance.yml`);
+      return f;
+    }
+
+    test('switch color swatch on PLP tile', async ({ page }) => {
+      const fixture = loadFixture('plp-multi-color');
+      await page.goto(fixture.url, { waitUntil: 'domcontentloaded' });
+      await dismissOverlays(page);
+      await awaitHydrated(page);
+      // ... act + assert against fixture-derived expectations
+    });
+    ```
+
+24. **A fixture-runtime mismatch is `test-data`, not `test-code`.**
+
+    If your spec's setup matches the fixture's URL and asserts, but the test still fails because (e.g.) the first PLP tile has only one color swatch when the fixture asserts `first_tile_swatch_count >= 2`, that is **not your bug** — the spec-compiler picked the wrong fixture. Surface the mismatch in the failure message so triage routes the failure to `test-data` (→ spec-compiler) instead of looping you on locator tweaks:
+
+    ```ts
+    const swatchCount = await page.getByTestId('color-swatch-btn').count();
+    expect(swatchCount, `fixture "${fixture.id}" asserts first_tile_swatch_count >= 2 but got ${swatchCount}`).toBeGreaterThanOrEqual(2);
+    ```
+
+    The explicit assertion message means the `e2e-runner` triage layer can match the failure to a fixture assertion and route to `test-data` rather than `test-code`.
+
+25. **Self-review grep (run before commit):**
+
+    ```bash
+    # Every spec referencing a fixture-bound flow MUST call loadFixture.
+    # If your acceptance.yml has any flow with `fixture:`, every matching
+    # spec file should import yaml + loadFixture and use fixture.url, not
+    # an inlined URL string.
+    grep -nE "page\.goto\(['\"]/uk/|/en-GB/|/RefArch/" e2e/*.spec.ts && \
+      echo "FAIL: locale/site-prefixed URLs are forbidden — read fixture.url instead" && exit 1 || true
+    ```
+
+## When you receive a triage-handoff from a prior cycle (MANDATORY)
+
+You have been re-invoked because a prior cycle's spec failed in a downstream node (`e2e-runner`, `qa-adversary`, or `storefront-debug`) and triage classified the failure as `test-code`. The pipeline materialises the prior triage decision into your invocation under `inputs/triage-handoff.json`. Treat this artifact as authoritative.
+
+21. **Redev-cycle discipline:**
+
+    1. **Read first, edit second.** Before opening any spec, read `inputs/triage-handoff.json` and surface these fields to yourself: `failingItem`, `errorExcerpt`, `triageDomain`, `triageReason`, `priorAttemptCount`, `touchedFiles`. The `triageReason` is the LLM classifier's diagnosis — it tells you exactly which assertion path needs editing.
+    2. **Diff before rewriting.** Read the existing failing spec verbatim. Identify (a) tests that were passing in the prior run and (b) tests that triaged into your domain. **Preserve passing assertions byte-for-byte.** Do NOT regenerate the file from scratch — that is how new defect classes get introduced and how `halt_on_identical` ends the run after three cycles with no progress.
+    3. **Scope edits to the failing assertion path.** Only modify the locator chain, wait, setup helper, or assertion that the `triageReason` directly implicates. Untouched tests stay untouched. New defect classes introduced into previously-passing tests are a regression.
+    4. **No new test cases during a redev cycle** unless the handoff explicitly calls out missing coverage. The redev surface is "fix what triage flagged", not "expand the suite".
+    5. **Re-audit every changed locator against §20 and every page-rooted spec against §19** before committing. Run the §10 / §18 / §19 self-review greps locally; a redev that re-introduces a `networkidle`, a tautological title, a missing `dismissOverlays`, or a strict-mode-unsafe locator will simply triage back to you next cycle.
+
+## Hydration discipline (MANDATORY — gate first interaction on hydration)
+
+PWA Kit ships fully-rendered HTML from the SSR server. Buttons, links, and form controls are present in the DOM **before** React has attached its event handlers on the client. A spec that calls `.click()` / `.fill()` / `.press()` between `page.goto(...)` and React's first `useEffect` will land on a non-interactive element — the click dispatches, the handler is not yet bound, the modal never opens, and Playwright times out 15 s later with a useless `TimeoutError`. Triage classifies that as `test-code` and routes it back to you.
+
+The app shell sets `window.__APP_HYDRATED__ = true` from a single `useEffect` after first client-side mount (see `overrides/app/components/_app/index.jsx`). The `awaitHydrated(page)` helper exported from `./fixtures` polls for that flag with a 10 s timeout.
+
+22. **Every spec MUST `await awaitHydrated(page)` between `page.goto(...)` and the first user-action verb** (`click`, `fill`, `press`, `hover`, `tap`, `dispatchEvent`, `selectOption`, `check`, `setInputFiles`). Place it after `dismissOverlays(page)` (§19) so overlays are dismissed under the SSR DOM and the next interaction lands on a hydrated handler.
+
+    ```ts
+    // ✅ Canonical sequence
+    import { test, expect, awaitHydrated } from './fixtures';
+
+    test('opens quick view modal', async ({ page }) => {
+      await page.goto('/category/womens-jewelry', { waitUntil: 'domcontentloaded' });
+      await dismissOverlays(page);          // §19 — drop intercepting portals
+      await awaitHydrated(page);            // §22 — wait for React to attach handlers
+      await page.getByTestId('product-tile-quick-view-btn-womens-jewelry-bundleM').click();
+      await expect(page.getByTestId('quick-view-modal')).toBeVisible();
+    });
+    ```
+
+    **Pre-hydration shell tests are the only exception.** A spec that deliberately asserts on the SSR-rendered shell *before* hydration (e.g. SEO meta tags, no-JS fallback, server-rendered breadcrumb) MUST omit `awaitHydrated` AND add a one-line comment immediately above `page.goto(...)`:
+
+    ```ts
+    // pre-hydration: asserting SSR-rendered <title> before React mounts.
+    await page.goto('/category/womens-jewelry', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/Women's Jewelry/);
+    ```
+
+    The `// pre-hydration` token is what the self-review grep allowlists — keep the wording exact.
+
+    Self-review grep (run before commit; sets a flag instead of `exit`-ing the parent shell):
+    ```bash
+    # Every spec that calls page.goto must also call awaitHydrated, OR
+    # justify the omission with a `// pre-hydration` comment.
+    missing=0
+    for f in $(grep -lE "page\.goto\(" e2e/*.spec.ts 2>/dev/null); do
+      if ! grep -q "awaitHydrated" "$f" && ! grep -q "// pre-hydration" "$f"; then
+        echo "MISSING awaitHydrated: $f"
+        missing=1
+      fi
+    done
+    [ "$missing" = 0 ] || echo "FAIL: add awaitHydrated(page) per §22 to the files above (or annotate with // pre-hydration)"
+    ```

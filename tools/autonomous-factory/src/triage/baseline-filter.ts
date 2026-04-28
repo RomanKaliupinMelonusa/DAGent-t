@@ -311,3 +311,24 @@ export function filterNoiseFromText(
   if (droppedCount === 0) return { text, droppedCount: 0 };
   return { text: kept.join("\n"), droppedCount };
 }
+
+// ---------------------------------------------------------------------------
+// Shared single-message matcher — used by the LLM router to enforce the
+// "baseline-only evidence cannot justify a verdict" rule. Matching semantics
+// (per-channel normaliser, source_url scoping, dropped-empty-pattern guard)
+// are inherited verbatim from `createNoiseSubtractor` so the structured
+// filter and the router can never drift.
+//
+// Returns true when `message` matches any console / uncaught / network
+// pattern declared in the supplied baseline. Returns false when baseline
+// is null/empty or no entry applies.
+// ---------------------------------------------------------------------------
+export function matchesAnyBaselinePattern(
+  message: string,
+  baseline: BaselineProfile | null | undefined,
+): boolean {
+  if (!baseline || !message) return false;
+  const sub = createNoiseSubtractor(baseline);
+  if (!sub.hasAny) return false;
+  return sub.matchesTextChannel(message) || sub.matchesNetwork(message);
+}

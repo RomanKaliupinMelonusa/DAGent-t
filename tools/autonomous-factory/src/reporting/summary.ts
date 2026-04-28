@@ -7,6 +7,7 @@ import path from "node:path";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { ItemSummary } from "../types.js";
 import type { PreviousSummaryTotals } from "../app-types.js";
+import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 import { computeStepCost } from "./pricing.js";
 import { formatDuration, formatUsd, stepIcon } from "./format.js";
 import { buildCostAnalysisLines } from "./cost.js";
@@ -21,7 +22,8 @@ export function writePipelineSummary(
   apmCtx?: ApmCompiledOutput,
   baseTelemetry?: PreviousSummaryTotals | null,
 ): void {
-  const summaryPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY.md`);
+  const summaryPath = featurePath(appRoot, featureSlug, "summary");
+  ensureFeatureDir(appRoot, featureSlug, "summary");
 
   // --- Current session totals ---
   const totalMs = summaries.reduce((sum, s) => sum + s.durationMs, 0);
@@ -184,7 +186,8 @@ export function writePipelineSummary(
 
   // --- Structured JSON sidecar for cross-session telemetry merging ---
   // Replaces regex-based parsing with deterministic JSON round-trip.
-  const dataPath = path.join(appRoot, "in-progress", `${featureSlug}_SUMMARY-DATA.json`);
+  const dataPath = featurePath(appRoot, featureSlug, "summary-data");
+  ensureFeatureDir(appRoot, featureSlug, "summary-data");
   const data: PreviousSummaryTotals = {
     steps: mergedSteps,
     completed: mergedCompleted,

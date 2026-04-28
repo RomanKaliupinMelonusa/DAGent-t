@@ -24,6 +24,17 @@ storefront:
   default_triage: triage-storefront
 
   nodes:
+    # ── Wave 0: Scaffolding (pipeline-agnostic kernel → pipeline-specific nodes) ─
+    # `create-branch` materializes feature/<slug>; `stage-spec` copies the
+    # user-supplied spec (--spec-file) into `_kickoff/spec.md` so every
+    # `consumes_kickoff: [spec]` node below receives it via the
+    # materialize-inputs middleware.
+    create-branch:
+      depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
     # ── Acceptance contract compilation ───────────────────────────────
     # Runs first. Produces the machine-checkable ACCEPTANCE.yml that
     # storefront-dev, e2e-author, validate-acceptance (Phase B), and
@@ -31,7 +42,13 @@ storefront:
     # authoring from implementation prevents the dev agent from rewriting
     # its own acceptance criteria during redevelopment cycles.
     spec-compiler:
-      depends_on: []
+      depends_on: [stage-spec]
+      consumes_kickoff: [spec]
+      produces_artifacts: [acceptance]
+      # Spec-compiler self-heals schema violations via on_failure.schema-violation=$SELF,
+      # so its reroute surface picks up the triage handoff on retries.
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       # Bounded self-repair loop for schema violations. The
       # acceptance-integrity middleware produces canonical errors like
       # `[acceptance:…] schema violation: required_flows.N.steps: …` which
@@ -45,104 +62,194 @@ storefront:
         halt_on_identical: true
       on_failure:
         triage: triage-storefront
+        # Storefront triage classifies into {test-code, code-defect, test-data};
+        # the first two don't apply to spec-compiler output. `test-data`
+        # reroutes from e2e-runner / qa-adversary when a test_fixtures[]
+        # entry is wrong for the running config; spec-compiler self-heals
+        # by picking a different fixture. `fixture-validation-failure` is
+        # the L0-classified equivalent emitted by the post-completion
+        # `fixture-validation` middleware. Both bound by circuit_breaker
+        # above; ultimate failure halts gracefully via `blocked: null`.
         routes:
-          # Route structurally-invalid ACCEPTANCE.yml back to spec-compiler
-          # itself for a repair pass. Bounded by circuit_breaker above.
-          schema-violation: spec-compiler
-          # Any other classification for a spec-compiler failure is
-          # unrecoverable — blocked means human review + salvage.
+          test-data: "$SELF"
+          fixture-validation-failure: "$SELF"
           blocked: null
 
     # ── Pre-feature baseline ──────────────────────────────────────────
     # Captures console/network/uncaught errors on the pages and modals
-    # the feature will touch, BEFORE any code is written. The triage
-    # engine consumes the resulting `_BASELINE.json` as a noise filter
-    # so pre-existing platform errors never misclassify as feature
-    # defects. Advisory: failure never blocks the pipeline.
+    # the feature will touch, BEFORE any code is written. The resulting
+    # `_BASELINE.json` flows directly to `storefront-debug` via
+    # `consumes_artifacts` (kind: baseline, required: false) so the debug
+    # agent can subtract pre-feature platform noise from a Playwright
+    # failure during reproduction. Advisory: failure never blocks the
+    # pipeline.
     baseline-analyzer:
       depends_on: [spec-compiler]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+      produces_artifacts: [baseline]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       circuit_breaker:
         max_item_failures: 2
         halt_on_identical: true
       on_failure:
         triage: triage-storefront
+        # Baseline capture is advisory — any failure degrades gracefully.
+        # Downstream nodes proceed without a baseline; storefront-debug
+        # consumes the baseline artifact via `consumes_artifacts` with
+        # `required: false`.
         routes:
-          # Transient dev-server / Playwright MCP glitches — retry once.
-          environment: "$SELF"
-          # Anything else: degrade gracefully. Downstream nodes proceed
-          # without a baseline — triage.filterNoise becomes a no-op.
           blocked: null
-
     # ── Development ────────────────────────────────────────────────────
     storefront-dev:
       depends_on: [spec-compiler, baseline-analyzer]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      # Session A Item 9 — the dev agent self-reports which acceptance
+      # flows are live vs feature-flag-off / partial / skipped, so
+      # qa-adversary can skip non-live flows instead of raising false
+      # `required flow not exercised` violations (which otherwise triage
+      # back as "not implemented" and loop forever).
+      produces_artifacts: [implementation-status]
+      # Reroute target for `code-defect` failures from storefront-unit-test
+      # (Jest) and `test-code` failures from storefront-unit-test (Jest
+      # fixtures are dev-owned). Kernel injects the triage handoff only on
+      # `trigger=triage-reroute` runs.
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      # Coverage hole fix (Apr 2026): `storefront-dev` is itself a reroute
+      # target — when the dev session itself fails (compile error, agent
+      # disconnect, contract violation), triage must classify and route.
+      # Without an explicit on_failure block the triage handler had no
+      # routes map and the failing dev session escalated straight to the
+      # global default with no graceful-salvage option.
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Defects in the dev's own output retry the same agent (bounded
+          # by circuit_breaker.max_item_failures in apm.yml).
+          code-defect: "$SELF"
+          # Jest fixtures live next to the implementation — same agent
+          # owns both. (We do not route to e2e-author for unit-test code.)
+          test-code: "$SELF"
+          # Bad fixture pick by spec-compiler — bounce upstream.
+          test-data: spec-compiler
+          blocked: null
+
+    # ── Dev-server smoke gate (orchestrator-owned) ────────────────────
+    # Replaces the in-agent `npm start &` validation step. The script
+    # `tools/autonomous-factory/scripts/storefront-smoke.sh` boots PWA Kit
+    # under a cgroup memory cap (`systemd-run --user --scope`), probes
+    # the configured routes, and reaps the dev-server process group on
+    # exit. Failure is triaged like any other runtime defect: code-defect
+    # routes to storefront-debug for live-browser reproduction; test-data
+    # routes to spec-compiler so it can re-pick the fixture (e.g. the
+    # category URL the smoke probe hits 404 under the running site/locale).
+    storefront-dev-smoke:
+      depends_on: [storefront-dev]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: storefront-dev, kind: implementation-status, required: false }
+      produces_artifacts: [smoke-report]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          code-defect: storefront-debug
+          test-data: spec-compiler
 
     # ── Runtime-defect debugger ───────────────────────────────────────
     # Sits inline between storefront-dev and storefront-unit-test. On the
     # happy path (no triage reroute) the node auto-skips via
-    # `auto_skip_unless_triage_reroute`. When triage reroutes a runtime
-    # failure (frontend / ssr-hydration / browser-runtime-error /
-    # test-code-from-dev) onto this node, it reproduces the failure via
-    # the Playwright MCP, patches the minimum diff, and lets the DAG
-    # re-run storefront-unit-test → e2e-author → e2e-runner → qa-adversary.
+    # `auto_skip_unless_triage_reroute`. When triage classifies an E2E /
+    # QA / runtime failure as `code-defect`, the handler reroutes onto
+    # this node, which reproduces the failure via the Playwright MCP
+    # (using the materialized `inputs/baseline.json` to subtract pre-
+    # feature noise), patches the minimum diff, and lets the DAG re-run
+    # storefront-unit-test → e2e-author → e2e-runner → qa-adversary.
     storefront-debug:
-      depends_on: [storefront-dev]
+      depends_on: [storefront-dev-smoke]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      produces_artifacts: [debug-notes]
+      # storefront-debug auto-skips on the happy path and only runs when
+      # triage reroutes a `code-defect` failure onto it. The handoff is
+      # always required when this node is activated.
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
         routes:
-          # Debug couldn't fix the runtime bug — retry itself (bounded by
-          # circuit_breaker.max_item_failures in apm.yml).
-          frontend: "$SELF"
-          ssr-hydration: "$SELF"
-          browser-runtime-error: "$SELF"
-          test-code-from-dev: "$SELF"
+          # Debug couldn't fix the storefront defect — retry itself
+          # (bounded by circuit_breaker.max_item_failures in apm.yml).
+          code-defect: "$SELF"
           # Debug concluded the Playwright spec itself is the defect —
           # hand off to the SDET.
           test-code: e2e-author
-          environment: "$SELF"
-          # Unfixable → graceful salvage via the triage handler.
-          blocked: null
 
     storefront-unit-test:
       depends_on: [storefront-debug]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
         routes:
-          # Unit-test failures indicate a shallow impl bug that does not
-          # require live-browser investigation — keep routing to dev.
-          frontend: storefront-dev
+          # Jest unit tests are authored and owned by storefront-dev as part
+          # of feature work — the SDET (e2e-author) owns Playwright specs only.
+          # Both classifications therefore fan back to storefront-dev.
           test-code: storefront-dev
-          environment: "$SELF"
-          blocked: null
+          code-defect: storefront-dev
 
     # ── Validation (Author/Runner — SDET writes, native exec runs) ────
     e2e-author:
       depends_on: [storefront-unit-test]
-
-    e2e-runner:
-      depends_on: [e2e-author]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        # Phase 1 (Apr 2026) — the SDET derives `BASELINE_NOISE_PATTERNS`
+        # mechanically from this artifact (every `console_errors[]` entry
+        # whose `volatility === "persistent"`). Hand-rolling the list led
+        # to the cycle-2 misroute on `product-quick-view-plp` (omitted
+        # `/403 Forbidden/`). `required: false` matches the storefront-dev
+        # / storefront-debug graceful-degrade pattern.
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      # SDET is rerouted for `test-code` failures surfaced by e2e-runner,
+      # qa-adversary, or storefront-debug.
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      # Coverage hole fix (Apr 2026): the SDET can fail too — surface it
+      # through triage so test-code errors retry the SDET and test-data
+      # errors bounce back upstream to the spec-compiler.
       on_failure:
         triage: triage-storefront
         routes:
-          # Runtime defects visible in a live browser route to the debugger,
-          # not back to the full dev agent. Debug will re-run the Playwright
-          # spec via MCP after patching; the DAG cascade then re-runs
-          # storefront-unit-test → e2e-author → e2e-runner downstream.
-          frontend: storefront-debug
-          # Pure test bugs (bad locator, race condition) remain the SDET's
-          # responsibility.
-          test-code: e2e-author
-          # Test code the dev agent produced (e.g. a storefront helper that
-          # a spec imports) — debug investigates; if it's genuinely a test
-          # problem debug's own on_failure.test-code reroutes to e2e-author.
-          test-code-from-dev: storefront-debug
-          ssr-hydration: storefront-debug
-          # Contract-violation pre-classifier — uncaught browser runtime
-          # errors captured by the Playwright JSON reporter route here
-          # deterministically (no RAG, no LLM).
-          browser-runtime-error: storefront-debug
-          environment: "$SELF"
+          test-code: "$SELF"
+          test-data: spec-compiler
           blocked: null
+
+    e2e-runner:
+      depends_on: [e2e-author]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+      produces_artifacts: [playwright-report]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          # Pure test bugs (bad locator, race condition) — SDET fixes.
+          test-code: e2e-author
+          # Storefront defect surfaced by Playwright — live-browser debugger.
+          code-defect: storefront-debug
+          # Fixture mismatch surfaced by Playwright (e.g. assert_visible on a
+          # tile that doesn't exist for the chosen product, http_status:200
+          # contract violated by a 404 URL) — re-pick the fixture, don't
+          # tweak locators.
+          test-data: spec-compiler
 
     # ── Adversarial QA pass (Phase B.2) ───────────────────────────────
     # Attempts to falsify the feature against the acceptance contract.
@@ -150,48 +257,132 @@ storefront:
     # routes runtime defects to the debug agent for redevelopment.
     qa-adversary:
       depends_on: [e2e-runner]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: e2e-runner, kind: playwright-report, required: false }
+        # Session A Item 9 — optional so qa-adversary still runs if
+        # storefront-dev emitted no implementation-status (legacy runs,
+        # fresh-slate reverts). When present, the agent prompt requires
+        # probes to skip flows whose status is not "live".
+        - { from: storefront-dev, kind: implementation-status, required: false }
+        # Phase 1 (Apr 2026) — adversarial console-error oracle derives
+        # its allowlist from persistent baseline entries (same mechanical
+        # rule as e2e-author). Persistent baseline noise is NOT a
+        # violation; novel console errors ARE.
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      produces_artifacts: [qa-report]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         triage: triage-storefront
         routes:
-          # QA-discovered acceptance violations route to the debugger so
-          # it can reproduce the adversarial probe in a live browser.
-          frontend: storefront-debug
-          browser-runtime-error: storefront-debug
-          ssr-hydration: storefront-debug
-          # The QA probes themselves can be wrong (e.g. impossible flow).
+          # QA probes themselves can be wrong (e.g. impossible flow).
           test-code: qa-adversary
-          environment: "$SELF"
-          blocked: null
+          # Storefront defect surfaced by an adversarial probe.
+          code-defect: storefront-debug
+          # Fixture mismatch (chosen product/category violates a runtime
+          # assertion declared on the fixture) — re-pick the fixture.
+          test-data: spec-compiler
 
     create-draft-pr:
       depends_on: [storefront-unit-test, e2e-author, qa-adversary]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+        - { from: qa-adversary, kind: qa-report, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
 
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       depends_on: [e2e-runner, qa-adversary, create-draft-pr]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        # Cleanup is non-essential — degrade to Draft PR rather than halt.
+        routes:
+          blocked: null
 
     docs-archived:
       depends_on: [code-cleanup]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: spec-compiler, kind: acceptance }
+      produces_artifacts: [change-manifest]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          blocked: null
 
     doc-architect:
       depends_on: [code-cleanup, docs-archived]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          blocked: null
 
     # ── Deploy (push to Managed Runtime after all code changes) ────────
-    push-app:
-      depends_on: [doc-architect]
-
-    poll-app-ci:
-      depends_on: [push-app]
-      poll_target: push-app
+    #
+    # DISABLED — no Managed Runtime environment is provisioned yet.
+    # The `push-app` + `poll-app-ci` nodes below push to SCAPI / MRT and
+    # poll the Managed-Runtime build; without an MRT target they will
+    # fail or hang. They remain here (commented) as the reference wiring
+    # for when an environment is available.
+    #
+    # Pool definitions (hooks, timeouts, circuit breakers) are preserved
+    # in apm.yml → nodes: — the compiler tolerates unused pool entries,
+    # so restoring the deploy phase is a pure workflows.yml edit:
+    #   1. Uncomment the `push-app` and `poll-app-ci` blocks below.
+    #   2. Change `publish-pr.depends_on` back to `[poll-app-ci]`.
+    #
+    # push-app:
+    #   depends_on: [doc-architect]
+    #
+    # poll-app-ci:
+    #   depends_on: [push-app]
+    #   poll_target: push-app
 
     publish-pr:
-      depends_on: [poll-app-ci]
+      # TODO(mrt-deploy): restore `depends_on: [poll-app-ci]` once a
+      # Managed Runtime environment is wired up (see banner above).
+      depends_on: [doc-architect]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          blocked: null
 
-    # ── Triage ─────────────────────────────────────────────────────────
+    # ── Final tail node — flips the PR from Draft → Ready for Review ──
+    # Phase 2 split: publish-pr always opens the PR as Draft (and updates
+    # the body with the Wave 2 appendix); mark-pr-ready is the only node
+    # that promotes it. Salvaged runs intentionally never reach this node
+    # (`salvage_survivor: false`), so a degraded run leaves the PR in
+    # Draft — matching the UX intent of "human, please look at this".
+    mark-pr-ready:
+      depends_on: [publish-pr]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          blocked: null
+
+    # ── Triage ────────────────────────────────────────────────
     triage-storefront:
       _node: triage-node
       depends_on: []
       triage_profile: storefront
+      # Triage classifies failures and writes a triage-handoff artifact that
+      # the rerouted target node consumes via `consumes_reroute`.
+      produces_artifacts: [triage-handoff]
 
   # ── Unfixable Signals ──────────────────────────────────────────────
   unfixable_signals:
@@ -210,53 +401,48 @@ storefront:
     enabled: true
     threshold: 3
     excluded_keys:
+      # push-app / poll-app-ci are currently disabled (no MRT env —
+      # see the "Deploy" banner above). Keys are retained so the list
+      # is restore-ready; unknown keys are ignored by the matcher.
       - push-app
       - poll-app-ci
       - publish-pr
+      - mark-pr-ready
 
-  # ── Error-signature fingerprinter: Playwright volatile tokens ──────
-  # Stripped in addition to the built-in stack-agnostic defaults before
-  # hashing. Prevents rotating run totals, progress counters, durations,
-  # and per-run test-result paths from producing a different signature
-  # every cycle (which would defeat halt_on_identical).
-  error_signature:
-    volatile_patterns:
-      - { pattern: '\d+ passed(?:, \d+ failed)?(?:, \d+ total)?', replacement: "<PW_TOTALS>" }
-      - { pattern: 'Running \d+ tests? using \d+ workers?',      replacement: "<PW_RUN>" }
-      - { pattern: '\[\d+/\d+\]',                                 replacement: "<PW_PROGRESS>" }
-      - { pattern: '\(\d+(?:\.\d+)?\s*(?:ms|m|s)\)',              replacement: "<DUR>" }
-      - { pattern: 'Timeout \d+ms exceeded',                      replacement: "Timeout <MS>ms exceeded" }
-      - { pattern: 'test-results/[^\s)"''`]+',                    replacement: "<TEST_RESULT>" }
-      - { pattern: 'attachment #\d+',                             replacement: "attachment #<N>" }
-      - { pattern: '\d+ did not run',                             replacement: "<PW_NOTRUN>" }
+  # ── Error-signature fingerprinter ──────────────────────────────────
+  # Workflow-scoped `error_signature:` blocks are NOT read by the runtime —
+  # `entry/main.ts` resolves volatile_patterns from `apm.yml` top-level
+  # `config.error_signature` (and per-node overrides on workflow nodes).
+  # See `apps/commerce-storefront/.apm/apm.yml` → config.error_signature.
 
   # ── Triage Profiles ─────────────────────────────────────────────────
+  # Single-shot LLM classifier with three routes:
+  #   - test-code   → e2e-author       (Playwright spec is the defect)
+  #   - code-defect → storefront-debug (storefront code is the defect)
+  #   - test-data   → spec-compiler    (acceptance fixture is wrong for
+  #                                     the running config — pick again)
+  # No RAG packs, no declarative pre-classifier patterns, no contract-
+  # evidence prepend, no in-triage baseline noise filter. The baseline
+  # captured by `baseline-analyzer` flows directly to `storefront-debug`
+  # via `consumes_artifacts` — triage no longer touches it. Anything the
+  # classifier cannot fit into the three domains degrades to a draft PR
+  # for human review (typically a pipeline-layer defect, not fixable
+  # by re-running an agent).
   triage:
     storefront:
-      packs: [pwa-kit-storefront]
       classifier: llm-only
       llm_fallback: true
       max_reroutes: 5
+      evidence_enrichment: false
+      baseline_noise_filter: true
+      domains: [test-code, code-defect, test-data, fixture-validation-failure]
       routing:
-        frontend:
-          description: "UI rendering, Chakra components, commerce-sdk-react hook errors, config, Playwright failures"
-        cicd:
-          description: "GitHub Actions workflow file errors, deploy pipeline config"
-        deployment-stale:
-          description: "Stale deployment requiring re-push"
         test-code:
-          description: "The test itself is wrong (bad locator, race condition, contradicts spec)"
-        test-code-from-dev:
-          description: "Test code is broken, but written by the upstream dev agent, not QA"
-        environment:
-          description: "Transient auth/credential glitch, SLAS token failure, not a code bug"
-          retries: 2
-        ssr-hydration:
-          description: "SSR hydration mismatch, server-render crash, React hydration errors — route to the live-browser debugger for MCP-driven investigation"
-          route_to: storefront-debug
-        no-op-dev:
-          description: "Dev agent reported completion without committing any files in its attribution dirs. Re-dispatch with explicit must-commit directive."
-          route_to: storefront-dev
-          retries: 1
-        blocked:
-          description: "Unfixable without human intervention (permissions, SFCC access)"
+          description: "The Playwright spec itself is wrong (bad locator, strict-mode violation, race condition, assertion contradicts the acceptance contract). Route to the SDET (e2e-author)."
+        code-defect:
+          description: "Defect in the storefront application code surfaced by the failing node — rendering crash, hydration mismatch, runtime exception, hook misuse, missing null guard. Route to the live-browser debugger (storefront-debug)."
+        test-data:
+          description: "The acceptance contract's test fixture is misconfigured for the running storefront — URL 404s under the active locale/site config, the chosen product violates a runtime assertion declared on the fixture (swatch count, in-stock, product type), or http_status:200 contradicts a baseline failure. Route to spec-compiler so it picks a different fixture (different product / category / locale)."
+        fixture-validation-failure:
+          description: "Synthetic L0 domain emitted by the deterministic post-spec-compiler validation gate (raw-regex classifier matches `[fixture-validation]`). Never produced by the LLM router. Routed to spec-compiler self-heal."
+

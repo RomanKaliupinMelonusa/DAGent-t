@@ -4,7 +4,7 @@
  * Orchestrates a pipeline item's LLM agent run:
  * 1. Build AgentContext from NodeContext + APM config (+ upstream handoff artifacts)
  * 2. Resolve tool/harness limits + sandbox with APM cascade (support/agent-limits)
- * 3. Build task prompt (with pendingContext injection)
+ * 3. Build task prompt
  * 4. Delegate the session to `adapters/copilot-session-runner`
  * 5. Post-session: record HEAD, git-diff fallback, budget utilization
  *    (support/agent-post-session — all git I/O via ctx.vcs port)
@@ -26,12 +26,18 @@ import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
 import { formatDerivedTargetsMarkdown } from "../triage/derive-baseline-targets.js";
-import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import { buildAgentContext } from "./support/agent-context.js";
 import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
 import type { NodeHandler, NodeContext, NodeResult } from "./types.js";
 import type { ItemSummary } from "../types.js";
+import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { NodeContractGateParams } from "./support/node-contract-gate.js";
+import type { PrecompletionGate } from "../harness/index.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { featurePath } from "../paths/feature-paths.js";
+import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
+import { SPEC_COMPILER_KEY } from "./middlewares/acceptance-integrity.js";
 
 // ---------------------------------------------------------------------------
 // B4 — no-op-dev sanity check (pure helper, exported for tests)
@@ -84,6 +90,41 @@ function getTimeout(ctx: NodeContext): number {
   return (node?.timeout_minutes ?? 15) * 60_000;
 }
 
+/**
+ * Build the optional pre-`report_outcome` validation gate (P1.2). Currently
+ * scoped to `spec-compiler` only — the smallest blast radius. Generalize
+ * after one validated feature run. Returns `undefined` for any other node
+ * so the SDK runner falls through to the existing post-completion
+ * middlewares (defense in depth).
+ */
+function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined {
+  if (ctx.itemKey !== SPEC_COMPILER_KEY) return undefined;
+  const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
+  const nodeAcceptancePath = bus.nodePath(
+    ctx.slug,
+    ctx.itemKey,
+    ctx.executionId,
+    "acceptance",
+  );
+  const kickoffAcceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
+  return {
+    maxCorrectiveTurns: 1,
+    validate: () =>
+      validateSpecCompilerOutput({
+        candidatePaths: [nodeAcceptancePath, kickoffAcceptancePath],
+        existsSync: (p) => ctx.filesystem.existsSync(p),
+        loadBaseline: () => {
+          if (!ctx.baselineLoader) return null;
+          try {
+            return ctx.baselineLoader.loadBaseline(ctx.slug);
+          } catch {
+            return null;
+          }
+        },
+      }),
+  };
+}
+
 /** Initialize a blank ItemSummary for telemetry collection. */
 function initTelemetry(itemKey: string, attempt: number): ItemSummary {
   return {
@@ -128,7 +169,7 @@ const copilotAgentHandler: NodeHandler = {
     }
 
     // ── 1. Build agent context ──────────────────────────────────────────────
-    const { agentContext, upstreamArtifacts } = buildAgentContext(ctx);
+    const { agentContext, upstreamArtifacts } = await buildAgentContext(ctx);
     const hasArtifacts = Object.keys(upstreamArtifacts).length > 0;
 
     if (hasArtifacts) {
@@ -144,32 +185,34 @@ const copilotAgentHandler: NodeHandler = {
     // ── 2. Resolve tool + harness limits + sandbox ──────────────────────────
     const limits = resolveAgentLimits(ctx);
 
-    // ── 3. Build task prompt (with pendingContext injection) ────────────────
+    // ── 3. Build task prompt ───────────────────────────────────────────────
     const node = getWorkflowNode(ctx);
+    const artifactBus = ctx.artifactBus;
     let taskPrompt = buildTaskPrompt(
       { key: itemKey, label: (ctx.pipelineState.items.find((i) => i.key === itemKey) as { label?: string })?.label ?? itemKey },
       slug,
       appRoot,
       apmContext,
+      {
+        node,
+        pipelineState: ctx.pipelineState,
+        artifactBus,
+        invocationId: ctx.executionId,
+      },
     );
 
-    // The triage handler composes retry context, downstream failures, revert
-    // warnings, and rejection narratives into a single pendingContext string.
-    const pendingItem = ctx.pipelineState.items.find((i) => i.key === itemKey);
-    if (pendingItem?.pendingContext) {
-      taskPrompt += pendingItem.pendingContext;
-      ctx.logger.event("handoff.inject", itemKey, {
-        injection_types: ["pending_context"],
-        context_length: pendingItem.pendingContext.length,
-      });
-    }
+    // Phase 6 — re-entrance context (e.g. triage handoff) is no longer
+    // injected as prose. The triage handler writes a `triage-handoff`
+    // JSON artifact, and Phase 3's materialize-inputs middleware copies
+    // it into `<inv>/inputs/triage-handoff.json` for nodes that declare
+    // `consumes_reroute`. The agent reads it from disk.
 
     // Dispatch-time target derivation for baseline-analyzer — extract
     // pages + modal triggers from ACCEPTANCE.yml deterministically and
     // inject as an authoritative list so the agent doesn't have to
     // re-interpret the YAML and potentially miss targets.
     if (itemKey === "baseline-analyzer") {
-      const artifacts = ctx.triageArtifacts ?? new FileTriageArtifactLoader({ appRoot: ctx.appRoot });
+      const artifacts = ctx.triageArtifacts;
       try {
         const contract = artifacts.loadAcceptance(slug);
         if (contract) {
@@ -234,6 +277,47 @@ const copilotAgentHandler: NodeHandler = {
     const telemetry = initTelemetry(itemKey, attempt);
     const fatalPatterns = apmContext.config?.fatal_sdk_errors ?? DEFAULT_FATAL_SDK_PATTERNS;
 
+    // Resolve `next_failure_hint` validation context for this invocation.
+    // - allowedDomains: keys of the failing-node's `on_failure.routes`
+    //   (falls back to an empty list when the node has none — the tool
+    //   will then reject any hint with a clear "no allowed domains"
+    //   error so misuse is loud rather than silent).
+    // - dagNodeKeys: the full compiled workflow node set so the agent
+    //   can target any node in the DAG (forward or sibling).
+    const failureRoutes = (node?.on_failure?.routes ?? {}) as Record<string, unknown>;
+    const workflowNodes = apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes ?? {};
+    const nextFailureHintValidation = {
+      allowedDomains: Object.keys(failureRoutes),
+      dagNodeKeys: Object.keys(workflowNodes),
+    };
+
+    // Phase 2 — runner-internal node-contract gate. Validates after the
+    // initial sendAndWait and nudges the SAME session up to 3 times when
+    // `report_outcome` or declared `produces_artifacts` are missing. The
+    // dispatch-level gates remain the deterministic backstop.
+    const producesArtifacts = (node as { produces_artifacts?: readonly string[] } | undefined)
+      ?.produces_artifacts ?? [];
+    const gateMode = (node as { node_contract_gate?: NodeContractGateParams["mode"] } | undefined)
+      ?.node_contract_gate ?? "full";
+    const nodeContract: NodeContractGateParams = {
+      mode: gateMode,
+      producesArtifacts,
+      slug,
+      nodeKey: itemKey,
+      invocationId: ctx.executionId,
+      strictEnvelope: apmContext.config?.strict_artifacts === true,
+      autoSkipped: false, // dispatch middleware short-circuits before reaching the runner
+      bus: {
+        ref: (s, kind, opts) =>
+          ctx.artifactBus.ref(s, kind as ArtifactKind, opts),
+      },
+      fs: {
+        exists: (p) => ctx.filesystem.exists(p),
+        readFile: (p) => ctx.filesystem.readFile(p),
+        writeFile: (p, body) => ctx.filesystem.writeFile(p, body),
+      },
+    };
+
     const { sessionError, fatalError, reportedOutcome } = await ctx.copilotSessionRunner.run(client, {
       slug, itemKey, appRoot, repoRoot,
       model: agentConfig.model,
@@ -252,6 +336,9 @@ const copilotAgentHandler: NodeHandler = {
       preTimeoutPercent: limits.preTimeoutPercent,
       runtimeTokenBudget: limits.runtimeTokenBudget,
       logger: ctx.logger,
+      nextFailureHintValidation,
+      nodeContract,
+      precompletionGate: buildPrecompletionGate(ctx),
     });
 
     // ── 5. Post-session telemetry (via ctx.vcs port) ────────────────────────
@@ -294,6 +381,8 @@ const copilotAgentHandler: NodeHandler = {
     // exist (Phase A.6). A missing reportedOutcome here means the agent
     // ended its session without signalling — treat as a failure.
     if (reportedOutcome) {
+      const hint = reportedOutcome.nextFailureHint;
+      const handlerOutput = hint ? { nextFailureHint: hint } : undefined;
       if (reportedOutcome.status === "failed") {
         const message = reportedOutcome.message;
         telemetry.outcome = "failed";
@@ -305,6 +394,7 @@ const copilotAgentHandler: NodeHandler = {
           errorMessage: message,
           summary: telemetry,
           ...(diagTrace ? { diagnosticTrace: diagTrace } : {}),
+          ...(handlerOutput ? { handlerOutput } : {}),
         };
       }
 
@@ -346,7 +436,11 @@ const copilotAgentHandler: NodeHandler = {
       }
 
       ctx.logger.event("item.end", itemKey, { outcome: "completed", source: "report_outcome" });
-      return { outcome: "completed", summary: telemetry };
+      return {
+        outcome: "completed",
+        summary: telemetry,
+        ...(handlerOutput ? { handlerOutput } : {}),
+      };
     }
 
     const missingOutcomeMsg =

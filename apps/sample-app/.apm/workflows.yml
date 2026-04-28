@@ -30,12 +30,25 @@ full-stack:
       blocked: null
 
   nodes:
+    # ── Wave 0: Scaffolding (pipeline-agnostic kernel → pipeline-specific nodes) ─
+    create-branch:
+      depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
     # ── Wave 1: Infrastructure ─────────────────────────────────────────
     schema-dev:
-      depends_on: []
+      depends_on: [stage-spec]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     infra-architect:
       depends_on: [schema-dev]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     push-infra:
       _node: push-code
@@ -43,6 +56,8 @@ full-stack:
 
     create-draft-pr:
       depends_on: [push-infra]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     poll-infra-plan:
       _node: poll-ci
@@ -58,21 +73,34 @@ full-stack:
 
     infra-handoff:
       depends_on: [await-infra-approval]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     # ── Wave 2: Application ────────────────────────────────────────────
     backend-dev:
       depends_on: [schema-dev, infra-handoff]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     frontend-dev:
       depends_on: [schema-dev, infra-handoff]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     backend-unit-test:
       depends_on: [backend-dev]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes: { backend: backend-dev }
 
     frontend-unit-test:
       depends_on: [frontend-dev]
+      produces_artifacts: [playwright-log]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes: { frontend: frontend-dev }
 
@@ -86,6 +114,8 @@ full-stack:
     # ── Post-Deploy Validation ─────────────────────────────────────────
     integration-test:
       depends_on: [poll-app-ci]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes:
           backend: backend-dev
@@ -95,6 +125,10 @@ full-stack:
 
     live-ui:
       depends_on: [poll-app-ci, integration-test]
+      consumes_kickoff: [spec]
+      produces_artifacts: [playwright-log]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes:
           frontend: frontend-dev
@@ -105,21 +139,49 @@ full-stack:
     # ── Finalize ───────────────────────────────────────────────────────
     code-cleanup:
       depends_on: [integration-test, live-ui]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     docs-archived:
       depends_on: [code-cleanup]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      produces_artifacts: [change-manifest]
 
     doc-architect:
       depends_on: [code-cleanup, docs-archived]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     publish-pr:
       depends_on: [doc-architect]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+
+    # ── Final tail node — flips the PR from Draft → Ready for Review ──
+    # Phase 2 split: publish-pr always opens the PR as Draft (and updates
+    # the body with the Wave 2 appendix); mark-pr-ready is the only node
+    # that promotes it. Salvaged runs intentionally never reach this node
+    # (`salvage_survivor: false`), so a degraded run leaves the PR in
+    # Draft — matching the UX intent of "human, please look at this".
+    mark-pr-ready:
+      depends_on: [publish-pr]
+
 
     # ── Triage ─────────────────────────────────────────────────────────
     triage-full-stack:
       _node: triage-node
       depends_on: []
       triage_profile: full-stack
+      # Triage classifies failures and writes a triage-handoff artifact that
+      # the rerouted target node consumes via `consumes_reroute`.
+      produces_artifacts: [triage-handoff]
 
     # ── Hidden diagnostic node (Phase 3 `triggers: [route]` example) ──
     # Invisible to the scheduler — nothing depends on it and it has no
@@ -128,6 +190,8 @@ full-stack:
     deep-debug:
       depends_on: []
       triggers: [route]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
   unfixable_signals:
     - "authorization_requestdenied"
@@ -196,11 +260,24 @@ backend:
       blocked: null
 
   nodes:
-    schema-dev:
+    # ── Wave 0: Scaffolding ────────────────────────────────────────────
+    create-branch:
       depends_on: []
+
+    stage-spec:
+      depends_on: [create-branch]
+
+    schema-dev:
+      depends_on: [stage-spec]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     infra-architect:
       depends_on: [schema-dev]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     push-infra:
       _node: push-code
@@ -208,6 +285,8 @@ backend:
 
     create-draft-pr:
       depends_on: [push-infra]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     poll-infra-plan:
       _node: poll-ci
@@ -222,12 +301,19 @@ backend:
 
     infra-handoff:
       depends_on: [await-infra-approval]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     backend-dev:
       depends_on: [schema-dev, infra-handoff]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     backend-unit-test:
       depends_on: [backend-dev]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes: { backend: backend-dev, infra: infra-architect }
 
@@ -240,6 +326,8 @@ backend:
 
     integration-test:
       depends_on: [poll-app-ci]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
       on_failure:
         routes:
           backend: backend-dev
@@ -248,20 +336,42 @@ backend:
 
     code-cleanup:
       depends_on: [integration-test]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     docs-archived:
       depends_on: [code-cleanup]
+      consumes_kickoff: [spec]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      produces_artifacts: [change-manifest]
 
     doc-architect:
       depends_on: [code-cleanup, docs-archived]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
 
     publish-pr:
       depends_on: [doc-architect]
+      consumes_artifacts:
+        - { from: docs-archived, kind: change-manifest, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+
+    # ── Final tail node — Draft → Ready (see full-stack workflow) ──
+    mark-pr-ready:
+      depends_on: [publish-pr]
 
     triage-backend:
       _node: triage-node
       depends_on: []
       triage_profile: backend
+      # Triage classifies failures and writes a triage-handoff artifact that
+      # the rerouted target node consumes via `consumes_reroute`.
+      produces_artifacts: [triage-handoff]
 
   unfixable_signals:
     - "authorization_requestdenied"

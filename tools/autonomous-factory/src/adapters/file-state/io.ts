@@ -2,7 +2,7 @@
  * adapters/file-state/io.ts — File I/O for the JSON file state adapter.
  *
  * Single source of truth for:
- *  - REPO_ROOT / APP_ROOT / IN_PROGRESS path resolution
+ *  - REPO_ROOT / APP_ROOT / WORK_DIR path resolution
  *  - state/TRANS path helpers
  *  - readState / writeState (sync; state files are small)
  *  - renderTrans (regenerates _TRANS.md from _STATE.json on every write)
@@ -13,30 +13,48 @@
  * the lock primitive to be promise-aware for no real benefit.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PipelineState } from "../../types.js";
+import { renderInvocationTree } from "../../reporting/trans-tree.js";
 
 // ─── Path constants ─────────────────────────────────────────────────────────
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Repo root: this file lives at tools/autonomous-factory/src/adapters/file-state/io.ts → repo is four levels up. */
 export const REPO_ROOT = join(__dirname, "../../../../..");
-/** App root: defaults to repo root unless APP_ROOT env var is set. */
-export const APP_ROOT = process.env.APP_ROOT
-  ? (isAbsolute(process.env.APP_ROOT) ? process.env.APP_ROOT : join(REPO_ROOT, process.env.APP_ROOT))
-  : REPO_ROOT;
-export const IN_PROGRESS = join(APP_ROOT, "in-progress");
+
+/**
+ * App root: resolved lazily on every access from `process.env.APP_ROOT`,
+ * with a fallback to {@link REPO_ROOT}. Lazy resolution is required because
+ * `bootstrap()` parses the `--app` CLI flag and propagates it into
+ * `process.env.APP_ROOT` *after* this module is first imported. A
+ * module-load-time `const` would lock the value to whatever the env had
+ * (typically empty) when `watchdog.ts` was loaded, causing all `.dagent/`
+ * and `.apm/` lookups to point at the repo root instead of the chosen app.
+ */
+export function getAppRoot(): string {
+  const env = process.env.APP_ROOT;
+  if (!env) return REPO_ROOT;
+  return isAbsolute(env) ? env : join(REPO_ROOT, env);
+}
+
+/** `<APP_ROOT>/.dagent` — resolved lazily; see {@link getAppRoot}. */
+export function getWorkDir(): string {
+  return join(getAppRoot(), ".dagent");
+}
 
 // ─── Path helpers ───────────────────────────────────────────────────────────
 
+/** `<inProgress>/<slug>/_state.json` — nested-layout state path. */
 export function statePath(slug: string): string {
-  return join(IN_PROGRESS, `${slug}_STATE.json`);
+  return join(getWorkDir(), slug, "_state.json");
 }
 
+/** `<inProgress>/<slug>/_trans.md` — nested-layout transition log path. */
 export function transPath(slug: string): string {
-  return join(IN_PROGRESS, `${slug}_TRANS.md`);
+  return join(getWorkDir(), slug, "_trans.md");
 }
 
 export function today(): string {
@@ -72,7 +90,9 @@ export function readStateOrNull(slug: string): PipelineState | null {
 
 /** Write state (atomically replaces the file) and regenerates TRANS.md. */
 export function writeState(slug: string, state: PipelineState): void {
-  writeFileSync(statePath(slug), JSON.stringify(state, null, 2) + "\n", "utf-8");
+  const p = statePath(slug);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
   renderTrans(slug, state);
 }
 
@@ -128,7 +148,16 @@ function renderTrans(slug: string, state: PipelineState): void {
       item.status === "failed"  ? "[ ] ⚠️" :
       item.status === "dormant" ? "[ ] 💤" :
       "[ ]";
-    lines.push(`- ${box} ${item.label} (${item.agent})`);
+    // Annotate temporarily-bypassed items so operators don't confuse them
+    // with structural N/A or salvage. The marker is consumed when the
+    // routed-to target seals successfully (see `recordInvocationSeal` →
+    // `reset-after-fix`); a halt with the marker still set means the
+    // bypassed gate could not be re-validated within its budget.
+    const bypassNote = item.bypassedFor
+      ? ` (bypassed → ${item.bypassedFor.routeTarget})`
+      : "";
+    const salvageNote = item.salvaged && !item.bypassedFor ? " (salvaged)" : "";
+    lines.push(`- ${box} ${item.label} (${item.agent})${bypassNote}${salvageNote}`);
   }
 
   lines.push("");
@@ -141,6 +170,16 @@ function renderTrans(slug: string, state: PipelineState): void {
       lines.push(entry.message);
       lines.push("");
     }
+  }
+
+  // Invocation lineage tree — walks state.artifacts grouped by nodeKey,
+  // nesting child invocations under their parent. Empty when the artifact
+  // ledger has no entries (legacy state files, fresh init).
+  const treeLines = renderInvocationTree(state.artifacts ?? {});
+  if (treeLines.length > 0) {
+    lines.push("");
+    lines.push("## Invocations");
+    for (const line of treeLines) lines.push(line);
   }
 
   lines.push("");

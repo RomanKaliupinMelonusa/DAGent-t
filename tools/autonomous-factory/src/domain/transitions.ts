@@ -20,10 +20,10 @@ export interface TransitionItem {
   status: "pending" | "done" | "failed" | "na" | "dormant";
   error: string | null;
   docNote?: string | null;
-  handoffArtifact?: string | null;
-  pendingContext?: string | null;
   /** Sticky salvage marker — see PipelineItem.salvaged in src/types.ts. */
   salvaged?: boolean;
+  /** Reversible bypass marker — see PipelineItem.bypassedFor in src/types.ts. */
+  bypassedFor?: { routeTarget: string; cycleIndex: number };
 }
 
 export interface ErrorLogEntry {
@@ -40,8 +40,24 @@ export interface TransitionState {
   nodeTypes: Record<string, string>;
   nodeCategories: Record<string, string>;
   naByType: string[];
+  /** Item keys demoted to N/A by `salvageForDraft` (A5) — populated when a
+   *  deploy-category salvage survivor's entire dependency chain is N/A
+   *  after a salvage pass. Distinct from `naByType` (workflow-shape). */
+  naBySalvage?: string[];
   salvageSurvivors: string[];
+  /** Item keys exempt from the deploy-orphan demotion sweep inside
+   *  `salvageForDraft`. Read alongside `salvageSurvivors` so an explicit
+   *  survivor with no surviving deps is left in `pending` instead of being
+   *  demoted to `na`. Optional for backward compatibility with legacy state. */
+  salvageImmune?: string[];
   dormantByActivation?: string[];
+  /** Phase 3 — consumer-key → producer-keys for which the consumer declares
+   *  a `consumes_artifacts` edge with `required: true` (or the Zod default).
+   *  Read by `salvageForDraft` to scope demotion: any candidate-for-N/A node
+   *  whose required artifact still feeds a surviving consumer is left in
+   *  its current status (eligible for normal retry) instead of being marked
+   *  N/A. Optional for backward compatibility with legacy state files. */
+  requiredArtifactProducers?: Record<string, string[]>;
   [key: string]: unknown; // allow pass-through of other fields
 }
 
@@ -267,9 +283,19 @@ export function resetNodes(
   cascadeBarriers(state.dependencies, state.nodeTypes, keysToReset);
 
   const newItems = state.items.map((i) => {
-    if (!keysToReset.has(i.key) || i.status === "na") return i;
+    if (!keysToReset.has(i.key)) return i;
+    // Truly N/A items stay N/A — UNLESS they were temporarily bypassed by a
+    // `bypass-node` to unlock a triage reroute. In that case the bypass
+    // marker is consumed and the item returns to `pending` so the gate is
+    // re-validated against the fix. (Salvaged items don't carry
+    // `bypassedFor` — the salvage check above already short-circuits them.)
+    if (i.status === "na" && !i.bypassedFor) return i;
     // Dormant nodes only activate if they are the explicit seed
     if (i.status === "dormant" && i.key !== seedKey) return i;
+    if (i.bypassedFor) {
+      const { bypassedFor: _bypassed, ...rest } = i;
+      return { ...rest, status: "pending" as const, error: null };
+    }
     return { ...i, status: "pending" as const, error: null };
   });
 
@@ -289,17 +315,118 @@ export function resetNodes(
 }
 
 // ---------------------------------------------------------------------------
+// Bypass node (triage-reroute deadlock unlock)
+// ---------------------------------------------------------------------------
+
+export interface BypassResult {
+  state: TransitionState;
+  /** True when the bypass mutated the item (false on idempotent no-ops). */
+  applied: boolean;
+  /** Set when refused — only `"salvaged"` today (sticky degradation wins). */
+  rejectedReason?: "salvaged" | "unknown-item" | "wrong-status";
+}
+
+/**
+ * Flip a failing structural ancestor from `failed` → `na` so a triage
+ * reroute can dispatch a downstream node that would otherwise be
+ * DAG-locked behind the failure. Stamps `bypassedFor` on the item; the
+ * marker is consumed by `resetNodes` (auto-revalidation path) when the
+ * route target completes successfully.
+ *
+ * Idempotent: applying to an already-bypassed item with the same
+ * `routeTarget` is a no-op. Salvaged items are rejected.
+ *
+ * Cycle counting is bookkeeping-only — no `maxCycles` budget. The
+ * bounded budget lives on the paired `RESET_AFTER_FIX` reset, not here.
+ */
+export function bypassNode(
+  state: TransitionState,
+  nodeKey: string,
+  routeTarget: string,
+  reason: string,
+  signatureFn: (msg: string) => string = computeErrorSignature,
+): BypassResult {
+  const item = state.items.find((i) => i.key === nodeKey);
+  if (!item) {
+    return { state, applied: false, rejectedReason: "unknown-item" };
+  }
+  if (item.salvaged) {
+    return { state, applied: false, rejectedReason: "salvaged" };
+  }
+  // Idempotent: already bypassed for the same target — append a log entry
+  // for diagnostic visibility but no item mutation.
+  if (item.bypassedFor?.routeTarget === routeTarget && item.status === "na") {
+    return { state, applied: false };
+  }
+  // Only meaningful for `failed` items. A bypass on a `done` / `pending`
+  // item is a contract violation; the reducer no-ops rather than corrupt
+  // state.
+  if (item.status !== "failed") {
+    return { state, applied: false, rejectedReason: "wrong-status" };
+  }
+
+  const cycleIndex = state.errorLog.filter(
+    (e) => e.itemKey === "bypass-for-reroute",
+  ).length + 1;
+
+  const newItems = state.items.map((i) =>
+    i.key === nodeKey
+      ? {
+          ...i,
+          status: "na" as const,
+          bypassedFor: { routeTarget, cycleIndex },
+        }
+      : i,
+  );
+
+  const newEntry: ErrorLogEntry = {
+    timestamp: new Date().toISOString(),
+    itemKey: "bypass-for-reroute",
+    message: `Bypass cycle ${cycleIndex}: ${nodeKey} → na to unlock reroute target ${routeTarget}. ${reason}`,
+    errorSignature: reason ? signatureFn(reason) : null,
+  };
+
+  return {
+    state: { ...state, items: newItems, errorLog: [...state.errorLog, newEntry] },
+    applied: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Salvage for draft PR
 // ---------------------------------------------------------------------------
 
 export interface SalvageResult {
   state: TransitionState;
   skippedKeys: string[];
+  /** Keys demoted from "force-pending salvage survivor" to N/A by the
+   *  deploy-orphan invariant sweep. Subset of `skippedKeys`. */
+  demotedKeys: string[];
+  /** Producer keys that would have been demoted but were spared because a
+   *  surviving consumer declares a `consumes_artifacts` edge with
+   *  `required: true` against them. Such producers retain their existing
+   *  status (typically `failed`, eligible for the workflow's normal retry
+   *  policy). Empty when no contract-based sparing applies. */
+  sparedKeys: string[];
 }
 
 /**
  * Graceful degradation — skip downstream nodes and jump to finalization
  * for a Draft PR. Returns the list of keys that were marked N/A.
+ *
+ * A5 invariant — deploy-category survivors whose entire dependency chain
+ * is N/A after this salvage pass are themselves demoted to N/A. This
+ * prevents the `publish-pr`-without-`create-draft-pr` shape, where a
+ * promotion-only deploy node is left "force-pending" with no upstream
+ * producer to promote. Scaffold/finalize survivors are never demoted —
+ * by contract they are loss-tolerant and self-contained.
+ *
+ * Required-artifact contract — a candidate node `n` is excluded from
+ * demotion when ANY surviving (non-N/A) consumer `m` declares
+ * `consumes_artifacts: [{ from: n, kind: K, required: true }]`. Spared
+ * producers retain their existing status (typically `failed`, eligible
+ * for the normal retry policy) instead of being marked N/A. Optional
+ * (`required: false`) consumer edges do not block salvage.
  */
 export function salvageForDraft(
   state: TransitionState,
@@ -307,7 +434,7 @@ export function salvageForDraft(
 ): SalvageResult {
   // Idempotency guard
   if (state.errorLog.some((e) => e.itemKey === "salvage-draft")) {
-    return { state, skippedKeys: [] };
+    return { state, skippedKeys: [], demotedKeys: [], sparedKeys: [] };
   }
 
   const skipKeys = new Set(getDownstream(state.dependencies, [failedItemKey]));
@@ -319,13 +446,42 @@ export function salvageForDraft(
           .map((i) => i.key),
   );
 
+  // Naive demotion candidate set — `failedItemKey` ∪ downstream.
+  const candidateKeys = new Set<string>(skipKeys);
+  candidateKeys.add(failedItemKey);
+
+  // Required-artifact contract: any candidate that feeds a `required: true`
+  // `consumes_artifacts` edge of a surviving consumer is spared from
+  // demotion. A "surviving consumer" is one that will still execute after
+  // salvage — either a force-pending salvage survivor (overrides candidate
+  // membership) or any non-candidate node that is not already N/A/dormant.
+  const requiredProducers = state.requiredArtifactProducers ?? {};
+  const sparedSet = new Set<string>();
+  for (const consumer of state.items) {
+    const isForcePending = forcePendingKeys.has(consumer.key);
+    if (!isForcePending) {
+      if (candidateKeys.has(consumer.key)) continue;
+      if (consumer.status === "na" || consumer.status === "dormant") continue;
+    }
+    const producers = requiredProducers[consumer.key];
+    if (!producers || producers.length === 0) continue;
+    for (const p of producers) {
+      if (candidateKeys.has(p)) sparedSet.add(p);
+    }
+  }
+
   const skippedKeys: string[] = [];
-  const newItems = state.items.map((i) => {
+  let newItems = state.items.map((i) => {
     if (forcePendingKeys.has(i.key)) {
       return { ...i, status: "pending" as const, error: null };
     }
     if (i.status === "dormant") return i;
-    if ((skipKeys.has(i.key) || i.key === failedItemKey) && i.status !== "done") {
+    if (candidateKeys.has(i.key) && i.status !== "done") {
+      if (sparedSet.has(i.key)) {
+        // Spared by required-artifact contract — leave existing status
+        // intact so the workflow's normal retry policy can recover it.
+        return i;
+      }
       skippedKeys.push(i.key);
       // Sticky salvage marker — subsequent `resetNodes` calls targeting this
       // key will be rejected by the reducer (see ResetResult.rejectedReason).
@@ -334,15 +490,64 @@ export function salvageForDraft(
     return i;
   });
 
+  // A5 — deploy-orphan demotion sweep. Iterate to fixed point: a deploy
+  // survivor whose deps are all N/A becomes N/A, which may make a further
+  // deploy survivor an orphan in turn. Bounded by items.length.
+  // Nodes listed in `state.salvageImmune` opt out of demotion entirely —
+  // they are explicit survivors whose orphan status is intentional (e.g.
+  // a Draft-PR creator that legitimately runs after dev nodes are N/A'd).
+  const immuneSet = new Set(state.salvageImmune ?? []);
+  const demotedKeys: string[] = [];
+  const naSet = new Set(newItems.filter((i) => i.status === "na").map((i) => i.key));
+  for (let pass = 0; pass < newItems.length; pass++) {
+    let changed = false;
+    newItems = newItems.map((i) => {
+      if (!forcePendingKeys.has(i.key)) return i;
+      if (immuneSet.has(i.key)) return i;
+      if (state.nodeCategories[i.key] !== "deploy") return i;
+      if (i.status !== "pending") return i;
+      const deps = state.dependencies[i.key] ?? [];
+      if (deps.length === 0) return i;
+      const allDepsNa = deps.every((d) => naSet.has(d));
+      if (!allDepsNa) return i;
+      changed = true;
+      demotedKeys.push(i.key);
+      naSet.add(i.key);
+      return { ...i, status: "na" as const, salvaged: true, error: null };
+    });
+    if (!changed) break;
+  }
+
+  // Append demoted keys to skippedKeys for caller-visible accounting.
+  for (const k of demotedKeys) skippedKeys.push(k);
+
+  const sparedKeys = [...sparedSet];
+  const demotionSuffix = demotedKeys.length > 0
+    ? ` (deploy-orphans demoted: ${demotedKeys.join(", ")})`
+    : "";
+  const sparedSuffix = sparedKeys.length > 0
+    ? ` (spared by required-artifact contract: ${sparedKeys.join(", ")})`
+    : "";
   const newEntry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     itemKey: "salvage-draft",
-    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.`,
+    message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.${demotionSuffix}${sparedSuffix}`,
   };
 
+  const nextNaBySalvage = demotedKeys.length > 0
+    ? [...(state.naBySalvage ?? []), ...demotedKeys]
+    : state.naBySalvage;
+
   return {
-    state: { ...state, items: newItems, errorLog: [...state.errorLog, newEntry] },
+    state: {
+      ...state,
+      items: newItems,
+      errorLog: [...state.errorLog, newEntry],
+      ...(nextNaBySalvage !== undefined ? { naBySalvage: nextNaBySalvage } : {}),
+    },
     skippedKeys,
+    demotedKeys,
+    sparedKeys,
   };
 }
 

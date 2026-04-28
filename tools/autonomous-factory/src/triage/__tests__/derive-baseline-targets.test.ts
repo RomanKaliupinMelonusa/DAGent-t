@@ -24,6 +24,7 @@ function contract(
     forbidden_console_patterns: [],
     forbidden_network_failures: [],
     base_template_reuse: [],
+    test_fixtures: [],
   };
 }
 

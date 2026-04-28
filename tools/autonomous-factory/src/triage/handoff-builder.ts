@@ -18,6 +18,9 @@ import type { TriageResult } from "../types.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { extractPriorAttempts } from "./historian.js";
 import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "./handoff-evidence.js";
+import { featureRelPath } from "../adapters/feature-paths.js";
+import { getArtifactSchemaVersion } from "../apm/artifact-catalog.js";
+import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Domain-tag format — single source of truth shared with triage-handler's
@@ -59,16 +62,14 @@ interface HandoffLogEntry {
 }
 
 /**
- * Round-2 R3 — consecutive-domain advisory.
+ * Round-2 R3 — consecutive-domain detector.
  *
  * When the last two reroute cycles both classified into `currentDomain`,
  * the redevelopment cycle is almost certainly looping on the same root
- * cause with incrementally mutated symptoms. Surface an advisory string
- * so the next dev agent sees the pattern explicitly and can choose a
- * `agent-branch.sh revert` clean-slate rebuild. Returns `undefined`
- * when the advisory does not apply.
+ * cause with incrementally mutated symptoms. Returns the advisory text,
+ * or `undefined` when the pattern does not hold.
  */
-export function buildConsecutiveDomainAdvisory(
+function detectConsecutiveDomain(
   errorLog: readonly HandoffLogEntry[],
   currentDomain: string,
 ): string | undefined {
@@ -89,6 +90,135 @@ export function buildConsecutiveDomainAdvisory(
     `feature branch to the base and rebuild from scratch — the circuit ` +
     `breaker grants one bypass for exactly this case.`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Same-test loop detector (Phase D)
+// ---------------------------------------------------------------------------
+
+const RESET_OP_KEYS: ReadonlySet<string> = new Set<string>([
+  ...REDEVELOPMENT_RESET_OPS as readonly string[],
+  RESET_OPS.RESET_FOR_REROUTE,
+  RESET_OPS.RESET_PHASES,
+]);
+
+/**
+ * Extract failing test names from a Playwright-style failure message.
+ * Anchors on the ` › ` separator: the trailing token after the last
+ * ` › ` on each line is treated as a test title (with any ` (1.0m)`
+ * style duration suffix stripped). Matches the listing format Playwright
+ * emits for failed specs, e.g.
+ *
+ *   `[chromium] › path/file.spec.ts:301:9 › Suite › my-test (1.0m)`
+ *
+ * Stack traces and other lines without ` › ` are ignored. Returns the
+ * deduplicated list of titles found across all matching lines.
+ */
+export function extractTestNamesFromMessage(message: string): string[] {
+  const out = new Set<string>();
+  for (const raw of message.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line.includes(" › ")) continue;
+    const parts = line.split(" › ");
+    const last = parts[parts.length - 1];
+    if (!last) continue;
+    // Strip trailing ` (1.0m)` / ` (6.6s)` style duration suffix.
+    const cleaned = last.replace(/\s*\([\d.]+[a-z]+\)\s*$/i, "").trim();
+    if (cleaned.length > 0) out.add(cleaned);
+  }
+  return [...out];
+}
+
+/**
+ * Walk `errorLog` and pair each `reset-for-reroute` op with the most
+ * recent preceding non-reset failure entry that actually contains
+ * Playwright-style ` › ` test-title lines. Entries with no extractable
+ * test names (e.g. structured `triageDiagnostic` JSON blobs written by
+ * a debug agent, `[session-idle-timeout]` markers) are skipped so the
+ * detector keeps comparing real test runs cycle-over-cycle. The walk
+ * stops at the previous reset (cycle boundary) so a cycle whose only
+ * pre-reset entries lacked test titles contributes nothing rather than
+ * leaking a stale message from an earlier cycle.
+ */
+function priorFailureMessages(
+  errorLog: readonly HandoffLogEntry[],
+): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < errorLog.length; i++) {
+    const entry = errorLog[i];
+    if (!RESET_OP_KEYS.has(entry.itemKey)) continue;
+    for (let j = i - 1; j >= 0; j--) {
+      const cand = errorLog[j];
+      if (RESET_OP_KEYS.has(cand.itemKey)) break; // cycle boundary
+      if (extractTestNamesFromMessage(cand.message).length === 0) continue;
+      out.push(cand.message);
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Detect the "same failing test in 2 consecutive cycles" pattern.
+ *
+ * Walks the last two prior cycles' preceding-failure messages, extracts
+ * the test names mentioned in each, and intersects with `currentTestNames`.
+ * When at least one shared title exists across all three cycles, returns
+ * that title. Otherwise returns `null`.
+ *
+ * The motivating incident is locator-class mutation looping: e2e-author
+ * tweaks selectors on a test whose root cause is actually the fixture
+ * (URL / product / account). Surfaces fixture re-pick as the next move.
+ */
+export function detectSameTestLoop(
+  errorLog: readonly HandoffLogEntry[],
+  currentTestNames: readonly string[],
+): string | null {
+  if (currentTestNames.length === 0) return null;
+  const priorMessages = priorFailureMessages(errorLog);
+  if (priorMessages.length < 2) return null;
+  const lastTwo = priorMessages.slice(-2);
+  const setA = new Set(extractTestNamesFromMessage(lastTwo[0]));
+  const setB = new Set(extractTestNamesFromMessage(lastTwo[1]));
+  for (const name of currentTestNames) {
+    if (setA.has(name) && setB.has(name)) return name;
+  }
+  return null;
+}
+
+function buildSameTestAdvisory(testName: string): string {
+  return (
+    `Test \`${testName}\` has failed in 2 consecutive cycles with ` +
+    `locator-class mutations. The probable root cause is the fixture ` +
+    `(URL / product / account), not the locator. The next reroute target ` +
+    `should be **spec-compiler** so a new fixture can be selected; the ` +
+    `revert advisory applies on the cycle after.`
+  );
+}
+
+/**
+ * Round-2 R3 / Phase D — composite loop advisory.
+ *
+ * Two detectors run independently and their advisories are joined with a
+ * blank line when both fire:
+ *   - same fault domain × 2 consecutive prior cycles → "third in domain"
+ *     advisory pointing at `agent-branch.sh revert`.
+ *   - same failing test name × 2 consecutive prior cycles → "fixture
+ *     re-pick" advisory pointing at spec-compiler.
+ *
+ * Returns `undefined` when neither detector fires.
+ */
+export function buildLoopAdvisory(
+  errorLog: readonly HandoffLogEntry[],
+  currentDomain: string,
+  currentTestNames: readonly string[] = [],
+): string | undefined {
+  const blocks: string[] = [];
+  const domainAdvisory = detectConsecutiveDomain(errorLog, currentDomain);
+  if (domainAdvisory) blocks.push(domainAdvisory);
+  const sharedTest = detectSameTestLoop(errorLog, currentTestNames);
+  if (sharedTest) blocks.push(buildSameTestAdvisory(sharedTest));
+  return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +256,19 @@ export interface BuildTriageHandoffArgs {
   /** Feature slug — used to construct the `_BASELINE.json` path on
    *  `baselineRef`. Ignored when `baseline` is absent. */
   readonly slug?: string;
+  /** Invocation id of the triage node itself. When set, `buildTriageHandoff`
+   *  stamps it onto the returned handoff so a downstream `reset-for-reroute`
+   *  dispatch can record it as `parentInvocationId` — giving the artifact-bus
+   *  lineage a traversable chain from the original failure through every
+   *  reroute (Phase 5 follow-up). Absent = legacy behaviour. */
+  readonly triageInvocationId?: string;
+  /** Pre-resolved structured next-failure hint sourced from the most
+   *  recent completed-and-sealed debug-class invocation. Surfaced
+   *  verbatim on the handoff as `priorDebugRecommendation` so the
+   *  rerouted dev agent and the LLM router both see the diagnosis.
+   *  Caller (the triage handler) is responsible for the lookup; the
+   *  builder remains pure. Absent when no eligible hint exists. */
+  readonly priorDebugRecommendation?: TriageHandoff["priorDebugRecommendation"];
 }
 
 /**
@@ -179,6 +322,8 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     baselineDropCounts,
     baseline,
     slug,
+    triageInvocationId,
+    priorDebugRecommendation,
   } = args;
 
   const touched = resolveTouchedFiles(failingNodeKey, routeToKey, pipelineSummaries);
@@ -195,14 +340,23 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
   let baselineRef: TriageHandoff["baselineRef"];
   if (baseline && slug) {
     baselineRef = {
-      path: `in-progress/${slug}_BASELINE.json`,
+      path: featureRelPath(slug, "baseline"),
       consolePatternCount: baseline.console_errors?.length ?? 0,
       networkPatternCount: baseline.network_failures?.length ?? 0,
       uncaughtPatternCount: baseline.uncaught_exceptions?.length ?? 0,
     };
   }
 
+  // Prior debug-cycle recommendation — the caller resolves this from
+  // the most recent completed-and-sealed debug-class invocation that
+  // emitted a structured `nextFailureHint` via `report_outcome`. The
+  // builder is a pure pass-through; the producer-agnostic lookup lives
+  // in the triage handler so this module stays free of state-store
+  // and artifact-bus dependencies.
+  // (Field is omitted from the result when the caller passes nothing.)
+
   return {
+    schemaVersion: getArtifactSchemaVersion("triage-handoff") as 1 | undefined,
     failingItem: failingNodeKey,
     errorExcerpt: truncateError(rawError),
     errorSignature: triageRecord.error_signature,
@@ -211,11 +365,17 @@ export function buildTriageHandoff(args: BuildTriageHandoffArgs): TriageHandoff 
     priorAttemptCount,
     touchedFiles: touched.files,
     touchedFilesSource: touched.source,
-    advisory: buildConsecutiveDomainAdvisory(errorLog, triageResult.domain),
+    advisory: buildLoopAdvisory(
+      errorLog,
+      triageResult.domain,
+      (toFailedTests(structuredFailure) ?? []).map((t) => t.title),
+    ),
     evidence: toHandoffEvidence(structuredFailure),
     browserSignals: toBrowserSignals(structuredFailure),
     baselineDropCounts: drops,
     failedTests: toFailedTests(structuredFailure),
     baselineRef,
+    triageInvocationId,
+    priorDebugRecommendation,
   };
 }
