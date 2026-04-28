@@ -1,3 +1,0 @@
-{"ts":"2026-04-28T22:16:54.604Z","kind":"dispatch.start","invocationId":"inv_01KQB2NBJ8RPEDNT5H52SFQ71Z","nodeKey":"create-branch","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:16:54.601Z","attempt":1}
-{"ts":"2026-04-28T22:16:55.681Z","outcome":"failed","error_preview":"exit code 1","kind":"item.end","itemKey":"create-branch"}
-{"ts":"2026-04-28T22:16:55.686Z","kind":"dispatch.end","invocationId":"inv_01KQB2NBJ8RPEDNT5H52SFQ71Z","nodeKey":"create-branch","outcome":"failed","finishedAt":"2026-04-28T22:16:55.682Z","outputKinds":["node-report"]}
