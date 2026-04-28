@@ -17,7 +17,7 @@
 - [x] storefront-dev-smoke (null)
 - [x] storefront-debug (@storefront-debug)
 - [x] storefront-unit-test (@storefront-unit-test)
-- [ ] e2e-author (@e2e-author)
+- [x] e2e-author (@e2e-author)
 - [ ] e2e-runner (null)
 - [ ] qa-adversary (@qa-adversary)
 - [ ] create-draft-pr (@create-draft-pr)
@@ -184,6 +184,7 @@ Reset cycle 2/5: [domain:code-defect] [source:llm] The storefront application co
 
 ### e2e-runner
 - ✗ #1 `inv_01KQB4PRFHH56MTXQKPE4416NA` (initial ← e2e-author/inv_01KQB4ESXE58SQDVXNW1R85854 (initial)) [failed @ 2026-04-28T22:54:23.053Z]
+- ✗ #2 `inv_01KQB7D048M6J08PG33EBXJVPP` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [failed @ 2026-04-28T23:41:07.126Z]
 
 ### spec-compiler
 - ✓ #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [completed @ 2026-04-28T22:21:54.103Z]
