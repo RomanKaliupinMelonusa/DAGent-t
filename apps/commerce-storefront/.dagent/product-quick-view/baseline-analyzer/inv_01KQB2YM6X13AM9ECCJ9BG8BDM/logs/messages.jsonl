@@ -5,3 +5,5 @@
 {"ts":"2026-04-28T22:23:31.574Z","role":"assistant","text":"","preview":"Now let me scroll and get network failures for the second page.","token_count":63,"itemKey":"baseline-analyzer"}
 {"ts":"2026-04-28T22:24:58.293Z","role":"assistant","text":"","preview":"I now have all the data I need from both pages. The error patterns are consistent across both PLPs. Let me now produce the baseline.json.","token_count":137,"itemKey":"baseline-analyzer"}
 {"ts":"2026-04-28T22:25:48.123Z","role":"assistant","text":"","preview":"Now let me validate the JSON and commit.","token_count":40,"itemKey":"baseline-analyzer"}
+{"ts":"2026-04-28T22:26:00.010Z","role":"assistant","text":"","preview":"Baseline committed successfully. Let me report the outcome.","token_count":59,"itemKey":"baseline-analyzer"}
+{"ts":"2026-04-28T22:26:07.046Z","role":"assistant","text":"","preview":"Baseline analysis complete. Here's a summary:  **Targets captured (3):** - `PLP-mens-accessories` → `/category/mens-accessories` (page) - `PLP-womens-dresses` → `/category/womens-clothing-dresses` (pa","token_count":973,"itemKey":"baseline-analyzer"}
