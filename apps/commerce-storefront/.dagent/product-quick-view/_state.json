@@ -90,7 +90,8 @@
       "label": "qa-adversary",
       "agent": "@qa-adversary",
       "status": "pending",
-      "error": null
+      "error": null,
+      "latestInvocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
     },
     {
       "key": "create-draft-pr",
@@ -1167,6 +1168,53 @@
       "outcome": "completed",
       "finishedAt": "2026-04-28T23:47:09.805Z",
       "sealed": true
+    },
+    "inv_01KQB7TQMDBR94406YF94WS1BM": {
+      "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM",
+      "nodeKey": "qa-adversary",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "triggeredBy": {
+        "nodeKey": "e2e-runner",
+        "invocationId": "inv_01KQB7R3ETH090014PG288Y51P",
+        "reason": "initial"
+      },
+      "startedAt": "2026-04-28T23:47:13.678Z",
+      "inputs": [
+        {
+          "kind": "acceptance",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+          "nodeKey": "spec-compiler",
+          "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH"
+        },
+        {
+          "kind": "playwright-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-runner/inv_01KQB7R3ETH090014PG288Y51P/outputs/playwright-report.json",
+          "nodeKey": "e2e-runner",
+          "invocationId": "inv_01KQB7R3ETH090014PG288Y51P"
+        },
+        {
+          "kind": "implementation-status",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev/inv_01KQB36DSFGNJ7V5WEBXMTH46S/outputs/implementation-status.json",
+          "nodeKey": "storefront-dev",
+          "invocationId": "inv_01KQB36DSFGNJ7V5WEBXMTH46S"
+        },
+        {
+          "kind": "baseline",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/baseline.json",
+          "nodeKey": "baseline-analyzer",
+          "invocationId": "inv_01KQB2YM6X13AM9ECCJ9BG8BDM"
+        }
+      ],
+      "outputs": []
     }
   }
 }

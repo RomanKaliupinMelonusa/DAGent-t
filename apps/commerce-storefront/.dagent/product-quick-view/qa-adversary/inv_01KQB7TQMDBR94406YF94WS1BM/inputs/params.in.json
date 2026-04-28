@@ -1,0 +1,35 @@
+{
+  "nodeKey": "qa-adversary",
+  "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/inputs/acceptance.yml"
+    },
+    {
+      "kind": "playwright-report",
+      "source": "upstream",
+      "from": "e2e-runner",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-runner/inv_01KQB7R3ETH090014PG288Y51P/outputs/playwright-report.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/inputs/playwright-report.json"
+    },
+    {
+      "kind": "implementation-status",
+      "source": "upstream",
+      "from": "storefront-dev",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev/inv_01KQB36DSFGNJ7V5WEBXMTH46S/outputs/implementation-status.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/inputs/implementation-status.json"
+    },
+    {
+      "kind": "baseline",
+      "source": "upstream",
+      "from": "baseline-analyzer",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/baseline.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/inputs/baseline.json"
+    }
+  ]
+}

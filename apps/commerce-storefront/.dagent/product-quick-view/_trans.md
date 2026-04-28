@@ -245,6 +245,9 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✗ #2 `inv_01KQB7D048M6J08PG33EBXJVPP` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [failed @ 2026-04-28T23:41:07.126Z]
 - ✓ #3 `inv_01KQB7R3ETH090014PG288Y51P` (redevelopment-cycle ← e2e-runner/inv_01KQB7D048M6J08PG33EBXJVPP (redevelopment-cycle)) [completed @ 2026-04-28T23:47:09.805Z]
 
+### qa-adversary
+- … #1 `inv_01KQB7TQMDBR94406YF94WS1BM` (initial ← e2e-runner/inv_01KQB7R3ETH090014PG288Y51P (initial)) [pending @ 2026-04-28T23:47:13.678Z]
+
 ### spec-compiler
 - ✓ #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [completed @ 2026-04-28T22:21:54.103Z]
 
