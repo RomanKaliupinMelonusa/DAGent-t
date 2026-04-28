@@ -1,0 +1,31 @@
+{
+  "invocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83",
+  "nodeKey": "create-draft-pr",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "triggeredBy": {
+    "nodeKey": "qa-adversary",
+    "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM",
+    "reason": "initial"
+  },
+  "startedAt": "2026-04-28T23:59:37.127Z",
+  "inputs": [
+    {
+      "kind": "acceptance",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH"
+    },
+    {
+      "kind": "qa-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/outputs/qa-report.json",
+      "nodeKey": "qa-adversary",
+      "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
+    }
+  ],
+  "outputs": []
+}

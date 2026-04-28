@@ -1,0 +1,16 @@
+{"ts":"2026-04-28T23:59:37.131Z","kind":"dispatch.start","invocationId":"inv_01KQB8HDN75NABWXCC9FKKEY83","nodeKey":"create-draft-pr","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T23:59:37.127Z","attempt":1}
+{"ts":"2026-04-28T23:59:37.151Z","injection_types":["baseline_advisory"],"context_length":3255,"entry_counts":{"console":12,"network":7,"uncaught":0},"stale":true,"kind":"handoff.inject","itemKey":"create-draft-pr"}
+{"ts":"2026-04-28T23:59:43.562Z","input_tokens":11050,"output_tokens":414,"cache_read_tokens":0,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-28T23:59:47.323Z","input_tokens":14883,"output_tokens":135,"cache_read_tokens":9278,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-28T23:59:50.967Z","input_tokens":16890,"output_tokens":133,"cache_read_tokens":14882,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-28T23:59:54.530Z","input_tokens":17174,"output_tokens":144,"cache_read_tokens":16889,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-28T23:59:57.886Z","input_tokens":18292,"output_tokens":146,"cache_read_tokens":17173,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:00:07.080Z","input_tokens":23912,"output_tokens":434,"cache_read_tokens":18291,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:00:40.170Z","input_tokens":24692,"output_tokens":88,"cache_read_tokens":23911,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:00:44.424Z","input_tokens":25125,"output_tokens":196,"cache_read_tokens":24691,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:00:48.021Z","input_tokens":25576,"output_tokens":147,"cache_read_tokens":25072,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:00:51.633Z","input_tokens":25860,"output_tokens":113,"cache_read_tokens":25575,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:01:16.306Z","input_tokens":26060,"output_tokens":1045,"cache_read_tokens":25859,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:01:51.256Z","input_tokens":27251,"output_tokens":89,"cache_read_tokens":26059,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:02:00.554Z","input_tokens":27705,"output_tokens":229,"cache_read_tokens":27250,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}
+{"ts":"2026-04-29T00:02:05.180Z","input_tokens":28097,"output_tokens":132,"cache_read_tokens":27654,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"create-draft-pr"}

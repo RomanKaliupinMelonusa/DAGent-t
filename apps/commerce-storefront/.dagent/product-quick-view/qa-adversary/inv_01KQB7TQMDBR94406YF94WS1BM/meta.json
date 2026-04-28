@@ -9,6 +9,8 @@
     "reason": "initial"
   },
   "startedAt": "2026-04-28T23:47:13.678Z",
+  "finishedAt": "2026-04-28T23:59:33.412Z",
+  "outcome": "completed",
   "inputs": [
     {
       "kind": "acceptance",
@@ -43,5 +45,23 @@
       "invocationId": "inv_01KQB2YM6X13AM9ECCJ9BG8BDM"
     }
   ],
-  "outputs": []
+  "outputs": [
+    {
+      "kind": "qa-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/outputs/qa-report.json",
+      "nodeKey": "qa-adversary",
+      "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
+    },
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/outputs/node-report.json",
+      "nodeKey": "qa-adversary",
+      "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
+    }
+  ],
+  "sealed": true
 }

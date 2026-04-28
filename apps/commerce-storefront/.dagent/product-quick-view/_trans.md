@@ -18,7 +18,7 @@
 - [x] storefront-debug (@storefront-debug)
 - [x] storefront-unit-test (@storefront-unit-test)
 - [x] e2e-author (@e2e-author)
-- [ ] e2e-runner (null)
+- [x] e2e-runner (null)
 - [ ] qa-adversary (@qa-adversary)
 - [ ] create-draft-pr (@create-draft-pr)
 - [ ] code-cleanup (@code-cleanup)
@@ -235,6 +235,9 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 ### create-branch
 - ✓ #1 `inv_01KQB2RDQV675YMJ9H5TCT1XSJ` (initial) [completed @ 2026-04-28T22:18:35.875Z]
 
+### create-draft-pr
+- … #1 `inv_01KQB8HDN75NABWXCC9FKKEY83` (initial ← qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM (initial)) [pending @ 2026-04-28T23:59:37.127Z]
+
 ### e2e-author
 - ✓ #1 `inv_01KQB4ESXE58SQDVXNW1R85854` (initial ← storefront-unit-test/inv_01KQB3Z0N4BYF0REM7VRE9CNGM (initial)) [completed @ 2026-04-28T22:52:34.709Z]
 - ✓ #2 `inv_01KQB70Y79BJ6PN3K3ZQKXFE5R` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [completed @ 2026-04-28T23:39:40.175Z]
@@ -246,7 +249,7 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✓ #3 `inv_01KQB7R3ETH090014PG288Y51P` (redevelopment-cycle ← e2e-runner/inv_01KQB7D048M6J08PG33EBXJVPP (redevelopment-cycle)) [completed @ 2026-04-28T23:47:09.805Z]
 
 ### qa-adversary
-- … #1 `inv_01KQB7TQMDBR94406YF94WS1BM` (initial ← e2e-runner/inv_01KQB7R3ETH090014PG288Y51P (initial)) [pending @ 2026-04-28T23:47:13.678Z]
+- ✓ #1 `inv_01KQB7TQMDBR94406YF94WS1BM` (initial ← e2e-runner/inv_01KQB7R3ETH090014PG288Y51P (initial)) [completed @ 2026-04-28T23:59:33.412Z]
 
 ### spec-compiler
 - ✓ #1 `inv_01KQB2RH63KD04266Y3WPMDRSH` (initial ← stage-spec/inv_01KQB2RFT22DNHYZ6AWJ5ZCGPD (initial)) [completed @ 2026-04-28T22:21:54.103Z]
