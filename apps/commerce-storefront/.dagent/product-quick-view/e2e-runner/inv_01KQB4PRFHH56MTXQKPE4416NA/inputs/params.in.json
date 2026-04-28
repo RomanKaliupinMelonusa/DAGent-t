@@ -1,0 +1,14 @@
+{
+  "nodeKey": "e2e-runner",
+  "invocationId": "inv_01KQB4PRFHH56MTXQKPE4416NA",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-runner/inv_01KQB4PRFHH56MTXQKPE4416NA/inputs/acceptance.yml"
+    }
+  ]
+}
