@@ -1,0 +1,305 @@
+{
+  "feature": "product-quick-view",
+  "workflowName": "storefront",
+  "started": "2026-04-28T22:18:34.152Z",
+  "deployedUrl": null,
+  "implementationNotes": null,
+  "items": [
+    {
+      "key": "create-branch",
+      "label": "create-branch",
+      "agent": null,
+      "status": "pending",
+      "error": null,
+      "latestInvocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ"
+    },
+    {
+      "key": "stage-spec",
+      "label": "stage-spec",
+      "agent": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "spec-compiler",
+      "label": "spec-compiler",
+      "agent": "@spec-compiler",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "baseline-analyzer",
+      "label": "baseline-analyzer",
+      "agent": "@baseline-analyzer",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "storefront-dev",
+      "label": "storefront-dev",
+      "agent": "@storefront-dev",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "storefront-dev-smoke",
+      "label": "storefront-dev-smoke",
+      "agent": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "storefront-debug",
+      "label": "storefront-debug",
+      "agent": "@storefront-debug",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "storefront-unit-test",
+      "label": "storefront-unit-test",
+      "agent": "@storefront-unit-test",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "e2e-author",
+      "label": "e2e-author",
+      "agent": "@e2e-author",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "e2e-runner",
+      "label": "e2e-runner",
+      "agent": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "qa-adversary",
+      "label": "qa-adversary",
+      "agent": "@qa-adversary",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "create-draft-pr",
+      "label": "create-draft-pr",
+      "agent": "@create-draft-pr",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "code-cleanup",
+      "label": "code-cleanup",
+      "agent": "@code-cleanup",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "docs-archived",
+      "label": "docs-archived",
+      "agent": "@docs-archived",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "doc-architect",
+      "label": "doc-architect",
+      "agent": "@doc-architect",
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "publish-pr",
+      "label": "publish-pr",
+      "agent": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "mark-pr-ready",
+      "label": "mark-pr-ready",
+      "agent": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "key": "triage-storefront",
+      "label": "triage-storefront",
+      "agent": null,
+      "status": "dormant",
+      "error": null
+    }
+  ],
+  "errorLog": [],
+  "cycleCounters": {},
+  "dependencies": {
+    "create-branch": [],
+    "stage-spec": [
+      "create-branch"
+    ],
+    "spec-compiler": [
+      "stage-spec"
+    ],
+    "baseline-analyzer": [
+      "spec-compiler"
+    ],
+    "storefront-dev": [
+      "spec-compiler",
+      "baseline-analyzer"
+    ],
+    "storefront-dev-smoke": [
+      "storefront-dev"
+    ],
+    "storefront-debug": [
+      "storefront-dev-smoke"
+    ],
+    "storefront-unit-test": [
+      "storefront-debug"
+    ],
+    "e2e-author": [
+      "storefront-unit-test"
+    ],
+    "e2e-runner": [
+      "e2e-author"
+    ],
+    "qa-adversary": [
+      "e2e-runner"
+    ],
+    "create-draft-pr": [
+      "storefront-unit-test",
+      "e2e-author",
+      "qa-adversary"
+    ],
+    "code-cleanup": [
+      "e2e-runner",
+      "qa-adversary",
+      "create-draft-pr"
+    ],
+    "docs-archived": [
+      "code-cleanup"
+    ],
+    "doc-architect": [
+      "code-cleanup",
+      "docs-archived"
+    ],
+    "publish-pr": [
+      "doc-architect"
+    ],
+    "mark-pr-ready": [
+      "publish-pr"
+    ],
+    "triage-storefront": []
+  },
+  "nodeTypes": {
+    "create-branch": "script",
+    "stage-spec": "script",
+    "spec-compiler": "agent",
+    "baseline-analyzer": "agent",
+    "storefront-dev": "agent",
+    "storefront-dev-smoke": "script",
+    "storefront-debug": "agent",
+    "storefront-unit-test": "agent",
+    "e2e-author": "agent",
+    "e2e-runner": "script",
+    "qa-adversary": "agent",
+    "create-draft-pr": "agent",
+    "code-cleanup": "agent",
+    "docs-archived": "agent",
+    "doc-architect": "agent",
+    "publish-pr": "script",
+    "mark-pr-ready": "script",
+    "triage-storefront": "triage"
+  },
+  "nodeCategories": {
+    "create-branch": "scaffold",
+    "stage-spec": "scaffold",
+    "spec-compiler": "dev",
+    "baseline-analyzer": "dev",
+    "storefront-dev": "dev",
+    "storefront-dev-smoke": "test",
+    "storefront-debug": "dev",
+    "storefront-unit-test": "test",
+    "e2e-author": "test",
+    "e2e-runner": "test",
+    "qa-adversary": "test",
+    "create-draft-pr": "deploy",
+    "code-cleanup": "finalize",
+    "docs-archived": "finalize",
+    "doc-architect": "finalize",
+    "publish-pr": "deploy",
+    "mark-pr-ready": "finalize",
+    "triage-storefront": "finalize"
+  },
+  "jsonGated": {},
+  "naByType": [],
+  "naBySalvage": [],
+  "dormantByActivation": [
+    "triage-storefront"
+  ],
+  "salvageSurvivors": [
+    "code-cleanup",
+    "docs-archived",
+    "publish-pr"
+  ],
+  "salvageImmune": [
+    "publish-pr"
+  ],
+  "requiredArtifactProducers": {
+    "baseline-analyzer": [
+      "spec-compiler"
+    ],
+    "storefront-dev": [
+      "spec-compiler"
+    ],
+    "storefront-dev-smoke": [
+      "spec-compiler"
+    ],
+    "storefront-debug": [
+      "spec-compiler"
+    ],
+    "storefront-unit-test": [
+      "spec-compiler"
+    ],
+    "e2e-author": [
+      "spec-compiler"
+    ],
+    "e2e-runner": [
+      "spec-compiler"
+    ],
+    "qa-adversary": [
+      "spec-compiler"
+    ],
+    "create-draft-pr": [
+      "spec-compiler"
+    ],
+    "docs-archived": [
+      "spec-compiler"
+    ]
+  },
+  "artifacts": {
+    "inv_01KQB2RDQV675YMJ9H5TCT1XSJ": {
+      "invocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ",
+      "nodeKey": "create-branch",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "startedAt": "2026-04-28T22:18:35.131Z",
+      "inputs": [],
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/create-branch/inv_01KQB2RDQV675YMJ9H5TCT1XSJ/outputs/node-report.json",
+          "nodeKey": "create-branch",
+          "invocationId": "inv_01KQB2RDQV675YMJ9H5TCT1XSJ"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-28T22:18:35.875Z",
+      "sealed": true
+    }
+  }
+}
