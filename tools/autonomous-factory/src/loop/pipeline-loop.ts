@@ -128,6 +128,10 @@ export interface PipelineLoopConfig {
   readonly artifactBus: ArtifactBus;
   readonly invocation: InvocationFilesystem;
   readonly copilotSessionRunner: CopilotSessionRunner;
+  /** Stack-agnostic semantic-graph code-index port forwarded into
+   *  NodeContext so the copilot-agent handler can build a pre-tool-call
+   *  freshness gate. Same instance the effect executor holds. */
+  readonly codeIndexer?: import("../ports/code-indexer.js").CodeIndexer;
   /** Advisory API-drift markdown produced by bootstrap; forwarded to
    *  agents that consult the vendored reference snapshot. Absent when
    *  there is no drift or no snapshot configured. */
@@ -190,6 +194,7 @@ export async function runPipelineLoop(
     artifactBus: config.artifactBus,
     invocation: config.invocation,
     copilotSessionRunner: config.copilotSessionRunner,
+    ...(config.codeIndexer ? { codeIndexer: config.codeIndexer } : {}),
     logRedactor,
     ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   };

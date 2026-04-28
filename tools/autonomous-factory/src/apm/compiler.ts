@@ -342,9 +342,10 @@ function parseMcpYaml(filePath: string): { name: string; config: ApmMcpConfig } 
     );
   }
   const data = parsed.data;
+  const freshnessRefreshTools = data.freshness?.requires_index_refresh ?? [];
   const config: ApmMcpConfig = data.type === "remote"
-    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability, fsMutator: data.fsMutator }
-    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability, fsMutator: data.fsMutator };
+    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability, fsMutator: data.fsMutator, freshnessRefreshTools }
+    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability, fsMutator: data.fsMutator, freshnessRefreshTools };
   return { name: data.name, config };
 }
 
@@ -812,6 +813,15 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       tools: effectiveTools,
       security: effectiveSecurity,
       systemPromptTemplate,
+      // Phase 4 — aggregate the freshness-refresh tool names declared by
+      // every MCP server enabled for this agent. The harness's
+      // pre-tool-call gate uses this set verbatim; engine code never sees
+      // a literal `roam_*` (or any other indexer) tool name.
+      freshnessRefreshTools: Array.from(
+        new Set(
+          Object.values(agentMcp).flatMap((m) => m.freshnessRefreshTools ?? []),
+        ),
+      ),
     };
   }
 

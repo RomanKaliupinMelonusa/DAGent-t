@@ -37,7 +37,10 @@ function makeConfig(): PipelineRunConfig {
     baseBranch: "main",
     specFile: "/tmp/spec.md",
     apmContext: { agents: {}, config: {} } as any,
-    roamAvailable: false,
+    codeIndexer: {
+      isAvailable: () => false,
+      index: async () => ({ durationMs: 0, upToDate: true }),
+    },
     logger: { event: () => "noop", blob: () => {}, query: () => [], setAttempt: () => {}, materializeItemSummary: () => null, runId: "test" } as any,
   };
 }

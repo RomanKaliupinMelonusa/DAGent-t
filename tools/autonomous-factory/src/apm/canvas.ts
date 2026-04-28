@@ -200,6 +200,7 @@ export function fromCanvas(canvas: ApmCanvas): {
         tools: [],
         availability: "optional",
         fsMutator: true,
+        freshnessRefreshTools: [],
       };
     }
     const skills: Record<string, string> = {};
@@ -213,6 +214,7 @@ export function fromCanvas(canvas: ApmCanvas): {
       tools: undefined,
       security: undefined,
       systemPromptTemplate: "",
+      freshnessRefreshTools: [],
     };
   }
 

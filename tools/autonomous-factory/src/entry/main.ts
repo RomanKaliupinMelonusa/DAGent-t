@@ -162,7 +162,7 @@ export async function runWithKernel(
   const triageLlm = new CopilotTriageLlm(client);
   const triageArtifacts = new FileTriageArtifactLoader({ appRoot });
   const baselineLoader = new FileBaselineLoader({ appRoot, bus: artifactBus });
-  const effectPorts = { stateStore, telemetry };
+  const effectPorts = { stateStore, telemetry, codeIndexer: config.codeIndexer };
 
   // Auto-recover dangling invocations from a prior killed orchestrator run.
   // Any unsealed record older than `config.staleInvocationMs` (default 30m)
@@ -267,12 +267,27 @@ export async function runWithKernel(
   const workflowNodes =
     config.apmContext.workflows?.[config.workflowName]?.nodes ?? {};
   const consumesByNode = compileConsumesByNode(workflowNodes);
+  // Stack-agnostic reindex policy: the kernel itself doesn't know about
+  // categories — we hand it a predicate that resolves to true when the
+  // completed node's category is listed in `config.reindex_categories`
+  // (defaults to ["dev","test"], opt-out via empty list in apm.yml).
+  const reindexCategories = new Set(
+    config.apmContext.config?.reindex_categories ?? ["dev", "test"],
+  );
+  const shouldReindexOnComplete: ((itemKey: string) => boolean) | undefined =
+    reindexCategories.size > 0
+      ? (itemKey: string) => {
+          const node = getWorkflowNode(config.apmContext, config.workflowName, itemKey);
+          return node?.category != null && reindexCategories.has(node.category);
+        }
+      : undefined;
   const kernel = new PipelineKernel(
     slug,
     initialDagState,
     initialRunState,
     rules,
     consumesByNode,
+    shouldReindexOnComplete,
   );
 
   // Handler resolution
@@ -321,6 +336,7 @@ export async function runWithKernel(
     artifactBus,
     invocation,
     copilotSessionRunner,
+    ...(config.codeIndexer ? { codeIndexer: config.codeIndexer } : {}),
     ...(config.pwaKitDriftReport ? { pwaKitDriftReport: config.pwaKitDriftReport } : {}),
   });
 

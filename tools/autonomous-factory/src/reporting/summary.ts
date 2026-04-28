@@ -11,6 +11,7 @@ import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
 import { computeStepCost } from "./pricing.js";
 import { formatDuration, formatUsd, stepIcon } from "./format.js";
 import { buildCostAnalysisLines } from "./cost.js";
+import { buildCodeIndexLines } from "./code-index-section.js";
 import { writeFlightData } from "./flight-data.js";
 
 /** Write a human-readable markdown summary of the pipeline run */
@@ -176,6 +177,9 @@ export function writePipelineSummary(
 
   // --- Cost Analysis ---
   lines.push(...buildCostAnalysisLines(summaries, apmCtx));
+
+  // --- Code Index activity (no-op when no code-index.* events were emitted) ---
+  lines.push(...buildCodeIndexLines(featurePath(appRoot, featureSlug, "events")));
 
   try {
     fs.writeFileSync(summaryPath, lines.join("\n"), "utf-8");

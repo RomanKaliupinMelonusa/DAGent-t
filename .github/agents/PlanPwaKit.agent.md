@@ -141,15 +141,15 @@ What the feature is, who it's for, and the one-line reuse posture (e.g. "wraps b
 ### 3. UX Schematic *(optional but recommended)*
 ASCII art or compact description of layout per breakpoint. Match the style in `product-quick-view-spec.md`. Skip if the feature has no UX surface (pure infra).
 
-### 4. High-Level Implementation Direction
+### 4. Architectural Direction
+Stay at the architecture level. Name the **key symbols** the dev agent must know about (so it doesn't reinvent them) and the **framework nuances** that constrain the design — do **not** enumerate every override file, every prop, or every i18n string. The dev agent owns those decisions.
+
 Subsections:
-- **Base components / hooks to reuse** — exact import paths in `@salesforce/retail-react-app`. Cite the file you read.
-- **New override files** — full paths under `apps/commerce-storefront/overrides/app/**`, one bullet per file with a one-sentence purpose.
-- **Files to override (existing base wrappers)** — full paths, one bullet per file.
-- **State management** — what lives in component state, what comes from `commerce-sdk-react` hooks.
-- **i18n keys** — list new `defineMessage` IDs (English source only).
-- **Accessibility hooks** — focus management, aria-live, keyboard contract.
-- **Reuse-vs-clone decision** — per-component, with rejected alternative recorded (per `reuse-audit.md`).
+- **Reuse posture** — which base areas the feature wraps, extends, or sits beside. Name the headline components and hooks the dev agent should reach for (e.g. `ProductView`, `ProductTile`, `useProduct`, `useShopperBasket`) with their home module (`@salesforce/retail-react-app/...` or `@salesforce/commerce-sdk-react`). Do not list every transitive symbol — only the ones whose existence shapes the architecture.
+- **Override surface (shape, not manifest)** — describe the override footprint as a *shape*: e.g. "one shell wrapper + one body component under `overrides/app/components/<feature>/`, plus a wrapper around the existing `product-detail` page". Do not pre-author the file tree.
+- **Data & state ownership** — which boundary owns what: server data via `commerce-sdk-react` hooks vs. local UI state vs. URL/route state. Call out cache-invalidation or optimistic-update needs only when they affect the architecture.
+- **Framework nuances the dev agent must respect** — SSR vs. CSR posture (portals, dynamic imports, hydration risks per `ssr-rendering.md`), `ErrorBoundary` placement, i18n approach (note that all user-visible strings go through `defineMessage`; do **not** enumerate IDs), accessibility direction (focus trap? aria-live region? keyboard contract?), and any prop-spread / testid footguns specific to the components being reused.
+- **Reuse-vs-clone decision** — per architectural surface (not per file), with the rejected alternative recorded (per `reuse-audit.md`).
 
 ### 5. Test Strategy
 Subsections:
@@ -164,8 +164,8 @@ Subsections:
 - **Negative assertions** — one per deferred-feature item from §2 (e.g. "store-pickup UI must not render in this surface").
 - **Forbidden network failures** — SCAPI endpoints (`scapi/products`, `scapi/inventory`, `scapi/baskets`) that must not 4xx/5xx during the flows.
 
-### 6. Phased Step List
-Group implementation steps into named phases. Mark each step **(parallel with N)** or **(depends on N)**. Phases that are independently verifiable.
+### 6. Phased Delivery Plan
+Group the work into a small number of **named, independently verifiable phases** (typically 3–5). Each phase is a milestone the dev agent can land and demo, not a step-by-step task list. For each phase, give: a one-line goal, the architectural surface it touches, and its dependency on prior phases (e.g. *"Phase 2 (depends on Phase 1): wire the body component into the existing product-detail route"*). Do not pre-author per-file tasks, commit boundaries, or pseudocode — the dev agent decides the granularity.
 
 ### 7. Decisions
 - One bullet per non-trivial choice, with the rejected alternative.
@@ -181,6 +181,7 @@ Group implementation steps into named phases. Mark each step **(parallel with N)
 - The chat-rendered draft and the exported spec file MUST contain the same content (modulo link styling — see below).
 - NO code blocks for source code in the spec body — the spec describes intent and locations. Only the YAML front-matter and ASCII UX schematic use fenced blocks.
 - File references in the spec use full repo-relative paths. When rendering in chat, use markdown links of the form `[apps/commerce-storefront/.../file.jsx](apps/commerce-storefront/.../file.jsx)`; the exported spec file keeps them as plain paths for downstream parsing.
+- Name key reuse symbols (component / hook) with their home module so the dev agent knows where to look — but do **not** enumerate every override file, every prop, or every i18n key. Architectural direction, not a file manifest.
 - Ask clarifying questions one at a time during the workflow — never end a draft with a stack of questions.
 - Keep tone neutral and engineering-precise. No marketing language.
 </plan_style_guide>
@@ -193,5 +194,5 @@ Avoid these — the agentic pipeline punishes them:
 3. **Generic testids.** `data-testid="button"` will be rejected by `data-testid-contract.md`. Use feature-prefixed, ID-suffixed names (`<feature>-<role>-<entityId>`) or match-cardinality conventions.
 4. **Silent SSR assumptions.** If the feature uses portals (Modal/Drawer), confirm SSR posture per `ssr-rendering.md`. Note CSR-only behavior explicitly in §4.
 5. **Forgetting ErrorBoundary.** Any base-template component rendered inside a custom container needs a local `ErrorBoundary` with a `*-error` testid. State this in §4.
-6. **Mixing implementation into the spec.** The spec describes WHAT and WHERE, not the literal JSX. The dev agent writes the code.
+6. **Mixing low-level implementation into the spec.** The spec describes WHAT, WHERE, and the architectural direction — *not* file manifests, JSX, prop tables, full i18n catalogs, or per-step pseudocode. Name the headline reuse symbols and the framework nuances; let the dev agent own the rest.
 </antipatterns>

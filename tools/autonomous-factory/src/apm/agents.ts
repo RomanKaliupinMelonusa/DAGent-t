@@ -638,7 +638,7 @@ export function buildTaskPrompt(
   - You MUST run: \`roam_context apiClient ${appRoot}\`
 - Before modifying ANY file, run \`roam_preflight <symbol> ${appRoot}\` to check blast radius.
 - After completing changes, run \`roam_review_change ${appRoot}\` for self-verification.
-- If Roam tools are unavailable (MCP connection failed), fall back to standard tools and note this in your completion message.
+- The orchestrator manages index freshness for you: results from any \`roam_*\` tool listed in the server's \`freshness.requires_index_refresh\` contract always reflect the post-write state of the codebase. Treat them as ground truth — do not work around them.
 ` : "";
 
   return `Your task: Complete the "${item.label}" step for feature "${slug}".

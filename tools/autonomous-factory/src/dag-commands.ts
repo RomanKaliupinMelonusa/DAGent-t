@@ -97,7 +97,8 @@ export interface StageInvocationCommand {
   readonly producedBy?: string;
 }
 
-/** Refresh the roam-code semantic graph index. */
+/** Refresh the semantic-graph code index. Implementation is provided
+ *  by whatever `CodeIndexer` adapter the composition root selected. */
 export interface ReindexCommand {
   readonly type: "reindex";
   /** Only reindex if the target node's category is in this list.

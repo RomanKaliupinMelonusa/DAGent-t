@@ -103,7 +103,14 @@ export type EventKind =
   // warnings that never fail the script.
   | "node.handler_output"
   | "handler-output.invalid"
-  | "handler-output.reserved_key";
+  | "handler-output.reserved_key"
+  // Code-index refresh lifecycle. Emitted by both the kernel effect
+  // executor (trigger="kernel-effect") on item completion and the
+  // copilot-agent harness (trigger="pre-tool-call") before invoking
+  // tools whose results depend on post-write codebase state.
+  | "code-index.refresh"
+  | "code-index.refresh_failed"
+  | "code-index.refresh_skipped";
 
 // ---------------------------------------------------------------------------
 // Core types

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-28T03:39:45.922Z",
+  "compiledAt": "2026-04-28T18:52:05.850Z",
   "tokenBudget": 4500,
   "agents": {
     "backend-dev": {
@@ -8,42 +8,48 @@
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock backend developer for Python service\"\n---\n# Backend Developer (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock backend developer for Python service\"\n---\n# Backend Developer (Mock)\n",
+      "freshnessRefreshTools": []
     },
     "backend-unit-test": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n",
+      "freshnessRefreshTools": []
     },
     "push-app": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock push code agent\"\n---\n# Push Code (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock push code agent\"\n---\n# Push Code (Mock)\n",
+      "freshnessRefreshTools": []
     },
     "poll-app-ci": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock CI polling agent\"\n---\n# Poll CI (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock CI polling agent\"\n---\n# Poll CI (Mock)\n",
+      "freshnessRefreshTools": []
     },
     "integration-test": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock backend test agent for Python service\"\n---\n# Backend Test Agent (Mock)\n",
+      "freshnessRefreshTools": []
     },
     "publish-pr": {
       "rules": "## Coding Rules\n\n# Python Service Rules\n\n- Use `pytest` for all testing\n- Follow PEP 8 style guidelines\n- Use type hints for all function signatures",
       "tokenCount": 39,
       "mcp": {},
       "skills": {},
-      "systemPromptTemplate": "---\ndescription: \"Mock publish PR agent\"\n---\n# Publish PR (Mock)\n"
+      "systemPromptTemplate": "---\ndescription: \"Mock publish PR agent\"\n---\n# Publish PR (Mock)\n",
+      "freshnessRefreshTools": []
     }
   },
   "config": {

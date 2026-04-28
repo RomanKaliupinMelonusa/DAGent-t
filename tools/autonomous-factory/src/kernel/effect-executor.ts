@@ -19,10 +19,19 @@
 import type { Effect } from "./effects.js";
 import type { StateStore } from "../ports/state-store.js";
 import type { Telemetry } from "../ports/telemetry.js";
+import type { CodeIndexer } from "../ports/code-indexer.js";
 
 export interface EffectPorts {
   readonly stateStore: StateStore;
   readonly telemetry: Telemetry;
+  /**
+   * Optional — when provided, `reindex` effects synchronously refresh
+   * the semantic graph before resolving. When absent, `reindex` effects
+   * become a telemetry-only no-op (preserves backward compatibility for
+   * any caller that constructs `EffectPorts` without an indexer, e.g.
+   * unit tests of the kernel reducer in isolation).
+   */
+  readonly codeIndexer?: CodeIndexer;
 }
 
 /**
@@ -37,9 +46,9 @@ function classifyEffect(effect: Effect): "critical" | "observational" {
     case "write-halt-artifact":
     case "append-invocation-record":
     case "seal-invocation":
+    case "reindex":
       return "critical";
     case "telemetry-event":
-    case "reindex":
       return "observational";
     default: {
       const _exhaustive: never = effect;
@@ -178,9 +187,6 @@ async function runObservational(effect: Effect, ports: EffectPorts): Promise<voi
       case "telemetry-event":
         ports.telemetry.event(effect.category, effect.itemKey, effect.context);
         break;
-      case "reindex":
-        ports.telemetry.event("roam.reindex", null, { categories: effect.categories });
-        break;
       default:
         // Non-observational effects should never reach here; silently ignore.
         break;
@@ -302,6 +308,37 @@ export async function executeEffects(
             error: err instanceof Error ? err.message : String(err),
           });
         }
+        break;
+
+      case "reindex":
+        // Refresh the semantic graph before the next dispatch reads it.
+        // Coalesced internally by the indexer port — concurrent callers
+        // (parallel dev nodes completing at once, triage reroutes,
+        // pre-tool-call gate) all await the same in-flight refresh.
+        // Failures are non-fatal: the pipeline continues with whatever
+        // state the indexer is in and agents fall back to standard tools.
+        if (ports.codeIndexer && ports.codeIndexer.isAvailable()) {
+          try {
+            const result = await ports.codeIndexer.index();
+            ports.telemetry.event("code-index.refresh", null, {
+              trigger: "kernel-effect",
+              durationMs: result.durationMs,
+              upToDate: result.upToDate,
+              categories: effect.categories,
+            });
+          } catch (err) {
+            ports.telemetry.event("code-index.refresh_failed", null, {
+              error: err instanceof Error ? err.message : String(err),
+              categories: effect.categories,
+            });
+          }
+        } else {
+          ports.telemetry.event("code-index.refresh_skipped", null, {
+            reason: "indexer-unavailable",
+            categories: effect.categories,
+          });
+        }
+        accepted++;
         break;
 
       default: {

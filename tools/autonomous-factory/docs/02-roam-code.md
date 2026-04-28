@@ -254,8 +254,57 @@ sequenceDiagram
         MCP-->>SDK: files + line ranges + callers
     end
 
-    Note over W: After post-deploy failure reroute:<br/>roam index (re-index codebase)
+    Note over W: Freshness-aware refresh:<br/>kernel auto-emits a `reindex` effect<br/>on every $DONE node whose category is in<br/>`config.reindex_categories` (defaults: dev, test).<br/>Pre-tool-call gate awaits the same coalesced<br/>`CodeIndexer.index()` before any tool whose name<br/>is listed in `roam-code.mcp.yml > freshness.requires_index_refresh`.
 ```
+
+---
+
+## Index Freshness Model
+
+The pipeline treats the semantic graph as a **freshness-managed cache**, not a once-per-run snapshot. Three triggers refresh it; all of them route through one stack-agnostic [`CodeIndexer`](../src/ports/code-indexer.js) port whose only roam-specific implementation is [`RoamCodeIndexer`](../src/adapters/roam-code-indexer.js):
+
+| Trigger | When | Who emits | Telemetry `trigger` |
+|---|---|---|---|
+| Initial build | Bootstrap, before kernel start | `runInitialIndex` in `lifecycle/preflight.ts` | `bootstrap` |
+| Post-completion | Every `$DONE` whose node `category` is in `apm.yml > config.reindex_categories` (default: `dev`, `test`) | Kernel emits a `reindex` `Effect`; `effect-executor.ts` runs it on the **critical** path before scheduling the next batch | `kernel-effect` |
+| Pre-tool-call | Before any MCP tool whose name appears in that server's `freshness.requires_index_refresh` list | Harness pre-tool-call gate ([`buildSessionHooks`](../src/harness/hooks.ts) `freshnessGate`) | `pre-tool-call` |
+
+### Coalescing
+
+A single `RoamCodeIndexer` instance is shared by all three triggers. Concurrent `index()` calls return the same in-flight `Promise`, so a parallel batch (`backend-dev` + `frontend-dev` finishing within milliseconds; both downstream test agents calling `roam_review_change` immediately afterward) costs **one** refresh, not four. Roam's own SHA-256 + mtime fast path keeps the no-op case sub-second.
+
+### Declarative contract — engine has zero `roam_*` literals
+
+Every consumer of the freshness gate is configured by APM yaml. Engine code never names a roam tool:
+
+```yaml
+# apps/<your-app>/.apm/mcp/roam-code.mcp.yml
+name: roam-code
+type: local
+command: roam
+args: [mcp]
+tools: ["*"]
+availability: optional
+freshness:
+  requires_index_refresh:
+    - roam_preflight
+    - roam_prepare_change
+    - roam_review_change
+    - roam_diff
+    - roam_impact
+    - roam_diagnose
+    - roam_diagnose_issue
+    - roam_affected_tests
+    - roam_pr_risk
+    - roam_dead_code
+    - roam_complexity_report
+```
+
+The APM compiler aggregates the union of these lists across every MCP server enabled for an agent into `compiledAgent.freshnessRefreshTools`. The harness gate builds a `Set` from that field and forwards `refresh()` only when a tool call hits it. Adding a new indexer (scip-typescript, ts-morph, ctags) is one new adapter + one new yaml — no engine edits.
+
+### Failure semantics
+
+A failed refresh is **never** fatal. The adapter swallows the throw and returns `{durationMs, upToDate: false}`; the gate proceeds to invoke the tool against whatever index state exists. Failures are logged as `code-index.refresh_failed` and surfaced in the `_SUMMARY.md` "Code Index" section so the next run's preflight reads as ground truth, not a phantom rebuild.
 
 ---
 

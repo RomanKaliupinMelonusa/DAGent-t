@@ -23,3 +23,4 @@ export type {
   ShellExecResult,
   ShellExecError,
 } from "./shell.js";
+export type { CodeIndexer, IndexResult } from "./code-indexer.js";
