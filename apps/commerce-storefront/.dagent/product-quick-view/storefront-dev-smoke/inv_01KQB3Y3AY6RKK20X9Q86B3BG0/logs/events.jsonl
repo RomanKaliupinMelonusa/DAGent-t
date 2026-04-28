@@ -1,0 +1,4 @@
+{"ts":"2026-04-28T22:39:09.665Z","kind":"dispatch.start","invocationId":"inv_01KQB3Y3AY6RKK20X9Q86B3BG0","nodeKey":"storefront-dev-smoke","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:39:09.662Z","attempt":1}
+{"ts":"2026-04-28T22:39:33.731Z","outcome":"completed","note":"local-exec","kind":"item.end","itemKey":"storefront-dev-smoke"}
+{"ts":"2026-04-28T22:39:33.735Z","path":"/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev-smoke/inv_01KQB3Y3AY6RKK20X9Q86B3BG0/outputs/handler-output.json","keys":["routes","peakRssMb","smokeReport","ok"],"kind":"node.handler_output","itemKey":"storefront-dev-smoke"}
+{"ts":"2026-04-28T22:39:33.743Z","kind":"dispatch.end","invocationId":"inv_01KQB3Y3AY6RKK20X9Q86B3BG0","nodeKey":"storefront-dev-smoke","outcome":"completed","finishedAt":"2026-04-28T22:39:33.736Z","outputKinds":["smoke-report","handler-output","node-report"]}

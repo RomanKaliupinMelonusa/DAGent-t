@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "storefront-dev-smoke",
+  "producedAt": "2026-04-28T22:39:31Z",
+  "routes": [
+    {
+      "url": "/",
+      "status": 200,
+      "consoleErrors": []
+    },
+    {
+      "url": "/category/newarrivals",
+      "status": 200,
+      "consoleErrors": []
+    }
+  ],
+  "peakRssMb": 1394.7,
+  "cgroupApplied": false
+}

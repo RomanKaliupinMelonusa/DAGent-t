@@ -1,0 +1,1 @@
+{"ts":"2026-04-28T22:39:09.674Z","tool":"local-exec","category":"shell","detail":" → bash /workspaces/DAGent-t/tools/autonomous-factory/scripts/storefront-smoke.sh","is_write":false,"kind":"tool.call","itemKey":"storefront-dev-smoke"}
