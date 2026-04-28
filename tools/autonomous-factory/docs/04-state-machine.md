@@ -125,11 +125,13 @@ flowchart LR
 
 ## Workflow Types
 
-Each workflow type prunes irrelevant items when `_STATE.json` is seeded — either by `agent:run --workflow <name>` on the happy path or by `pipeline:init` as an admin escape hatch. All types run Wave 1 (infra), approval gate, and finalize phases; pruning targets Wave 2 app items.
+A "workflow" is a named DAG declared in `<app>/.apm/workflows.yml`. The kernel's `_STATE.json` is seeded with exactly the nodes that workflow lists — there is no global node table that gets pruned. Each app ships its own set of workflows; the engine treats them as opaque.
+
+The repository ships three workflows out of the box:
 
 ```mermaid
 flowchart TB
-    subgraph FS["Full-Stack (all 19 items)"]
+    subgraph FS["sample-app · full-stack (all 19 items)"]
         direction LR
         FS1["schema-dev"] --> FS_IA["infra-architect"] --> FS_PI["push-infra"] --> FS_DPR["create-draft-pr"] --> FS_PIP["poll-infra-plan"] --> FS_AIA["⏸ approval"] --> FS_IH["infra-handoff"]
         FS1 & FS_IH --> FS2["backend-dev"] & FS3["frontend-dev"]
@@ -140,7 +142,7 @@ flowchart TB
         FS9 --> FS10["code-cleanup"] --> FS11["docs-archived"] --> FS_DARC["doc-architect"] --> FS12["publish-pr"]
     end
 
-    subgraph BE["Backend (N/A: frontend-dev, frontend-unit-test, live-ui)"]
+    subgraph BE["sample-app · backend (skips frontend-dev, frontend-unit-test, live-ui)"]
         direction LR
         BE1["schema-dev"] --> BE_IA["infra-architect"] --> BE_PI["push-infra"] --> BE_DPR["create-draft-pr"] --> BE_PIP["poll-infra-plan"] --> BE_AIA["⏸ approval"] --> BE_IH["infra-handoff"]
         BE1 & BE_IH --> BE2["backend-dev"]
@@ -150,63 +152,22 @@ flowchart TB
         BE8 --> BE10["code-cleanup"] --> BE11["docs-archived"] --> BE_DARC["doc-architect"] --> BE12["publish-pr"]
     end
 
-    subgraph FE["Frontend (N/A: schema-dev, backend-dev, backend-unit-test, integration-test)"]
+    subgraph SF["commerce-storefront · storefront (no infra wave; spec-compiler + adversarial E2E)"]
         direction LR
-        FE_IA["infra-architect"] --> FE_PI["push-infra"] --> FE_DPR["create-draft-pr"] --> FE_PIP["poll-infra-plan"] --> FE_AIA["⏸ approval"] --> FE_IH["infra-handoff"]
-        FE_IH --> FE3["frontend-dev"]
-        FE3 --> FE5["frontend-unit-test"]
-        FE5 --> FE6["push-app"] --> FE7["poll-app-ci"]
-        FE7 --> FE9["live-ui"]
-        FE9 --> FE10["code-cleanup"] --> FE11["docs-archived"] --> FE_DARC["doc-architect"] --> FE12["publish-pr"]
-    end
-
-    subgraph INF["Infra (N/A: all Wave 2 app items + doc-architect)"]
-        direction LR
-        INF1["schema-dev"] --> INF_IA["infra-architect"] --> INF_PI["push-infra"] --> INF_DPR["create-draft-pr"] --> INF_PIP["poll-infra-plan"] --> INF_AIA["⏸ approval"] --> INF_IH["infra-handoff"]
-        INF_IH --> INF11["docs-archived"] --> INF12["publish-pr"]
-    end
-
-    subgraph AO["App-Only (N/A: schema-dev, infra-architect, push-infra, poll-infra-plan, await-infra-approval, infra-handoff)"]
-        direction LR
-        AO_DPR["create-draft-pr"]
-        AO2["backend-dev"] & AO3["frontend-dev"]
-        AO2 --> AO4["backend-unit-test"]
-        AO3 --> AO5["frontend-unit-test"]
-        AO4 & AO5 --> AO6["push-app"] --> AO7["poll-app-ci"]
-        AO7 --> AO8["integration-test"] --> AO9["live-ui"]
-        AO9 --> AO10["code-cleanup"] --> AO11["docs-archived"] --> AO_DARC["doc-architect"] --> AO12["publish-pr"]
-    end
-
-    subgraph BON["Backend-Only (N/A: infra items + frontend-dev, frontend-unit-test, live-ui)"]
-        direction LR
-        BON_DPR["create-draft-pr"]
-        BON2["backend-dev"]
-        BON2 --> BON4["backend-unit-test"]
-        BON4 --> BON6["push-app"] --> BON7["poll-app-ci"]
-        BON7 --> BON8["integration-test"]
-        BON8 --> BON10["code-cleanup"] --> BON11["docs-archived"] --> BON_DARC["doc-architect"] --> BON12["publish-pr"]
+        SC["spec-compiler"] --> BA["baseline-analyzer"] --> SD2["storefront-dev"]
+        SD2 --> SUT["storefront-unit-test"]
+        SUT --> EA["e2e-author"] --> QA["qa-adversary"] --> ER["e2e-runner"]
+        ER --> CC2["code-cleanup"] --> DOC2["docs-archived"] --> DA2["doc-architect"] --> PR2["publish-pr"]
     end
 
     style FS fill:#e8f5e9
     style BE fill:#e3f2fd
-    style FE fill:#fff3e0
-    style INF fill:#f3e5f5
-    style AO fill:#e0f2f1
-    style BON fill:#fce4ec
+    style SF fill:#fff3e0
 ```
 
-### N/A Items Per Workflow Type
+### Authoring a New Workflow
 
-| Workflow | Skipped Items (auto-N/A) | Active Count |
-|----------|-------------------------|:---:|
-| **Full-Stack** | (none) | 19 |
-| **Backend** | `frontend-dev`, `frontend-unit-test`, `live-ui` | 16 |
-| **Frontend** | `backend-dev`, `backend-unit-test`, `integration-test`, `schema-dev` | 15 |
-| **Infra** | `frontend-dev`, `frontend-unit-test`, `backend-dev`, `backend-unit-test`, `integration-test`, `live-ui`, `code-cleanup`, `push-app`, `poll-app-ci`, `doc-architect` | 9 |
-| **App-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff` | 14 |
-| **Backend-Only** | `infra-architect`, `push-infra`, `poll-infra-plan`, `await-infra-approval`, `infra-handoff`, `frontend-dev`, `frontend-unit-test`, `live-ui` | 11 |
-
-> **Note:** `create-draft-pr`, `docs-archived`, and `publish-pr` are always active for **all** workflow types. `schema-dev` runs for all types except Frontend. The Infra workflow type skips all Wave 2 app items — only the infra wave + docs + PR run. App-Only and Backend-Only skip all Wave 1 infra items (except `create-draft-pr`).
+`workflows.yml` is the single source of truth — no engine code change is required to add or prune a workflow. Each top-level key is a workflow name; its `nodes:` block lists the DAG. The kernel rejects a workflow at compile time if any node references a missing dependency or a missing pool entry. Use `npm run pipeline:lint` to validate before running.
 
 ---
 
@@ -433,19 +394,20 @@ flowchart TD
 
 ## Pipeline Commands (npm scripts)
 
+> **Kernel is the sole writer.** Outcome verbs (`complete`, `fail`, `doc-note`, `set-url`, `set-note`, `handoff-artifact`, `reset-ci`, `reset-infra-plan`, `redevelop-infra`) were removed in Phase A.6. Agents emit kernel commands via the `report_outcome` SDK tool. The CLI exposes only read + admin verbs.
+
 | Command | Purpose |
 |---------|---------|
-| `npm run pipeline:init <slug> <workflow>` | **Admin escape hatch.** Seed `_STATE.json` + `_TRANS.md` without running the orchestrator. Not needed on the happy path — `agent:run --workflow <name>` seeds state in-process when absent |
-| `npm run pipeline:complete <slug> <key>` | Mark item as done |
-| `npm run pipeline:fail <slug> <key> <msg>` | Mark item as failed |
-| `npm run pipeline:reset-ci <slug>` | Reset deploy items (`push-app` + `poll-app-ci`) for CI retry |
-| `npm run pipeline:reset-infra-plan <slug>` | Reset infra deploy items (`push-infra` + `poll-infra-plan`) for re-push |
-| `npm run pipeline:redevelop-infra <slug> <reason>` | Reset Wave 1 infra items for redevelopment cycle |
-| `npm run pipeline:resume <slug>` | Resume pipeline after successful elevated apply |
-| `npm run pipeline:recover-elevated <slug> <msg>` | Recover pipeline after failed elevated apply |
-| `npm run pipeline:status <slug>` | Show current pipeline state |
-| `npm run pipeline:next <slug>` | Get next single item (naive order) |
-| `npm run pipeline:next-available <slug>` | Get all parallelizable items (DAG-aware) |
+| `npm run pipeline:init <slug> <workflow>` | **Admin escape hatch.** Seed `_STATE.json` + `_TRANS.md` without running the orchestrator. Not needed on the happy path — `agent:run --workflow <name>` seeds state in-process when absent. |
+| `npm run pipeline:status <slug>` | Show current pipeline state. |
+| `npm run pipeline:next <slug>` | Get next single item (read-only). |
+| `npm run pipeline:reset-scripts <slug> <category>` | Reset script-type nodes in a category for re-push. |
+| `npm run pipeline:resume <slug>` | Resume pipeline after a successful elevated apply. |
+| `npm run pipeline:recover-elevated <slug> <msg>` | Recover pipeline after a failed elevated apply. |
+| `npm run pipeline:recover-dangling <slug>` | Reconcile invocations that crashed mid-dispatch. |
+| `npm run pipeline:lint` | Static checks over `apm.yml` / `workflows.yml`. |
+| `npm run pipeline:viz` | Render the workflow DAG to a Mermaid diagram. |
+| `npm run pipeline:lineage <slug>` | Print the per-invocation artefact lineage tree. |
 
 > **No item-scoped CLI verbs.** `docNote`, `handoffArtifact`, and `deployedUrl` are no longer state fields — dev agents emit them as declared artifacts (`outputs/summary.md`, `outputs/<kind>.json`, `outputs/deployment-url.json`). The kernel reads them from disk via the `ArtifactBus` port. See "The Node I/O Contract" below.
 

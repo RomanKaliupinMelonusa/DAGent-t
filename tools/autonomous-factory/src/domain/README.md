@@ -14,7 +14,7 @@ Nothing in this folder may import `node:fs`, `node:child_process`, `@github/copi
 |---|---|---|
 | [scheduling.ts](scheduling.ts) | Computes the next batch of dispatchable items from DAG state. | `schedule`, `SchedulableItem`, `ScheduleResult` |
 | [dag-graph.ts](dag-graph.ts) | Graph traversal — forward/reverse edges, topological sort, cascade barriers. | `getDownstream`, `getUpstream`, `cascadeBarriers`, `topologicalSort`, `DependencyGraph` |
-| [transitions.ts](transitions.ts) | Pure state transition functions: `completeItem`, `failItem`, `resetNodes`, `salvageForDraft`, `resumeAfterElevated`. Cascading post-deploy resets live here. | `completeItem`, `failItem`, `resetNodes`, `resetScripts`, `salvageForDraft`, `TransitionState` |
+| [transitions.ts](transitions.ts) | Pure state transition functions: `completeItem`, `failItem`, `resetNodes`, `salvageForDraft`, `resumeAfterElevated`. Cascading post-deploy resets live here. | `completeItem`, `failItem`, `resetNodes`, `resetScripts`, `salvageForDraft`, `resumeAfterElevated`, `bypassNode`, `findInfraPollKey`, `findInfraDevKey`, `TransitionState` |
 | [init-state.ts](init-state.ts) | Builds initial `PipelineState` from compiled workflow nodes. | `buildInitialState`, `CompiledNode`, `InitInputs`, `InitialState` |
 | [failure-routing.ts](failure-routing.ts) | Resolves which DAG nodes to reset for a given fault domain via workflow `fault_routing` table. | `resolveFailureTarget`, `resolveFailureRoutes` |
 | [error-signature.ts](error-signature.ts) | Deterministic error fingerprint (normalised hash) for the identical-error circuit breaker. | `computeErrorSignature` |
@@ -26,6 +26,7 @@ Nothing in this folder may import `node:fs`, `node:child_process`, `@github/copi
 | [batch-interpreter.ts](batch-interpreter.ts) | Classifies a scheduled batch into outcome categories (all-complete, mixed, all-failed…). | `interpretBatch`, `BatchOutcome`, `BatchSignals` |
 | [approval-sla.ts](approval-sla.ts) | Enforces approval-gate SLA windows. | `resolveApprovalSla`, `checkApprovalExpired` |
 | [progress-tracker.ts](progress-tracker.ts) | Snapshots DAG progress for telemetry. | `snapshotProgress` |
+| [dangling-invocations.ts](dangling-invocations.ts) | Detects invocations that crashed mid-dispatch (no seal, no failure) and emits the reconcile commands consumed by `pipeline:recover-dangling`. | `findDanglingInvocations`, `reconcileDangling` |
 | [index.ts](index.ts) | Barrel re-exports. | (all of the above) |
 
 ## Public interface

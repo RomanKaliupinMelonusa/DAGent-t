@@ -193,7 +193,7 @@ These are invariants the engine currently upholds. If you change code in a way t
 
 1. **Kernel is the sole state writer.** No adapter, handler, or loop module mutates `PipelineState` directly. Enforce: grep for `state.items[...] =` outside `kernel/` and `domain/transitions.ts`.
 2. **Kernel is synchronous and pure.** No `async`, no I/O. `PipelineKernel.process()` returns within microseconds.
-3. **Handlers are observers, not writers.** Handlers return `DagCommand[]` describing desired state changes; the kernel decides whether to apply them. Agents never call `pipeline:complete` / `pipeline:fail` directly from within a session — they use the `report_outcome` SDK tool, which the handler translates into a command.
+3. **Handlers are observers, not writers.** Handlers return `DagCommand[]` describing desired state changes; the kernel decides whether to apply them. Agents never write state directly — they call the `report_outcome` SDK tool, which the handler translates into a kernel command. The shell-level outcome verbs (`pipeline:complete` / `pipeline:fail` / `pipeline:doc-note` / `pipeline:set-url` / `pipeline:set-note` / `pipeline:handoff-artifact`) were removed in Phase A.6.
 4. **Ports define I/O boundaries.** Every file-system, subprocess, or network call in the engine flows through a port. The domain and kernel layers have zero `node:fs` / `node:child_process` imports.
 5. **APM manifest is the single source of truth for agent context.** No agent prompt text is hardcoded in the engine. `agents.ts` is a generic prompt assembler; all identity, rules, and MCP bindings come from `.apm/apm.yml`.
 6. **Git operations go through wrappers.** `agent-commit.sh` and `agent-branch.sh` are the only sanctioned git entry points for agents. The engine's own git calls go through `ports/version-control.ts` → `adapters/git-shell-adapter.ts`.
@@ -222,7 +222,7 @@ Both layers wrap handler execution with safety concerns. [handlers/middleware.ts
 
 ### Schema validation gaps
 
-- **`workflows.yml` has no schema validation**. `apm.yml` is Zod-validated ([apm-types.ts](src/app-types.ts)); `workflows.yml` is parsed but not type-checked at load time. Malformed `depends_on` or missing nodes surface as runtime errors deep in `domain/scheduling.ts`.
+- **`workflows.yml` has no schema validation**. `apm.yml` is Zod-validated ([apm/types.ts](src/apm/types.ts)); `workflows.yml` is parsed but not type-checked at load time. Malformed `depends_on` or missing nodes surface as runtime errors deep in `domain/scheduling.ts`.
 - **Triage pack JSON** (`.apm/triage-packs/*.json`) has a schema ([apm/types.ts](src/apm/types.ts) `CompiledTriageProfile`) but authoring errors are caught late.
 
 ### Other

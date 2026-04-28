@@ -461,7 +461,7 @@ classDiagram
     ApmCompiledOutput ..> ApmBudgetExceededError : compiler throws
 ```
 
-All schemas validated by Zod (`ApmCompiledOutputSchema` in `apm-types.ts`).
+All schemas validated by Zod (`ApmCompiledOutputSchema` in [`src/apm/types.ts`](../src/apm/types.ts)).
 
 ---
 
@@ -783,12 +783,11 @@ When a node doesn't declare an explicit `handler` field, the kernel infers it:
 | `script` | `local-exec` | `local-exec` | Shell command execution |
 | `script` | `poll` | `github-ci-poll` | Polls GitHub Actions for CI run status |
 | `approval` | — | `approval` | Waits for human ChatOps command |
-| `barrier` | — | `barrier` | No-op DAG sync point |
 | `triage` | — | `triage` | Error classification via RAG + LLM |
 
-Custom types extend this via `config.handler_defaults` or per-node `handler` fields.
+Custom types extend this via `config.handler_defaults` or per-node `handler` fields. `barrier` nodes are domain-only constructs — they cascade in [`domain/dag-graph.ts`](../src/domain/dag-graph.ts) (`cascadeBarriers`) but have no executable handler; declare `handler:` (or `handler_defaults["barrier"]`) explicitly if a workflow needs to use them.
 
-Set `config.strict_handler_inference: true` to disable the built-in fallback table above — every node must then either declare `handler:` explicitly or match a key in `handler_defaults`. Catches typos like `type: "scripts"` at lint time (`npm run lint:pipeline`) instead of silently at dispatch.
+Set `config.strict_handler_inference: true` to disable the built-in fallback table above — every node must then either declare `handler:` explicitly or match a key in `handler_defaults`. Catches typos like `type: "scripts"` at lint time (`npm run pipeline:lint`) instead of silently at dispatch.
 
 ---
 

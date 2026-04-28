@@ -8,7 +8,7 @@
 > Pure domain (DAG math, transitions, scheduling): `tools/autonomous-factory/src/domain/`
 > Ports / adapters: `tools/autonomous-factory/src/ports/` · `tools/autonomous-factory/src/adapters/`
 > Reactive DAG loop + dispatch: `tools/autonomous-factory/src/loop/` · `tools/autonomous-factory/src/loop/dispatch/`
-> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, barrier, triage-handler)
+> Handler plugins: `tools/autonomous-factory/src/handlers/` (copilot-agent, local-exec, github-ci-poll, approval, triage-handler)
 > Handler support helpers: `tools/autonomous-factory/src/handlers/support/` (agent-context, agent-limits, agent-post-session)
 > Harness: `tools/autonomous-factory/src/harness/` (RBAC, circuit breaker, tool wiring)
 > Supporting modules: `preflight.ts`, `reporting/index.ts`, `auto-skip.ts`, `hooks.ts`, `archive.ts`

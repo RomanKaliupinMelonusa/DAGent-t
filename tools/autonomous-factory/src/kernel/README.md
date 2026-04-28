@@ -19,6 +19,7 @@ This design eliminates TOCTOU races between parallel handlers and makes every st
 | [rules.ts](rules.ts) | `KernelRules` port — schedule / transitions / routing. `DefaultKernelRules` delegates to `domain/`. | `KernelRules`, `DefaultKernelRules` |
 | [types.ts](types.ts) | `RunState`, `CommandResult`, `createRunState`. | `RunState`, `CommandResult`, `createRunState` |
 | [admin.ts](admin.ts) | Admin-only mutations used by the CLI (reset-scripts, resume-elevated, etc.). Still flows through commands. | `adminReset*` helpers |
+| [invocation-id.ts](invocation-id.ts) | Generates per-dispatch invocation IDs (the primary key for the artifact ledger and per-invocation directories). | `createInvocationId`, `InvocationId` |
 | [index.ts](index.ts) | Barrel. | (all of the above) |
 
 ## Public interface

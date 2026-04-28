@@ -5,8 +5,8 @@ Write a spec. Get a tested Pull Request.
 DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents hand off through a dependency-aware state machine with self-healing recovery, real browser testing, and CI/CD integration — zero human interaction between spec and code review.
 
 > The engine is cloud- and framework-agnostic; each app declares its own stack in a manifest. This repo ships the engine plus two reference apps:
-> - **[apps/commerce-storefront/](apps/commerce-storefront/)** — Salesforce B2C Commerce Cloud **PWA Kit** storefront (headless React + SCAPI, deployed to Managed Runtime). The most actively developed target. Runs the `storefront` workflow: blind-to-impl SDET, machine-checkable acceptance contract, pre-feature noise baseline, local Playwright E2E before deploy, SaaS Managed Runtime (no infra wave).
-> - **[apps/sample-app/](apps/sample-app/)** — Azure reference app (Functions + Static Web Apps + APIM + Terraform). Demonstrates infra-and-app two-wave pipelines with elevated-approval ChatOps.
+> - **[apps/commerce-storefront/](apps/commerce-storefront/)** — Salesforce B2C Commerce Cloud **PWA Kit** storefront (headless React + SCAPI, deployed to Managed Runtime). **The primary, actively-developed target — all recent engine changes land here first.** Runs the `storefront` workflow: blind-to-impl SDET, machine-checkable acceptance contract, pre-feature noise baseline, local Playwright E2E before deploy, SaaS Managed Runtime (no infra wave).
+> - **[apps/sample-app/](apps/sample-app/)** — Azure reference app (Functions + Static Web Apps + APIM + Terraform). Demonstrates infra-and-app two-wave pipelines with elevated-approval ChatOps. **⚠️ Not yet fully migrated to the current engine architecture and APM configuration conventions — its pipeline may not run end-to-end. Use the storefront app as the working reference; sample-app is kept for the two-wave / elevated-approval patterns it demonstrates.**
 
 ---
 
@@ -22,7 +22,7 @@ DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents hand o
 
 | Feature | What it means in practice |
 |---|---|
-| **DAG-scheduled parallel execution** | Independent agents (backend + frontend) run concurrently; dependent stages wait. Each app defines its own workflow DAG (sample-app: `Backend` / `Frontend` / `Full-Stack` / `Infra` / `App-Only` / `Backend-Only`; storefront: `storefront`). |
+| **DAG-scheduled parallel execution** | Independent agents (backend + frontend) run concurrently; dependent stages wait. Each app defines its own workflow DAG (sample-app: `full-stack`, `backend`; storefront: `storefront`). |
 | **APM manifest per app** | Each agent receives only the rules its role needs, assembled from modular `.md` fragments, with enforced per-agent token budgets and per-agent write-path sandboxes. |
 | **Structural code intelligence** | Pre-indexed semantic graph via [roam-code](https://github.com/Cranot/roam-code) — tree-sitter, 27 languages, 102 MCP tools. Agents query the graph instead of text-searching. |
 | **Live browser testing** | Playwright scenarios run against the live app — headless Chromium against the deployed Azure sample-app, or against the local dev server for the storefront (with a QA adversary pass that attempts to falsify acceptance criteria). |

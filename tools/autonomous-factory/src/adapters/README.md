@@ -28,6 +28,11 @@ Adapters are wired individually in [entry/main.ts](../entry/README.md); there is
 | [file-baseline-loader.ts](file-baseline-loader.ts) | `BaselineLoader` | Loads prior-pass baseline evidence used to skip nodes that are still green. |
 | [subprocess-feature-runner.ts](subprocess-feature-runner.ts) | — | Spawns a child orchestrator for nested feature runs. Rarely used. |
 | [session-circuit-breaker.ts](session-circuit-breaker.ts) | `CognitiveBreaker` | In-session tool-call counter. Injects soft-limit warnings, force-disconnects at hard limit. |
+| [feature-paths.ts](feature-paths.ts) | — | Per-feature path resolver — the canonical translator from `(slug, itemKey, invocationId)` to `.dagent/<slug>/...` paths. Used by every adapter that touches feature artefacts. |
+| [file-artifact-bus.ts](file-artifact-bus.ts) | `ArtifactBus` | Resolves declared `consumes_*` / `produces_artifacts`, copies upstream outputs into the next invocation's `inputs/`, and validates that produced artefacts match the catalogue before sealing. |
+| [file-invocation-filesystem.ts](file-invocation-filesystem.ts) | `InvocationFilesystem` | Creates and reads the per-invocation `inputs/` / `outputs/` / `logs/` tree under `.dagent/<slug>/<nodeKey>/<invocationId>/`. |
+| [file-invocation-logger.ts](file-invocation-logger.ts) | `InvocationLogger` | Writes the multiplexed log sinks (`events.jsonl`, `tool-calls.jsonl`, `messages.jsonl`, `stdout.log`, `stderr.log`) for one invocation. |
+| [secret-redactor.ts](secret-redactor.ts) | — | Adapter-side redactor that strips known secret shapes (PATs, OIDC tokens, az/gh/aws CLI tokens) from telemetry and logs before they hit disk. |
 | [index.ts](index.ts) | — | Barrel — instantiation is done by `main.ts`, not via a factory. |
 
 ## Public interface
