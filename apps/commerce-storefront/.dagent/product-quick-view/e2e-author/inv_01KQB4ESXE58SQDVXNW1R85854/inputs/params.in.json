@@ -1,0 +1,21 @@
+{
+  "nodeKey": "e2e-author",
+  "invocationId": "inv_01KQB4ESXE58SQDVXNW1R85854",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB4ESXE58SQDVXNW1R85854/inputs/acceptance.yml"
+    },
+    {
+      "kind": "baseline",
+      "source": "upstream",
+      "from": "baseline-analyzer",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/baseline.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB4ESXE58SQDVXNW1R85854/inputs/baseline.json"
+    }
+  ]
+}
