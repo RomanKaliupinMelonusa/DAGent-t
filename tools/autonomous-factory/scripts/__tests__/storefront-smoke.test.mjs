@@ -175,6 +175,19 @@ test("success: serves 200 on / → exit 0, valid envelope, port reaped", async (
   assert.equal(report.routes.length, 1);
   assert.equal(report.routes[0].url, "/");
   assert.equal(report.routes[0].status, 200);
+  // Regression guard: on a clean boot the SSR-error scrape must yield an
+  // empty array (not a doubled `[]\n[]`, which previously corrupted every
+  // per-route blob and caused jq parse errors downstream).
+  assert.ok(
+    Array.isArray(report.routes[0].consoleErrors),
+    "consoleErrors must be an array",
+  );
+  assert.equal(report.routes[0].consoleErrors.length, 0);
+  assert.doesNotMatch(
+    r.stderr,
+    /jq: parse error/,
+    `smoke script must not emit jq parse errors on clean boot\nstderr:\n${r.stderr}`,
+  );
 
   const env = JSON.parse(readFileSync(envelopePath, "utf-8"));
   assert.equal(env.schemaVersion, 1);

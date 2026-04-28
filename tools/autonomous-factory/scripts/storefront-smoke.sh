@@ -87,14 +87,17 @@ probe_route() {
   after_lines=$(wc -l <"$SERVER_LOG" 2>/dev/null | awk '{print $1}')
   local console_errors_json="[]"
   if (( after_lines > before_lines )); then
+    # Note: `grep || true` swallows grep's exit-1 on no-match so `pipefail`
+    # doesn't propagate it. `jq -s .` always emits `[]` for empty input,
+    # so no fallback is needed — and adding one (e.g. `|| echo "[]"`) would
+    # double-emit `[]` on the no-match path, corrupting the per-route JSON.
     console_errors_json=$(
       awk -v start="$((before_lines + 1))" -v end="$after_lines" \
         'NR >= start && NR <= end' "$SERVER_LOG" \
-      | grep -E "$SSR_ERROR_RE" \
+      | { grep -E "$SSR_ERROR_RE" || true; } \
       | head -20 \
       | jq -R . \
-      | jq -s . 2>/dev/null \
-      || echo "[]"
+      | jq -s .
     )
   fi
   printf '{"url":%s,"status":%d,"consoleErrors":%s}' \
