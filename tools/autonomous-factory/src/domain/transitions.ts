@@ -45,6 +45,11 @@ export interface TransitionState {
    *  after a salvage pass. Distinct from `naByType` (workflow-shape). */
   naBySalvage?: string[];
   salvageSurvivors: string[];
+  /** Item keys exempt from the deploy-orphan demotion sweep inside
+   *  `salvageForDraft`. Read alongside `salvageSurvivors` so an explicit
+   *  survivor with no surviving deps is left in `pending` instead of being
+   *  demoted to `na`. Optional for backward compatibility with legacy state. */
+  salvageImmune?: string[];
   dormantByActivation?: string[];
   /** Phase 3 — consumer-key → producer-keys for which the consumer declares
    *  a `consumes_artifacts` edge with `required: true` (or the Zod default).
@@ -488,12 +493,17 @@ export function salvageForDraft(
   // A5 — deploy-orphan demotion sweep. Iterate to fixed point: a deploy
   // survivor whose deps are all N/A becomes N/A, which may make a further
   // deploy survivor an orphan in turn. Bounded by items.length.
+  // Nodes listed in `state.salvageImmune` opt out of demotion entirely —
+  // they are explicit survivors whose orphan status is intentional (e.g.
+  // a Draft-PR creator that legitimately runs after dev nodes are N/A'd).
+  const immuneSet = new Set(state.salvageImmune ?? []);
   const demotedKeys: string[] = [];
   const naSet = new Set(newItems.filter((i) => i.status === "na").map((i) => i.key));
   for (let pass = 0; pass < newItems.length; pass++) {
     let changed = false;
     newItems = newItems.map((i) => {
       if (!forcePendingKeys.has(i.key)) return i;
+      if (immuneSet.has(i.key)) return i;
       if (state.nodeCategories[i.key] !== "deploy") return i;
       if (i.status !== "pending") return i;
       const deps = state.dependencies[i.key] ?? [];

@@ -362,6 +362,19 @@ storefront:
         routes:
           blocked: null
 
+    # ── Final tail node — flips the PR from Draft → Ready for Review ──
+    # Phase 2 split: publish-pr always opens the PR as Draft (and updates
+    # the body with the Wave 2 appendix); mark-pr-ready is the only node
+    # that promotes it. Salvaged runs intentionally never reach this node
+    # (`salvage_survivor: false`), so a degraded run leaves the PR in
+    # Draft — matching the UX intent of "human, please look at this".
+    mark-pr-ready:
+      depends_on: [publish-pr]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          blocked: null
+
     # ── Triage ────────────────────────────────────────────────
     triage-storefront:
       _node: triage-node
@@ -394,6 +407,7 @@ storefront:
       - push-app
       - poll-app-ci
       - publish-pr
+      - mark-pr-ready
 
   # ── Error-signature fingerprinter ──────────────────────────────────
   # Workflow-scoped `error_signature:` blocks are NOT read by the runtime —

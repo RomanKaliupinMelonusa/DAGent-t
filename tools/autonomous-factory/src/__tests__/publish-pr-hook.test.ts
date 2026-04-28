@@ -1,10 +1,15 @@
 /**
  * publish-pr-hook.test.ts — A1 self-heal contract for `hooks/publish-pr.sh`.
  *
- * Verifies the hook's PR-handling branch matrix:
+ * Verifies the hook's PR-handling branch matrix (Phase 2 split):
  *   1. No PR + salvage (create-draft-pr.status === "na")  → opens DRAFT
- *   2. No PR + clean   (create-draft-pr.status === "completed") → opens READY
- *   3. PR exists       → never calls `gh pr create`; only edits + readies
+ *   2. No PR + clean   (create-draft-pr.status === "completed") → opens DRAFT
+ *   3. PR exists       → never calls `gh pr create`; only edits body.
+ *
+ * After the Phase 2 split, publish-pr NEVER calls `gh pr ready` — that
+ * responsibility moved to `mark-pr-ready.sh` (a separate finalize node
+ * that runs after this one). All three branches must therefore leave
+ * the PR in Draft.
  *
  * The hook is exercised end-to-end via bash with a PATH-stubbed `gh` and
  * `git` so no real network or repo state is touched. The stubs append
@@ -143,18 +148,30 @@ describe("publish-pr.sh self-heal", () => {
     assert.match(createLine!, /--draft/);
     assert.match(createLine!, /--head feature\/feat-x/);
     assert.match(createLine!, /--base main/);
+    // Phase 2: publish-pr never promotes — that's mark-pr-ready's job.
+    assert.equal(
+      log.split("\n").find((l) => l.startsWith("pr ready")),
+      undefined,
+      `unexpected 'pr ready' invocation:\n${log}`,
+    );
   });
 
-  it("creates a READY PR when no PR exists and create-draft-pr is completed", () => {
+  it("creates a DRAFT PR when no PR exists and create-draft-pr is completed (Phase 2: always Draft)", () => {
     writeState("completed");
     const { status, output, log } = runHook({ PR_EXISTS: "0" });
     assert.equal(status, 0, output);
     const createLine = log.split("\n").find((l) => l.startsWith("pr create"));
     assert.ok(createLine, `expected 'pr create' invocation; log:\n${log}`);
-    assert.doesNotMatch(createLine!, /--draft/);
+    // Phase 2: publish-pr ALWAYS opens as Draft. mark-pr-ready promotes.
+    assert.match(createLine!, /--draft/);
+    assert.equal(
+      log.split("\n").find((l) => l.startsWith("pr ready")),
+      undefined,
+      `unexpected 'pr ready' invocation:\n${log}`,
+    );
   });
 
-  it("does not call `pr create` when a PR already exists; edits body and promotes", () => {
+  it("does not call `pr create` when a PR already exists; edits body but does NOT promote", () => {
     writeState("completed");
     const { status, output, log } = runHook({ PR_EXISTS: "1" });
     assert.equal(status, 0, output);
@@ -164,6 +181,11 @@ describe("publish-pr.sh self-heal", () => {
       `unexpected 'pr create' invocation:\n${log}`,
     );
     assert.ok(log.split("\n").some((l) => l.startsWith("pr edit")), "expected 'pr edit' call");
-    assert.ok(log.split("\n").some((l) => l.startsWith("pr ready")), "expected 'pr ready' call");
+    // Phase 2: promotion moved to mark-pr-ready.sh.
+    assert.equal(
+      log.split("\n").find((l) => l.startsWith("pr ready")),
+      undefined,
+      `unexpected 'pr ready' invocation in publish-pr:\n${log}`,
+    );
   });
 });

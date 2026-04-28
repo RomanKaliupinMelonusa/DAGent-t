@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "compiledAt": "2026-04-27T21:47:41.726Z",
+  "compiledAt": "2026-04-28T03:40:11.931Z",
   "tokenBudget": 8000,
   "agents": {
     "schema-dev": {
@@ -1695,6 +1695,7 @@
             }
           ],
           "salvage_survivor": true,
+          "salvage_immune": true,
           "circuit_breaker": {
             "min_attempts_before_skip": 3,
             "halt_on_identical": true,
@@ -1706,6 +1707,45 @@
           ],
           "depends_on": [
             "doc-architect"
+          ]
+        },
+        "mark-pr-ready": {
+          "type": "script",
+          "category": "finalize",
+          "timeout_minutes": 5,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/mark-pr-ready.sh",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "salvage_survivor": false,
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3,
+            "max_item_failures": 10
+          },
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": [
+            "publish-pr"
           ]
         },
         "triage-full-stack": {
@@ -2622,6 +2662,7 @@
             }
           ],
           "salvage_survivor": true,
+          "salvage_immune": true,
           "circuit_breaker": {
             "min_attempts_before_skip": 3,
             "halt_on_identical": true,
@@ -2633,6 +2674,45 @@
           ],
           "depends_on": [
             "doc-architect"
+          ]
+        },
+        "mark-pr-ready": {
+          "type": "script",
+          "category": "finalize",
+          "timeout_minutes": 5,
+          "requires_data_plane_ready": false,
+          "auto_skip_if_no_changes_in": [],
+          "auto_skip_if_no_deletions": false,
+          "auto_skip_unless_triage_reroute": false,
+          "template_flags": [],
+          "force_run_if_changed": [],
+          "commit_scope": "all",
+          "diff_attribution_dirs": [],
+          "writes_deploy_sentinel": false,
+          "generates_change_manifest": false,
+          "injects_infra_rollback": false,
+          "script_type": "local-exec",
+          "command": "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/mark-pr-ready.sh",
+          "captures_head_sha": false,
+          "signals_create_pr": false,
+          "produces": [],
+          "consumes": [],
+          "consumes_kickoff": [],
+          "produces_artifacts": [],
+          "consumes_artifacts": [],
+          "consumes_reroute": [],
+          "salvage_survivor": false,
+          "circuit_breaker": {
+            "min_attempts_before_skip": 3,
+            "halt_on_identical": true,
+            "revert_warning_at": 3,
+            "max_item_failures": 10
+          },
+          "triggers": [
+            "schedule"
+          ],
+          "depends_on": [
+            "publish-pr"
           ]
         },
         "triage-backend": {

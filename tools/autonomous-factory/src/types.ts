@@ -289,6 +289,11 @@ export interface PipelineState {
   naBySalvage?: string[];
   /** Node keys that survive graceful degradation (salvageForDraft) — persisted at init from workflows.yml */
   salvageSurvivors: string[];
+  /** Node keys exempt from the salvage deploy-orphan demotion sweep — persisted
+   *  at init from `salvage_immune: true` in workflows.yml. Only meaningful in
+   *  combination with `salvageSurvivors`. Optional for backward compatibility
+   *  with legacy state files (treated as empty when absent). */
+  salvageImmune?: string[];
   /** Item keys initialized as dormant due to `activation: "triage-only"`. Parallels naByType. */
   dormantByActivation?: string[];
   /** Consumer-key → producer-keys map for `consumes_artifacts` edges with

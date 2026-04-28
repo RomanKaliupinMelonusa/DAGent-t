@@ -250,6 +250,7 @@ export class JsonFileStateStore implements StateStore {
         implementationNotes: snapshot.implementationNotes ?? disk.implementationNotes,
         deployedUrl: snapshot.deployedUrl ?? disk.deployedUrl,
         salvageSurvivors: snapshot.salvageSurvivors ?? disk.salvageSurvivors,
+        salvageImmune: snapshot.salvageImmune ?? disk.salvageImmune ?? [],
         // Artifact-bus invocation ledger is an append-only side table —
         // always keep the on-disk copy so a concurrent appendInvocationRecord
         // writer isn't clobbered by a DAG snapshot that never loaded it.

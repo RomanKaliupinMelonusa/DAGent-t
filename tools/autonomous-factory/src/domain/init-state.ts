@@ -19,6 +19,9 @@ export interface CompiledNode {
   depends_on?: string[];
   activation?: string;
   salvage_survivor?: boolean;
+  /** Phase 1 hotfix — exempts the node from the deploy-orphan demotion sweep
+   *  inside `salvageForDraft`. Only meaningful with `salvage_survivor: true`. */
+  salvage_immune?: boolean;
   /** Phase 3 scheduling triggers. Missing or including "schedule" → normal pending init.
    *  Only-`"route"` → dormant at init (equivalent to activation: "triage-only"). */
   triggers?: ReadonlyArray<"schedule" | "route">;
@@ -69,6 +72,9 @@ export interface InitialState {
   naBySalvage: string[];
   dormantByActivation: string[];
   salvageSurvivors: string[];
+  /** Item keys exempt from the salvage deploy-orphan sweep — populated from
+   *  `salvage_immune: true` on the node. Read by `salvageForDraft`. */
+  salvageImmune: string[];
   /** Consumer-key → producer-keys for which the consumer declares a
    *  `consumes_artifacts` edge with `required: true`. Read by
    *  `salvageForDraft` to scope demotion. Omitted/empty when no node
@@ -94,6 +100,7 @@ export function buildInitialState(inputs: InitInputs): InitialState {
   const nodeTypes: Record<string, string> = {};
   const nodeCategories: Record<string, string> = {};
   const salvageSurvivors: string[] = [];
+  const salvageImmune: string[] = [];
   const dormantByActivation: string[] = [];
   const requiredArtifactProducers: Record<string, string[]> = {};
 
@@ -103,6 +110,7 @@ export function buildInitialState(inputs: InitInputs): InitialState {
     nodeTypes[key] = node.type ?? "agent";
     if (node.category) nodeCategories[key] = node.category;
     if (node.salvage_survivor) salvageSurvivors.push(key);
+    if (node.salvage_immune) salvageImmune.push(key);
     // Required-artifact contract — omitted `required` defaults to true
     // (matches the Zod schema in apm/types.ts and artifact-io-validator).
     const consumes = node.consumes_artifacts;
@@ -156,6 +164,7 @@ export function buildInitialState(inputs: InitInputs): InitialState {
     naBySalvage: [],
     dormantByActivation,
     salvageSurvivors,
+    salvageImmune,
     requiredArtifactProducers,
   };
 }

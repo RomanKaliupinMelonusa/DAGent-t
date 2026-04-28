@@ -689,6 +689,14 @@ const nodeBodyFields = {
   })).default([]),
   /** When true, this node survives graceful degradation (salvageForDraft). */
   salvage_survivor: z.boolean().optional(),
+  /** When true, this node is exempt from the deploy-orphan demotion sweep
+   *  inside `salvageForDraft`. Only meaningful in combination with
+   *  `salvage_survivor: true` — an immune flag on a non-survivor is a no-op
+   *  because the node would never reach the demotion loop in the first place.
+   *  Use for deploy-category survivors that are intentionally upstream-orphan
+   *  after salvage (e.g. a Draft-PR creator whose only deps are dev nodes
+   *  that legitimately get N/A'd by salvage). */
+  salvage_immune: z.boolean().optional(),
   /** Approval SLA — only meaningful on `type: "approval"` nodes.
    *  Hours the approval gate may remain pending before the SLA expires.
    *  When omitted, falls back to `config.policy.approval_default_timeout_hours`. */
