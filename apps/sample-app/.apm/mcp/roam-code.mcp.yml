@@ -9,6 +9,11 @@ availability: optional
 # code. Listed names cause the harness pre-tool-call gate to await a
 # coalesced `CodeIndexer.index()` refresh before forwarding. Other roam
 # tools (overview / context-only) do not need a fresh index.
+#
+# Convention: tool names here are BARE (e.g. `roam_review_change`).
+# The APM compiler synthesises the SDK-delivered `<server>-<tool>` form
+# (e.g. `roam-code-roam_review_change`) when aggregating into the
+# per-agent `freshnessRefreshTools` set consumed by the gate.
 freshness:
   requires_index_refresh:
     - roam_preflight

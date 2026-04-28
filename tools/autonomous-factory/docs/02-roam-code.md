@@ -302,6 +302,8 @@ freshness:
 
 The APM compiler aggregates the union of these lists across every MCP server enabled for an agent into `compiledAgent.freshnessRefreshTools`. The harness gate builds a `Set` from that field and forwards `refresh()` only when a tool call hits it. Adding a new indexer (scip-typescript, ts-morph, ctags) is one new adapter + one new yaml — no engine edits.
 
+> **Naming convention.** YAML lists tool names in their **bare** form (`roam_review_change`) — that's the property of the server, not the gate. The Copilot SDK delivers MCP tool names to `hooks.onPreToolUse` server-prefixed (`roam-code-roam_review_change`). The compiler bridges the two: when aggregating into the per-agent `freshnessRefreshTools` set, it synthesises `<serverName>-<toolName>` so the gate stays a plain `Set.has(toolName)` check. Per-server runtime config keeps bare names; only the per-agent aggregated set is prefixed.
+
 ### Failure semantics
 
 A failed refresh is **never** fatal. The adapter swallows the throw and returns `{durationMs, upToDate: false}`; the gate proceeds to invoke the tool against whatever index state exists. Failures are logged as `code-index.refresh_failed` and surfaced in the `_SUMMARY.md` "Code Index" section so the next run's preflight reads as ground truth, not a phantom rebuild.

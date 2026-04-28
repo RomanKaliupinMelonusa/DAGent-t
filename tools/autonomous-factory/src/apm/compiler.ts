@@ -815,11 +815,18 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       systemPromptTemplate,
       // Phase 4 — aggregate the freshness-refresh tool names declared by
       // every MCP server enabled for this agent. The harness's
-      // pre-tool-call gate uses this set verbatim; engine code never sees
-      // a literal `roam_*` (or any other indexer) tool name.
+      // pre-tool-call gate matches against the SDK-delivered tool name,
+      // which is `<serverName>-<toolName>` (e.g. `roam-code-roam_dead_code`).
+      // Per-server runtime config keeps the bare names (it's a property
+      // of the server); the per-agent aggregated set gets prefixed at
+      // compile time so the gate can use a plain `Set.has(toolName)`
+      // check without learning a translation table. Engine code never
+      // sees a literal `roam_*` (or any other indexer) tool name.
       freshnessRefreshTools: Array.from(
         new Set(
-          Object.values(agentMcp).flatMap((m) => m.freshnessRefreshTools ?? []),
+          Object.entries(agentMcp).flatMap(([serverName, m]) =>
+            (m.freshnessRefreshTools ?? []).map((t) => `${serverName}-${t}`),
+          ),
         ),
       ),
     };
