@@ -238,7 +238,7 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 ### e2e-author
 - ✓ #1 `inv_01KQB4ESXE58SQDVXNW1R85854` (initial ← storefront-unit-test/inv_01KQB3Z0N4BYF0REM7VRE9CNGM (initial)) [completed @ 2026-04-28T22:52:34.709Z]
 - ✓ #2 `inv_01KQB70Y79BJ6PN3K3ZQKXFE5R` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [completed @ 2026-04-28T23:39:40.175Z]
-- … #3 `inv_01KQB7J6SME1SE66VFSVA4JMAZ` (triage-reroute ← inv_01KQB7HCP232ADWXAS8M54Q9V0) [pending]
+- … #3 `inv_01KQB7J6SME1SE66VFSVA4JMAZ` (triage-reroute ← inv_01KQB7HCP232ADWXAS8M54Q9V0) [pending @ 2026-04-28T23:42:38.636Z]
 
 ### e2e-runner
 - ✗ #1 `inv_01KQB4PRFHH56MTXQKPE4416NA` (initial ← e2e-author/inv_01KQB4ESXE58SQDVXNW1R85854 (initial)) [failed @ 2026-04-28T22:54:23.053Z]

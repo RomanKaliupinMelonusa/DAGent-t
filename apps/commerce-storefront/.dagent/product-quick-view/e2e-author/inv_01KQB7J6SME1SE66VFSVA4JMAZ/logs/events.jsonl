@@ -1,0 +1,11 @@
+{"ts":"2026-04-28T23:42:38.640Z","kind":"dispatch.start","invocationId":"inv_01KQB7J6SME1SE66VFSVA4JMAZ","nodeKey":"e2e-author","trigger":"triage-reroute","cycleIndex":3,"startedAt":"2026-04-28T23:42:38.636Z","attempt":3,"parentInvocationId":"inv_01KQB7HCP232ADWXAS8M54Q9V0"}
+{"ts":"2026-04-28T23:42:38.683Z","injection_types":["baseline_advisory"],"context_length":3255,"entry_counts":{"console":12,"network":7,"uncaught":0},"stale":true,"kind":"handoff.inject","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:42:47.645Z","input_tokens":24938,"output_tokens":282,"cache_read_tokens":22770,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:42:56.674Z","input_tokens":30870,"output_tokens":478,"cache_read_tokens":22770,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:43:02.022Z","input_tokens":33899,"output_tokens":224,"cache_read_tokens":30869,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:44:40.924Z","input_tokens":41474,"output_tokens":6148,"cache_read_tokens":33856,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:44:46.891Z","input_tokens":47734,"output_tokens":215,"cache_read_tokens":36329,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:44:50.716Z","input_tokens":47970,"output_tokens":128,"cache_read_tokens":47655,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:01.254Z","input_tokens":48282,"output_tokens":561,"cache_read_tokens":47969,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:24.468Z","input_tokens":48999,"output_tokens":1241,"cache_read_tokens":48281,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:33.214Z","input_tokens":50292,"output_tokens":382,"cache_read_tokens":48998,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}

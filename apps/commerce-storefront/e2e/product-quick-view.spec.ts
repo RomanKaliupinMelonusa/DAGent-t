@@ -26,6 +26,7 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
   /Failed to load resource: net::ERR_NAME_NOT_RESOLVED/,
   /retail-react-app\.use-datacloud\._handleApiError ERROR \[DataCloudApi\] Error sending Data Cloud event/,
   /r: 403 Forbidden/,
+  /Failed to load resource: the server responded with a status of 403 \(Forbidden\)/,
 ];
 
 // ---------------------------------------------------------------------------
