@@ -67,7 +67,7 @@
       "agent": "@storefront-unit-test",
       "status": "pending",
       "error": null,
-      "latestInvocationId": "inv_01KQB3Z0N4BYF0REM7VRE9CNGM"
+      "latestInvocationId": "inv_01KQB6N6RK6P3M1E1CSRC1VJ7S"
     },
     {
       "key": "e2e-author",
@@ -908,6 +908,29 @@
       "outcome": "completed",
       "finishedAt": "2026-04-28T23:26:40.658Z",
       "sealed": true
+    },
+    "inv_01KQB6N6RK6P3M1E1CSRC1VJ7S": {
+      "invocationId": "inv_01KQB6N6RK6P3M1E1CSRC1VJ7S",
+      "nodeKey": "storefront-unit-test",
+      "cycleIndex": 2,
+      "trigger": "redevelopment-cycle",
+      "triggeredBy": {
+        "nodeKey": "storefront-debug",
+        "invocationId": "inv_01KQB4TE786WBYS8JSQ30G1XM0",
+        "reason": "redevelopment-cycle"
+      },
+      "startedAt": "2026-04-28T23:26:43.988Z",
+      "inputs": [
+        {
+          "kind": "acceptance",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+          "nodeKey": "spec-compiler",
+          "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH"
+        }
+      ],
+      "outputs": []
     }
   }
 }

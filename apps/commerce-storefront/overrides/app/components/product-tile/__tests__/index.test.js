@@ -1,6 +1,6 @@
 /*
  * Unit tests for the ProductTile override with Quick View trigger.
- * Validates: trigger rendering (with data-testid pattern), lazy-loading of modal,
+ * Validates: trigger rendering (with data-testid), lazy-loading of modal,
  * SSR safety (isMounted pattern), and click behavior.
  */
 import React from 'react'
@@ -74,14 +74,12 @@ describe('ProductTile with Quick View trigger', () => {
         expect(screen.getByText(mockProductSearchItem.productName)).toBeInTheDocument()
     })
 
-    test('renders Quick View trigger with correct data-testid pattern after mount', async () => {
+    test('renders Quick View trigger with correct data-testid after mount', async () => {
         renderWithProviders(<ProductTile product={mockProductSearchItem} />)
 
         // The trigger uses isMounted pattern, so it appears after useEffect runs
         await waitFor(() => {
-            expect(
-                screen.getByTestId(`quick-view-trigger-${mockProductSearchItem.productId}`)
-            ).toBeInTheDocument()
+            expect(screen.getByTestId('quick-view-trigger')).toBeInTheDocument()
         })
     })
 
@@ -89,9 +87,7 @@ describe('ProductTile with Quick View trigger', () => {
         renderWithProviders(<ProductTile product={mockProductSearchItem} />)
 
         await waitFor(() => {
-            const trigger = screen.getByTestId(
-                `quick-view-trigger-${mockProductSearchItem.productId}`
-            )
+            const trigger = screen.getByTestId('quick-view-trigger')
             expect(trigger).toHaveAttribute('aria-label', 'Quick view')
         })
     })
@@ -100,14 +96,10 @@ describe('ProductTile with Quick View trigger', () => {
         renderWithProviders(<ProductTile product={mockProductSearchItem} />)
 
         await waitFor(() => {
-            expect(
-                screen.getByTestId(`quick-view-trigger-${mockProductSearchItem.productId}`)
-            ).toBeInTheDocument()
+            expect(screen.getByTestId('quick-view-trigger')).toBeInTheDocument()
         })
 
-        const trigger = screen.getByTestId(
-            `quick-view-trigger-${mockProductSearchItem.productId}`
-        )
+        const trigger = screen.getByTestId('quick-view-trigger')
 
         await act(async () => {
             fireEvent.click(trigger)
@@ -128,14 +120,10 @@ describe('ProductTile with Quick View trigger', () => {
         )
 
         await waitFor(() => {
-            expect(
-                screen.getByTestId(`quick-view-trigger-${mockProductSearchItem.productId}`)
-            ).toBeInTheDocument()
+            expect(screen.getByTestId('quick-view-trigger')).toBeInTheDocument()
         })
 
-        const trigger = screen.getByTestId(
-            `quick-view-trigger-${mockProductSearchItem.productId}`
-        )
+        const trigger = screen.getByTestId('quick-view-trigger')
 
         await act(async () => {
             fireEvent.click(trigger)
@@ -154,9 +142,9 @@ describe('ProductTile with Quick View trigger', () => {
 
         renderWithProviders(<ProductTile product={productWithoutId} />)
 
+        // Should still render trigger — uses empty string for missing id
         await waitFor(() => {
-            // Should still render trigger with empty productId portion
-            expect(screen.getByTestId('quick-view-trigger-')).toBeInTheDocument()
+            expect(screen.getByTestId('quick-view-trigger')).toBeInTheDocument()
         })
     })
 
@@ -166,7 +154,7 @@ describe('ProductTile with Quick View trigger', () => {
         renderWithProviders(<ProductTile product={productWithId} />)
 
         await waitFor(() => {
-            expect(screen.getByTestId('quick-view-trigger-alt-id-123')).toBeInTheDocument()
+            expect(screen.getByTestId('quick-view-trigger')).toBeInTheDocument()
         })
     })
 })

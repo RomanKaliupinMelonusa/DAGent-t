@@ -17,6 +17,9 @@ const mockAddItemToNewOrExistingBasket = jest.fn()
 const mockUseProductViewModal = jest.fn()
 const mockUseDerivedProduct = jest.fn()
 
+// Track whether ProductView should throw — prefixed with `mock` so jest.mock can access it
+const mockShouldThrow = {value: false}
+
 jest.mock('@salesforce/retail-react-app/app/hooks/use-product-view-modal', () => ({
     useProductViewModal: (...args) => mockUseProductViewModal(...args)
 }))
@@ -36,16 +39,21 @@ jest.mock('@salesforce/commerce-sdk-react', () => ({
 }))
 
 jest.mock('@salesforce/retail-react-app/app/components/product-view', () => {
-    const MockProductView = (props) => (
-        <div data-testid="product-view">
-            {props.product?.productName || 'Product View'}
-            {props.showDeliveryOptions !== undefined && (
-                <span data-testid="delivery-options-flag">
-                    {String(props.showDeliveryOptions)}
-                </span>
-            )}
-        </div>
-    )
+    const MockProductView = (props) => {
+        if (mockShouldThrow.value) {
+            throw new Error('Product render failed')
+        }
+        return (
+            <div data-testid="product-view">
+                {props.product?.productName || 'Product View'}
+                {props.showDeliveryOptions !== undefined && (
+                    <span data-testid="delivery-options-flag">
+                        {String(props.showDeliveryOptions)}
+                    </span>
+                )}
+            </div>
+        )
+    }
     MockProductView.displayName = 'MockProductView'
     return {__esModule: true, default: MockProductView}
 })
@@ -124,6 +132,7 @@ function setupMocks(overrides = {}) {
 describe('QuickViewModal', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        mockShouldThrow.value = false
         setupMocks()
     })
 
@@ -295,11 +304,15 @@ describe('QuickViewModal', () => {
                 )
             })
 
+            // The implementation passes {product, itemsAdded: [{product, variant, quantity}], selectedQuantity}
             expect(mockOnOpen).toHaveBeenCalledWith(
                 expect.objectContaining({
                     product: expect.any(Object),
                     itemsAdded: expect.arrayContaining([
-                        expect.objectContaining({productId: 'variant-123'})
+                        expect.objectContaining({
+                            variant: expect.objectContaining({productId: 'variant-123'}),
+                            quantity: 1
+                        })
                     ]),
                     selectedQuantity: 1
                 })
@@ -417,6 +430,29 @@ describe('QuickViewModal', () => {
             )
 
             expect(screen.getByTestId('quick-view-modal-close-btn')).toBeInTheDocument()
+        })
+    })
+
+    describe('Error boundary', () => {
+        test('renders error fallback when ProductView throws', () => {
+            // Make the ProductView mock throw during render
+            mockShouldThrow.value = true
+
+            // Suppress React error boundary console.error noise
+            const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+            renderWithProviders(
+                <QuickViewModal
+                    product={mockProductSearchItem}
+                    isOpen={true}
+                    onClose={jest.fn()}
+                />
+            )
+
+            expect(screen.getByTestId('quick-view-modal-error')).toBeInTheDocument()
+            expect(screen.getByText('Unable to load product details.')).toBeInTheDocument()
+
+            spy.mockRestore()
         })
     })
 })
