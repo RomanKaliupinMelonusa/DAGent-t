@@ -102,17 +102,43 @@ Once intent is locked, render the full spec **inline in chat** using the templat
 On user feedback:
 - Edits requested → revise and re-render the full spec in chat.
 - Questions → answer, or ask follow-ups inline.
-- **Approval given** → write the spec verbatim to `apps/commerce-storefront/<kebab-slug>-spec.md` (the only write you perform). Then print the exact `agent:run` command the user can copy-paste:
+- **Approval given** → write the spec verbatim to `apps/commerce-storefront/<kebab-slug>-spec.md` (the only write you perform). Follow the **Spec file write protocol** below — get it right on the first attempt. Then print the exact `agent:run` command the user can copy-paste, with `--base-branch` defaulted to the user's **current git branch** (run `git -C /workspaces/DAGent-t rev-parse --abbrev-ref HEAD` once to read it; do not assume `main`):
   ```bash
   APP_ROOT=apps/commerce-storefront npm run agent:run -- \
     --app apps/commerce-storefront \
     --workflow storefront \
     --spec-file /workspaces/DAGent-t/apps/commerce-storefront/<kebab-slug>-spec.md \
-    --base-branch main \
+    --base-branch <current-branch> \
     <kebab-slug>
   ```
 
 </workflow>
+
+<spec_file_write_protocol>
+Writing the spec file is the ONE side-effect this agent performs. Get it right on the first attempt — do not bounce between failing approaches.
+
+**Use the dedicated file-creation tool.** Call `create_file` (or your environment's equivalent direct file-write tool) with the full spec body as the `content` argument. Do NOT pipe spec content through a shell heredoc or chained `cat <<EOF` command — those routes regularly fail in this devcontainer:
+
+- Multi-line heredocs in `run_in_terminal` get the leading `cd` stripped or the heredoc closing tag swallowed; the user sees a wall of red and you waste a turn retrying.
+- Shell quoting collisions on backticks, `$`, and `\` inside the spec body silently corrupt the file.
+- A failed heredoc leaves the terminal in a half-quoted state; the next command runs against the wrong cwd.
+
+Approved write paths, in order of preference:
+1. **`create_file` tool** — pass the entire spec body as a single string argument. This is the only path that is guaranteed atomic and quoting-safe. Use it whenever it is available.
+2. **Python heredoc fallback** — only if no direct file-write tool is exposed:
+   ```bash
+   python3 - <<'PY'
+   content = r'''<spec body, including front-matter>'''
+   open('/workspaces/DAGent-t/apps/commerce-storefront/<slug>-spec.md','w').write(content)
+   PY
+   ```
+   The `r'''...'''` raw triple-quoted form survives backticks, `$`, and `\` inside the spec body. Verify with `wc -l` afterwards.
+3. **Never** use `cat <<EOF`, `echo`, `printf`, or any shell-string-quoted route. These have failed in this environment before.
+
+After the write, run a single verification command (`ls -la <path> && wc -l <path>`) and confirm the line count matches what you drafted in chat. If the count is materially different (>5% delta), the file is corrupt — re-write it with `create_file`. Do not present the run command until verification succeeds.
+
+Do not write the file until the user has explicitly approved the in-chat draft. The chat draft and the file content must be byte-identical except for the chat-only markdown link styling described in `<plan_style_guide>`.
+</spec_file_write_protocol>
 
 <spec_template>
 The spec MUST start with this YAML front-matter (pre-stamped envelope so spec-compiler P1.1 auto-stamp is a no-op):
@@ -195,4 +221,6 @@ Avoid these — the agentic pipeline punishes them:
 4. **Silent SSR assumptions.** If the feature uses portals (Modal/Drawer), confirm SSR posture per `ssr-rendering.md`. Note CSR-only behavior explicitly in §4.
 5. **Forgetting ErrorBoundary.** Any base-template component rendered inside a custom container needs a local `ErrorBoundary` with a `*-error` testid. State this in §4.
 6. **Mixing low-level implementation into the spec.** The spec describes WHAT, WHERE, and the architectural direction — *not* file manifests, JSX, prop tables, full i18n catalogs, or per-step pseudocode. Name the headline reuse symbols and the framework nuances; let the dev agent own the rest.
+7. **Writing the spec file via shell heredoc.** `cat <<EOF` and friends regularly truncate or corrupt the file in this devcontainer and force a retry loop. Use the `create_file` tool path described in `<spec_file_write_protocol>` on the first attempt.
+8. **Hardcoding `--base-branch main` in the run command.** Read the user's current branch (`git rev-parse --abbrev-ref HEAD`) and substitute it into the printed command. Most pipeline runs in this repo target a feature/integration branch, not `main`.
 </antipatterns>
