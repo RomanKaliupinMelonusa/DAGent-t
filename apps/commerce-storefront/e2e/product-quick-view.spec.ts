@@ -170,6 +170,16 @@ test.describe('Product Quick View', () => {
       timeout: 10000,
     });
 
+    // Assert quick-view-view-full-details-link is visible with non-empty text (required_dom)
+    const fullDetailsLink = page.getByTestId('quick-view-view-full-details-link');
+    await expect(fullDetailsLink).toBeVisible({ timeout: 10000 });
+    await expect(fullDetailsLink).not.toHaveText('');
+
+    // Assert quick-view-add-to-cart-btn is visible with non-empty text (required_dom)
+    const addToCartBtn = page.getByTestId('quick-view-add-to-cart-btn');
+    await expect(addToCartBtn).toBeVisible({ timeout: 10000 });
+    await expect(addToCartBtn).not.toHaveText('');
+
     // Console error budget assertion (§17)
     expect(
       consoleErrors.filter(
@@ -375,9 +385,10 @@ test.describe('Product Quick View', () => {
       timeout: 10000,
     });
 
-    // The Add to Cart button should be visible
+    // The Add to Cart button should be visible with non-empty text (required_dom)
     const addToCartBtn = page.getByTestId('quick-view-add-to-cart-btn');
     await expect(addToCartBtn).toBeVisible({ timeout: 10000 });
+    await expect(addToCartBtn).not.toHaveText('');
 
     // Best-effort: verify the button is disabled in master product state
     // (before a complete variation is selected)
