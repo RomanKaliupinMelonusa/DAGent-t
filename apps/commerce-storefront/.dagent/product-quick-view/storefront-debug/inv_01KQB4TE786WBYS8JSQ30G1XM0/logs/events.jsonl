@@ -114,3 +114,9 @@
 {"ts":"2026-04-28T23:15:31.363Z","type":"timeout","remaining_sec":273,"kind":"breaker.fire","itemKey":"storefront-debug"}
 {"ts":"2026-04-28T23:16:01.305Z","input_tokens":141801,"output_tokens":1395,"cache_read_tokens":141114,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
 {"ts":"2026-04-28T23:16:13.340Z","input_tokens":143271,"output_tokens":234,"cache_read_tokens":141800,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:16:24.189Z","input_tokens":144539,"output_tokens":362,"cache_read_tokens":143270,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:16:24.196Z","type":"hard","tool_count":120,"threshold":120,"kind":"breaker.fire","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:20:04.633Z","error_preview":"Timeout after 1500000ms waiting for session.idle","kind":"state.fail","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:20:04.719Z","command":"bash .apm/hooks/e2e-runner-post.sh","kind":"hook.post.start","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:20:06.771Z","exit_code":0,"kind":"hook.post.end","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:20:06.785Z","kind":"dispatch.end","invocationId":"inv_01KQB4TE786WBYS8JSQ30G1XM0","nodeKey":"storefront-debug","outcome":"error","finishedAt":"2026-04-28T23:20:06.773Z","outputKinds":["node-report"]}
