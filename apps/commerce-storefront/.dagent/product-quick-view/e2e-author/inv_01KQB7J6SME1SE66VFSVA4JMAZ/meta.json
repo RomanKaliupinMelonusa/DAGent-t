@@ -10,6 +10,9 @@
     "invocationId": "inv_01KQB7HCP232ADWXAS8M54Q9V0",
     "reason": "triage-reroute"
   },
+  "startedAt": "2026-04-28T23:42:38.636Z",
+  "finishedAt": "2026-04-28T23:45:44.116Z",
+  "outcome": "completed",
   "inputs": [
     {
       "kind": "acceptance",
@@ -36,6 +39,15 @@
       "invocationId": "inv_01KQB7HCP232ADWXAS8M54Q9V0"
     }
   ],
-  "outputs": [],
-  "startedAt": "2026-04-28T23:42:38.636Z"
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB7J6SME1SE66VFSVA4JMAZ/outputs/node-report.json",
+      "nodeKey": "e2e-author",
+      "invocationId": "inv_01KQB7J6SME1SE66VFSVA4JMAZ"
+    }
+  ],
+  "sealed": true
 }

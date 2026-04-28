@@ -9,3 +9,7 @@
 {"ts":"2026-04-28T23:45:01.254Z","input_tokens":48282,"output_tokens":561,"cache_read_tokens":47969,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
 {"ts":"2026-04-28T23:45:24.468Z","input_tokens":48999,"output_tokens":1241,"cache_read_tokens":48281,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
 {"ts":"2026-04-28T23:45:33.214Z","input_tokens":50292,"output_tokens":382,"cache_read_tokens":48998,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:37.143Z","input_tokens":51568,"output_tokens":65,"cache_read_tokens":50291,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:43.942Z","input_tokens":51650,"output_tokens":276,"cache_read_tokens":51567,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:44.116Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"e2e-author"}
+{"ts":"2026-04-28T23:45:44.120Z","kind":"dispatch.end","invocationId":"inv_01KQB7J6SME1SE66VFSVA4JMAZ","nodeKey":"e2e-author","outcome":"completed","finishedAt":"2026-04-28T23:45:44.116Z","outputKinds":["node-report"]}
