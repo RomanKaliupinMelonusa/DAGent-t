@@ -106,7 +106,8 @@
       "label": "code-cleanup",
       "agent": "@code-cleanup",
       "status": "pending",
-      "error": null
+      "error": null,
+      "latestInvocationId": "inv_01KQB8P9J68332PWYY3G56MPYT"
     },
     {
       "key": "docs-archived",
@@ -1279,6 +1280,20 @@
       "outcome": "completed",
       "finishedAt": "2026-04-29T00:02:15.248Z",
       "sealed": true
+    },
+    "inv_01KQB8P9J68332PWYY3G56MPYT": {
+      "invocationId": "inv_01KQB8P9J68332PWYY3G56MPYT",
+      "nodeKey": "code-cleanup",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "triggeredBy": {
+        "nodeKey": "create-draft-pr",
+        "invocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83",
+        "reason": "initial"
+      },
+      "startedAt": "2026-04-29T00:02:16.775Z",
+      "inputs": [],
+      "outputs": []
     }
   }
 }
