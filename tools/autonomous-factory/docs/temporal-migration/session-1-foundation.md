@@ -163,6 +163,25 @@ Soft gates (warning, not blocking):
 - [ ] OTLP target chosen — if deferred, must land before Session 4
 - [ ] Disaster recovery story sketched — full DR drill is Session 5
 
+### Validation Status (post-implementation audit)
+
+Audit performed: 2026-04-29.
+
+| Item | Status |
+|---|---|
+| All Group A & B tasks (B0–B8) | ✅ Code-complete |
+| `temporal server start-dev` works in devcontainer | ✅ Verified |
+| `npm run temporal:hello` succeeds | ✅ Verified |
+| Web UI shows hello workflow | ✅ Verified |
+| ESLint determinism rule fires | ✅ Verified (`npm run lint:test`) |
+| Production-target cluster reachable | ⏳ Pending Ops confirmation (Item 5 / D7) |
+| Legacy `npm run agent:run` regression-free | ⏳ Needs final smoke test |
+| Topology decision doc merged with cost estimate | ⏳ Pending Ops (D1–D6 [TBD]) |
+| Vitest configured + `npm run test` green | ✅ Verified |
+| R12 review meeting outcome recorded | ✅ Verdict pass-with-notes; cross-linked in 00-spec.md |
+
+Three blockers remaining for exit gate: Operations sign-off on topology decisions, non-prod cluster provisioning confirmation, and legacy regression smoke test.
+
 ---
 
 ## Rollback Plan

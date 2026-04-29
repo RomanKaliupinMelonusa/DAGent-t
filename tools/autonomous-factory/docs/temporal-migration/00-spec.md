@@ -124,7 +124,7 @@ The single source of truth for what changes in this migration.
 | R9 | Approval signal race conditions (signal arrives before `setHandler`) | Low | High | Set signal handlers as first workflow lines (Temporal SDK pattern); test explicitly | Session 4 |
 | R10 | Admin CLI feature parity gap delays cutover | Medium | Medium | Inventory CLI verbs in Session 1; map every verb to Temporal client call in Session 4 | Session 4 |
 | R11 | Cost of Temporal cluster surprises team | Low | Low | Use Hetzner/DigitalOcean small VM + Neon Postgres free tier for non-prod; ~$50/mo for production | Session 1 |
-| R12 | TypeScript SDK ergonomics worse than expected | Low | High | Sessions 1–3 are reversible; Phase 2 checkpoint reassesses Restate as alternative | Session 1 |
+| R12 | TypeScript SDK ergonomics worse than expected | Low | High | Sessions 1–3 are reversible; Phase 2 checkpoint reassesses Restate as alternative. R12 outcome: pass-with-notes (Phase 2). See [01-topology-decision.md → R12 Ergonomics Verdict](01-topology-decision.md#r12-ergonomics-verdict). | Session 1 |
 
 ---
 
@@ -181,6 +181,37 @@ The single source of truth for what changes in this migration.
 │ OTLP collector → Honeycomb / Grafana Tempo      │
 └─────────────────────────────────────────────────┘
 ```
+
+---
+
+## Build Constraints
+
+Two production-path constraints discovered during Phase 2 of Session 1. They are load-bearing for every later session — implementing agents must not try to "simplify" past them.
+
+### Workers run from compiled JS, not `tsx`
+
+The Temporal worker (`@temporalio/worker`) bundles workflow code via webpack. Webpack's resolver is incompatible with `tsx`'s global `Module._resolveFilename` hook (it tries to resolve `.ts` paths inside `node_modules`). All worker entry points therefore run via:
+
+```bash
+npm run temporal:build   # tsc -p tsconfig.temporal.json → dist/temporal/
+node dist/temporal/worker/main.js
+```
+
+The `temporal:worker` npm script chains both. Do NOT add `tsx` to any worker boot path. Activities and workflow code can still be authored in TS and unit-tested directly by Vitest — the constraint applies only to what the worker process actually executes.
+
+### The `ajv` postinstall shim is workspace infrastructure
+
+The webpack chain inside `@temporalio/worker` (`schema-utils → ajv-keywords`) requires `ajv@^8`. ESLint v9 (via `@eslint/eslintrc` and `eslint/lib/shared/ajv.js`) eagerly `require("ajv")` at module load and demands v6. npm `overrides` was unreliable for resolving this.
+
+Resolution: `scripts/postinstall-ajv-shim.mjs` deterministically nests `ajv@6.14.0` (and `uri-js`) inside:
+
+- `node_modules/eslint/node_modules/`
+- `node_modules/@eslint/eslintrc/node_modules/`
+
+It runs automatically on `npm install` (postinstall hook). It is idempotent and ~80 lines. Implications for downstream sessions:
+
+- Any CI image bake or fresh devcontainer rebuild MUST run `npm install` so the postinstall shim fires. A bare `npm ci --offline` from a cached `node_modules` is fine; a custom install path that skips lifecycle scripts will break the worker.
+- If we ever eject from npm overrides, this shim is the migration target — do not delete it without a compatibility test running both `npm run lint` and `npm run temporal:test:integration` green.
 
 ---
 

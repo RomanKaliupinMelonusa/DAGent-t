@@ -1,0 +1,74 @@
+# =============================================================================
+# Temporal local dev cluster — docker-compose
+# =============================================================================
+# Brings up a full Temporal stack (server + UI + Postgres) for local
+# development and CI integration tests. Mirrors the upstream reference
+# compose at https://github.com/temporalio/docker-compose, trimmed to the
+# components we need (no Elasticsearch — visibility is filed/SQLite-backed
+# for now; revisit if Session 8 needs advanced visibility).
+#
+# Usage:
+#   docker compose -f infra/temporal/docker-compose.yml up -d
+#   docker compose -f infra/temporal/docker-compose.yml down -v   # wipe data
+#
+# Health gate:
+#   temporal operator cluster health    # (CLI; targets localhost:7233)
+#
+# Image versions are pinned to a specific minor tag rather than `latest`.
+# Before Session 8 (replay tests need byte-stable history format) tighten
+# these to immutable SHA digests via `docker buildx imagetools inspect`.
+# =============================================================================
+
+services:
+  postgresql:
+    container_name: temporal-postgresql
+    image: postgres:15.6
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    ports:
+      - "5432:5432"
+    volumes:
+      - temporal-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:1.24.2
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+    ports:
+      - "7233:7233"
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  temporal-ui:
+    container_name: temporal-ui
+    image: temporalio/ui:2.30.3
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8233:8080"
+
+volumes:
+  temporal-postgres:

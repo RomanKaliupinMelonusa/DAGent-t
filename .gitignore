@@ -74,3 +74,7 @@ blob-report/
 tmp/
 coverage/
 deploy/
+
+# ----- Temporal SDK build artefacts -----
+**/temporal-sdk-typescript-*/
+**/.temporal-bundle/

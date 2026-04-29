@@ -18,6 +18,7 @@
 - [Sample App Authentication](#sample-app-authentication)
 - [Safety Guardrails](#safety-guardrails)
 - [Running the Orchestrator](#running-the-orchestrator)
+- [Temporal (local development)](#temporal-local-development)
 - [Spec File](#spec-file)
 - [Environment Setup](#environment-setup)
 
@@ -782,6 +783,62 @@ gh workflow run "Agentic Feature Pipeline" \
 ```
 
 Requires the `COPILOT_PAT` secret configured in the repository.
+
+---
+
+## Temporal (local development)
+
+Used when working on the Temporal-based pipeline (`tools/autonomous-factory/src/temporal/`). The legacy `npm run agent:run` path does not require any of this. See [tools/autonomous-factory/docs/temporal-migration/README.md](../tools/autonomous-factory/docs/temporal-migration/README.md) for full migration context.
+
+### Prereqs
+
+A devcontainer rebuild is required after the Temporal CLI install and the `ajv` postinstall shim were added. Verify with:
+
+```bash
+temporal --version
+```
+
+### Start a local Temporal cluster
+
+Two run modes — pick one:
+
+```bash
+# (a) Foreground dev server — recommended for ad-hoc work.
+#     In-memory persistence; Ctrl-C discards everything.
+temporal server start-dev
+# Frontend at localhost:7233, Web UI at localhost:8233.
+
+# (b) Docker-compose stack — matches CI; required for integration tests
+#     that need durable history.
+docker compose -f infra/temporal/docker-compose.yml up -d
+```
+
+### Build + run the worker
+
+```bash
+cd tools/autonomous-factory
+npm run temporal:worker
+```
+
+**Workers run from compiled JS, NOT `tsx`.** Webpack inside `@temporalio/worker` (used to bundle workflow code) is incompatible with `tsx`'s global module-resolution hook. The npm script handles this end-to-end (`tsc -p tsconfig.temporal.json` → `dist/temporal/` → `node dist/temporal/worker/main.js`) — do not run worker entry points through `tsx`.
+
+### Run the hello workflow end-to-end
+
+```bash
+npm run temporal:hello
+```
+
+### Run integration tests
+
+```bash
+npm run temporal:test:integration
+```
+
+### Tear down
+
+```bash
+docker compose -f infra/temporal/docker-compose.yml down
+```
 
 ---
 

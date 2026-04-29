@@ -1,0 +1,29 @@
+# =============================================================================
+# Temporal dynamic configuration — development profile
+# =============================================================================
+# Loose limits suitable for a single-developer dev cluster. Production
+# overrides land alongside the topology decision (see
+# tools/autonomous-factory/docs/temporal-migration/01-topology-decision.md).
+# =============================================================================
+
+frontend.enableClientVersionCheck:
+  - value: true
+
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
+
+# Allow generous workflow history for migration parity tests; production
+# tunes this down and pairs with continueAsNew (Session 4 task B9).
+limit.historyCount.suggestContinueAsNew:
+  - value: 10000
+    constraints: {}
+
+limit.historyCount.error:
+  - value: 50000
+    constraints: {}
+
+# Default namespace retention — short for dev so history doesn't accumulate.
+system.defaultNamespaceRetentionDays:
+  - value: 1
+    constraints: {}

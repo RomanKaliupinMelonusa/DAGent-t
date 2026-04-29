@@ -1,0 +1,93 @@
+# =============================================================================
+# Temporal Integration Tests
+# =============================================================================
+# Spins up the local Temporal docker-compose stack and runs the Temporal-
+# specific test suite from tools/autonomous-factory.
+#
+# Trigger is paths-filtered to keep CI minutes bounded — only fires when
+# code under src/temporal/** or infra/temporal/** changes, plus the workflow
+# file itself.
+# =============================================================================
+
+name: Temporal Integration
+
+concurrency:
+  group: temporal-it-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tools/autonomous-factory/src/temporal/**'
+      - 'tools/autonomous-factory/package.json'
+      - 'tools/autonomous-factory/package-lock.json'
+      - 'tools/autonomous-factory/eslint.config.js'
+      - 'tools/autonomous-factory/vitest.config.ts'
+      - 'infra/temporal/**'
+      - '.github/workflows/temporal-it.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Temporal — Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        # Root `npm ci` installs every workspace's deps (including
+        # tools/autonomous-factory) and runs the postinstall ajv shim.
+        # No second install step needed — would only break lockfile.
+        run: npm ci
+
+      - name: Start Temporal cluster
+        run: docker compose -f infra/temporal/docker-compose.yml up -d
+
+      - name: Wait for Temporal frontend
+        run: |
+          for i in {1..60}; do
+            if nc -z localhost 7233; then
+              echo "Temporal frontend reachable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Temporal frontend did not become reachable in time"
+          docker compose -f infra/temporal/docker-compose.yml logs --tail=200
+          exit 1
+
+      - name: Lint (Temporal scope)
+        working-directory: tools/autonomous-factory
+        run: npm run lint
+
+      - name: Lint regression — workflow determinism rule must fire
+        working-directory: tools/autonomous-factory
+        run: npm run lint:test
+
+      - name: Temporal integration tests
+        working-directory: tools/autonomous-factory
+        env:
+          TEMPORAL_ADDRESS: localhost:7233
+        run: npm run temporal:test:integration
+
+      - name: Dump Temporal logs on failure
+        if: failure()
+        run: docker compose -f infra/temporal/docker-compose.yml logs --tail=500
+
+      - name: Tear down Temporal cluster
+        if: always()
+        run: docker compose -f infra/temporal/docker-compose.yml down -v

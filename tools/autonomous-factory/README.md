@@ -322,3 +322,4 @@ later resumes cleanly from wherever the detached run left off.
 
 - [KERNEL-API.md](KERNEL-API.md) — State-machine CLI primitives.
 - [.github/AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md) — Operational hub: CI/CD setup, ChatOps, commands.
+- [docs/temporal-migration/](docs/temporal-migration/) — Temporal OSS migration plan (Sessions 1–5). Active during the migration window.

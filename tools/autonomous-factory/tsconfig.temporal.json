@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src/temporal",
+    "outDir": "dist/temporal",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true
+  },
+  "include": ["src/temporal/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/temporal/**/__tests__/**",
+    "src/temporal/**/__fixtures__/**"
+  ]
+}
