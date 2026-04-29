@@ -71,18 +71,33 @@ export class PipelineKernel {
    */
   private readonly consumesByNode: ReadonlyMap<string, ReadonlyArray<ConsumesEdge>> | undefined;
 
+  /**
+   * Optional predicate evaluated whenever a node transitions to `done`.
+   * When it returns true, the kernel emits a `reindex` effect alongside
+   * the standard `state.complete` telemetry so the next dispatch reads
+   * a fresh semantic graph.
+   *
+   * Stack-agnostic: the kernel itself has no concept of "dev" vs "test"
+   * categories — the composition root constructs the predicate by
+   * combining `config.reindex_categories` with a node-key → category
+   * lookup against the workflow definition.
+   */
+  private readonly shouldReindexOnComplete: ((itemKey: string) => boolean) | undefined;
+
   constructor(
     slug: string,
     initialDagState: PipelineState,
     initialRunState: RunState,
     rules: KernelRules,
     consumesByNode?: ReadonlyMap<string, ReadonlyArray<ConsumesEdge>>,
+    shouldReindexOnComplete?: (itemKey: string) => boolean,
   ) {
     this.slug = slug;
     this.dagState = structuredClone(initialDagState);
     this.runState = structuredClone(initialRunState);
     this.rules = rules;
     this.consumesByNode = consumesByNode;
+    this.shouldReindexOnComplete = shouldReindexOnComplete;
   }
 
   // ─── Snapshots (frozen reads) ───────────────────────────────────────
@@ -262,6 +277,15 @@ export class PipelineKernel {
       category: "state.complete",
       itemKey,
     });
+    // Phase 3 — auto-emit a `reindex` effect when the just-completed
+    // node's category is in the workflow's `reindex_categories`. Closes
+    // the inter-node staleness gap so the next dispatched dev/test node
+    // reads a fresh semantic graph. The predicate is supplied by the
+    // composition root and may be undefined in legacy/test contexts —
+    // in which case no reindex is emitted.
+    if (this.shouldReindexOnComplete?.(itemKey)) {
+      effects.push({ type: "reindex", categories: undefined, causedBy: itemKey });
+    }
     return { result: { ok: true }, effects };
   }
 

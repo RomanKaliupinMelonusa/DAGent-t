@@ -34,6 +34,7 @@ import type { ItemSummary } from "../types.js";
 import type { ArtifactKind } from "../apm/artifact-catalog.js";
 import type { NodeContractGateParams } from "./support/node-contract-gate.js";
 import type { PrecompletionGate } from "../harness/index.js";
+import type { FreshnessGate } from "../harness/hooks.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { featurePath } from "../paths/feature-paths.js";
 import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
@@ -122,6 +123,60 @@ function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined
           }
         },
       }),
+  };
+}
+
+/**
+ * Build the optional pre-tool-call freshness gate (Phase 4). Returns
+ * `undefined` when the agent has no `freshnessRefreshTools` declared
+ * (i.e. no enabled MCP server contributed a freshness contract) or the
+ * pipeline run has no `CodeIndexer` wired. The closure captures the same
+ * `CodeIndexer` instance the effect executor uses so concurrent gate hits
+ * and kernel-emitted reindex effects coalesce against one in-flight refresh.
+ */
+function buildFreshnessGate(ctx: NodeContext): FreshnessGate | undefined {
+  const indexer = ctx.codeIndexer;
+  const declaredTools = ctx.apmContext.agents[ctx.itemKey]?.freshnessRefreshTools ?? [];
+  // Diagnostic: log gate resolution exactly once per dispatch so we can see
+  // which of the three early-returns fired when no `pre-tool-call` events
+  // appear. `available` is evaluated lazily — only when an indexer exists —
+  // so a missing port doesn't trigger a `roam --version` subprocess.
+  let available: boolean | null = null;
+  if (indexer) {
+    try {
+      available = indexer.isAvailable();
+    } catch {
+      available = false;
+    }
+  }
+  const reason =
+    !indexer ? "no-indexer"
+      : available === false ? "indexer-unavailable"
+        : declaredTools.length === 0 ? "no-declared-tools"
+          : "active";
+  ctx.logger.event("code-index.gate.resolve", ctx.itemKey, {
+    agent: ctx.itemKey,
+    reason,
+    indexerPresent: indexer !== undefined,
+    indexerAvailable: available,
+    declaredToolCount: declaredTools.length,
+    sampleTools: declaredTools.slice(0, 3),
+  });
+  if (!indexer || available === false) return undefined;
+  if (declaredTools.length === 0) return undefined;
+  const toolSet = new Set(declaredTools);
+  return {
+    tools: toolSet,
+    refresh: async (toolName: string) => {
+      const result = await indexer.index();
+      ctx.logger.event("code-index.refresh", ctx.itemKey, {
+        trigger: "pre-tool-call",
+        agent: ctx.itemKey,
+        tool: toolName,
+        durationMs: result.durationMs,
+        upToDate: result.upToDate,
+      });
+    },
   };
 }
 
@@ -339,6 +394,7 @@ const copilotAgentHandler: NodeHandler = {
       nextFailureHintValidation,
       nodeContract,
       precompletionGate: buildPrecompletionGate(ctx),
+      freshnessGate: buildFreshnessGate(ctx),
     });
 
     // ── 5. Post-session telemetry (via ctx.vcs port) ────────────────────────

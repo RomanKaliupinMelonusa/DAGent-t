@@ -19,10 +19,19 @@
 import type { Effect } from "./effects.js";
 import type { StateStore } from "../ports/state-store.js";
 import type { Telemetry } from "../ports/telemetry.js";
+import type { CodeIndexer } from "../ports/code-indexer.js";
 
 export interface EffectPorts {
   readonly stateStore: StateStore;
   readonly telemetry: Telemetry;
+  /**
+   * Optional — when provided, `reindex` effects synchronously refresh
+   * the semantic graph before resolving. When absent, `reindex` effects
+   * become a telemetry-only no-op (preserves backward compatibility for
+   * any caller that constructs `EffectPorts` without an indexer, e.g.
+   * unit tests of the kernel reducer in isolation).
+   */
+  readonly codeIndexer?: CodeIndexer;
 }
 
 /**
@@ -37,9 +46,9 @@ function classifyEffect(effect: Effect): "critical" | "observational" {
     case "write-halt-artifact":
     case "append-invocation-record":
     case "seal-invocation":
+    case "reindex":
       return "critical";
     case "telemetry-event":
-    case "reindex":
       return "observational";
     default: {
       const _exhaustive: never = effect;
@@ -178,9 +187,6 @@ async function runObservational(effect: Effect, ports: EffectPorts): Promise<voi
       case "telemetry-event":
         ports.telemetry.event(effect.category, effect.itemKey, effect.context);
         break;
-      case "reindex":
-        ports.telemetry.event("roam.reindex", null, { categories: effect.categories });
-        break;
       default:
         // Non-observational effects should never reach here; silently ignore.
         break;
@@ -207,6 +213,25 @@ export async function executeEffects(
   ports: EffectPorts,
 ): Promise<number> {
   let accepted = 0;
+
+  // Phase 2 (parallelism observability) — pre-aggregate `causedBy` values
+  // across all `reindex` effects in this call so the single coalesced
+  // `code-index.refresh{trigger:"kernel-effect"}` event attributes to
+  // every node-complete that produced an effect this tick. The first
+  // reindex encountered fires the actual `index()` call carrying the
+  // aggregated set; subsequent reindex effects in the same call are
+  // dropped (the indexer would coalesce them anyway, but doing it here
+  // gives us a single telemetry record with full attribution).
+  const aggregatedCausedBy: string[] = (() => {
+    const seen = new Set<string>();
+    for (const e of effects) {
+      if (e.type === "reindex" && typeof e.causedBy === "string") {
+        if (!seen.has(e.causedBy)) seen.add(e.causedBy);
+      }
+    }
+    return Array.from(seen);
+  })();
+  let reindexFired = false;
 
   for (const effect of effects) {
     if (classifyEffect(effect) === "observational") {
@@ -302,6 +327,52 @@ export async function executeEffects(
             error: err instanceof Error ? err.message : String(err),
           });
         }
+        break;
+
+      case "reindex":
+        // Refresh the semantic graph before the next dispatch reads it.
+        // Coalesced internally by the indexer port — concurrent callers
+        // (parallel dev nodes completing at once, triage reroutes,
+        // pre-tool-call gate) all await the same in-flight refresh.
+        // Failures are non-fatal: the pipeline continues with whatever
+        // state the indexer is in and agents fall back to standard tools.
+        //
+        // Phase 2 (parallelism observability) — when multiple reindex
+        // effects arrive in the same `executeEffects` call (one per
+        // completing node in a parallel batch), only the first triggers
+        // an actual `index()` and emits the telemetry event; the
+        // remainder are no-ops. The telemetry carries the aggregated
+        // `causedBy` set so coalesced refreshes are still attributable.
+        if (reindexFired) {
+          accepted++;
+          break;
+        }
+        reindexFired = true;
+        if (ports.codeIndexer && ports.codeIndexer.isAvailable()) {
+          try {
+            const result = await ports.codeIndexer.index();
+            ports.telemetry.event("code-index.refresh", null, {
+              trigger: "kernel-effect",
+              durationMs: result.durationMs,
+              upToDate: result.upToDate,
+              categories: effect.categories,
+              ...(aggregatedCausedBy.length > 0 ? { causedBy: aggregatedCausedBy } : {}),
+            });
+          } catch (err) {
+            ports.telemetry.event("code-index.refresh_failed", null, {
+              error: err instanceof Error ? err.message : String(err),
+              categories: effect.categories,
+              ...(aggregatedCausedBy.length > 0 ? { causedBy: aggregatedCausedBy } : {}),
+            });
+          }
+        } else {
+          ports.telemetry.event("code-index.refresh_skipped", null, {
+            reason: "indexer-unavailable",
+            categories: effect.categories,
+            ...(aggregatedCausedBy.length > 0 ? { causedBy: aggregatedCausedBy } : {}),
+          });
+        }
+        accepted++;
         break;
 
       default: {

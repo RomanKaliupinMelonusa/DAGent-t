@@ -342,9 +342,10 @@ function parseMcpYaml(filePath: string): { name: string; config: ApmMcpConfig } 
     );
   }
   const data = parsed.data;
+  const freshnessRefreshTools = data.freshness?.requires_index_refresh ?? [];
   const config: ApmMcpConfig = data.type === "remote"
-    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability, fsMutator: data.fsMutator }
-    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability, fsMutator: data.fsMutator };
+    ? { type: "remote", url: data.url, tools: data.tools, availability: data.availability, fsMutator: data.fsMutator, freshnessRefreshTools }
+    : { type: "local", command: data.command, args: data.args, tools: data.tools, cwd: data.cwd, availability: data.availability, fsMutator: data.fsMutator, freshnessRefreshTools };
   return { name: data.name, config };
 }
 
@@ -812,6 +813,22 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       tools: effectiveTools,
       security: effectiveSecurity,
       systemPromptTemplate,
+      // Phase 4 — aggregate the freshness-refresh tool names declared by
+      // every MCP server enabled for this agent. The harness's
+      // pre-tool-call gate matches against the SDK-delivered tool name,
+      // which is `<serverName>-<toolName>` (e.g. `roam-code-roam_dead_code`).
+      // Per-server runtime config keeps the bare names (it's a property
+      // of the server); the per-agent aggregated set gets prefixed at
+      // compile time so the gate can use a plain `Set.has(toolName)`
+      // check without learning a translation table. Engine code never
+      // sees a literal `roam_*` (or any other indexer) tool name.
+      freshnessRefreshTools: Array.from(
+        new Set(
+          Object.entries(agentMcp).flatMap(([serverName, m]) =>
+            (m.freshnessRefreshTools ?? []).map((t) => `${serverName}-${t}`),
+          ),
+        ),
+      ),
     };
   }
 

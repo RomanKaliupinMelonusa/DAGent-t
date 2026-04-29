@@ -50,6 +50,11 @@ export interface CopilotSessionParams {
   nodeContract?: NodeContractGateParams;
   /** Optional pre-`report_outcome` validation gate (P1.2). */
   precompletionGate?: PrecompletionGate;
+  /** Optional pre-tool-call freshness gate (Phase 4) — when supplied,
+   *  the harness awaits `refresh(toolName)` before forwarding any tool
+   *  whose name is in `tools`. Stack-agnostic; the engine never inspects
+   *  the contents. */
+  freshnessGate?: import("../harness/hooks.js").FreshnessGate;
 }
 
 export interface CopilotSessionResult {

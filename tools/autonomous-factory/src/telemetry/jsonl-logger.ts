@@ -63,6 +63,18 @@ export class JsonlPipelineLogger implements PipelineLogger {
   private eventsFd: number | null = null;
   private blobsFd: number | null = null;
 
+  /** Inode of the currently-open file behind each fd. Recorded at
+   *  `openSync` time and re-stat'd before every write so we can detect
+   *  inode rotation (e.g. an earlier `git stash --include-untracked`
+   *  unlinking the file out from under the open fd, then `stash pop`
+   *  materialising a fresh inode at the same path). On Linux,
+   *  `write(2)` to an unlinked-but-open fd returns success silently \u2014
+   *  the existing EBADF guard never fires. Defense-in-depth: this catches
+   *  every other unlink-based cause (log rotators, container overlays,
+   *  manual `rm`) even after the agent-branch.sh fix lands. */
+  private eventsIno: number | null = null;
+  private blobsIno: number | null = null;
+
   /** One-shot warning latches \u2014 we surface a write failure exactly once
    *  per fd lifetime so a flaky disk doesn't spam stderr. */
   private eventsWriteWarned = false;
@@ -335,10 +347,12 @@ export class JsonlPipelineLogger implements PipelineLogger {
     if (this.eventsFd !== null) {
       try { fs.closeSync(this.eventsFd); } catch { /* best-effort */ }
       this.eventsFd = null;
+      this.eventsIno = null;
     }
     if (this.blobsFd !== null) {
       try { fs.closeSync(this.blobsFd); } catch { /* best-effort */ }
       this.blobsFd = null;
+      this.blobsIno = null;
     }
   }
 
@@ -366,10 +380,12 @@ export class JsonlPipelineLogger implements PipelineLogger {
 
   private appendEvent(evt: PipelineEvent): void {
     try {
-      if (this.eventsFd === null) {
-        fs.mkdirSync(path.dirname(this.eventsPath), { recursive: true });
-        this.eventsFd = fs.openSync(this.eventsPath, "a");
-      }
+      this.eventsFd = this.openOrReopen(
+        this.eventsPath,
+        this.eventsFd,
+        this.eventsIno,
+        (fd, ino) => { this.eventsFd = fd; this.eventsIno = ino; },
+      );
       fs.writeSync(this.eventsFd, JSON.stringify(evt) + "\n");
       if (DURABLE_EVENT_KINDS.has(evt.kind)) {
         // Push page cache to disk for outcome-forensic events. ~1 ms;
@@ -379,12 +395,16 @@ export class JsonlPipelineLogger implements PipelineLogger {
     } catch (err) {
       // CRITICAL: reset the fd so the next event re-opens the file
       // instead of silently writing into a permanently-bad descriptor.
-      // This is the bug that truncated `_events.jsonl` to 3 lines on
-      // the product-quick-view-plp run \u2014 a single transient EBADF
-      // zombified the sink for the rest of the orchestrator's life.
+      // Genuine I/O errors land here. The unlink-then-recreate case
+      // (e.g. `git stash --include-untracked` rotating the inode out
+      // from under the open fd, then `git stash pop` creating a fresh
+      // inode at the same path) is *not* an EBADF on Linux \u2014
+      // `write(2)` to an unlinked-but-open fd silently succeeds. That
+      // path is now caught by the inode check inside `openOrReopen`.
       if (this.eventsFd !== null) {
         try { fs.closeSync(this.eventsFd); } catch { /* best-effort */ }
         this.eventsFd = null;
+        this.eventsIno = null;
       }
       if (!this.eventsWriteWarned) {
         this.eventsWriteWarned = true;
@@ -399,15 +419,18 @@ export class JsonlPipelineLogger implements PipelineLogger {
 
   private appendBlob(b: PipelineBlob): void {
     try {
-      if (this.blobsFd === null) {
-        fs.mkdirSync(path.dirname(this.blobsPath), { recursive: true });
-        this.blobsFd = fs.openSync(this.blobsPath, "a");
-      }
+      this.blobsFd = this.openOrReopen(
+        this.blobsPath,
+        this.blobsFd,
+        this.blobsIno,
+        (fd, ino) => { this.blobsFd = fd; this.blobsIno = ino; },
+      );
       fs.writeSync(this.blobsFd, JSON.stringify(b) + "\n");
     } catch (err) {
       if (this.blobsFd !== null) {
         try { fs.closeSync(this.blobsFd); } catch { /* best-effort */ }
         this.blobsFd = null;
+        this.blobsIno = null;
       }
       if (!this.blobsWriteWarned) {
         this.blobsWriteWarned = true;
@@ -415,5 +438,44 @@ export class JsonlPipelineLogger implements PipelineLogger {
         console.warn(`[telemetry] blobs.jsonl write failed (${msg}); will retry on next blob.`);
       }
     }
+  }
+
+  /**
+   * Open `filePath` (creating its directory if needed) or reuse the
+   * existing fd if and only if the on-disk inode still matches the
+   * inode recorded at open time. Inode rotation (path was unlinked +
+   * recreated) closes the stale fd and re-opens at the live path.
+   *
+   * `setRecord` is the single mutation point for the caller's
+   * `<kind>Fd` / `<kind>Ino` field pair \u2014 keeps the two in lock-step
+   * across every code path.
+   */
+  private openOrReopen(
+    filePath: string,
+    currentFd: number | null,
+    currentIno: number | null,
+    setRecord: (fd: number, ino: number) => void,
+  ): number {
+    if (currentFd !== null) {
+      let liveIno: number | null = null;
+      try {
+        liveIno = fs.statSync(filePath).ino;
+      } catch (err) {
+        // ENOENT: path was unlinked and not yet recreated. Fall through
+        // to the open path \u2014 `openSync(..., "a")` will create it.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") throw err;
+      }
+      if (liveIno !== null && liveIno === currentIno) {
+        return currentFd;
+      }
+      // Inode rotated (or vanished). Close the stale fd; open below.
+      try { fs.closeSync(currentFd); } catch { /* best-effort */ }
+    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const fd = fs.openSync(filePath, "a");
+    const ino = fs.fstatSync(fd).ino;
+    setRecord(fd, ino);
+    return fd;
   }
 }

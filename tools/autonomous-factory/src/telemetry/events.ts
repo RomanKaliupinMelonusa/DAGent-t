@@ -17,6 +17,12 @@ export type EventKind =
   | "run.end"
   | "batch.start"
   | "batch.end"
+  // Scheduler decision per loop tick (Phase 2 — parallelism observability).
+  // One per iteration of the reactive DAG loop, regardless of batch size.
+  // Carries { batchNumber, ready, dispatched, gatedKeys, triageActivations,
+  // stallFails }. Always-on; subsumes the conditional `batch.start` for
+  // single-item batches (which only fired when N>1).
+  | "scheduler.dispatch"
   | "item.start"
   | "item.end"
   | "item.skip"
@@ -103,7 +109,22 @@ export type EventKind =
   // warnings that never fail the script.
   | "node.handler_output"
   | "handler-output.invalid"
-  | "handler-output.reserved_key";
+  | "handler-output.reserved_key"
+  // Code-index refresh lifecycle. Emitted by both the kernel effect
+  // executor (trigger="kernel-effect") on item completion and the
+  // copilot-agent harness (trigger="pre-tool-call") before invoking
+  // tools whose results depend on post-write codebase state. Phase 2
+  // (parallelism observability) adds `data.causedBy: string[]` on the
+  // kernel-effect path — the deduped set of `itemKey`s whose completes
+  // coalesced into this single refresh.
+  | "code-index.refresh"
+  | "code-index.refresh_failed"
+  | "code-index.refresh_skipped"
+  // Diagnostic — one event per copilot-agent dispatch recording why the
+  // pre-tool-call freshness gate was (or wasn't) installed. Lets us tell
+  // a missing port apart from `roam --version` failing apart from an
+  // agent with no declared freshness tools.
+  | "code-index.gate.resolve";
 
 // ---------------------------------------------------------------------------
 // Core types

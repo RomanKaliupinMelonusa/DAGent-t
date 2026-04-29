@@ -28,6 +28,7 @@ import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
 import type { InvocationLogger } from "../ports/invocation-logger.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type { CodeIndexer } from "../ports/code-indexer.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
@@ -216,6 +217,14 @@ export interface NodeContext {
    * wires a Node-backed adapter; tests inject a stub.
    */
   readonly copilotSessionRunner: CopilotSessionRunner;
+  /**
+   * Stack-agnostic semantic-graph code-index port. When present, the
+   * copilot-agent handler builds a pre-tool-call freshness gate from
+   * the compiled agent's `freshnessRefreshTools` and forwards it to
+   * the session runner. Coalescing is the indexer's responsibility —
+   * concurrent `index()` calls return the same in-flight promise.
+   */
+  readonly codeIndexer?: CodeIndexer;
 
   // ── Failure context (populated when dispatched via on_failure edge) ──
 

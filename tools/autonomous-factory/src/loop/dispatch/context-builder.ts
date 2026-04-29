@@ -57,6 +57,13 @@ export interface ContextBuilderConfig {
   readonly invocation: InvocationFilesystem;
   readonly copilotSessionRunner: CopilotSessionRunner;
   /**
+   * Optional CodeIndexer port forwarded to handlers via NodeContext.
+   * Composition root (main.ts) supplies the same instance held by the
+   * effect executor so kernel-emitted reindex effects and the
+   * pre-tool-call freshness gate share one coalescing surface.
+   */
+  readonly codeIndexer?: import("../../ports/code-indexer.js").CodeIndexer;
+  /**
    * Track B3: optional secret redactor applied to per-invocation logs.
    * Built once per pipeline run from `apmContext.config.environment`
    * and reused across every invocation. When omitted, logs are written
@@ -177,6 +184,7 @@ export function buildNodeContext(
     invocation: config.invocation,
     invocationLogger,
     copilotSessionRunner: config.copilotSessionRunner,
+    ...(config.codeIndexer ? { codeIndexer: config.codeIndexer } : {}),
     // Failure context — populated when dispatching a triage node via
     // activation, so the triage handler can classify without re-reading
     // state. Undefined for regular handlers.

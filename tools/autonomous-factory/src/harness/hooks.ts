@@ -26,18 +26,54 @@ import {
 import { checkShellCommand } from "./shell-guards.js";
 import { checkRbac } from "./rbac.js";
 
+/**
+ * Optional pre-tool-call freshness gate. When the agent attempts to
+ * invoke a tool whose name is in `tools`, the hook awaits `refresh()`
+ * before forwarding. The refresh callback is expected to be coalesced
+ * by its underlying indexer port — concurrent gate hits resolve against
+ * the same in-flight refresh.
+ *
+ * Stack-agnostic: the engine never inspects the contents of `tools`. The
+ * set is populated by APM compile-time aggregation of every enabled MCP
+ * server's `freshness.requires_index_refresh` declaration.
+ */
+export interface FreshnessGate {
+  readonly tools: ReadonlySet<string>;
+  /** Synchronously refresh the code index. Must not throw — caller logs. */
+  refresh(toolName: string): Promise<void>;
+}
+
 export function buildSessionHooks(
   repoRoot: string,
   sandbox: AgentSandbox,
   appRoot: string,
   onDenial?: (toolName: string) => void,
   limits: ResolvedHarnessLimits = defaultHarnessLimits(),
+  freshnessGate?: FreshnessGate,
 ): SessionHooks {
   const { allowedCoreTools, allowedMcpTools, allowedWritePaths, allowedReadPaths, blockedCommandRegexes, safeMcpPrefixes } = sandbox;
   const lineLimit = limits.fileReadLineLimit;
+
+  // Synchronous shell bouncer — extracted so it can run after either the
+  // sync fast-path or the async freshness refresh.
+  const checkShellGate = (input: { toolName: string; toolArgs: unknown }): PreToolUseHookOutput | void => {
+    if (input.toolName !== "bash" && input.toolName !== "write_bash") return;
+    const args = input.toolArgs as { command?: string } | undefined;
+    const cmd = String(args?.command ?? "");
+    const rejection = checkShellCommand(cmd);
+    if (rejection) {
+      onDenial?.(input.toolName);
+      return {
+        permissionDecision: "deny",
+        permissionDecisionReason: rejection,
+        additionalContext: rejection,
+      };
+    }
+  };
+
   const onPreToolUse = (
     input: { toolName: string; toolArgs: unknown; timestamp: number; cwd: string },
-  ): PreToolUseHookOutput | void => {
+  ): PreToolUseHookOutput | void | Promise<PreToolUseHookOutput | void> => {
     // --- UNIVERSAL ZERO-TRUST GATE ---
     // Bypass the gate if the agent hasn't been migrated to explicit tool config yet.
     // `report_outcome` is the orchestrator's outcome-signaling channel and is
@@ -66,22 +102,21 @@ export function buildSessionHooks(
       };
     }
 
-    // --- Shell bouncers (existing logic) ---
-    // Only intercept bash/write_bash
-    if (input.toolName !== "bash" && input.toolName !== "write_bash") return;
-
-    const args = input.toolArgs as { command?: string } | undefined;
-    const cmd = String(args?.command ?? "");
-    const rejection = checkShellCommand(cmd);
-
-    if (rejection) {
-      onDenial?.(input.toolName);
-      return {
-        permissionDecision: "deny",
-        permissionDecisionReason: rejection,
-        additionalContext: rejection,
-      };
+    // --- Pre-tool-call freshness gate ---
+    // Only opt into the async path when this tool is actually gated.
+    // Keeping the no-op path synchronous preserves test fixtures that
+    // assert against the immediate return value.
+    if (freshnessGate && freshnessGate.tools.has(input.toolName)) {
+      return freshnessGate
+        .refresh(input.toolName)
+        .catch(() => {
+          // Non-fatal: the indexer logs failures itself; the tool call
+          // still proceeds against whatever index state exists.
+        })
+        .then(() => checkShellGate(input));
     }
+
+    return checkShellGate(input);
   };
 
   const onPostToolUse = (

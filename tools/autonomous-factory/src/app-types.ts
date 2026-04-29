@@ -11,6 +11,7 @@
 import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm/types.js";
 import type { NextAction, ItemSummary } from "./types.js";
 import type { PipelineLogger } from "./telemetry/index.js";
+import type { CodeIndexer } from "./ports/code-indexer.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline run — immutable config + mutable state
@@ -24,7 +25,15 @@ export interface PipelineRunConfig {
   readonly repoRoot: string;
   readonly baseBranch: string;
   readonly apmContext: ApmCompiledOutput;
-  readonly roamAvailable: boolean;
+  /**
+   * Stack-agnostic semantic-graph indexer (e.g. roam-code, scip-typescript).
+   * Owned by the composition root; shared between the kernel's `reindex`
+   * effect handler and the harness's pre-tool-call freshness gate so all
+   * refresh paths funnel through one coalesced in-flight call.
+   * `codeIndexer.isAvailable()` returns false when no indexer binary is
+   * installed — agents fall back to standard tools in that case.
+   */
+  readonly codeIndexer: CodeIndexer;
   readonly logger: PipelineLogger;
   /**
    * Absolute path to the user-supplied feature spec markdown. Forwarded

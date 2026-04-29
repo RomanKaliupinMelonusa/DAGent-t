@@ -75,6 +75,61 @@ describe("Phase B — uniform node.* events", () => {
     assert.ok(typeof e.data.startedAt === "string" && e.data.startedAt.length > 0);
   });
 
+  it("dispatch: stamps batchNumber on node.start when supplied (Phase 1 — parallelism observability)", async () => {
+    const { logger, events } = makeLogger();
+    const appendInvocationRecord = async () => ({} as never);
+    const stateStore = { appendInvocationRecord } as unknown as StateStore;
+
+    const ctx = makeCtx("/tmp/ignored", "my-node", newInvocationId());
+    await recordInvocationDispatch(
+      stateStore,
+      "slug",
+      [[{} as NodeHandler, ctx]],
+      logger,
+      undefined,
+      7, // batchNumber
+    );
+
+    const startEvts = events.filter((e) => e.kind === "node.start");
+    assert.equal(startEvts.length, 1);
+    assert.equal(startEvts[0]!.data.batchNumber, 7);
+  });
+
+  it("dispatch: omits batchNumber when not supplied (back-compat)", async () => {
+    const { logger, events } = makeLogger();
+    const stateStore = { appendInvocationRecord: async () => ({} as never) } as unknown as StateStore;
+    const ctx = makeCtx("/tmp/ignored", "my-node", newInvocationId());
+    await recordInvocationDispatch(stateStore, "slug", [[{} as NodeHandler, ctx]], logger);
+    const startEvts = events.filter((e) => e.kind === "node.start");
+    assert.equal(startEvts[0]!.data.batchNumber, undefined);
+  });
+
+  it("seal: stamps batchNumber on node.end when supplied", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "phaseB-batch-"));
+    const { logger, events } = makeLogger();
+    const stateStore = { sealInvocation: async () => ({} as never) } as unknown as StateStore;
+    const ctx = makeCtx(appRoot, "my-node", newInvocationId());
+    const batchResult: BatchDispatchResult = {
+      commands: [],
+      itemResults: [{ itemKey: "my-node", result: { outcome: "completed", summary: {} } as never }],
+      errors: [],
+    };
+
+    await recordInvocationSeal(
+      stateStore,
+      "slug",
+      [[{} as NodeHandler, ctx]],
+      batchResult,
+      logger,
+      undefined,
+      undefined,
+      11,
+    );
+
+    const endEvts = events.filter((e) => e.kind === "node.end");
+    assert.equal(endEvts[0]!.data.batchNumber, 11);
+  });
+
   it("seal: emits node.end and node.artifact.seal with outputs", async () => {
     const appRoot = mkdtempSync(join(tmpdir(), "phaseB-"));
     const { logger, events } = makeLogger();

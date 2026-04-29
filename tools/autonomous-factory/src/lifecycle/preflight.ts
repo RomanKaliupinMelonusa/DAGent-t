@@ -323,8 +323,39 @@ export function runPreflightBaseline(
 }
 
 /**
- * Check if roam-code is available, and if so, build the semantic graph index.
- * Returns whether roam is available (for use in later re-indexing calls).
+ * Build the initial code index at pipeline startup. Returns the indexer
+ * port itself so callers can also pass it to the kernel's effect ports
+ * and the harness's freshness gate (see `CodeIndexer` for the abstraction).
+ *
+ * Behaviour: when the indexer is unavailable, logs a warning and returns
+ * the port (`isAvailable()` will keep returning false). When available,
+ * runs one synchronous refresh and reports timing. Failures are swallowed
+ * — the pipeline continues without a fresh graph and agents fall back to
+ * standard tools.
+ */
+export async function runInitialIndex(indexer: import("../ports/code-indexer.js").CodeIndexer): Promise<boolean> {
+  if (!indexer.isAvailable()) {
+    console.warn(
+      "  ⚠ Code indexer not available — agents will use standard tools.\n" +
+      "    Run 'bash tools/autonomous-factory/setup-roam.sh' to install roam-code.\n",
+    );
+    return false;
+  }
+  console.log("  🧠 Phase 0: Building semantic graph (initial index)...");
+  const result = await indexer.index();
+  if (result.upToDate) {
+    console.log(`  ✔ Semantic graph already up to date (${result.durationMs}ms)\n`);
+  } else {
+    console.log(`  ✔ Semantic graph ready (${result.durationMs}ms)\n`);
+  }
+  return true;
+}
+
+/**
+ * @deprecated Use `runInitialIndex(new RoamCodeIndexer(repoRoot))` instead.
+ * Retained as a thin shim during the port migration so any external
+ * caller that imported it doesn't break. Will be removed once the
+ * codebase has fully transitioned.
  */
 export function buildRoamIndex(repoRoot: string): boolean {
   const roamAvailable = (() => {

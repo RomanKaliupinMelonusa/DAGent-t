@@ -30,13 +30,15 @@ import {
   checkGitHubLogin,
   checkStateContextDrift,
   checkToolLimitsHygiene,
-  buildRoamIndex,
+  runInitialIndex,
   runPreflightBaseline,
 } from "../lifecycle/preflight.js";
 import { checkPinnedDependencies, computeApiDrift } from "../lifecycle/dependency-pinning.js";
 import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
 import type { PreviousSummaryTotals } from "../reporting/index.js";
 import { createPipelineLogger } from "../telemetry/index.js";
+import { RoamCodeIndexer } from "../adapters/roam-code-indexer.js";
+import type { CodeIndexer } from "../ports/code-indexer.js";
 
 // ---------------------------------------------------------------------------
 // Bootstrap result (extends PipelineRunConfig with boot-time extras)
@@ -200,8 +202,14 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // them later. Non-fatal when the hook is absent or produces no map.
   runPreflightBaseline(slug, baseBranch, repoRoot, appRoot, apmContext);
 
-  // --- 8. Roam index ---
-  const roamAvailable = buildRoamIndex(repoRoot);
+  // --- 8. Code index (initial build) ---
+  // The CodeIndexer port abstracts whichever semantic-graph indexer is
+  // installed. The same instance is later threaded into the kernel's
+  // effect ports (for `reindex` effects) and the harness's pre-tool-call
+  // freshness gate, so all refresh paths share one coalesced in-flight
+  // call against the underlying SQLite/file-backed index.
+  const codeIndexer: CodeIndexer = new RoamCodeIndexer(repoRoot);
+  await runInitialIndex(codeIndexer);
 
   // --- 9. Logger ---
   const logger = createPipelineLogger(appRoot, slug);
@@ -249,7 +257,7 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
       baseBranch,
       specFile,
       apmContext,
-      roamAvailable,
+      codeIndexer,
       logger,
       ...(pwaKitDriftReport ? { pwaKitDriftReport } : {}),
     },

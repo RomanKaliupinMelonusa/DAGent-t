@@ -31,8 +31,17 @@ case "$COMMAND" in
   create-feature)
     SLUG="${1:?ERROR: feature slug is required}"
 
-    # Stash any dirty working tree (from prior abort or uncommitted changes)
-    git stash --include-untracked 2>/dev/null || true
+    # Stash any dirty working tree (from prior abort or uncommitted changes).
+    #
+    # IMPORTANT: Exclude `.dagent/` from the stash. Untracked files inside the
+    # active feature workspace (notably `_events.jsonl`) are held open by the
+    # orchestrator's JSONL logger. `git stash --include-untracked` would
+    # `unlink(2)` them, leaving the logger writing to an orphan inode; the
+    # subsequent `stash pop` materialises a *new* inode at the same path,
+    # silently truncating the on-disk log. The trailing `'.'` is required —
+    # git's exclude-pathspec only filters from a positive set.
+    git stash push --include-untracked -m "agent-stash" \
+      -- ':(exclude,glob)**/.dagent/**' '.' 2>/dev/null || true
 
     # Switch to base branch and pull latest
     git checkout "$BASE" 2>/dev/null || true
@@ -56,11 +65,11 @@ case "$COMMAND" in
         (git branch -D "feature/${SLUG}" && git checkout -b "feature/${SLUG}")
     fi
 
-    # Restore stashed changes (handle conflicts aggressively)
+    # Restore stashed changes. `.dagent/` is excluded from the stash above,
+    # so any conflict here is on tracked source — fail loud rather than
+    # silently clobbering the working tree.
     if ! git stash pop 2>/dev/null; then
-      echo "⚠️  Stash pop conflict detected. Forcing stashed state to win."
-      git checkout --theirs .dagent/ 2>/dev/null || true
-      git reset 2>/dev/null || true
+      echo "⚠️  Stash pop conflict detected — leaving stash on the stack for manual recovery." >&2
     fi
 
     echo "✔ On branch feature/${SLUG}"

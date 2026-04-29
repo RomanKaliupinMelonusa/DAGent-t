@@ -67,6 +67,7 @@ export async function recordInvocationDispatch(
   pairs: ReadonlyArray<DispatchTuple>,
   logger: PipelineLogger,
   kernel?: PipelineKernel,
+  batchNumber?: number,
 ): Promise<Map<string, string>> {
   // Bug B (Session 3) — the seal hook needs `startedAt` to compute
   // `durationMs` for the `node-report` artifact. Fresh invocations have
@@ -124,6 +125,7 @@ export async function recordInvocationDispatch(
         attempt: ctx.attempt,
         effectiveAttempts: ctx.effectiveAttempts,
         startedAt,
+        ...(typeof batchNumber === "number" ? { batchNumber } : {}),
       });
       continue;
     }
@@ -187,6 +189,7 @@ export async function recordInvocationDispatch(
       attempt: ctx.attempt,
       effectiveAttempts: ctx.effectiveAttempts,
       startedAt: input.startedAt,
+      ...(typeof batchNumber === "number" ? { batchNumber } : {}),
     });
   }
   return startedAtByItem;
@@ -304,6 +307,7 @@ export async function recordInvocationSeal(
   logger: PipelineLogger,
   opts?: RecordInvocationSealOptions,
   kernel?: PipelineKernel,
+  batchNumber?: number,
 ): Promise<void> {
   const outcomeByItem = new Map<string, "completed" | "failed" | "error">();
   const producedByItem = new Map<string, ArtifactRefSerialized[]>();
@@ -617,6 +621,7 @@ export async function recordInvocationSeal(
       outputKinds: outputs.map((o) => o.kind),
       ...(sealedRecord?.routedTo ? { routedTo: sealedRecord.routedTo } : {}),
       ...(sealedRecord?.triggeredBy ? { triggeredBy: sealedRecord.triggeredBy } : {}),
+      ...(typeof batchNumber === "number" ? { batchNumber } : {}),
     });
     // Phase B — artifact seal event (one per invocation, even when no
     // outputs were produced — the invocation dir is still sealed).

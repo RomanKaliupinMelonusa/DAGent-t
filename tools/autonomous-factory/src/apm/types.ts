@@ -20,6 +20,8 @@ export const ApmMcpLocalConfigSchema = z.object({
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]),
   fsMutator: z.boolean().default(true),
+  /** Tool names that require a fresh code index before invocation. */
+  freshnessRefreshTools: z.array(z.string()).default([]),
 });
 
 export const ApmMcpRemoteConfigSchema = z.object({
@@ -28,6 +30,8 @@ export const ApmMcpRemoteConfigSchema = z.object({
   tools: z.array(z.string()),
   availability: z.enum(["required", "optional"]),
   fsMutator: z.boolean().default(true),
+  /** Tool names that require a fresh code index before invocation. */
+  freshnessRefreshTools: z.array(z.string()).default([]),
 });
 
 export const ApmMcpConfigSchema = z.discriminatedUnion("type", [
@@ -119,6 +123,14 @@ export const ApmCompiledAgentSchema = z.object({
   security: ApmAgentSecuritySchema,
   /** Raw Handlebars template for the agent's system prompt (read from .apm/agents/<promptFile>). */
   systemPromptTemplate: z.string(),
+  /**
+   * Aggregated tool names (across all enabled MCP servers) for which the
+   * harness's pre-tool-call gate must refresh the `CodeIndexer` before
+   * dispatching. Compiled at APM-compile time as the union of each
+   * server's `freshness.requires_index_refresh` declaration. Empty when
+   * no MCP server declares a freshness contract.
+   */
+  freshnessRefreshTools: z.array(z.string()).default([]),
 });
 
 // ---------------------------------------------------------------------------
@@ -1387,6 +1399,21 @@ export const ApmManifestSchema = z.object({
 // MCP file schema (roam-code.mcp.yml, playwright.mcp.yml)
 // ---------------------------------------------------------------------------
 
+/**
+ * Optional freshness contract declared by an MCP server.
+ *
+ * `requires_index_refresh` lists tool names that reason about the
+ * post-write state of the codebase (e.g. blast-radius / impact /
+ * review tools). When the harness's pre-tool-call gate sees one of
+ * these names, it synchronously refreshes the `CodeIndexer` before
+ * forwarding the tool call. Stack-agnostic by design — any MCP server
+ * (roam-code, scip-typescript, ts-morph, etc.) can opt in by listing
+ * its mutation-adjacent tool names.
+ */
+export const ApmMcpFreshnessSchema = z.object({
+  requires_index_refresh: z.array(z.string()).default([]),
+}).optional();
+
 export const ApmMcpLocalFileSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
@@ -1397,6 +1424,7 @@ export const ApmMcpLocalFileSchema = z.object({
   cwd: z.string().optional(),
   availability: z.enum(["required", "optional"]).default("optional"),
   fsMutator: z.boolean().default(true),
+  freshness: ApmMcpFreshnessSchema,
 });
 
 export const ApmMcpRemoteFileSchema = z.object({
@@ -1407,6 +1435,7 @@ export const ApmMcpRemoteFileSchema = z.object({
   tools: z.array(z.string()).default(["*"]),
   availability: z.enum(["required", "optional"]).default("optional"),
   fsMutator: z.boolean().default(true),
+  freshness: ApmMcpFreshnessSchema,
 });
 
 export const ApmMcpFileSchema = z.discriminatedUnion("type", [

@@ -191,6 +191,9 @@ storefront:
           # Debug concluded the Playwright spec itself is the defect —
           # hand off to the SDET.
           test-code: e2e-author
+          # Debug concluded the fixture/test data is mismatched with the
+          # spec — bounce back to spec-compiler to refresh acceptance.
+          test-data: spec-compiler
 
     storefront-unit-test:
       depends_on: [storefront-debug]

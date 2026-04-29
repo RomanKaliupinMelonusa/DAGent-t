@@ -84,6 +84,14 @@ export interface CopilotSessionParams {
    * tool-call gate instead of a post-completion middleware.
    */
   precompletionGate?: PrecompletionGate;
+  /**
+   * Optional pre-tool-call freshness gate (Phase 4). When supplied, the
+   * harness awaits `refresh(toolName)` before forwarding any tool whose
+   * name is in `tools`. The set is APM-compiled from per-MCP-server
+   * `freshness.requires_index_refresh` declarations — engine code never
+   * inspects its contents.
+   */
+  freshnessGate?: import("../harness/hooks.js").FreshnessGate;
 }
 
 export interface CopilotSessionResult {
@@ -142,7 +150,7 @@ export async function runCopilotSession(
     hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);
-    }, params.harnessLimits),
+    }, params.harnessLimits, params.freshnessGate),
     ...(params.mcpServers
       ? { mcpServers: params.mcpServers as Record<string, MCPServerConfig> }
       : {}),

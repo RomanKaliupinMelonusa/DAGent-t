@@ -234,6 +234,13 @@ function generateTerminal(events: PipelineEvent[], slug: string): string {
       case "batch.start":
         lines.push(`${ts} 🔀 Parallel batch: ${(evt.data.items as string[]).join(" ‖ ")}`);
         break;
+      case "scheduler.dispatch": {
+        const dispatched = (evt.data.dispatched as string[]) ?? [];
+        if (dispatched.length > 1) {
+          lines.push(`${ts} 🔀 Parallel batch ${evt.data.batchNumber}: ${dispatched.join(" ‖ ")}`);
+        }
+        break;
+      }
       case "item.start":
         lines.push(`${ts} ═══ ${itemTag}${attemptTag} START — agent: ${evt.data.agent}`);
         break;
