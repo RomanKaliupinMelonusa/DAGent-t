@@ -89,7 +89,7 @@
       "key": "qa-adversary",
       "label": "qa-adversary",
       "agent": "@qa-adversary",
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
     },
@@ -1266,7 +1266,19 @@
           "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
         }
       ],
-      "outputs": []
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83/outputs/node-report.json",
+          "nodeKey": "create-draft-pr",
+          "invocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-29T00:02:15.248Z",
+      "sealed": true
     }
   }
 }

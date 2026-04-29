@@ -9,6 +9,8 @@
     "reason": "initial"
   },
   "startedAt": "2026-04-28T23:59:37.127Z",
+  "finishedAt": "2026-04-29T00:02:15.248Z",
+  "outcome": "completed",
   "inputs": [
     {
       "kind": "acceptance",
@@ -27,5 +29,15 @@
       "invocationId": "inv_01KQB7TQMDBR94406YF94WS1BM"
     }
   ],
-  "outputs": []
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83/outputs/node-report.json",
+      "nodeKey": "create-draft-pr",
+      "invocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83"
+    }
+  ],
+  "sealed": true
 }
