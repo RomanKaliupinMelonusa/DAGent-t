@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "docs-archived",
+  "producedAt": "2026-04-29T00:07:45.593Z",
+  "nodeKey": "docs-archived",
+  "invocationId": "inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6",
+  "handler": "copilot-agent",
+  "trigger": "initial",
+  "attempt": 1,
+  "startedAt": "2026-04-29T00:06:29.857Z",
+  "finishedAt": "2026-04-29T00:07:45.593Z",
+  "durationMs": 75736,
+  "outcome": "completed",
+  "counters": {
+    "shellCommands": 12,
+    "toolCalls": 16,
+    "messages": 6,
+    "intents": 0,
+    "filesRead": 0,
+    "filesChanged": 17
+  },
+  "tokens": {
+    "input": 281423,
+    "output": 3992,
+    "cacheRead": 256124,
+    "cacheWrite": 0
+  },
+  "filesRead": [],
+  "filesChanged": [
+    "apps/commerce-storefront/.dagent/product-quick-view/_change-manifest.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_invocations.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_kickoff/flight-data.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_state.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_trans.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/inputs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/inputs/acceptance.yml",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/inputs/params.in.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/inputs/spec.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/logs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/logs/events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/logs/messages.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/logs/tool-calls.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/meta.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/outputs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6/outputs/change-manifest.json"
+  ],
+  "intents": [],
+  "messages": [
+    "Now I have the file change list. Let me get brief descriptions of the changed files by reading summaries.",
+    "Now let me check the test results from the trans log to understand test outcomes, and create the output directory.",
+    "Now I have all the information I need to generate the change manifest. Let me create it:",
+    "Now let me validate the JSON and commit:",
+    "The change manifest has been committed successfully. Now I'll report the outcome.",
+    "The `docs-archived` step is complete. I generated the change manifest at the declared output path with:  - **9 file changes** documented (2 modified, 5 added, 1 deleted storefront files + 1 added docs file) - **Testing results**: 5 E2E tests passed, 1 failed (403 Forbidden from platform API — known baseline noise) - **Envelope fields**: `schemaVersion: 1`, `producedBy: \"docs-archived\"`, `producedAt` timestamp all present - Committed via `agent-commit.sh docs`"
+  ],
+  "errorMessage": null,
+  "errorSignature": null,
+  "exitCode": null,
+  "triggeredBy": {
+    "nodeKey": "code-cleanup",
+    "invocationId": "inv_01KQB8P9J68332PWYY3G56MPYT",
+    "reason": "initial"
+  }
+}

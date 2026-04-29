@@ -21,7 +21,7 @@
 - [x] e2e-runner (null)
 - [x] qa-adversary (@qa-adversary)
 - [x] create-draft-pr (@create-draft-pr)
-- [ ] code-cleanup (@code-cleanup)
+- [x] code-cleanup (@code-cleanup)
 - [ ] docs-archived (@docs-archived)
 - [ ] doc-architect (@doc-architect)
 - [ ] publish-pr (null)
@@ -242,7 +242,7 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✓ #1 `inv_01KQB8HDN75NABWXCC9FKKEY83` (initial ← qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM (initial)) [completed @ 2026-04-29T00:02:15.248Z]
 
 ### docs-archived
-- … #1 `inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6` (initial ← code-cleanup/inv_01KQB8P9J68332PWYY3G56MPYT (initial)) [pending @ 2026-04-29T00:06:29.857Z]
+- ✓ #1 `inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6` (initial ← code-cleanup/inv_01KQB8P9J68332PWYY3G56MPYT (initial)) [completed @ 2026-04-29T00:07:45.593Z]
 
 ### e2e-author
 - ✓ #1 `inv_01KQB4ESXE58SQDVXNW1R85854` (initial ← storefront-unit-test/inv_01KQB3Z0N4BYF0REM7VRE9CNGM (initial)) [completed @ 2026-04-28T22:52:34.709Z]
