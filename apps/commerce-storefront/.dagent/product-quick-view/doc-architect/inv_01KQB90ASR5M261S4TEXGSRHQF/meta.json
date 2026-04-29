@@ -9,6 +9,8 @@
     "reason": "initial"
   },
   "startedAt": "2026-04-29T00:07:45.720Z",
+  "finishedAt": "2026-04-29T00:11:02.518Z",
+  "outcome": "completed",
   "inputs": [
     {
       "kind": "spec",
@@ -25,5 +27,15 @@
       "invocationId": "inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6"
     }
   ],
-  "outputs": []
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/doc-architect/inv_01KQB90ASR5M261S4TEXGSRHQF/outputs/node-report.json",
+      "nodeKey": "doc-architect",
+      "invocationId": "inv_01KQB90ASR5M261S4TEXGSRHQF"
+    }
+  ],
+  "sealed": true
 }

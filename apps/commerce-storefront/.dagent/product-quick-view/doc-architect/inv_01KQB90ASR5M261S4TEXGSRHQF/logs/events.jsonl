@@ -11,3 +11,7 @@
 {"ts":"2026-04-29T00:10:33.576Z","input_tokens":33005,"output_tokens":2996,"cache_read_tokens":29994,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
 {"ts":"2026-04-29T00:10:47.055Z","input_tokens":36022,"output_tokens":161,"cache_read_tokens":33004,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
 {"ts":"2026-04-29T00:10:51.566Z","input_tokens":36412,"output_tokens":130,"cache_read_tokens":36021,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:10:55.972Z","input_tokens":37239,"output_tokens":68,"cache_read_tokens":36411,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:11:02.381Z","input_tokens":37324,"output_tokens":245,"cache_read_tokens":37238,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:11:02.517Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:11:02.523Z","kind":"dispatch.end","invocationId":"inv_01KQB90ASR5M261S4TEXGSRHQF","nodeKey":"doc-architect","outcome":"completed","finishedAt":"2026-04-29T00:11:02.518Z","outputKinds":["node-report"]}

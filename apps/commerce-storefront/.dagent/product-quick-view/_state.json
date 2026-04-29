@@ -113,7 +113,7 @@
       "key": "docs-archived",
       "label": "docs-archived",
       "agent": "@docs-archived",
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6"
     },
@@ -1385,7 +1385,19 @@
           "invocationId": "inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6"
         }
       ],
-      "outputs": []
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/doc-architect/inv_01KQB90ASR5M261S4TEXGSRHQF/outputs/node-report.json",
+          "nodeKey": "doc-architect",
+          "invocationId": "inv_01KQB90ASR5M261S4TEXGSRHQF"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-29T00:11:02.518Z",
+      "sealed": true
     }
   }
 }

@@ -22,7 +22,7 @@
 - [x] qa-adversary (@qa-adversary)
 - [x] create-draft-pr (@create-draft-pr)
 - [x] code-cleanup (@code-cleanup)
-- [ ] docs-archived (@docs-archived)
+- [x] docs-archived (@docs-archived)
 - [ ] doc-architect (@doc-architect)
 - [ ] publish-pr (null)
 - [ ] mark-pr-ready (null)
@@ -242,7 +242,7 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✓ #1 `inv_01KQB8HDN75NABWXCC9FKKEY83` (initial ← qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM (initial)) [completed @ 2026-04-29T00:02:15.248Z]
 
 ### doc-architect
-- … #1 `inv_01KQB90ASR5M261S4TEXGSRHQF` (initial ← docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6 (initial)) [pending @ 2026-04-29T00:07:45.720Z]
+- ✓ #1 `inv_01KQB90ASR5M261S4TEXGSRHQF` (initial ← docs-archived/inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6 (initial)) [completed @ 2026-04-29T00:11:02.518Z]
 
 ### docs-archived
 - ✓ #1 `inv_01KQB8Y0Q1FQ88HGZM6V0XFXJ6` (initial ← code-cleanup/inv_01KQB8P9J68332PWYY3G56MPYT (initial)) [completed @ 2026-04-29T00:07:45.593Z]
