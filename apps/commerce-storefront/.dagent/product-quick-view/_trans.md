@@ -24,7 +24,7 @@
 - [x] code-cleanup (@code-cleanup)
 - [x] docs-archived (@docs-archived)
 - [x] doc-architect (@doc-architect)
-- [ ] publish-pr (null)
+- [x] publish-pr (null)
 - [ ] mark-pr-ready (null)
 - [x] triage-storefront (null)
 
@@ -256,6 +256,9 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✗ #1 `inv_01KQB4PRFHH56MTXQKPE4416NA` (initial ← e2e-author/inv_01KQB4ESXE58SQDVXNW1R85854 (initial)) [failed @ 2026-04-28T22:54:23.053Z]
 - ✗ #2 `inv_01KQB7D048M6J08PG33EBXJVPP` (redevelopment-cycle ← storefront-debug/inv_01KQB4TE786WBYS8JSQ30G1XM0 (redevelopment-cycle)) [failed @ 2026-04-28T23:41:07.126Z]
 - ✓ #3 `inv_01KQB7R3ETH090014PG288Y51P` (redevelopment-cycle ← e2e-runner/inv_01KQB7D048M6J08PG33EBXJVPP (redevelopment-cycle)) [completed @ 2026-04-28T23:47:09.805Z]
+
+### mark-pr-ready
+- ✓ #1 `inv_01KQB96H5B0VDBKXW0XHV2EEX8` (initial ← publish-pr/inv_01KQB96B3RGC3CEG9PPTVN3X9E (initial)) [completed @ 2026-04-29T00:11:10.835Z]
 
 ### publish-pr
 - ✓ #1 `inv_01KQB96B3RGC3CEG9PPTVN3X9E` (initial ← doc-architect/inv_01KQB90ASR5M261S4TEXGSRHQF (initial)) [completed @ 2026-04-29T00:11:07.429Z]

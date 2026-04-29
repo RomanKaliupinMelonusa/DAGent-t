@@ -129,7 +129,7 @@
       "key": "publish-pr",
       "label": "publish-pr",
       "agent": null,
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB96B3RGC3CEG9PPTVN3X9E"
     },
@@ -138,7 +138,8 @@
       "label": "mark-pr-ready",
       "agent": null,
       "status": "pending",
-      "error": null
+      "error": null,
+      "latestInvocationId": "inv_01KQB96H5B0VDBKXW0XHV2EEX8"
     },
     {
       "key": "triage-storefront",
@@ -1433,6 +1434,32 @@
       ],
       "outcome": "completed",
       "finishedAt": "2026-04-29T00:11:07.429Z",
+      "sealed": true
+    },
+    "inv_01KQB96H5B0VDBKXW0XHV2EEX8": {
+      "invocationId": "inv_01KQB96H5B0VDBKXW0XHV2EEX8",
+      "nodeKey": "mark-pr-ready",
+      "cycleIndex": 1,
+      "trigger": "initial",
+      "triggeredBy": {
+        "nodeKey": "publish-pr",
+        "invocationId": "inv_01KQB96B3RGC3CEG9PPTVN3X9E",
+        "reason": "initial"
+      },
+      "startedAt": "2026-04-29T00:11:08.843Z",
+      "inputs": [],
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/mark-pr-ready/inv_01KQB96H5B0VDBKXW0XHV2EEX8/outputs/node-report.json",
+          "nodeKey": "mark-pr-ready",
+          "invocationId": "inv_01KQB96H5B0VDBKXW0XHV2EEX8"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-29T00:11:10.835Z",
       "sealed": true
     }
   }
