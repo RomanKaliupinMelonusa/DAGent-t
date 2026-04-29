@@ -1,0 +1,13 @@
+{"ts":"2026-04-29T00:07:45.724Z","kind":"dispatch.start","invocationId":"inv_01KQB90ASR5M261S4TEXGSRHQF","nodeKey":"doc-architect","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-29T00:07:45.720Z","attempt":1}
+{"ts":"2026-04-29T00:07:45.741Z","injection_types":["baseline_advisory"],"context_length":3255,"entry_counts":{"console":12,"network":7,"uncaught":0},"stale":true,"kind":"handoff.inject","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:07:55.607Z","input_tokens":15115,"output_tokens":355,"cache_read_tokens":9747,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:07:59.099Z","input_tokens":16570,"output_tokens":165,"cache_read_tokens":13091,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:07:59.104Z","tool":"roam-code-roam_understand","mcp_server":"roam-code","success":false,"kind":"tool.result","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:08:04.015Z","input_tokens":18684,"output_tokens":328,"cache_read_tokens":16569,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:08:07.283Z","input_tokens":25324,"output_tokens":147,"cache_read_tokens":18589,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:08:13.852Z","input_tokens":26592,"output_tokens":316,"cache_read_tokens":25323,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:09:02.111Z","input_tokens":26980,"output_tokens":2954,"cache_read_tokens":26591,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:09:24.338Z","input_tokens":29995,"output_tokens":2989,"cache_read_tokens":26979,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:10:33.576Z","input_tokens":33005,"output_tokens":2996,"cache_read_tokens":29994,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:10:47.055Z","input_tokens":36022,"output_tokens":161,"cache_read_tokens":33004,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
+{"ts":"2026-04-29T00:10:51.566Z","input_tokens":36412,"output_tokens":130,"cache_read_tokens":36021,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"doc-architect"}
