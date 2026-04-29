@@ -20,7 +20,7 @@
 - [x] e2e-author (@e2e-author)
 - [x] e2e-runner (null)
 - [x] qa-adversary (@qa-adversary)
-- [ ] create-draft-pr (@create-draft-pr)
+- [x] create-draft-pr (@create-draft-pr)
 - [ ] code-cleanup (@code-cleanup)
 - [ ] docs-archived (@docs-archived)
 - [ ] doc-architect (@doc-architect)
@@ -233,7 +233,7 @@ Reset cycle 3/5: [domain:test-code] [source:llm] The test's BASELINE_NOISE_PATTE
 - ✓ #1 `inv_01KQB2YM6X13AM9ECCJ9BG8BDM` (initial ← spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH (initial)) [completed @ 2026-04-28T22:26:09.239Z]
 
 ### code-cleanup
-- … #1 `inv_01KQB8P9J68332PWYY3G56MPYT` (initial ← create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83 (initial)) [pending @ 2026-04-29T00:02:16.775Z]
+- ✓ #1 `inv_01KQB8P9J68332PWYY3G56MPYT` (initial ← create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83 (initial)) [completed @ 2026-04-29T00:06:29.717Z]
 
 ### create-branch
 - ✓ #1 `inv_01KQB2RDQV675YMJ9H5TCT1XSJ` (initial) [completed @ 2026-04-28T22:18:35.875Z]

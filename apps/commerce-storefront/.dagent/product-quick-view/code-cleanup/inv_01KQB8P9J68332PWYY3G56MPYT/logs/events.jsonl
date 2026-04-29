@@ -43,3 +43,7 @@
 {"ts":"2026-04-29T00:05:49.827Z","input_tokens":30758,"output_tokens":175,"cache_read_tokens":30282,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"code-cleanup"}
 {"ts":"2026-04-29T00:06:00.965Z","input_tokens":32081,"output_tokens":218,"cache_read_tokens":30757,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"code-cleanup"}
 {"ts":"2026-04-29T00:06:18.019Z","input_tokens":32614,"output_tokens":827,"cache_read_tokens":32080,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"code-cleanup"}
+{"ts":"2026-04-29T00:06:21.700Z","input_tokens":34070,"output_tokens":66,"cache_read_tokens":32613,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"code-cleanup"}
+{"ts":"2026-04-29T00:06:29.545Z","input_tokens":34153,"output_tokens":240,"cache_read_tokens":34069,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"code-cleanup"}
+{"ts":"2026-04-29T00:06:29.716Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"code-cleanup"}
+{"ts":"2026-04-29T00:06:29.725Z","kind":"dispatch.end","invocationId":"inv_01KQB8P9J68332PWYY3G56MPYT","nodeKey":"code-cleanup","outcome":"completed","finishedAt":"2026-04-29T00:06:29.717Z","outputKinds":["node-report"]}

@@ -97,7 +97,7 @@
       "key": "create-draft-pr",
       "label": "create-draft-pr",
       "agent": "@create-draft-pr",
-      "status": "pending",
+      "status": "done",
       "error": null,
       "latestInvocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83"
     },
@@ -1293,7 +1293,19 @@
       },
       "startedAt": "2026-04-29T00:02:16.775Z",
       "inputs": [],
-      "outputs": []
+      "outputs": [
+        {
+          "kind": "node-report",
+          "scope": "node",
+          "slug": "product-quick-view",
+          "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/code-cleanup/inv_01KQB8P9J68332PWYY3G56MPYT/outputs/node-report.json",
+          "nodeKey": "code-cleanup",
+          "invocationId": "inv_01KQB8P9J68332PWYY3G56MPYT"
+        }
+      ],
+      "outcome": "completed",
+      "finishedAt": "2026-04-29T00:06:29.717Z",
+      "sealed": true
     }
   }
 }

@@ -9,6 +9,18 @@
     "reason": "initial"
   },
   "startedAt": "2026-04-29T00:02:16.775Z",
+  "finishedAt": "2026-04-29T00:06:29.717Z",
+  "outcome": "completed",
   "inputs": [],
-  "outputs": []
+  "outputs": [
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/code-cleanup/inv_01KQB8P9J68332PWYY3G56MPYT/outputs/node-report.json",
+      "nodeKey": "code-cleanup",
+      "invocationId": "inv_01KQB8P9J68332PWYY3G56MPYT"
+    }
+  ],
+  "sealed": true
 }
