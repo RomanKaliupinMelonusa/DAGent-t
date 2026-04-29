@@ -48,6 +48,7 @@ import {
   recordInvocationDispatch,
   recordInvocationSeal,
 } from "./dispatch/invocation-ledger-hooks.js";
+import { buildSchedulerDispatchPayload } from "./scheduler-dispatch-payload.js";
 import { interpretSignals, type LoopDirective } from "./signal-handler.js";
 import { resolveTriageActivations } from "./triage-activation.js";
 import type { TriageActivation } from "../app-types.js";
@@ -244,6 +245,13 @@ export async function runPipelineLoop(
 
   try {
     for (let batchNumber = 1; batchNumber <= maxIterations; batchNumber++) {
+      // Phase 2 (parallelism observability) — capture per-tick scheduler
+      // inputs so the post-getNextBatch `scheduler.dispatch` event can
+      // attribute gated/stalled/triaged keys to the dispatcher tick that
+      // produced them.
+      let stallFailsThisTick: string[] = [];
+      let triageActivationCountThisTick = 0;
+
       // Step 0: DAG-level stall detection (ready_within_hours).
       // Fail any pending item whose upstream wait has exceeded its budget.
       // The failure flows through the normal on_failure.triage path.
@@ -256,11 +264,12 @@ export async function runPipelineLoop(
             stallEffects.push(...processResult.effects);
           }
           await executeEffects(stallEffects, effectPorts);
+          stallFailsThisTick = stallCommands
+            .filter((c) => c.type === "fail-item")
+            .map((c) => (c as { itemKey: string }).itemKey);
           logger.event("state.stall", null, {
             batch_number: batchNumber,
-            stalled_keys: stallCommands
-              .filter((c) => c.type === "fail-item")
-              .map((c) => (c as { itemKey: string }).itemKey),
+            stalled_keys: stallFailsThisTick,
           });
         }
       }
@@ -274,6 +283,7 @@ export async function runPipelineLoop(
       // pending-context) are visible to the subsequent getNextBatch().
       if (pendingTriageActivations.length > 0) {
         const activations = pendingTriageActivations.splice(0);
+        triageActivationCountThisTick = activations.length;
         const dagSnapT = kernel.dagSnapshot();
         const runSnapT = kernel.runSnapshot();
         const triagePairs: Array<readonly [NodeHandler, NodeContext, ReadonlyArray<NodeMiddleware>]> = [];
@@ -313,7 +323,7 @@ export async function runPipelineLoop(
             console.log(`    · ${a.triageNodeKey} ← ${a.failingKey}`);
           }
           console.log(`${"─".repeat(70)}`);
-          const triageStartedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger, kernel);
+          const triageStartedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, triagePairs, logger, kernel, batchNumber);
           const triageResult = await dispatchBatch(triagePairs);
           await recordInvocationSeal(
             effectPorts.stateStore,
@@ -326,6 +336,7 @@ export async function runPipelineLoop(
               startedAtByItem: triageStartedAtByItem,
             },
             kernel,
+            batchNumber,
           );
           const triageEffects: Effect[] = [];
           let triageHalt = false;
@@ -371,15 +382,27 @@ export async function runPipelineLoop(
         return node?.type !== "triage";
       });
 
+      // Phase 2 — always-on scheduler decision telemetry. Subsumes the
+      // legacy conditional `batch.start` emission (which only fired for
+      // N>1 batches). One row per loop tick where the scheduler returned
+      // items, regardless of how many — including the all-triage case
+      // where `runnableItems.length === 0` and the loop continues to the
+      // next iteration immediately below.
+      logger.event(
+        "scheduler.dispatch",
+        null,
+        buildSchedulerDispatchPayload({
+          batchNumber,
+          readyItems: batch.items,
+          dispatchedItems: runnableItems,
+          gateEffects: batch.gateEffects,
+          triageActivations: triageActivationCountThisTick,
+          stallFails: stallFailsThisTick,
+        }),
+      );
+
       // All items in batch are triage-only — skip to next iteration
       if (runnableItems.length === 0) continue;
-
-      if (runnableItems.length > 1) {
-        logger.event("batch.start", null, {
-          batch_number: batchNumber,
-          items: runnableItems.map((i) => i.key),
-        });
-      }
 
       // Operator-facing batch banner on stdout. Telemetry already captures
       // this in `batch.start` / item.start events, but the terminal stream
@@ -415,7 +438,7 @@ export async function runPipelineLoop(
       }
 
       // Step 5: Dispatch batch
-      const startedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger, kernel);
+      const startedAtByItem = await recordInvocationDispatch(effectPorts.stateStore, slug, dispatchPairs, logger, kernel, batchNumber);
       const batchResult = await dispatchBatch(dispatchPairs);
       await recordInvocationSeal(
         effectPorts.stateStore,
@@ -428,6 +451,7 @@ export async function runPipelineLoop(
           startedAtByItem,
         },
         kernel,
+        batchNumber,
       );
 
       // Per-item outcome banner on stdout for operator visibility.

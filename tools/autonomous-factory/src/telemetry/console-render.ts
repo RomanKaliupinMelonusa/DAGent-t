@@ -44,6 +44,12 @@ export function renderEventToConsole(evt: PipelineEvent): string | null {
       return (d.items as string[]).length > 1
         ? `\n${"─".repeat(70)}\n  🔀 Parallel batch: ${(d.items as string[]).join(" ‖ ")}\n${"─".repeat(70)}`
         : null; // Single-item batches don't need a banner
+    case "scheduler.dispatch": {
+      const dispatched = (d.dispatched as string[]) ?? [];
+      return dispatched.length > 1
+        ? `\n${"─".repeat(70)}\n  🔀 Parallel batch ${d.batchNumber}: ${dispatched.join(" ‖ ")}\n${"─".repeat(70)}`
+        : null; // Single-item batches don't need a banner
+    }
     case "batch.end":
       return null; // Silent
 

@@ -55,6 +55,14 @@ export interface ReindexEffect {
   readonly type: "reindex";
   /** Only reindex if the target node's category is in this list. */
   readonly categories?: string[];
+  /**
+   * Phase 2 (parallelism observability) — the `itemKey` whose completion
+   * triggered this effect, when known. Used by the effect executor to
+   * attribute coalesced `code-index.refresh{trigger:"kernel-effect"}`
+   * events to the node-completes that produced them. Optional: triage-
+   * driven reindexes and legacy callers may omit it.
+   */
+  readonly causedBy?: string;
 }
 
 /**

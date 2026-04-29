@@ -172,3 +172,58 @@ describe("Phase 4.2 — effect partitioning", () => {
     assert.deepEqual(appendCalls, ["a", "b", "c"]);
   });
 });
+
+describe("Phase 2 (parallelism observability) — coalesced reindex causedBy", () => {
+  beforeEach(() => _resetObservationalQueueForTests());
+
+  it("aggregates causedBy across reindex effects in one executeEffects call", async () => {
+    const { ports, events } = makePorts();
+    const indexCalls: number[] = [];
+    const codeIndexer = {
+      isAvailable: () => true,
+      index: async () => {
+        indexCalls.push(Date.now());
+        return { durationMs: 1, upToDate: false };
+      },
+    };
+    const portsWithIndexer: EffectPorts = { ...ports, codeIndexer };
+
+    const effects: Effect[] = [
+      { type: "reindex", categories: undefined, causedBy: "node-a" },
+      { type: "reindex", categories: undefined, causedBy: "node-b" },
+      { type: "reindex", categories: undefined, causedBy: "node-a" }, // duplicate
+    ];
+
+    await executeEffects(effects, portsWithIndexer);
+
+    // Only one actual index() call despite three reindex effects.
+    assert.equal(indexCalls.length, 1, "expected coalesced single index() call");
+
+    const refresh = events.find((e) => e.category === "code-index.refresh");
+    assert.ok(refresh, "expected code-index.refresh event");
+    const causedBy = refresh!.context!.causedBy as string[];
+    assert.deepEqual(causedBy.sort(), ["node-a", "node-b"]);
+  });
+
+  it("emits no causedBy field when no reindex effects carry it", async () => {
+    const { ports, events } = makePorts();
+    const codeIndexer = {
+      isAvailable: () => true,
+      index: async () => ({ durationMs: 1, upToDate: false }),
+    };
+    const portsWithIndexer: EffectPorts = { ...ports, codeIndexer };
+
+    await executeEffects(
+      [{ type: "reindex", categories: undefined } as Effect],
+      portsWithIndexer,
+    );
+
+    const refresh = events.find((e) => e.category === "code-index.refresh");
+    assert.ok(refresh);
+    assert.equal(
+      (refresh!.context as Record<string, unknown>).causedBy,
+      undefined,
+      "causedBy should be omitted when no source nodes are known",
+    );
+  });
+});

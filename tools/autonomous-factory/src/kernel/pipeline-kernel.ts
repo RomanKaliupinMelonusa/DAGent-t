@@ -284,7 +284,7 @@ export class PipelineKernel {
     // composition root and may be undefined in legacy/test contexts —
     // in which case no reindex is emitted.
     if (this.shouldReindexOnComplete?.(itemKey)) {
-      effects.push({ type: "reindex", categories: undefined });
+      effects.push({ type: "reindex", categories: undefined, causedBy: itemKey });
     }
     return { result: { ok: true }, effects };
   }
