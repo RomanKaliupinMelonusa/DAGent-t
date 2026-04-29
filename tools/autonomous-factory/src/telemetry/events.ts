@@ -110,7 +110,12 @@ export type EventKind =
   // tools whose results depend on post-write codebase state.
   | "code-index.refresh"
   | "code-index.refresh_failed"
-  | "code-index.refresh_skipped";
+  | "code-index.refresh_skipped"
+  // Diagnostic — one event per copilot-agent dispatch recording why the
+  // pre-tool-call freshness gate was (or wasn't) installed. Lets us tell
+  // a missing port apart from `roam --version` failing apart from an
+  // agent with no declared freshness tools.
+  | "code-index.gate.resolve";
 
 // ---------------------------------------------------------------------------
 // Core types

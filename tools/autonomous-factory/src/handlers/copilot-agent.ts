@@ -136,10 +136,35 @@ function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined
  */
 function buildFreshnessGate(ctx: NodeContext): FreshnessGate | undefined {
   const indexer = ctx.codeIndexer;
-  if (!indexer || !indexer.isAvailable()) return undefined;
-  const tools = ctx.apmContext.agents[ctx.itemKey]?.freshnessRefreshTools ?? [];
-  if (tools.length === 0) return undefined;
-  const toolSet = new Set(tools);
+  const declaredTools = ctx.apmContext.agents[ctx.itemKey]?.freshnessRefreshTools ?? [];
+  // Diagnostic: log gate resolution exactly once per dispatch so we can see
+  // which of the three early-returns fired when no `pre-tool-call` events
+  // appear. `available` is evaluated lazily — only when an indexer exists —
+  // so a missing port doesn't trigger a `roam --version` subprocess.
+  let available: boolean | null = null;
+  if (indexer) {
+    try {
+      available = indexer.isAvailable();
+    } catch {
+      available = false;
+    }
+  }
+  const reason =
+    !indexer ? "no-indexer"
+      : available === false ? "indexer-unavailable"
+        : declaredTools.length === 0 ? "no-declared-tools"
+          : "active";
+  ctx.logger.event("code-index.gate.resolve", ctx.itemKey, {
+    agent: ctx.itemKey,
+    reason,
+    indexerPresent: indexer !== undefined,
+    indexerAvailable: available,
+    declaredToolCount: declaredTools.length,
+    sampleTools: declaredTools.slice(0, 3),
+  });
+  if (!indexer || available === false) return undefined;
+  if (declaredTools.length === 0) return undefined;
+  const toolSet = new Set(declaredTools);
   return {
     tools: toolSet,
     refresh: async (toolName: string) => {

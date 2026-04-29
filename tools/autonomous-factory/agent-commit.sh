@@ -113,6 +113,19 @@ for _pattern in "${AR}/.dagent/*_STATE.json" "${AR}/.dagent/*_TRANS.md"; do
   done
 done
 
+# Exclude qa-adversary's transient Playwright spec from any commit.
+# The agent writes `${AR}/e2e/_qa_<slug>.spec.ts` per run; cleanup is
+# owned by `.apm/hooks/qa-adversary-post.sh` and a follow-up amend.
+# Even when an agent uses scope `e2e` (which globs the whole e2e/ dir)
+# the transient must never reach the index. Gated by an env flag for
+# one rollout cycle so we can flip the default safely; default is ON.
+if [ "${AGENT_COMMIT_BLOCK_TRANSIENT_QA:-1}" = "1" ]; then
+  for _staged in $(git diff --cached --name-only -- "${AR}/e2e/_qa_*.spec.ts" 2>/dev/null); do
+    git reset HEAD -- "$_staged" 2>/dev/null || true
+    echo "⚠️  agent-commit: refusing to stage transient qa-adversary artefact: $_staged" >&2
+  done
+fi
+
 # Auto-include package-lock.json when package.json is in the staged changeset.
 # Prevents lockfile desync that causes CI `npm ci` failures.
 if git diff --cached --name-only | grep -q 'package\.json$'; then

@@ -449,16 +449,20 @@ nodes:
 
   qa-adversary:
     # Phase B.2 — Adversarial QA pass. Runs after e2e-runner (which
-    # tore the dev server down), so it re-uses the same pre/post hooks
-    # to bring the server back up for its own probe suite. Writes a
-    # QA-REPORT.json that Phase C triage consumes as structured evidence.
+    # tore the dev server down), so it re-uses the e2e-runner pre-hook
+    # to bring the server back up for its own probe suite. The post
+    # hook is qa-adversary-specific because it owns cleanup of the
+    # agent's transient `e2e/_qa_<slug>.spec.ts` (it deletes the file,
+    # unstages it from git, and amends the qa-adversary commit so the
+    # transient never reaches origin). Writes a QA-REPORT.json that
+    # Phase C triage consumes as structured evidence.
     type: agent
     category: test
     agent: "@qa-adversary"
     timeout_minutes: 15
     auto_skip_if_no_changes_in: [storefront, e2e]
     pre: "bash .apm/hooks/e2e-runner-pre.sh"
-    post: "bash .apm/hooks/e2e-runner-post.sh"
+    post: "bash .apm/hooks/qa-adversary-post.sh"
     commit_scope: pipeline
     diff_attribution_dirs: []
 
