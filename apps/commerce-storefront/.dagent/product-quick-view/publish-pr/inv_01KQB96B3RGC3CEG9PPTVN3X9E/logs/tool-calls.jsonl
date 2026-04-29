@@ -1,0 +1,1 @@
+{"ts":"2026-04-29T00:11:02.658Z","tool":"local-exec","category":"shell","detail":" → bash /workspaces/DAGent-t/tools/autonomous-factory/hooks/publish-pr.sh","is_write":false,"kind":"tool.call","itemKey":"publish-pr"}
