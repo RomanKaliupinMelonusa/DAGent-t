@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "baseline-analyzer",
+  "producedAt": "2026-04-28T22:22:21.000Z",
+  "feature": "product-quick-view",
+  "captured_at": "2026-04-28T22:23:30.000Z",
+  "base_sha": "33edcb43fc812c804150938a0fe8ba70e2cee308",
+  "targets": [
+    {
+      "name": "PLP-mens-accessories",
+      "url": "/category/mens-accessories",
+      "kind": "page"
+    },
+    {
+      "name": "PLP-womens-dresses",
+      "url": "/category/womens-clothing-dresses",
+      "kind": "page"
+    },
+    {
+      "name": "Quick View modal",
+      "trigger_testid": "quick-view-trigger",
+      "kind": "modal"
+    }
+  ],
+  "console_errors": [
+    {
+      "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+      "source_page": "PLP-mens-accessories",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "framework-warning"
+    },
+    {
+      "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+      "source_page": "PLP-womens-dresses",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "framework-warning"
+    },
+    {
+      "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.",
+      "source_page": "PLP-mens-accessories",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "legacy-deprecation"
+    },
+    {
+      "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.",
+      "source_page": "PLP-womens-dresses",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "legacy-deprecation"
+    },
+    {
+      "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+      "source_page": "PLP-mens-accessories",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+      "source_page": "PLP-womens-dresses",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+      "source_page": "PLP-mens-accessories",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+      "source_page": "PLP-womens-dresses",
+      "count": 1,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "source_page": "PLP-mens-accessories",
+      "count": 2
+    },
+    {
+      "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "source_page": "PLP-womens-dresses",
+      "count": 2
+    },
+    {
+      "pattern": "r: 403 Forbidden",
+      "source_page": "PLP-mens-accessories",
+      "count": 2,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "r: 403 Forbidden",
+      "source_page": "PLP-womens-dresses",
+      "count": 2,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    }
+  ],
+  "network_failures": [
+    {
+      "pattern": "POST c360a.salesforce.com/web/events net::ERR_NAME_NOT_RESOLVED",
+      "source_page": "PLP-mens-accessories",
+      "count": 2,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "POST c360a.salesforce.com/web/events net::ERR_NAME_NOT_RESOLVED",
+      "source_page": "PLP-womens-dresses",
+      "count": 2,
+      "volatility": "persistent",
+      "category": "network-sandbox"
+    },
+    {
+      "pattern": "GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context 403 Forbidden",
+      "source_page": "PLP-mens-accessories",
+      "count": 1
+    },
+    {
+      "pattern": "GET /mobify/proxy/api/shopper/shopper-context/v1/organizations/f_ecom_aaia_prd/shopper-context 403 Forbidden",
+      "source_page": "PLP-womens-dresses",
+      "count": 1
+    },
+    {
+      "pattern": "GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations 403 Forbidden",
+      "source_page": "PLP-mens-accessories",
+      "count": 1
+    },
+    {
+      "pattern": "GET /mobify/proxy/api/configuration/shopper-configurations/v1/organizations/f_ecom_aaia_prd/configurations 403 Forbidden",
+      "source_page": "PLP-womens-dresses",
+      "count": 1
+    },
+    {
+      "pattern": "GET images.demandware.net/dw/image net::ERR_ABORTED",
+      "source_page": "PLP-mens-accessories",
+      "count": 4
+    }
+  ],
+  "uncaught_exceptions": [],
+  "notes": "Baseline captured before product-quick-view feature implementation. Both PLP pages show identical platform noise: React getServerSnapshot caching warning, defaultProps deprecation warning, DataCloud API ERR_NAME_NOT_RESOLVED (sandbox DNS), and 403 Forbidden responses from shopper-context and shopper-configurations APIs. The Quick View modal target (trigger_testid: quick-view-trigger) does not yet exist on the page — it will be created by the feature implementation, so no modal baseline could be captured. Image ERR_ABORTED on PLP-mens-accessories appears to be browser-level lazy-load cancellation of swatch preview images."
+}

@@ -1,0 +1,28 @@
+{
+  "nodeKey": "e2e-author",
+  "invocationId": "inv_01KQB7J6SME1SE66VFSVA4JMAZ",
+  "trigger": "triage-reroute",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB7J6SME1SE66VFSVA4JMAZ/inputs/acceptance.yml"
+    },
+    {
+      "kind": "baseline",
+      "source": "upstream",
+      "from": "baseline-analyzer",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/baseline.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB7J6SME1SE66VFSVA4JMAZ/inputs/baseline.json"
+    },
+    {
+      "kind": "triage-handoff",
+      "source": "reroute",
+      "from": "triage-storefront",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/triage-storefront/inv_01KQB7HCP232ADWXAS8M54Q9V0/outputs/triage-handoff.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-author/inv_01KQB7J6SME1SE66VFSVA4JMAZ/inputs/triage-handoff.json"
+    }
+  ]
+}

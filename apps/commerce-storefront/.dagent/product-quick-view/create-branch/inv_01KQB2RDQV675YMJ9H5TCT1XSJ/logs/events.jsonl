@@ -1,0 +1,3 @@
+{"ts":"2026-04-28T22:18:35.136Z","kind":"dispatch.start","invocationId":"inv_01KQB2RDQV675YMJ9H5TCT1XSJ","nodeKey":"create-branch","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:18:35.131Z","attempt":1}
+{"ts":"2026-04-28T22:18:35.874Z","outcome":"completed","note":"local-exec","kind":"item.end","itemKey":"create-branch"}
+{"ts":"2026-04-28T22:18:35.877Z","kind":"dispatch.end","invocationId":"inv_01KQB2RDQV675YMJ9H5TCT1XSJ","nodeKey":"create-branch","outcome":"completed","finishedAt":"2026-04-28T22:18:35.875Z","outputKinds":["node-report"]}

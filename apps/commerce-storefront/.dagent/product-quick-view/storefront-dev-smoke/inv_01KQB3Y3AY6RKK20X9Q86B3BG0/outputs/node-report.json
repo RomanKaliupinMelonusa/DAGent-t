@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "storefront-dev-smoke",
+  "producedAt": "2026-04-28T22:39:33.736Z",
+  "nodeKey": "storefront-dev-smoke",
+  "invocationId": "inv_01KQB3Y3AY6RKK20X9Q86B3BG0",
+  "handler": "local-exec",
+  "trigger": "initial",
+  "attempt": 1,
+  "startedAt": "2026-04-28T22:39:09.662Z",
+  "finishedAt": "2026-04-28T22:39:33.736Z",
+  "durationMs": 24074,
+  "outcome": "completed",
+  "counters": {
+    "shellCommands": 0,
+    "toolCalls": 0,
+    "messages": 0,
+    "intents": 1,
+    "filesRead": 0,
+    "filesChanged": 0
+  },
+  "tokens": null,
+  "filesRead": [],
+  "filesChanged": [],
+  "intents": [
+    "Native script execution"
+  ],
+  "messages": [],
+  "errorMessage": null,
+  "errorSignature": null,
+  "exitCode": null,
+  "triggeredBy": {
+    "nodeKey": "storefront-dev",
+    "invocationId": "inv_01KQB36DSFGNJ7V5WEBXMTH46S",
+    "reason": "initial"
+  }
+}

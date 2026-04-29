@@ -1,0 +1,13 @@
+{
+  "nodeKey": "spec-compiler",
+  "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "spec",
+      "source": "kickoff",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/_kickoff/spec.md",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/inputs/spec.md"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "baseline-analyzer",
+  "producedAt": "2026-04-28T22:26:09.239Z",
+  "nodeKey": "baseline-analyzer",
+  "invocationId": "inv_01KQB2YM6X13AM9ECCJ9BG8BDM",
+  "handler": "copilot-agent",
+  "trigger": "initial",
+  "attempt": 1,
+  "startedAt": "2026-04-28T22:21:58.365Z",
+  "finishedAt": "2026-04-28T22:26:09.239Z",
+  "durationMs": 250874,
+  "outcome": "completed",
+  "counters": {
+    "shellCommands": 9,
+    "toolCalls": 28,
+    "messages": 9,
+    "intents": 0,
+    "filesRead": 3,
+    "filesChanged": 17
+  },
+  "tokens": {
+    "input": 793942,
+    "output": 11344,
+    "cacheRead": 746231,
+    "cacheWrite": 0
+  },
+  "filesRead": [
+    "apps/commerce-storefront/.dagent/product-quick-view/_kickoff/spec.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+    "../../tmp/plp1-console.log"
+  ],
+  "filesChanged": [
+    "apps/commerce-storefront/.dagent/product-quick-view/_events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_invocations.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/_kickoff/flight-data.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_state.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/_trans.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/inputs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/inputs/acceptance.yml",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/inputs/params.in.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/inputs/spec.md",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/logs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/logs/events.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/logs/messages.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/logs/tool-calls.jsonl",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/meta.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/.gitkeep",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/baseline.json",
+    "apps/commerce-storefront/.dagent/product-quick-view/baseline-analyzer/inv_01KQB2YM6X13AM9ECCJ9BG8BDM/outputs/screenshots/session-1777414958694/session.md"
+  ],
+  "intents": [],
+  "messages": [
+    "Now I have the inputs. Let me identify the targets: - **PLP 1**: `/category/mens-accessories` (used in 4 flows) - **PLP 2**: `/category/womens-clothing-dresses` (used in 2 flows) - **Modal**: `quick-view-trigger` — this is the feature being built, won't exist yet  Let me capture baseline errors on both PLP pages using Playwright.",
+    "Good, the page loaded. I can see 2 console errors. Let me capture the full console messages, then scroll to trigger lazy errors, and also check network requests.",
+    "Now let me scroll the page, check network requests, then navigate to the second PLP.",
+    "Good. Now let me navigate to the second PLP page.",
+    "Now let me scroll and get network failures for the second page.",
+    "I now have all the data I need from both pages. The error patterns are consistent across both PLPs. Let me now produce the baseline.json.",
+    "Now let me validate the JSON and commit.",
+    "Baseline committed successfully. Let me report the outcome.",
+    "Baseline analysis complete. Here's a summary:  **Targets captured (3):** - `PLP-mens-accessories` → `/category/mens-accessories` (page) - `PLP-womens-dresses` → `/category/womens-clothing-dresses` (page)   - `Quick View modal` → trigger testid `quick-view-trigger` (modal — not yet implemented)  **Findings:** | Channel | Count | Persistent | Transient | |---|---|---|---| | Console errors | 12 entries | 8 (tagged) | 4 (untagged) | | Network failures | 7 entries | 2 (tagged) | 5 (untagged) | | Uncaught exceptions | 0 | — | — |  **Key persistent patterns (platform noise):** 1. `getServerSnapshot should be cached` — framework-warning (React internals) 2. `defaultProps will be removed` — legacy-deprecation (React 19 prep) 3. `ERR_NAME_NOT_RESOLVED` at `c360a.salesforce.com` — network-sandbox (DataCloud DNS) 4. `use-datacloud._handleApiError` — network-sandbox (DataCloud event API) 5. `r: 403 Forbidden` — network-sandbox (shopper-context/configurations sandbox 403s)"
+  ],
+  "errorMessage": null,
+  "errorSignature": null,
+  "exitCode": null,
+  "triggeredBy": {
+    "nodeKey": "spec-compiler",
+    "invocationId": "inv_01KQB2RH63KD04266Y3WPMDRSH",
+    "reason": "initial"
+  }
+}

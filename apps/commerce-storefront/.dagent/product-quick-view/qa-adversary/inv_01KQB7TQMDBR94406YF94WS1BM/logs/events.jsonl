@@ -1,0 +1,27 @@
+{"ts":"2026-04-28T23:47:13.681Z","kind":"dispatch.start","invocationId":"inv_01KQB7TQMDBR94406YF94WS1BM","nodeKey":"qa-adversary","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T23:47:13.678Z","attempt":1}
+{"ts":"2026-04-28T23:47:13.711Z","command":"bash .apm/hooks/e2e-runner-pre.sh","kind":"hook.pre.start","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:47:37.842Z","injection_types":["baseline_advisory"],"context_length":3255,"entry_counts":{"console":12,"network":7,"uncaught":0},"stale":true,"kind":"handoff.inject","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:47:37.791Z","exit_code":0,"kind":"hook.pre.end","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:47:44.396Z","input_tokens":13139,"output_tokens":384,"cache_read_tokens":0,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:48:10.981Z","input_tokens":18665,"output_tokens":1421,"cache_read_tokens":11147,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:48:15.529Z","input_tokens":20842,"output_tokens":161,"cache_read_tokens":18664,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:48:19.041Z","input_tokens":21037,"output_tokens":85,"cache_read_tokens":20773,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:48:31.702Z","input_tokens":25344,"output_tokens":539,"cache_read_tokens":21036,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:49:29.195Z","input_tokens":28113,"output_tokens":2846,"cache_read_tokens":25343,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:50:37.259Z","input_tokens":31031,"output_tokens":6079,"cache_read_tokens":28112,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:51:37.960Z","input_tokens":37161,"output_tokens":6082,"cache_read_tokens":31030,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:52:03.296Z","input_tokens":43377,"output_tokens":228,"cache_read_tokens":37160,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:55:06.009Z","input_tokens":48437,"output_tokens":1685,"cache_read_tokens":43376,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:55:21.687Z","input_tokens":50209,"output_tokens":1085,"cache_read_tokens":48436,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:55:30.341Z","input_tokens":51319,"output_tokens":184,"cache_read_tokens":50208,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:58:06.351Z","input_tokens":55290,"output_tokens":1987,"cache_read_tokens":51318,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:58:17.107Z","input_tokens":57302,"output_tokens":183,"cache_read_tokens":55289,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:58:31.512Z","input_tokens":57735,"output_tokens":242,"cache_read_tokens":57301,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:08.040Z","input_tokens":59157,"output_tokens":315,"cache_read_tokens":57734,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:13.917Z","input_tokens":59548,"output_tokens":145,"cache_read_tokens":59156,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:19.191Z","input_tokens":60604,"output_tokens":65,"cache_read_tokens":59547,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:31.025Z","input_tokens":60686,"output_tokens":545,"cache_read_tokens":60603,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:31.352Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:31.353Z","command":"bash .apm/hooks/e2e-runner-post.sh","kind":"hook.post.start","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:33.411Z","exit_code":0,"kind":"hook.post.end","itemKey":"qa-adversary"}
+{"ts":"2026-04-28T23:59:33.419Z","kind":"dispatch.end","invocationId":"inv_01KQB7TQMDBR94406YF94WS1BM","nodeKey":"qa-adversary","outcome":"completed","finishedAt":"2026-04-28T23:59:33.412Z","outputKinds":["qa-report","node-report"]}

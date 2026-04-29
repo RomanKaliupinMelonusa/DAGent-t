@@ -1,0 +1,2 @@
+{"ts":"2026-04-28T22:39:36.906Z","kind":"dispatch.start","invocationId":"inv_01KQB3YXY632PMH0ZQVP3VMGD4","nodeKey":"storefront-debug","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:39:36.903Z","attempt":1}
+{"ts":"2026-04-28T22:39:36.910Z","kind":"dispatch.end","invocationId":"inv_01KQB3YXY632PMH0ZQVP3VMGD4","nodeKey":"storefront-debug","outcome":"completed","finishedAt":"2026-04-28T22:39:36.908Z","outputKinds":["node-report"]}

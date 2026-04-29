@@ -1,0 +1,28 @@
+{"ts":"2026-04-28T23:21:22.644Z","kind":"dispatch.start","invocationId":"inv_01KQB6B8YDVTV7QQ1VEQCEJW8C","nodeKey":"storefront-debug","trigger":"triage-reroute","cycleIndex":3,"startedAt":"2026-04-28T23:21:22.640Z","attempt":3,"parentInvocationId":"inv_01KQB6AXKJR410ER0ZX67RTYDT"}
+{"ts":"2026-04-28T23:21:22.648Z","command":"bash .apm/hooks/e2e-runner-pre.sh","kind":"hook.pre.start","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:21:44.716Z","exit_code":0,"kind":"hook.pre.end","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:21:44.749Z","injection_types":["baseline_advisory"],"context_length":3255,"entry_counts":{"console":12,"network":7,"uncaught":0},"stale":true,"kind":"handoff.inject","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:21:57.168Z","input_tokens":38966,"output_tokens":489,"cache_read_tokens":0,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:22:05.977Z","input_tokens":43046,"output_tokens":554,"cache_read_tokens":36706,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:22:27.172Z","input_tokens":50227,"output_tokens":926,"cache_read_tokens":43045,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:22:41.432Z","input_tokens":55134,"output_tokens":474,"cache_read_tokens":50226,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:15.341Z","input_tokens":57345,"output_tokens":88,"cache_read_tokens":55133,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:24.815Z","input_tokens":57766,"output_tokens":430,"cache_read_tokens":55960,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:24.840Z","tool":"playwright-browser_navigate","mcp_server":"playwright","success":true,"kind":"tool.result","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:38.140Z","input_tokens":66328,"output_tokens":530,"cache_read_tokens":57714,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:39.341Z","tool":"playwright-browser_evaluate","mcp_server":"playwright","success":true,"kind":"tool.result","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:46.768Z","input_tokens":67825,"output_tokens":269,"cache_read_tokens":66327,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:49.364Z","tool":"playwright-browser_click","mcp_server":"playwright","success":true,"kind":"tool.result","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:58.092Z","input_tokens":73581,"output_tokens":417,"cache_read_tokens":67824,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:23:59.355Z","tool":"playwright-browser_evaluate","mcp_server":"playwright","success":true,"kind":"tool.result","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:24:19.609Z","input_tokens":74438,"output_tokens":927,"cache_read_tokens":73580,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:25:10.247Z","input_tokens":76586,"output_tokens":1457,"cache_read_tokens":74437,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:25:41.256Z","input_tokens":78582,"output_tokens":1641,"cache_read_tokens":76585,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:14.127Z","input_tokens":80257,"output_tokens":1730,"cache_read_tokens":78581,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:22.857Z","input_tokens":82062,"output_tokens":125,"cache_read_tokens":80256,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:29.798Z","input_tokens":83182,"output_tokens":294,"cache_read_tokens":82061,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:38.381Z","input_tokens":83512,"output_tokens":372,"cache_read_tokens":83181,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:38.589Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:40.663Z","kind":"dispatch.end","invocationId":"inv_01KQB6B8YDVTV7QQ1VEQCEJW8C","nodeKey":"storefront-debug","outcome":"completed","finishedAt":"2026-04-28T23:26:40.658Z","outputKinds":["debug-notes","node-report"]}
+{"ts":"2026-04-28T23:26:38.589Z","command":"bash .apm/hooks/e2e-runner-post.sh","kind":"hook.post.start","itemKey":"storefront-debug"}
+{"ts":"2026-04-28T23:26:40.656Z","exit_code":0,"kind":"hook.post.end","itemKey":"storefront-debug"}

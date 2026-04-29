@@ -1,0 +1,15 @@
+{"ts":"2026-04-28T22:18:38.662Z","kind":"dispatch.start","invocationId":"inv_01KQB2RH63KD04266Y3WPMDRSH","nodeKey":"spec-compiler","trigger":"initial","cycleIndex":1,"startedAt":"2026-04-28T22:18:38.659Z","attempt":1}
+{"ts":"2026-04-28T22:18:45.096Z","input_tokens":14187,"output_tokens":289,"cache_read_tokens":0,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:18:50.677Z","input_tokens":17686,"output_tokens":212,"cache_read_tokens":13460,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:18:54.511Z","input_tokens":18161,"output_tokens":107,"cache_read_tokens":17685,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:18:57.858Z","input_tokens":20105,"output_tokens":107,"cache_read_tokens":18076,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:19:02.132Z","input_tokens":25653,"output_tokens":107,"cache_read_tokens":20104,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:19:11.213Z","input_tokens":27154,"output_tokens":441,"cache_read_tokens":25652,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:20:44.786Z","input_tokens":27905,"output_tokens":5840,"cache_read_tokens":27153,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:11.838Z","input_tokens":33923,"output_tokens":3182,"cache_read_tokens":27904,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:31.433Z","input_tokens":37129,"output_tokens":739,"cache_read_tokens":33922,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:38.474Z","input_tokens":38133,"output_tokens":141,"cache_read_tokens":37128,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:42.927Z","input_tokens":39446,"output_tokens":67,"cache_read_tokens":38132,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:53.950Z","input_tokens":39530,"output_tokens":394,"cache_read_tokens":39445,"cache_write_tokens":0,"kind":"agent.usage","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:54.096Z","outcome":"completed","source":"report_outcome","kind":"item.end","itemKey":"spec-compiler"}
+{"ts":"2026-04-28T22:21:54.107Z","kind":"dispatch.end","invocationId":"inv_01KQB2RH63KD04266Y3WPMDRSH","nodeKey":"spec-compiler","outcome":"completed","finishedAt":"2026-04-28T22:21:54.103Z","outputKinds":["acceptance","node-report"]}

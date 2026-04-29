@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "storefront-dev",
+  "producedAt": "2026-04-28T22:26:17.988Z",
+  "flows": [
+    {
+      "flowId": "open-quick-view-from-tile",
+      "status": "live"
+    },
+    {
+      "flowId": "switch-color-swatch-in-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "add-to-bag-from-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "close-quick-view-restores-focus",
+      "status": "live"
+    },
+    {
+      "flowId": "no-pickup-ui-in-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "add-to-bag-disabled-when-unavailable",
+      "status": "live"
+    }
+  ]
+}

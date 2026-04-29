@@ -1,0 +1,395 @@
+{
+  "config": {
+    "configFile": "/workspaces/DAGent-t/apps/commerce-storefront/playwright.config.ts",
+    "rootDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 3,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspaces/DAGent-t/apps/commerce-storefront/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspaces/DAGent-t/apps/commerce-storefront/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/e2e-runner/inv_01KQB4PRFHH56MTXQKPE4416NA/outputs/playwright-report.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": {
+      "command": "npm start",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "product-quick-view.spec.ts",
+      "file": "product-quick-view.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Product Quick View",
+          "file": "product-quick-view.spec.ts",
+          "line": 120,
+          "column": 6,
+          "specs": [
+            {
+              "title": "open-quick-view-from-tile",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12271,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:130:7",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                          "column": 7,
+                          "line": 130
+                        },
+                        "snippet": "  128 |     await expect(\n  129 |       page.getByTestId('quick-view-trigger').first(),\n> 130 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  131 |\n  132 |     // Click the first quick-view trigger\n  133 |     await page.getByTestId('quick-view-trigger').first().click();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                            "column": 7,
+                            "line": 130
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n\n  128 |     await expect(\n  129 |       page.getByTestId('quick-view-trigger').first(),\n> 130 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  131 |\n  132 |     // Click the first quick-view trigger\n  133 |     await page.getByTestId('quick-view-trigger').first().click();\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:130:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-28T22:53:07.384Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-43dc4-w-open-quick-view-from-tile-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "W2Vycm9yXSBXYXJuaW5nOiBUaGUgcmVzdWx0IG9mIGdldFNlcnZlclNuYXBzaG90IHNob3VsZCBiZSBjYWNoZWQgdG8gYXZvaWQgYW4gaW5maW5pdGUgbG9vcCVzIGF0IEFwcCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMTI6NSkgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjM2NDA0OjUxKSBhdCBSb3V0ZUNvbXBvbmVudCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIzMDI1OjcpIGF0IEMgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo5NDIzMDozNykgYXQgV2l0aEVycm9ySGFuZGxpbmcod2l0aFJvdXRlcihyb3V0ZUNvbXBvbmVudChBcHApKSkgYXQgQXBwRXJyb3JCb3VuZGFyeSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyNjY1OjUpIGF0IFdyYXBwZWRDb21wb25lbnQgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzUxODo0MikgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBVSURSZXNldCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk2MDIwOjIzKSBhdCBTd2l0Y2ggKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzQxMDo1KSBhdCBFbnZpcm9ubWVudFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE2NzIzOjExKSBhdCBDb2xvck1vZGVQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjEwODg4NTo1KSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6NzMzOjUwKSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE5ODM3OjExKSBhdCBDaGFrcmFQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjExNjAxNTo1KSBhdCBDaGFrcmFQcm92aWRlcjIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoxMTc0MzY6NSkgYXQgU3RvcmVMb2NhdG9yUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MTc4Mjg6MykgYXQgTXVsdGlTaXRlUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjAyOTI6OSkgYXQgQ29tbWVyY2VBcGlQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyMDcyOjUpIGF0IEFwcENvbmZpZyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczozNjIxNTozKSBhdCBIeWRyYXRlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjQ4ODA6MykgYXQgUXVlcnlDbGllbnRQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjI0OTQ4OjMpIGF0IFdpdGhSZWFjdFF1ZXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjM2OTU6MykgYXQgQ+KApgpbZXJyb3JdIFdhcm5pbmc6ICVzOiBTdXBwb3J0IGZvciBkZWZhdWx0UHJvcHMgd2lsbCBiZSByZW1vdmVkIGZyb20gZnVuY3Rpb24gY29tcG9uZW50cyBpbiBhIGZ1dHVyZSBtYWpvciByZWxlYXNlLiBVc2UgSmF2YVNjcmlwdCBkZWZhdWx0IHBhcmFtZXRlcnMgaW5zdGVhZC4lcyBQYWdlRGVzaWduZXJQcm92aWRlciBhdCBQYWdlRGVzaWduZXJQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjE0MDE1MzozMykgYXQgT2ZmbGluZUJvdW5kYXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjY0NzM6NSkgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBtYWluIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgU2tpcE5hdkNvbnRlbnQyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE3OTA5OjEzKSBhdCBCb251c1Byb2R1Y3RTZWxlY3Rpb25Nb2RhbFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIyMjk0OjMpIGF0IEFkZFRvQ2FydE1vZGFsUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjA2Nzg6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQ3VycmVuY3lQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMDM0MzoxMykgYXQgSW50bFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6ODcyNDU6NDcpIGF0IFN0b3JlZnJvbnRQcmV2aWV3IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTMxMzQ6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIxMjo1KSBhdCBBcHAgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MzY0MDQ6NTEpIGF0IFJvdXRlQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjMwMjU6NykgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBXaXRoRXJyb3JIYW5kbGluZyh3aXRoUm91dGVyKHJvdXRlQ29tcG9uZW50KEFwcCkpKSBh4oCmCltlcnJvcl0gRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVECltlcnJvcl0gcmV0YWlsLXJlYWN0LWFwcC51c2UtZGF0YWNsb3VkLl9oYW5kbGVBcGlFcnJvciBFUlJPUiBbRGF0YUNsb3VkQXBpXSBFcnJvciBzZW5kaW5nIERhdGEgQ2xvdWQgZXZlbnQge30KW2Vycm9yXSBGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDMgKEZvcmJpZGRlbikKW2Vycm9yXSByOiA0MDMgRm9yYmlkZGVuIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5Mzo0ODM5MSBhdCB6YSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyMDczKSBhdCBHZW5lcmF0b3IuX2ludm9rZSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIxODIzKSBhdCBUYS5mb3JFYWNoLmUuPGNvbXB1dGVkPiBbYXMgbmV4dF0gKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMjQ0NykgYXQgbGEgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMDAzMikgYXQgbyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMjM2KQpbZXJyb3JdIEZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMyAoRm9yYmlkZGVuKQpbZXJyb3JdIHI6IDQwMyBGb3JiaWRkZW4gYXQgaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjQ4MzkxIGF0IHphIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjIwNzMpIGF0IEdlbmVyYXRvci5faW52b2tlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjE4MjMpIGF0IFRhLmZvckVhY2guZS48Y29tcHV0ZWQ+IFthcyBuZXh0XSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyNDQ3KSBhdCBsYSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMDMyKSBhdCBvIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjAyMzYp"
+                        },
+                        {
+                          "name": "failed-requests",
+                          "contentType": "text/plain",
+                          "body": "R0VUIGh0dHBzOi8vaW1hZ2VzLmRlbWFuZHdhcmUubmV0L2R3L2ltYWdlL3YyL0FBSUFfUFJEL29uL2RlbWFuZHdhcmUuc3RhdGljLy0vU2l0ZXMtYXBwYXJlbC1tLWNhdGFsb2cvZGVmYXVsdC9kdzE4Y2MzMmQzL2ltYWdlcy9tZWRpdW0vUEcuOTQ5MTE0MzE0Uy5SRURTSS5QWi5qcGc/c3c9MjMwJnE9NjAgLT4gbmV0OjpFUlJfQUJPUlRFRCAoaW1hZ2UpCkdFVCBodHRwczovL2ltYWdlcy5kZW1hbmR3YXJlLm5ldC9kdy9pbWFnZS92Mi9BQUlBX1BSRC9vbi9kZW1hbmR3YXJlLnN0YXRpYy8tL1NpdGVzLWFwcGFyZWwtbS1jYXRhbG9nL2RlZmF1bHQvZHdlMWNlZTliMC9pbWFnZXMvbWVkaXVtL1BHLjk0OTQzMjExNFMuTkFWWVNJLlBaLmpwZz9zdz0yMzAmcT02MCAtPiBuZXQ6OkVSUl9BQk9SVEVEIChpbWFnZSkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9jYWxsYmFjaz91c2lkPTQxMTM1YzNhLWRmYjYtNGFkZi1iMjIyLTJmMzljYTFjOTc3MCZjb2RlPXdYUkpxVTNzQTd4TjdoZEs0T3BvR2J0NVNJZTN0Sm5aLUM1enRubXZFZEUgLT4gbmV0OjpFUlJfQUJPUlRFRCAoZmV0Y2gpClBPU1QgaHR0cHM6Ly9nODJ3Z25ydm0teXdrOWRnZ3JydzhtdGdneS5wYy1ybmQuYzM2MGEuc2FsZXNmb3JjZS5jb20vd2ViL2V2ZW50cy83YWUwNzBhNi1mNGVjLTRkZWYtYTM4My1kOWNhY2MzZjIwYTEvIC0+IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVEIChmZXRjaCkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvcHJveHkvYXBpL2NvbmZpZ3VyYXRpb24vc2hvcHBlci1jb25maWd1cmF0aW9ucy92MS9vcmdhbml6YXRpb25zL2ZfZWNvbV9hYWlhX3ByZC9jb25maWd1cmF0aW9ucz9zaXRlSWQ9UmVmQXJjaCAtPiA0MDMgKGZldGNoKQpHRVQgaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9wcm94eS9hcGkvc2hvcHBlci9zaG9wcGVyLWNvbnRleHQvdjEvb3JnYW5pemF0aW9ucy9mX2Vjb21fYWFpYV9wcmQvc2hvcHBlci1jb250ZXh0LzQxMTM1YzNhLWRmYjYtNGFkZi1iMjIyLTJmMzljYTFjOTc3MD9zaXRlSWQ9UmVmQXJjaCAtPiA0MDMgKGZldGNoKQ=="
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-43dc4-w-open-quick-view-from-tile-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                        "column": 7,
+                        "line": 130
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-71e3667c5f59f3c796da",
+              "file": "product-quick-view.spec.ts",
+              "line": 121,
+              "column": 7
+            },
+            {
+              "title": "switch-color-swatch-in-quick-view",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11160,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:190:7",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                          "column": 7,
+                          "line": 190
+                        },
+                        "snippet": "  188 |     await expect(\n  189 |       page.getByTestId('quick-view-trigger').first(),\n> 190 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  191 |\n  192 |     // Open Quick View\n  193 |     await page.getByTestId('quick-view-trigger').first().click();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                            "column": 7,
+                            "line": 190
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n\n  188 |     await expect(\n  189 |       page.getByTestId('quick-view-trigger').first(),\n> 190 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  191 |\n  192 |     // Open Quick View\n  193 |     await page.getByTestId('quick-view-trigger').first().click();\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:190:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-28T22:53:20.489Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-7cda4--color-swatch-in-quick-view-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "W2Vycm9yXSBXYXJuaW5nOiBUaGUgcmVzdWx0IG9mIGdldFNlcnZlclNuYXBzaG90IHNob3VsZCBiZSBjYWNoZWQgdG8gYXZvaWQgYW4gaW5maW5pdGUgbG9vcCVzIGF0IEFwcCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMTI6NSkgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjM2NDA0OjUxKSBhdCBSb3V0ZUNvbXBvbmVudCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIzMDI1OjcpIGF0IEMgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo5NDIzMDozNykgYXQgV2l0aEVycm9ySGFuZGxpbmcod2l0aFJvdXRlcihyb3V0ZUNvbXBvbmVudChBcHApKSkgYXQgQXBwRXJyb3JCb3VuZGFyeSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyNjY1OjUpIGF0IFdyYXBwZWRDb21wb25lbnQgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzUxODo0MikgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBVSURSZXNldCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk2MDIwOjIzKSBhdCBTd2l0Y2ggKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzQxMDo1KSBhdCBFbnZpcm9ubWVudFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE2NzIzOjExKSBhdCBDb2xvck1vZGVQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjEwODg4NTo1KSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6NzMzOjUwKSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE5ODM3OjExKSBhdCBDaGFrcmFQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjExNjAxNTo1KSBhdCBDaGFrcmFQcm92aWRlcjIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoxMTc0MzY6NSkgYXQgU3RvcmVMb2NhdG9yUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MTc4Mjg6MykgYXQgTXVsdGlTaXRlUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjAyOTI6OSkgYXQgQ29tbWVyY2VBcGlQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyMDcyOjUpIGF0IEFwcENvbmZpZyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczozNjIxNTozKSBhdCBIeWRyYXRlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjQ4ODA6MykgYXQgUXVlcnlDbGllbnRQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjI0OTQ4OjMpIGF0IFdpdGhSZWFjdFF1ZXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjM2OTU6MykgYXQgQ+KApgpbZXJyb3JdIFdhcm5pbmc6ICVzOiBTdXBwb3J0IGZvciBkZWZhdWx0UHJvcHMgd2lsbCBiZSByZW1vdmVkIGZyb20gZnVuY3Rpb24gY29tcG9uZW50cyBpbiBhIGZ1dHVyZSBtYWpvciByZWxlYXNlLiBVc2UgSmF2YVNjcmlwdCBkZWZhdWx0IHBhcmFtZXRlcnMgaW5zdGVhZC4lcyBQYWdlRGVzaWduZXJQcm92aWRlciBhdCBQYWdlRGVzaWduZXJQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjE0MDE1MzozMykgYXQgT2ZmbGluZUJvdW5kYXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjY0NzM6NSkgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBtYWluIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgU2tpcE5hdkNvbnRlbnQyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE3OTA5OjEzKSBhdCBCb251c1Byb2R1Y3RTZWxlY3Rpb25Nb2RhbFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIyMjk0OjMpIGF0IEFkZFRvQ2FydE1vZGFsUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjA2Nzg6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQ3VycmVuY3lQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMDM0MzoxMykgYXQgSW50bFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6ODcyNDU6NDcpIGF0IFN0b3JlZnJvbnRQcmV2aWV3IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTMxMzQ6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIxMjo1KSBhdCBBcHAgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MzY0MDQ6NTEpIGF0IFJvdXRlQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjMwMjU6NykgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBXaXRoRXJyb3JIYW5kbGluZyh3aXRoUm91dGVyKHJvdXRlQ29tcG9uZW50KEFwcCkpKSBh4oCmCltlcnJvcl0gRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVECltlcnJvcl0gcmV0YWlsLXJlYWN0LWFwcC51c2UtZGF0YWNsb3VkLl9oYW5kbGVBcGlFcnJvciBFUlJPUiBbRGF0YUNsb3VkQXBpXSBFcnJvciBzZW5kaW5nIERhdGEgQ2xvdWQgZXZlbnQge30KW2Vycm9yXSBGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDMgKEZvcmJpZGRlbikKW2Vycm9yXSByOiA0MDMgRm9yYmlkZGVuIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5Mzo0ODM5MSBhdCB6YSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyMDczKSBhdCBHZW5lcmF0b3IuX2ludm9rZSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIxODIzKSBhdCBUYS5mb3JFYWNoLmUuPGNvbXB1dGVkPiBbYXMgbmV4dF0gKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMjQ0NykgYXQgbGEgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMDAzMikgYXQgbyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMjM2KQpbZXJyb3JdIEZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMyAoRm9yYmlkZGVuKQpbZXJyb3JdIHI6IDQwMyBGb3JiaWRkZW4gYXQgaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjQ4MzkxIGF0IHphIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjIwNzMpIGF0IEdlbmVyYXRvci5faW52b2tlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjE4MjMpIGF0IFRhLmZvckVhY2guZS48Y29tcHV0ZWQ+IFthcyBuZXh0XSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyNDQ3KSBhdCBsYSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMDMyKSBhdCBvIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjAyMzYp"
+                        },
+                        {
+                          "name": "failed-requests",
+                          "contentType": "text/plain",
+                          "body": "R0VUIGh0dHBzOi8vaW1hZ2VzLmRlbWFuZHdhcmUubmV0L2R3L2ltYWdlL3YyL0FBSUFfUFJEL29uL2RlbWFuZHdhcmUuc3RhdGljLy0vU2l0ZXMtYXBwYXJlbC1tLWNhdGFsb2cvZGVmYXVsdC9kdzE4Y2MzMmQzL2ltYWdlcy9tZWRpdW0vUEcuOTQ5MTE0MzE0Uy5SRURTSS5QWi5qcGc/c3c9MjMwJnE9NjAgLT4gbmV0OjpFUlJfQUJPUlRFRCAoaW1hZ2UpCkdFVCBodHRwczovL2ltYWdlcy5kZW1hbmR3YXJlLm5ldC9kdy9pbWFnZS92Mi9BQUlBX1BSRC9vbi9kZW1hbmR3YXJlLnN0YXRpYy8tL1NpdGVzLWFwcGFyZWwtbS1jYXRhbG9nL2RlZmF1bHQvZHdlMWNlZTliMC9pbWFnZXMvbWVkaXVtL1BHLjk0OTQzMjExNFMuTkFWWVNJLlBaLmpwZz9zdz0yMzAmcT02MCAtPiBuZXQ6OkVSUl9BQk9SVEVEIChpbWFnZSkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9jYWxsYmFjaz91c2lkPWYyODU4YjE4LTU1MWEtNDFkOC1hMDM0LTAzNDUxOGU0ZGZkMiZjb2RlPXMtWjBPTW5WLXY1TVZTTWtiTlB5dTRJTW9sWW1rXzhsWmx6NnkzNnM1YmsgLT4gbmV0OjpFUlJfQUJPUlRFRCAoZmV0Y2gpClBPU1QgaHR0cHM6Ly9nODJ3Z25ydm0teXdrOWRnZ3JydzhtdGdneS5wYy1ybmQuYzM2MGEuc2FsZXNmb3JjZS5jb20vd2ViL2V2ZW50cy83YWUwNzBhNi1mNGVjLTRkZWYtYTM4My1kOWNhY2MzZjIwYTEvIC0+IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVEIChmZXRjaCkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvcHJveHkvYXBpL3Nob3BwZXIvc2hvcHBlci1jb250ZXh0L3YxL29yZ2FuaXphdGlvbnMvZl9lY29tX2FhaWFfcHJkL3Nob3BwZXItY29udGV4dC9mMjg1OGIxOC01NTFhLTQxZDgtYTAzNC0wMzQ1MThlNGRmZDI/c2l0ZUlkPVJlZkFyY2ggLT4gNDAzIChmZXRjaCkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvcHJveHkvYXBpL2NvbmZpZ3VyYXRpb24vc2hvcHBlci1jb25maWd1cmF0aW9ucy92MS9vcmdhbml6YXRpb25zL2ZfZWNvbV9hYWlhX3ByZC9jb25maWd1cmF0aW9ucz9zaXRlSWQ9UmVmQXJjaCAtPiA0MDMgKGZldGNoKQ=="
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-7cda4--color-swatch-in-quick-view-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                        "column": 7,
+                        "line": 190
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-2017498e2f236481c856",
+              "file": "product-quick-view.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "add-to-bag-from-quick-view",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11716,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:228:7",
+                        "location": {
+                          "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                          "column": 7,
+                          "line": 228
+                        },
+                        "snippet": "  226 |     await expect(\n  227 |       page.getByTestId('quick-view-trigger').first(),\n> 228 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  229 |\n  230 |     // Open Quick View\n  231 |     await page.getByTestId('quick-view-trigger').first().click();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                            "column": 7,
+                            "line": 228
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('quick-view-trigger').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('quick-view-trigger').first()\u001b[22m\n\n\n  226 |     await expect(\n  227 |       page.getByTestId('quick-view-trigger').first(),\n> 228 |     ).toBeVisible({ timeout: 10000 });\n      |       ^\n  229 |\n  230 |     // Open Quick View\n  231 |     await page.getByTestId('quick-view-trigger').first().click();\n    at /workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts:228:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-28T22:53:32.438Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-aa7a1--add-to-bag-from-quick-view-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "console-errors",
+                          "contentType": "text/plain",
+                          "body": "W2Vycm9yXSBXYXJuaW5nOiBUaGUgcmVzdWx0IG9mIGdldFNlcnZlclNuYXBzaG90IHNob3VsZCBiZSBjYWNoZWQgdG8gYXZvaWQgYW4gaW5maW5pdGUgbG9vcCVzIGF0IEFwcCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMTI6NSkgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjM2NDA0OjUxKSBhdCBSb3V0ZUNvbXBvbmVudCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIzMDI1OjcpIGF0IEMgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo5NDIzMDozNykgYXQgV2l0aEVycm9ySGFuZGxpbmcod2l0aFJvdXRlcihyb3V0ZUNvbXBvbmVudChBcHApKSkgYXQgQXBwRXJyb3JCb3VuZGFyeSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyNjY1OjUpIGF0IFdyYXBwZWRDb21wb25lbnQgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzUxODo0MikgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBVSURSZXNldCAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk2MDIwOjIzKSBhdCBTd2l0Y2ggKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoyMzQxMDo1KSBhdCBFbnZpcm9ubWVudFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE2NzIzOjExKSBhdCBDb2xvck1vZGVQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjEwODg4NTo1KSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6NzMzOjUwKSBhdCBUaGVtZVByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE5ODM3OjExKSBhdCBDaGFrcmFQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjExNjAxNTo1KSBhdCBDaGFrcmFQcm92aWRlcjIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczoxMTc0MzY6NSkgYXQgU3RvcmVMb2NhdG9yUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MTc4Mjg6MykgYXQgTXVsdGlTaXRlUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjAyOTI6OSkgYXQgQ29tbWVyY2VBcGlQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjIyMDcyOjUpIGF0IEFwcENvbmZpZyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczozNjIxNTozKSBhdCBIeWRyYXRlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjQ4ODA6MykgYXQgUXVlcnlDbGllbnRQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjI0OTQ4OjMpIGF0IFdpdGhSZWFjdFF1ZXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjM2OTU6MykgYXQgQ+KApgpbZXJyb3JdIFdhcm5pbmc6ICVzOiBTdXBwb3J0IGZvciBkZWZhdWx0UHJvcHMgd2lsbCBiZSByZW1vdmVkIGZyb20gZnVuY3Rpb24gY29tcG9uZW50cyBpbiBhIGZ1dHVyZSBtYWpvciByZWxlYXNlLiBVc2UgSmF2YVNjcmlwdCBkZWZhdWx0IHBhcmFtZXRlcnMgaW5zdGVhZC4lcyBQYWdlRGVzaWduZXJQcm92aWRlciBhdCBQYWdlRGVzaWduZXJQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjE0MDE1MzozMykgYXQgT2ZmbGluZUJvdW5kYXJ5IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjY0NzM6NSkgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBtYWluIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgU2tpcE5hdkNvbnRlbnQyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTE3OTA5OjEzKSBhdCBCb251c1Byb2R1Y3RTZWxlY3Rpb25Nb2RhbFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIyMjk0OjMpIGF0IEFkZFRvQ2FydE1vZGFsUHJvdmlkZXIgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MjA2Nzg6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQ3VycmVuY3lQcm92aWRlciAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvbWFpbi5qczoyMDM0MzoxMykgYXQgSW50bFByb3ZpZGVyIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6ODcyNDU6NDcpIGF0IFN0b3JlZnJvbnRQcmV2aWV3IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTMxMzQ6MykgYXQgZGl2IGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczo2ODI6NjYgYXQgQ2hha3JhQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MTIwMDA2OjEwMikgYXQgQXBwIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC9tYWluLmpzOjIxMjo1KSBhdCBBcHAgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L21haW4uanM6MzY0MDQ6NTEpIGF0IFJvdXRlQ29tcG9uZW50IChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MjMwMjU6NykgYXQgQyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjk0MjMwOjM3KSBhdCBXaXRoRXJyb3JIYW5kbGluZyh3aXRoUm91dGVyKHJvdXRlQ29tcG9uZW50KEFwcCkpKSBh4oCmCltlcnJvcl0gRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IG5ldDo6RVJSX05BTUVfTk9UX1JFU09MVkVECltlcnJvcl0gcmV0YWlsLXJlYWN0LWFwcC51c2UtZGF0YWNsb3VkLl9oYW5kbGVBcGlFcnJvciBFUlJPUiBbRGF0YUNsb3VkQXBpXSBFcnJvciBzZW5kaW5nIERhdGEgQ2xvdWQgZXZlbnQge30KW2Vycm9yXSBGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDMgKEZvcmJpZGRlbikKW2Vycm9yXSByOiA0MDMgRm9yYmlkZGVuIGF0IGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5Mzo0ODM5MSBhdCB6YSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyMDczKSBhdCBHZW5lcmF0b3IuX2ludm9rZSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIxODIzKSBhdCBUYS5mb3JFYWNoLmUuPGNvbXB1dGVkPiBbYXMgbmV4dF0gKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMjQ0NykgYXQgbGEgKGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvYnVuZGxlL2RldmVsb3BtZW50L3ZlbmRvci5qczozMDY5MzoyMDAzMikgYXQgbyAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMjM2KQpbZXJyb3JdIEZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMyAoRm9yYmlkZGVuKQpbZXJyb3JdIHI6IDQwMyBGb3JiaWRkZW4gYXQgaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjQ4MzkxIGF0IHphIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjIwNzMpIGF0IEdlbmVyYXRvci5faW52b2tlIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjE4MjMpIGF0IFRhLmZvckVhY2guZS48Y29tcHV0ZWQ+IFthcyBuZXh0XSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIyNDQ3KSBhdCBsYSAoaHR0cDovL2xvY2FsaG9zdDozMDAwL21vYmlmeS9idW5kbGUvZGV2ZWxvcG1lbnQvdmVuZG9yLmpzOjMwNjkzOjIwMDMyKSBhdCBvIChodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L2J1bmRsZS9kZXZlbG9wbWVudC92ZW5kb3IuanM6MzA2OTM6MjAyMzYp"
+                        },
+                        {
+                          "name": "failed-requests",
+                          "contentType": "text/plain",
+                          "body": "R0VUIGh0dHBzOi8vaW1hZ2VzLmRlbWFuZHdhcmUubmV0L2R3L2ltYWdlL3YyL0FBSUFfUFJEL29uL2RlbWFuZHdhcmUuc3RhdGljLy0vU2l0ZXMtYXBwYXJlbC1tLWNhdGFsb2cvZGVmYXVsdC9kdzE5ZjU3NmYyL2ltYWdlcy9tZWRpdW0vUEcuMTAyNTUwOTAuSkoxNjlYWC5QWi5qcGc/c3c9MjMwJnE9NjAgLT4gbmV0OjpFUlJfQUJPUlRFRCAoaW1hZ2UpCkdFVCBodHRwOi8vbG9jYWxob3N0OjMwMDAvY2FsbGJhY2s/dXNpZD0yNjIwNDc2My01ZmRlLTRmMzAtYjhkMS1hZDI5MTllMTRhOGUmY29kZT01ZlRxUEZhOXhuSGlXSHlxMjA0OVZVRk9IN2NXOVpnWkNrV3M4ZkNSWlg4IC0+IG5ldDo6RVJSX0FCT1JURUQgKGZldGNoKQpQT1NUIGh0dHBzOi8vZzgyd2ducnZtLXl3azlkZ2dycnc4bXRnZ3kucGMtcm5kLmMzNjBhLnNhbGVzZm9yY2UuY29tL3dlYi9ldmVudHMvN2FlMDcwYTYtZjRlYy00ZGVmLWEzODMtZDljYWNjM2YyMGExLyAtPiBuZXQ6OkVSUl9OQU1FX05PVF9SRVNPTFZFRCAoZmV0Y2gpCkdFVCBodHRwOi8vbG9jYWxob3N0OjMwMDAvbW9iaWZ5L3Byb3h5L2FwaS9jb25maWd1cmF0aW9uL3Nob3BwZXItY29uZmlndXJhdGlvbnMvdjEvb3JnYW5pemF0aW9ucy9mX2Vjb21fYWFpYV9wcmQvY29uZmlndXJhdGlvbnM/c2l0ZUlkPVJlZkFyY2ggLT4gNDAzIChmZXRjaCkKR0VUIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMC9tb2JpZnkvcHJveHkvYXBpL3Nob3BwZXIvc2hvcHBlci1jb250ZXh0L3YxL29yZ2FuaXphdGlvbnMvZl9lY29tX2FhaWFfcHJkL3Nob3BwZXItY29udGV4dC8yNjIwNDc2My01ZmRlLTRmMzAtYjhkMS1hZDI5MTllMTRhOGU/c2l0ZUlkPVJlZkFyY2ggLT4gNDAzIChmZXRjaCk="
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspaces/DAGent-t/apps/commerce-storefront/test-results/product-quick-view-Product-aa7a1--add-to-bag-from-quick-view-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspaces/DAGent-t/apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+                        "column": 7,
+                        "line": 228
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-ec3f13931e6df383cb14",
+              "file": "product-quick-view.spec.ts",
+              "line": 219,
+              "column": 7
+            },
+            {
+              "title": "close-quick-view-restores-focus",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-db6404b5aa26326bea60",
+              "file": "product-quick-view.spec.ts",
+              "line": 285,
+              "column": 7
+            },
+            {
+              "title": "no-pickup-ui-in-quick-view",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-a4c809a7888e1649519c",
+              "file": "product-quick-view.spec.ts",
+              "line": 320,
+              "column": 7
+            },
+            {
+              "title": "add-to-bag-disabled-when-unavailable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "822f8dac15f5121b54bf-a9dceda3b2ec03a3d0ef",
+              "file": "product-quick-view.spec.ts",
+              "line": 359,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "message": "\u001b[31mTesting stopped early after 3 maximum allowed failures.\u001b[39m"
+    }
+  ],
+  "stats": {
+    "startTime": "2026-04-28T22:53:05.152Z",
+    "duration": 39080.178,
+    "expected": 0,
+    "skipped": 3,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

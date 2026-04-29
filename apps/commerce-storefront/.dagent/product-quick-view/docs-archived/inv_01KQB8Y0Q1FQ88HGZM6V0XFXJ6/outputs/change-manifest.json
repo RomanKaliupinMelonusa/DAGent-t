@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "docs-archived",
+  "producedAt": "2026-04-29T00:06:34.861Z",
+  "feature": "product-quick-view",
+  "timestamp": "2026-04-29T00:06:34.861Z",
+  "changes": [
+    {
+      "file": "apps/commerce-storefront/overrides/app/components/quick-view-modal/index.jsx",
+      "type": "added",
+      "category": "storefront",
+      "description": "Quick View Modal component using Chakra Modal with ProductView, add-to-cart, and variant selection"
+    },
+    {
+      "file": "apps/commerce-storefront/overrides/app/components/quick-view-modal/__tests__/index.test.js",
+      "type": "added",
+      "category": "test",
+      "description": "Unit tests for QuickViewModal component"
+    },
+    {
+      "file": "apps/commerce-storefront/overrides/app/components/product-tile/index.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Wrapped base ProductTile with Quick View trigger button (hover on desktop, persistent on mobile)"
+    },
+    {
+      "file": "apps/commerce-storefront/overrides/app/components/product-tile/__tests__/index.test.js",
+      "type": "added",
+      "category": "test",
+      "description": "Unit tests for ProductTile with Quick View trigger overlay"
+    },
+    {
+      "file": "apps/commerce-storefront/overrides/app/routes.jsx",
+      "type": "modified",
+      "category": "storefront",
+      "description": "Removed unused my-new-route placeholder route"
+    },
+    {
+      "file": "apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+      "type": "added",
+      "category": "e2e",
+      "description": "E2E Playwright tests for Quick View: open from tile, swatch switching, add to bag, close/focus, no-pickup UI, disabled states"
+    },
+    {
+      "file": "apps/commerce-storefront/e2e/_qa_product-quick-view.spec.ts",
+      "type": "added",
+      "category": "e2e",
+      "description": "QA adversary E2E tests for Quick View edge cases and robustness"
+    },
+    {
+      "file": "apps/commerce-storefront/overrides/app/pages/my-new-route/index.jsx",
+      "type": "deleted",
+      "category": "storefront",
+      "description": "Removed unused my-new-route page component (scaffold cleanup)"
+    },
+    {
+      "file": "apps/commerce-storefront/product-quick-view-spec.md",
+      "type": "added",
+      "category": "docs",
+      "description": "Feature specification document for product quick view"
+    }
+  ],
+  "testing": {
+    "unitTests": { "passed": 0, "failed": 0, "skipped": 0 },
+    "e2eTests": { "passed": 5, "failed": 1, "skipped": 0 }
+  }
+}

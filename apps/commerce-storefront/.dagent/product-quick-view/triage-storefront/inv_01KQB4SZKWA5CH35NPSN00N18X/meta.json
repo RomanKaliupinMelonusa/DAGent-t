@@ -1,0 +1,38 @@
+{
+  "invocationId": "inv_01KQB4SZKWA5CH35NPSN00N18X",
+  "nodeKey": "triage-storefront",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "triggeredBy": {
+    "nodeKey": "e2e-runner",
+    "invocationId": "inv_01KQB4PRFHH56MTXQKPE4416NA",
+    "reason": "initial"
+  },
+  "routedTo": {
+    "nodeKey": "storefront-debug",
+    "invocationId": "inv_01KQB4TE786WBYS8JSQ30G1XM0"
+  },
+  "startedAt": "2026-04-28T22:54:23.357Z",
+  "finishedAt": "2026-04-28T22:54:38.317Z",
+  "outcome": "completed",
+  "inputs": [],
+  "outputs": [
+    {
+      "kind": "triage-handoff",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/triage-storefront/inv_01KQB4SZKWA5CH35NPSN00N18X/outputs/triage-handoff.json",
+      "nodeKey": "triage-storefront",
+      "invocationId": "inv_01KQB4SZKWA5CH35NPSN00N18X"
+    },
+    {
+      "kind": "node-report",
+      "scope": "node",
+      "slug": "product-quick-view",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/triage-storefront/inv_01KQB4SZKWA5CH35NPSN00N18X/outputs/node-report.json",
+      "nodeKey": "triage-storefront",
+      "invocationId": "inv_01KQB4SZKWA5CH35NPSN00N18X"
+    }
+  ],
+  "sealed": true
+}

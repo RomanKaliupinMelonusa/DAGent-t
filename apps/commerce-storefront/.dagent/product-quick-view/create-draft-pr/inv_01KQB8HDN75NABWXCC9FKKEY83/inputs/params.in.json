@@ -1,0 +1,21 @@
+{
+  "nodeKey": "create-draft-pr",
+  "invocationId": "inv_01KQB8HDN75NABWXCC9FKKEY83",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83/inputs/acceptance.yml"
+    },
+    {
+      "kind": "qa-report",
+      "source": "upstream",
+      "from": "qa-adversary",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/qa-adversary/inv_01KQB7TQMDBR94406YF94WS1BM/outputs/qa-report.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/create-draft-pr/inv_01KQB8HDN75NABWXCC9FKKEY83/inputs/qa-report.json"
+    }
+  ]
+}

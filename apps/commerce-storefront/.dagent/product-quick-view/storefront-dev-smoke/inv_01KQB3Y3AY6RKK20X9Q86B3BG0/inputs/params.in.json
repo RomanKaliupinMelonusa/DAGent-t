@@ -1,0 +1,21 @@
+{
+  "nodeKey": "storefront-dev-smoke",
+  "invocationId": "inv_01KQB3Y3AY6RKK20X9Q86B3BG0",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/spec-compiler/inv_01KQB2RH63KD04266Y3WPMDRSH/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev-smoke/inv_01KQB3Y3AY6RKK20X9Q86B3BG0/inputs/acceptance.yml"
+    },
+    {
+      "kind": "implementation-status",
+      "source": "upstream",
+      "from": "storefront-dev",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev/inv_01KQB36DSFGNJ7V5WEBXMTH46S/outputs/implementation-status.json",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/product-quick-view/storefront-dev-smoke/inv_01KQB3Y3AY6RKK20X9Q86B3BG0/inputs/implementation-status.json"
+    }
+  ]
+}
