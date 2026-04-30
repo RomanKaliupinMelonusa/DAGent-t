@@ -35,6 +35,10 @@ export interface ConfiguredVolatilePattern {
  * path-like tokens inside other patterns aren't swallowed.
  */
 export const DEFAULT_VOLATILE_PATTERNS: ReadonlyArray<VolatilePattern> = [
+  // ISO timestamp (with trailing Z required) — runs first so it's not
+  // partially eaten by other rules. Re-asserted on top of the legacy
+  // optional-Z rule (kept below for back-compat with non-Z timestamps).
+  [/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g, "<ISO>"],
   [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>"],
   [/\b\d{13}\b/g, "<EPOCH>"],
   [/\bpid[=:]\d+/gi, "pid=<PID>"],
@@ -44,7 +48,18 @@ export const DEFAULT_VOLATILE_PATTERNS: ReadonlyArray<VolatilePattern> = [
   [/\bnode:\d+/g, "node:<N>"],
   [/:\d{4,5}\b/g, ":<PORT>"],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<UUID>"],
+  // Invocation IDs (Crockford base32 with a fixed `inv_` prefix) —
+  // canonical engine-side identifier; runs before generic SHA so we
+  // capture the full token.
+  [/\binv_[0-9A-Z]{26}\b/g, "<INV>"],
+  // Git commit SHAs (7-char abbrev + full 40-char). Runs before the
+  // generic HEX rule so commit SHAs become `<SHA>` (semantic) rather
+  // than `<HEX>`.
+  [/\b[0-9a-f]{7,40}\b/g, "<SHA>"],
   [/\b[0-9a-f]{8,40}\b/gi, "<HEX>"],
+  // Git diff `--shortstat` summaries. Runs before the path rule so the
+  // bare numbers don't masquerade as ports/lines/columns elsewhere.
+  [/\b\d+ files? changed,\s*\d+ insertions?\(\+\)(?:,\s*\d+ deletions?\(-\))?/g, "<DIFFSTAT>"],
   [/(?:\/[\w@.+-]+){2,}(?:\/[^\s'")]*)?/g, "<PATH>"],
   [/[A-Z]:\\[^\s'")\]]+/g, "<PATH>"],
   [/\b(?:worker|runner)[-_]\d+\b/gi, "<RUNNER>"],
