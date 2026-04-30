@@ -1,15 +1,28 @@
 #!/usr/bin/env bash
 # reset-dagent.sh — wipe per-app `.dagent/` feature artifacts.
 #
-# Pipeline state, telemetry, and per-invocation artifact trees live under
-# `apps/<app>/.dagent/<slug>/`. This utility clears those slug folders
-# (e.g. between local pipeline runs) without touching the README.md.
+# `apps/<app>/.dagent/<slug>/` is the per-feature artifact directory:
+# spec/acceptance handoffs, agent transcripts, baseline JSON,
+# Playwright failure evidence, screenshots, change manifests, and
+# similar intermediate files emitted by activities during a feature
+# run. Authoritative pipeline state (DAG status, attempt counters,
+# approvals, cycle counters) lives in Temporal workflow history +
+# the Postgres persistence backend, NOT under `.dagent/`. This
+# utility clears those slug folders (e.g. between local pipeline
+# runs) without touching the README.md.
 #
 # Usage:
 #   scripts/reset-dagent.sh           # interactive (prompt per slug)
 #   scripts/reset-dagent.sh --force   # delete everything, no prompts
 #
 # Always preserves README.md.
+#
+# Decision (Wave 4, 2026-04-30): kept `.dagent/` as per-feature
+# artifact directory. Audit found zero authoritative state writers
+# under tools/autonomous-factory/src/ — the convention is now strictly
+# for activity-emitted artifacts that survive a run for PR review and
+# retro analysis. Renaming to `feature-artifacts/` was deferred to
+# avoid touching ~all hook scripts and APM manifests in this wave.
 
 set -euo pipefail
 
