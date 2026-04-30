@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
@@ -242,33 +243,69 @@ export function checkGitHubLogin(
  * Validate that the GitHub Copilot CLI (`copilot`) is logged in.
  * Always fatal when missing — every agent node depends on it.
  *
- * Detection strategy: invoke `copilot auth status` and parse the exit
- * code. We deliberately do NOT parse stdout because the CLI's output
- * format is not stable across versions.
+ * Detection strategy: the Copilot CLI 1.x stores OAuth tokens in
+ * `~/.copilot/config.json` under `copilotTokens` keyed by
+ * `<host>:<login>`. We do NOT shell out to `copilot auth status` because
+ * that subcommand does not exist in the current CLI — invoking
+ * `copilot` with an unrecognised subcommand falls through to the
+ * interactive TUI and would hang the bootstrap.
+ *
+ * The path can be overridden via the `COPILOT_HOME` env var (matching
+ * the CLI's own override) and via an explicit `configPath` argument
+ * for unit tests.
  */
-export function checkCopilotLogin(): PreflightCheckResult {
-  try {
-    execSync("copilot -i auth status", {
-      encoding: "utf-8",
-      timeout: 15_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    console.log("  ✔ GitHub Copilot CLI authenticated");
-    return {
-      name: "copilot-auth",
-      severity: "ok",
-      message: "GitHub Copilot CLI authenticated",
-    };
-  } catch {
-    console.log("  ✖ GitHub Copilot CLI not authenticated — required for every agent node");
+export function checkCopilotLogin(
+  configPath: string = path.join(
+    process.env.COPILOT_HOME ?? path.join(os.homedir(), ".copilot"),
+    "config.json",
+  ),
+): PreflightCheckResult {
+  const fail = (detail: string): PreflightCheckResult => {
+    console.log(`  ✖ GitHub Copilot CLI not authenticated — ${detail}`);
     return {
       name: "copilot-auth",
       severity: "error",
       message:
-        "GitHub Copilot CLI (`copilot`) is not authenticated. The engine cannot run any agent node without it.",
-      remediation: "Run `copilot auth login` and retry.",
+        `GitHub Copilot CLI is not authenticated (${detail}). ` +
+        "The engine cannot run any agent node without it.",
+      remediation: "Run `copilot` once interactively and complete `/login`, then retry.",
     };
+  };
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, "utf-8");
+  } catch (err) {
+    return fail(
+      `cannot read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
+  // The CLI prepends a `// User settings…` comment line — strip any
+  // leading `//` lines before parsing so JSON.parse doesn't choke.
+  const stripped = raw
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("//"))
+    .join("\n");
+  let cfg: { copilotTokens?: Record<string, string> };
+  try {
+    cfg = JSON.parse(stripped);
+  } catch (err) {
+    return fail(
+      `cannot parse ${configPath} as JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const tokens = cfg.copilotTokens ?? {};
+  const tokenCount = Object.values(tokens).filter(
+    (v) => typeof v === "string" && v.length > 0,
+  ).length;
+  if (tokenCount === 0) {
+    return fail(`${configPath} has no entries under \`copilotTokens\``);
+  }
+  console.log("  ✔ GitHub Copilot CLI authenticated");
+  return {
+    name: "copilot-auth",
+    severity: "ok",
+    message: "GitHub Copilot CLI authenticated",
+  };
 }
 
 /**

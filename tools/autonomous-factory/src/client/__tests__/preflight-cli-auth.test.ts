@@ -5,14 +5,18 @@
  *   - `gh` missing AND workflow includes `publish-pr` → `error`
  *   - `gh` missing AND workflow has no PR node     → `warn`
  *   - `gh` present                                 → `ok`
- *   - `copilot` missing                            → always `error`
- *   - `copilot` present                            → `ok`
+ *   - copilot config: missing file / no tokens / valid token
  *
- * The checks shell out via `child_process.execSync`. We stub it through
- * `vi.mock` so tests run without `gh` / `copilot` installed.
+ * `checkGitHubLogin` shells out via `child_process.execSync` so we
+ * stub it through `vi.mock`. `checkCopilotLogin` reads
+ * `~/.copilot/config.json` directly — we test it by passing an
+ * explicit `configPath` instead of stubbing the filesystem.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const execSyncMock = vi.fn();
 
@@ -26,8 +30,6 @@ let checkCopilotLogin: typeof import("../../lifecycle/preflight.js").checkCopilo
 
 beforeEach(async () => {
   execSyncMock.mockReset();
-  // Re-import to pick up the freshly-reset mock (preflight.ts captures
-  // `execSync` at module load time via the named import).
   vi.resetModules();
   const mod = await import("../../lifecycle/preflight.js");
   checkGitHubLogin = mod.checkGitHubLogin;
@@ -68,18 +70,62 @@ describe("checkGitHubLogin (P3)", () => {
 });
 
 describe("checkCopilotLogin (P3)", () => {
-  it("returns ok when copilot CLI exits 0", () => {
-    execSyncMock.mockReturnValueOnce("Authenticated as @user");
-    const r = checkCopilotLogin();
-    expect(r.severity).toBe("ok");
+  let tmpHome: string;
+  let configPath: string;
+
+  beforeEach(() => {
+    tmpHome = mkdtempSync(path.join(tmpdir(), "copilot-cfg-"));
+    configPath = path.join(tmpHome, "config.json");
+  });
+  afterEach(() => { rmSync(tmpHome, { recursive: true, force: true }); });
+
+  it("returns ok when config has at least one non-empty copilotTokens entry", () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        copilotTokens: { "https://github.com:user": "gho_AAAAAAAAAAAAAAAAAAAAAAAAAA" },
+      }),
+    );
+    expect(checkCopilotLogin(configPath).severity).toBe("ok");
   });
 
-  it("returns error unconditionally when copilot CLI exits non-zero", () => {
-    execSyncMock.mockImplementationOnce(() => {
-      throw new Error("not authenticated");
-    });
-    const r = checkCopilotLogin();
+  it("strips leading `//` comment lines before parsing (CLI writes a header)", () => {
+    writeFileSync(
+      configPath,
+      "// User settings belong in settings.json.\n// This file is managed automatically.\n" +
+        JSON.stringify({
+          copilotTokens: { "https://github.com:user": "gho_zzz" },
+        }),
+    );
+    expect(checkCopilotLogin(configPath).severity).toBe("ok");
+  });
+
+  it("returns error when the config file is missing", () => {
+    const missing = path.join(tmpHome, "absent.json");
+    const r = checkCopilotLogin(missing);
     expect(r.severity).toBe("error");
-    expect(r.remediation).toMatch(/copilot auth login/);
+    expect(r.message).toMatch(/cannot read/);
+  });
+
+  it("returns error when copilotTokens is empty", () => {
+    writeFileSync(configPath, JSON.stringify({ copilotTokens: {} }));
+    const r = checkCopilotLogin(configPath);
+    expect(r.severity).toBe("error");
+    expect(r.message).toMatch(/no entries/);
+  });
+
+  it("returns error when the token value is an empty string", () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ copilotTokens: { "https://github.com:user": "" } }),
+    );
+    expect(checkCopilotLogin(configPath).severity).toBe("error");
+  });
+
+  it("returns error when JSON is malformed", () => {
+    writeFileSync(configPath, "{not json");
+    const r = checkCopilotLogin(configPath);
+    expect(r.severity).toBe("error");
+    expect(r.message).toMatch(/cannot parse/);
   });
 });
