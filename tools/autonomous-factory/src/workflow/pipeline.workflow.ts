@@ -104,6 +104,7 @@ import {
   resolveTriageDispatch,
   type TriageDispatch,
 } from "./triage-cascade.js";
+import { sha256 } from "js-sha256";
 import type {
   NodeActivityInput,
   NodeActivityResult,
@@ -115,6 +116,30 @@ import type { DagCommand } from "../dag-commands.js";
 // ---------------------------------------------------------------------------
 // Workflow input / result wire types
 // ---------------------------------------------------------------------------
+
+/**
+ * Build a deterministic, replay-safe invocation identifier.
+ *
+ * The on-disk artifact tree (`<appRoot>/.dagent/<slug>/<nodeKey>/<id>/`)
+ * requires `id` to match `inv_` + 26 chars from Crockford base32
+ * (validated by `isInvocationId` in `domain/invocation-id.ts`). The
+ * legacy generator uses `node:crypto.randomBytes`, which is forbidden
+ * inside Temporal's workflow VM (non-deterministic).
+ *
+ * Workflow scope can't draw randomness, but it doesn't need to — the
+ * tuple `(workflowId, nodeKey, attempt)` is already unique per dispatch
+ * and stable across replays. SHA-256 of that tuple, sliced to 26 hex
+ * chars and uppercased, is a strict subset of Crockford's alphabet
+ * (`[0-9A-F]` ⊂ `0-9A-Z\IL\OU`), so the output passes `isInvocationId`.
+ */
+function makeInvocationId(
+  workflowId: string,
+  nodeKey: string,
+  attempt: number,
+): string {
+  const digest = sha256(`${workflowId}|${nodeKey}|${attempt}`);
+  return `inv_${digest.toUpperCase().slice(0, 26)}`;
+}
 
 /**
  * Per-node compiled metadata the workflow body consults for dispatch.
@@ -534,12 +559,11 @@ async function runTriageCascade(
   const triagePromises = dispatches.map(async (dispatch) => {
     const attempt = (attemptCounts.get(dispatch.triageNodeKey) ?? 0) + 1;
     attemptCounts.set(dispatch.triageNodeKey, attempt);
-    const executionId =
-      workflowInfo().workflowId +
-      "-" +
-      dispatch.triageNodeKey +
-      "-" +
-      attempt;
+    const executionId = makeInvocationId(
+      workflowInfo().workflowId,
+      dispatch.triageNodeKey,
+      attempt,
+    );
     const activityInput = buildTriageActivityInput(
       dispatch,
       attempt,
@@ -770,7 +794,11 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
 
         const attempt = (attemptCounts.get(item.key) ?? 0) + 1;
         attemptCounts.set(item.key, attempt);
-        const executionId = workflowInfo().workflowId + "-" + item.key + "-" + attempt;
+        const executionId = makeInvocationId(
+          workflowInfo().workflowId,
+          item.key,
+          attempt,
+        );
         const activityInput = buildActivityInput(
           item.key,
           attempt,
