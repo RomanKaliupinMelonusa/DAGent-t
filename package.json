@@ -10,7 +10,7 @@
     "tools/*"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall-ajv-shim.mjs",
+    "postinstall": "node scripts/postinstall-ajv-shim.mjs && node scripts/postinstall-vscode-jsonrpc-shim.mjs",
     "pipeline:init": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts init",
     "pipeline:reset-scripts": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts reset-scripts",
     "pipeline:status": "npx tsx tools/autonomous-factory/src/cli/pipeline-state.ts status",
@@ -24,6 +24,9 @@
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "cd tools/autonomous-factory && npx tsx src/entry/watchdog.ts",
     "agent:run:detached": "bash scripts/run-agent.sh",
+    "agent:run:temporal": "cd tools/autonomous-factory && npx tsx src/temporal/client/run-feature.ts",
+    "agent:admin:temporal": "cd tools/autonomous-factory && npx tsx src/temporal/client/admin.ts",
+    "agent:trans:temporal": "cd tools/autonomous-factory && npx tsx src/temporal/client/render-trans.ts",
     "agent:supervise": "cd tools/autonomous-factory && npx tsx src/entry/supervise.ts",
     "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
     "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",

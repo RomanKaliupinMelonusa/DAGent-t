@@ -86,6 +86,10 @@ export interface DagSnapshot {
   readonly state: TransitionState;
   readonly cycleCounters: Readonly<Record<string, number>>;
   readonly approvals: ReadonlyArray<ApprovalRequest>;
+  readonly held: boolean;
+  readonly cancelled: boolean;
+  readonly cancelReason: string | null;
+  readonly batchNumber: number;
 }
 
 /** Result of admin-shaped reducers — mirrors `kernel/admin.ts#AdminResult`. */
@@ -116,6 +120,15 @@ export class DagState {
   private cycleCounters: Record<string, number>;
   /** Pending and resolved approval requests, keyed by gateKey. */
   private approvals: Map<string, ApprovalRequest>;
+  /** Held: true once `holdPipelineSignal` arrives; cleared by resume. */
+  private held: boolean = false;
+  /** Cancellation: set once `cancelPipelineSignal` arrives. The workflow
+   *  body checks this at the top of each iteration and returns. */
+  private cancelled: boolean = false;
+  private cancelReason: string | null = null;
+  /** Batch counter — bumped at the top of each loop iteration. Surfaces
+   *  on the `summary` query for operator visibility. */
+  private batchNumber: number = 0;
 
   // -------------------------------------------------------------------
   // Construction
@@ -331,7 +344,55 @@ export class DagState {
       state: structuredClone(this.state),
       cycleCounters: { ...this.cycleCounters },
       approvals: Array.from(this.approvals.values()).map((a) => ({ ...a })),
+      held: this.held,
+      cancelled: this.cancelled,
+      cancelReason: this.cancelReason,
+      batchNumber: this.batchNumber,
     });
+  }
+
+  // -------------------------------------------------------------------
+  // Hold / cancel — Session 4 signal handlers drive these.
+  // -------------------------------------------------------------------
+
+  /** True after `holdPipelineSignal` arrived; the workflow body blocks
+   *  at the top of each iteration via `condition(() => !dag.isHeld())`. */
+  isHeld(): boolean {
+    return this.held;
+  }
+
+  markHeld(): void {
+    this.held = true;
+  }
+
+  markResumed(): void {
+    this.held = false;
+  }
+
+  /** True after `cancelPipelineSignal` (or workflow cancellation). */
+  isCancelled(): boolean {
+    return this.cancelled;
+  }
+
+  getCancelReason(): string | null {
+    return this.cancelReason;
+  }
+
+  markCancelled(reason: string): void {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.cancelReason = reason;
+  }
+
+  /** Increment the batch counter. Workflow body calls this once per
+   *  loop iteration, after the hold gate clears. */
+  bumpBatch(): number {
+    this.batchNumber += 1;
+    return this.batchNumber;
+  }
+
+  getBatchNumber(): number {
+    return this.batchNumber;
   }
 
   // -------------------------------------------------------------------

@@ -40,3 +40,32 @@ export const approveGateSignal = defineSignal<[gateKey: string]>("approveGate");
 export const rejectGateSignal = defineSignal<[gateKey: string, reason: string]>(
   "rejectGate",
 );
+
+/**
+ * Hold the pipeline before the next batch is dispatched. Idempotent.
+ * In-flight activities continue to completion; the loop blocks at the
+ * top of the next iteration until `resumePipelineSignal` arrives.
+ *
+ * Operational parity with legacy ChatOps `dagent:hold`. Args: none.
+ */
+export const holdPipelineSignal = defineSignal<[]>("holdPipeline");
+
+/**
+ * Resume a held pipeline. No-op when not held. Args: none.
+ */
+export const resumePipelineSignal = defineSignal<[]>("resumePipeline");
+
+/**
+ * Cancel the pipeline. Sets a cancel flag the workflow body checks at
+ * the top of each iteration. The workflow returns
+ * `{ status: "cancelled", reason }` and Temporal cancels in-flight
+ * activities cooperatively (each activity has a deterministic cancel
+ * prefix per Phase 3). Args: `[reason]`.
+ *
+ * NOTE: callers can also use `handle.cancel()` (Temporal-native
+ * cancellation). This signal is the structured variant that lets the
+ * workflow record a human-readable reason in its final state.
+ */
+export const cancelPipelineSignal = defineSignal<[reason: string]>(
+  "cancelPipeline",
+);

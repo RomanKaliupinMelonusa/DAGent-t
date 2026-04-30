@@ -9,3 +9,10 @@
 export { helloWorkflow } from "./hello.workflow.js";
 export { skeletonPipelineWorkflow } from "./skeleton-pipeline.workflow.js";
 export { singleActivityWorkflow } from "./single-activity.workflow.js";
+export { pipelineWorkflow } from "./pipeline.workflow.js";
+export type {
+  PipelineInput,
+  PipelineResult,
+  PipelineFinalStatus,
+  PipelineNodeSpec,
+} from "./pipeline.workflow.js";

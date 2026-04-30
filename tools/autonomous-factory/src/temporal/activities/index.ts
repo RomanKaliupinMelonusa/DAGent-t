@@ -26,4 +26,5 @@ export {
   COPILOT_AGENT_CANCELLED_PREFIX,
   setCopilotAgentDependencies,
 } from "./copilot-agent.activity.js";
+export { archiveActivity } from "./archive.activity.js";
 export type { NodeActivityInput, NodeActivityResult } from "./types.js";

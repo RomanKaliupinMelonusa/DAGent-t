@@ -35,3 +35,71 @@ export interface PendingApproval {
 export const pendingApprovalsQuery = defineQuery<readonly PendingApproval[]>(
   "pendingApprovals",
 );
+
+/**
+ * Per-item progress projection — minimal shape for the admin CLI
+ * `pipeline:status:temporal` and `pipeline:next:temporal` verbs. Reads
+ * directly from `DagState.snapshot()`; no separate engine projection.
+ */
+export interface ItemProgress {
+  readonly key: string;
+  readonly label: string;
+  readonly agent: string | null;
+  readonly status: "pending" | "in-progress" | "done" | "failed" | "na" | "dormant";
+}
+
+/** Full DAG state snapshot (suitable for `_TRANS.md` rendering). */
+export interface StateSnapshot {
+  readonly feature: string;
+  readonly workflowName: string;
+  readonly started: string;
+  readonly items: readonly ItemProgress[];
+  readonly errorLog: ReadonlyArray<{
+    readonly itemKey: string;
+    readonly message: string;
+    readonly timestamp: string;
+  }>;
+  readonly held: boolean;
+  readonly cancelled: boolean;
+  readonly cancelReason: string | null;
+}
+
+export const stateQuery = defineQuery<StateSnapshot>("state");
+
+/** Aggregate progress for the dashboard / CLI status banner. */
+export interface ProgressSnapshot {
+  readonly total: number;
+  readonly done: number;
+  readonly pending: number;
+  readonly inProgress: number;
+  readonly failed: number;
+  readonly na: number;
+  readonly dormant: number;
+  readonly held: boolean;
+  readonly cancelled: boolean;
+}
+
+export const progressQuery = defineQuery<ProgressSnapshot>("progress");
+
+/** Items the scheduler considers ready right now (next batch). */
+export interface NextBatchItem {
+  readonly key: string;
+  readonly label: string;
+  readonly agent: string | null;
+}
+
+export const nextBatchQuery = defineQuery<readonly NextBatchItem[]>("nextBatch");
+
+/** One-line operational summary suitable for stdout / dashboards. */
+export interface SummarySnapshot {
+  readonly slug: string;
+  readonly workflowName: string;
+  readonly started: string;
+  readonly status: "running" | "held" | "cancelled" | "complete" | "halted" | "blocked";
+  readonly batchNumber: number;
+  readonly totals: ProgressSnapshot;
+  readonly pendingApprovals: number;
+  readonly lastError: string | null;
+}
+
+export const summaryQuery = defineQuery<SummarySnapshot>("summary");
