@@ -62,6 +62,7 @@ import {
   setHandler,
   workflowInfo,
   continueAsNew,
+  patched,
   CancelledFailure,
   isCancellation,
 } from "@temporalio/workflow";
@@ -218,6 +219,15 @@ export interface PipelineInput {
    * undefined.
    */
   readonly continueAsNewHistoryThreshold?: number;
+  /**
+   * Absolute per-node attempt ceiling enforced by the workflow body
+   * itself, independent of per-node `circuit_breaker`. When
+   * `attemptCounts.get(itemKey) > absoluteAttemptCeiling`, the workflow
+   * halts with a synthetic terminal failure regardless of triage
+   * routing. Default 5. See P1 of the halt-discipline hardening (postmortem
+   * /memories/repo/dagent-runaway-retry-postmortem.md).
+   */
+  readonly absoluteAttemptCeiling?: number;
 }
 
 export type PipelineFinalStatus =
@@ -487,6 +497,31 @@ function buildTriageActivityInput(
  * the in-place `DagState` mutation and is safe to call outside
  * workflow context.
  */
+/**
+ * Detect whether any item's attempt counter has exceeded the absolute
+ * per-node retry ceiling. Pure helper extracted from `pipelineWorkflow`
+ * so the invariant can be unit-tested without booting a workflow VM.
+ *
+ * Returns the first breach found (Map iteration order — insertion
+ * order, deterministic within a single workflow incarnation). When no
+ * counter exceeds the ceiling, returns `null`.
+ *
+ * The check is `attempts > ceiling` (strictly greater) so a ceiling of
+ * 5 permits attempts 1..5 and trips on attempt 6. See P1 of the
+ * halt-discipline hardening.
+ */
+export function detectAbsoluteCeilingBreach(
+  attemptCounts: ReadonlyMap<string, number>,
+  ceiling: number,
+): { itemKey: string; attempts: number } | null {
+  for (const [itemKey, attempts] of attemptCounts) {
+    if (attempts > ceiling) {
+      return { itemKey, attempts };
+    }
+  }
+  return null;
+}
+
 export function applyTriageCommand(
   cmd: DagCommand,
   dag: DagState,
@@ -702,6 +737,12 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
   // the hard cap. Tests can lower this via `continueAsNewHistoryThreshold`.
   const canThreshold = input.continueAsNewHistoryThreshold ?? 8000;
 
+  // Session 6 P1 — absolute per-node attempt ceiling. Independent of
+  // per-node `circuit_breaker.halt_on_identical`. Triggers a synthetic
+  // terminal halt the moment ANY single node's attempt counter exceeds
+  // the ceiling. See [/memories/repo/dagent-runaway-retry-postmortem.md].
+  const absoluteAttemptCeiling = input.absoluteAttemptCeiling ?? 5;
+
   let finalStatus: PipelineFinalStatus = "halted";
   let finalReason = "unspecified";
 
@@ -875,6 +916,27 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
         if (cascadeHalt) {
           finalStatus = "halted";
           finalReason = cascadeHalt;
+          break;
+        }
+      }
+
+      // (g2) Absolute per-node retry ceiling. Independent of any
+      //      per-node `circuit_breaker` setting. Halts the workflow
+      //      the moment ANY itemKey's attempt count exceeds the ceiling.
+      //      The check runs AFTER the cascade so an in-flight triage
+      //      reroute still gets to apply for this batch, but no
+      //      additional dispatch will happen.
+      if (patched("absolute-retry-ceiling")) {
+        const breach = detectAbsoluteCeilingBreach(
+          attemptCounts,
+          absoluteAttemptCeiling,
+        );
+        if (breach) {
+          finalStatus = "halted";
+          finalReason =
+            `absolute-retry-ceiling: node '${breach.itemKey}' ` +
+            `reached attempt ${breach.attempts} ` +
+            `(ceiling=${absoluteAttemptCeiling}).`;
           break;
         }
       }

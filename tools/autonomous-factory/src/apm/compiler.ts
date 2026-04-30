@@ -282,6 +282,15 @@ function mergeNodeCatalogIntoWorkflow(
       };
     }
 
+    // Default-fill circuit_breaker for nodes that don't declare one. The
+    // postmortem [/memories/repo/dagent-runaway-retry-postmortem.md] showed
+    // that nodes without `circuit_breaker` (e.g. `docs-archived`,
+    // `publish-pr`) retried forever because `halt_on_identical` is opt-in.
+    // Per-node YAML overrides remain authoritative — only fill when absent.
+    if (merged.circuit_breaker === undefined || merged.circuit_breaker === null) {
+      merged.circuit_breaker = { max_item_failures: 3, halt_on_identical: true };
+    }
+
     mergedNodes[key] = merged;
   }
   return { ...raw, nodes: mergedNodes };
