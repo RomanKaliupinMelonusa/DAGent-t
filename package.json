@@ -14,6 +14,8 @@
     "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
     "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
     "agent:run": "npm run agent:run --workspace=orchestrator --",
+    "worker": "npm run worker --workspace=orchestrator",
+    "admin": "npm run admin --workspace=orchestrator --",
     "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
     "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",
     "pipeline:viz": "npx tsx tools/autonomous-factory/scripts/viz-pipeline.ts",
