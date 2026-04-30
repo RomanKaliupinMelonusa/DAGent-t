@@ -110,6 +110,18 @@ export type EventKind =
   | "node.handler_output"
   | "handler-output.invalid"
   | "handler-output.reserved_key"
+  // Filesystem-side ingestion of agent-produced artifacts (P5). The
+  // `produced-outputs.*` family fires from `ingestProducedOutputs`
+  // when a node's handler completes — `ingested` on success;
+  // `unknown_filename`, `read_failed`, `invalid`, and
+  // `meta_write_failed` are advisory warnings that never fail the
+  // handler.
+  | "produced-outputs.ingested"
+  | "produced-outputs.unknown_filename"
+  | "produced-outputs.read_failed"
+  | "produced-outputs.invalid"
+  | "produced-outputs.meta_write_failed"
+  | "produced-outputs.ingest_failed"
   // Code-index refresh lifecycle. Emitted by both the kernel effect
   // executor (trigger="kernel-effect") on item completion and the
   // copilot-agent harness (trigger="pre-tool-call") before invoking

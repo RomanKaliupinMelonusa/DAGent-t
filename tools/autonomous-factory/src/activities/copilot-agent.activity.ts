@@ -79,6 +79,7 @@ import { ArtifactValidationError } from "../apm/artifact-catalog.js";
 import { executeHook } from "../lifecycle/hooks.js";
 import { sanitizeOutput } from "../activity-lib/result-processor-regex.js";
 import { ingestHandlerOutputEnvelope } from "../activity-lib/handler-output-ingestion.js";
+import { ingestProducedOutputs } from "../activity-lib/produced-outputs-ingestion.js";
 import { buildE2eReadinessEnv } from "../activity-lib/e2e-readiness-env.js";
 import {
   ACCEPTANCE_HASH_FIELD,
@@ -518,6 +519,31 @@ export async function copilotAgentActivity(
               ? { producedArtifacts: [...(result.producedArtifacts ?? []), envelope.artifact] }
               : {}),
           };
+        }
+
+        // ── Produced-output filesystem ingestion (P5) ─────────────────
+        // Scan `<inv>/outputs/` for declared-kind artifacts the agent
+        // dropped on disk via `agent-write-file`. Required so the bus
+        // index + `meta.json#outputs` reflect agent-produced artifacts
+        // (e.g. spec-compiler's `acceptance.yml`) for downstream
+        // consumers and the P4 positive-output gate.
+        if (result.outcome === "completed") {
+          try {
+            const produced = await ingestProducedOutputs(liveCtx);
+            if (produced.length > 0) {
+              result = {
+                ...result,
+                producedArtifacts: [
+                  ...(result.producedArtifacts ?? []),
+                  ...produced,
+                ],
+              };
+            }
+          } catch (err) {
+            liveCtx.logger.event("produced-outputs.ingest_failed", liveCtx.itemKey, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
 
         // ── Acceptance-integrity post-record (spec-compiler only) ─────

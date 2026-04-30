@@ -31,6 +31,7 @@ import { ArtifactValidationError } from "../apm/artifact-catalog.js";
 import { executeHook } from "../lifecycle/hooks.js";
 import { sanitizeOutput } from "../activity-lib/result-processor-regex.js";
 import { ingestHandlerOutputEnvelope } from "../activity-lib/handler-output-ingestion.js";
+import { ingestProducedOutputs } from "../activity-lib/produced-outputs-ingestion.js";
 import { buildE2eReadinessEnv } from "../activity-lib/e2e-readiness-env.js";
 import { featurePath } from "../paths/feature-paths.js";
 import type { ShellExecError } from "../ports/shell.js";
@@ -414,6 +415,26 @@ export async function localExecActivity(
               ? { producedArtifacts: [...(result.producedArtifacts ?? []), envelope.artifact] }
               : {}),
           };
+        }
+
+        // ── Produced-output filesystem ingestion (P5) ─────────────────
+        if (result.outcome === "completed") {
+          try {
+            const produced = await ingestProducedOutputs(liveCtx);
+            if (produced.length > 0) {
+              result = {
+                ...result,
+                producedArtifacts: [
+                  ...(result.producedArtifacts ?? []),
+                  ...produced,
+                ],
+              };
+            }
+          } catch (err) {
+            liveCtx.logger.event("produced-outputs.ingest_failed", liveCtx.itemKey, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
 
         // ── Result-processor (sanitize scriptOutput on failure) ───────
