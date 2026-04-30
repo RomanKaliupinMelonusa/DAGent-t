@@ -304,9 +304,9 @@ export interface PipelineState {
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
   /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.
-   *  Authoritatively mutated by the kernel (`applyAdminCommand`, `applyDagCommand`)
-   *  and persisted via `StateStore.persistDagSnapshot`. Legacy state files without
-   *  this field are backfilled on read from `errorLog` reset entries. */
+   *  Authoritatively mutated by the kernel (`applyAdminCommand`, `applyDagCommand`).
+   *  Persistence is now owned by Temporal workflow state; legacy on-disk state
+   *  files no longer exist. */
   cycleCounters?: Record<string, number>;
   /** Artifact-bus (Phase 2) invocation ledger, keyed by invocationId.
    *  Authoritative index for per-dispatch artifacts + lineage. `items[].latestInvocationId`

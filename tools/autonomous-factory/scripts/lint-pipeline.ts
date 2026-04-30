@@ -21,8 +21,36 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { compileApm } from "../src/apm/compiler.js";
-import { inferHandler } from "../src/handlers/registry.js";
 import { compileVolatilePatterns, DEFAULT_VOLATILE_PATTERNS } from "../src/domain/index.js";
+
+// Inlined from the deleted src/handlers/registry.ts. Resolves a workflow
+// node's handler reference (built-in key or "./local-path") for static
+// validation only — runtime dispatch is handled by Temporal activities.
+const BUILTIN_INFERENCE: Record<string, string> = {
+  "agent": "copilot-agent",
+  "script:poll": "github-ci-poll",
+  "script:local-exec": "local-exec",
+  "script": "local-exec",
+  "approval": "approval",
+  "triage": "triage",
+};
+
+function inferHandler(
+  nodeType: string,
+  scriptType?: string,
+  handlerDefaults?: Record<string, string>,
+  strict?: boolean,
+): string | null {
+  const compoundKey = scriptType ? `${nodeType}:${scriptType}` : undefined;
+  if (handlerDefaults) {
+    if (compoundKey && handlerDefaults[compoundKey]) return handlerDefaults[compoundKey];
+    if (handlerDefaults[nodeType]) return handlerDefaults[nodeType];
+  }
+  if (strict) return null;
+  if (compoundKey && BUILTIN_INFERENCE[compoundKey]) return BUILTIN_INFERENCE[compoundKey];
+  if (BUILTIN_INFERENCE[nodeType]) return BUILTIN_INFERENCE[nodeType];
+  return null;
+}
 
 interface LintIssue {
   readonly app: string;
