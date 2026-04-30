@@ -22,17 +22,48 @@ import { featurePath } from "../adapters/feature-paths.js";
  * If a prior `storefront-dev` agent crashed without reaping its server
  * (or the orchestrator was OOM-killed mid-validation), the webpack worker
  * processes survive as orphans and a fresh run will spawn a *second* server
- * on top — driving the devcontainer to memory exhaustion. This check
- * refuses to start the pipeline when port 3000 is held, with a one-liner
- * cleanup hint so the operator can audit the offending PIDs before nuking.
+ * on top — driving the devcontainer to memory exhaustion.
  *
- * Non-fatal when `lsof` itself is missing (e.g. a slim CI image) — the
- * absence of the tool is not the operator's fault, and the storefront
- * instruction-side cleanup is a sufficient backstop.
+ * Self-healing policy (PREFLIGHT_REAP_PORT_3000, default `true`):
+ *   - If every holder PID matches a known dev-server signature
+ *     (`pwa-kit-dev`, `webpack-dev-server`, `node …/ssr.js`, or a CWD
+ *     under any `apps/<app>/`) we SIGKILL them, poll up to 2s for the
+ *     port to free, and proceed.
+ *   - If any holder PID is unrelated (e.g. an editor, an `lsof`
+ *     leftover, or a user shell that happens to bind 3000) we keep
+ *     the original fail-closed behaviour and refuse to nuke arbitrary
+ *     processes. The operator must clean those up manually.
+ *   - When the env var is set to `0`/`false`/`no`/`off`, the legacy
+ *     hard-fail behaviour applies regardless of signature.
  *
- * @throws {BootstrapError} when port 3000 is occupied.
+ * Non-fatal when `lsof` itself is missing (e.g. a slim CI image).
+ *
+ * @throws {BootstrapError} when port 3000 is occupied by a non-reapable
+ *   process, or when reaping was attempted but the port stayed held.
  */
 export type LsofRunner = () => string;
+export type CommandLineLookup = (pid: number) => string | null;
+export type CwdLookup = (pid: number) => string | null;
+export type ProcessKiller = (pid: number) => void;
+export type SleeperSync = (ms: number) => void;
+
+export interface CheckPort3000Options {
+  readonly commandLineLookup?: CommandLineLookup;
+  readonly cwdLookup?: CwdLookup;
+  readonly processKiller?: ProcessKiller;
+  readonly sleeper?: SleeperSync;
+  /**
+   * When `false`, skip the detect-and-reap path even if every holder
+   * matches a dev-server signature — fail-closed exactly as the
+   * pre-self-heal implementation did. Defaults to the value of the
+   * `PREFLIGHT_REAP_PORT_3000` env var (truthy unless `0|false|no|off`).
+   */
+  readonly reapEnabled?: boolean;
+  /** Total time to poll the runner after killing, in ms (default 2000). */
+  readonly reapTimeoutMs?: number;
+  /** Per-iteration poll interval after killing, in ms (default 200). */
+  readonly reapPollMs?: number;
+}
 
 const defaultLsofRunner: LsofRunner = () => {
   try {
@@ -51,7 +82,88 @@ const defaultLsofRunner: LsofRunner = () => {
   }
 };
 
-export function checkPort3000Free(runner: LsofRunner = defaultLsofRunner): void {
+const defaultCommandLineLookup: CommandLineLookup = (pid) => {
+  try {
+    return execSync(`ps -p ${pid} -o command=`, {
+      encoding: "utf-8",
+      timeout: 2_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+const defaultCwdLookup: CwdLookup = (pid) => {
+  // Linux-only: /proc/<pid>/cwd is a symlink to the process CWD.
+  // Devcontainer is Linux, and the storefront dev server is a Linux
+  // process, so this is sufficient. On non-Linux we silently return
+  // null and rely on the command-line signature alone.
+  try {
+    return fs.readlinkSync(`/proc/${pid}/cwd`);
+  } catch {
+    return null;
+  }
+};
+
+const defaultProcessKiller: ProcessKiller = (pid) => {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already dead / never existed — treat as success; the post-kill
+    // poll will confirm the port actually freed.
+  }
+};
+
+const defaultSleeperSync: SleeperSync = (ms) => {
+  // Atomics.wait on a SharedArrayBuffer is the canonical way to sleep
+  // synchronously in Node without spawning a child process or busy-
+  // looping the CPU. We're in bootstrap here — adding async would
+  // ripple through the entire startup pipeline for ~2s of poll.
+  const sab = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(sab), 0, 0, ms);
+};
+
+/** Truthy unless explicitly opted out. */
+function reapEnabledFromEnv(): boolean {
+  const raw = process.env.PREFLIGHT_REAP_PORT_3000;
+  if (raw === undefined) return true;
+  return !["0", "false", "no", "off", ""].includes(raw.trim().toLowerCase());
+}
+
+/** Match command lines / CWDs that look like a stranded dev server. */
+const DEV_SERVER_CMD_RE = /(pwa-kit-dev|webpack-dev-server|node\s+\S*ssr\.js)/i;
+const APPS_CWD_RE = /(^|\/)apps\/[^/]+(\/|$)/;
+
+/**
+ * Returns `true` when this PID's command line / CWD matches the
+ * dev-server signature and is therefore safe to reap as a stale
+ * pipeline residue. Exported for testing.
+ */
+export function isDevServerProcess(
+  pid: number,
+  commandLineLookup: CommandLineLookup = defaultCommandLineLookup,
+  cwdLookup: CwdLookup = defaultCwdLookup,
+): { match: boolean; cmd: string | null; cwd: string | null } {
+  const cmd = commandLineLookup(pid);
+  const cwd = cwdLookup(pid);
+  const cmdMatch = cmd !== null && DEV_SERVER_CMD_RE.test(cmd);
+  const cwdMatch = cwd !== null && APPS_CWD_RE.test(cwd);
+  return { match: cmdMatch || cwdMatch, cmd, cwd };
+}
+
+export function checkPort3000Free(
+  runner: LsofRunner = defaultLsofRunner,
+  options: CheckPort3000Options = {},
+): void {
+  const commandLineLookup = options.commandLineLookup ?? defaultCommandLineLookup;
+  const cwdLookup = options.cwdLookup ?? defaultCwdLookup;
+  const processKiller = options.processKiller ?? defaultProcessKiller;
+  const sleeper = options.sleeper ?? defaultSleeperSync;
+  const reapEnabled = options.reapEnabled ?? reapEnabledFromEnv();
+  const reapTimeoutMs = options.reapTimeoutMs ?? 2_000;
+  const reapPollMs = options.reapPollMs ?? 200;
+
   let stdout: string;
   try {
     stdout = runner();
@@ -72,12 +184,77 @@ export function checkPort3000Free(runner: LsofRunner = defaultLsofRunner): void 
     return;
   }
 
-  const pids = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
-  throw new BootstrapError(
-    `Port 3000 is already held by PID(s): ${pids.join(", ")}.\n` +
-    `→ A prior dev server (likely from a crashed storefront-dev run) is still running.\n` +
-    `→ Cleanup hint: lsof -ti:3000 | xargs -r kill -KILL\n` +
-    `→ Then re-run the orchestrator.`,
+  const pids = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((s) => Number.parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  const failClosed = (suffix: string): never => {
+    throw new BootstrapError(
+      `Port 3000 is already held by PID(s): ${pids.join(", ")}.\n` +
+      suffix +
+      `→ Cleanup hint: lsof -ti:3000 | xargs -r kill -KILL\n` +
+      `→ Then re-run the orchestrator.`,
+    );
+  };
+
+  if (!reapEnabled) {
+    failClosed(
+      `→ A prior dev server (likely from a crashed storefront-dev run) is still running.\n` +
+      `→ Self-heal disabled (PREFLIGHT_REAP_PORT_3000 is off).\n`,
+    );
+  }
+
+  // Classify every holder. Reap only when EVERY holder looks like a
+  // dev-server residue — never SIGKILL an unrelated process.
+  const reapable: Array<{ pid: number; cmd: string | null }> = [];
+  const unrelated: Array<{ pid: number; cmd: string | null }> = [];
+  for (const pid of pids) {
+    const { match, cmd } = isDevServerProcess(pid, commandLineLookup, cwdLookup);
+    (match ? reapable : unrelated).push({ pid, cmd });
+  }
+
+  if (unrelated.length > 0) {
+    const detail = unrelated
+      .map((p) => `      - PID ${p.pid}${p.cmd ? ` (${p.cmd})` : ""}`)
+      .join("\n");
+    failClosed(
+      `→ One or more holders do not match a dev-server signature; refusing to kill arbitrary processes:\n` +
+      `${detail}\n`,
+    );
+  }
+
+  // All holders are reapable.
+  console.warn(
+    `  ⚠ Port 3000 held by stale dev server(s). Reaping...\n` +
+    reapable
+      .map((p) => `      - PID ${p.pid}${p.cmd ? ` (${p.cmd})` : ""}`)
+      .join("\n") +
+    "\n",
+  );
+  for (const { pid } of reapable) processKiller(pid);
+
+  // Poll until the port frees or the deadline expires.
+  const deadline = Date.now() + reapTimeoutMs;
+  while (Date.now() < deadline) {
+    let probe: string;
+    try {
+      probe = runner();
+    } catch {
+      // Treat probe errors as "still busy" — keep polling.
+      probe = pids.join("\n");
+    }
+    if (!probe.trim()) {
+      console.log("  ✔ Port 3000 freed after reap");
+      return;
+    }
+    sleeper(reapPollMs);
+  }
+
+  failClosed(
+    `→ Reap attempted but port 3000 is still held after ${reapTimeoutMs}ms.\n`,
   );
 }
 
