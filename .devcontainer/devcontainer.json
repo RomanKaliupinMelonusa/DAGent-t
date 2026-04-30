@@ -3,7 +3,8 @@
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
 
   "remoteEnv": {
-    "NODE_VERSION": "22.15"
+    "NODE_VERSION": "22.15",
+    "PATH": "/home/node/.temporalio/bin:${containerEnv:PATH}"
   },
 
   "runArgs": [
@@ -24,7 +25,7 @@
     }
   },
 
-  "postCreateCommand": "sudo chown -R node:node /home/node/.azure && npm install && cd tools/autonomous-factory && npm install && cd ../.. && npx --yes playwright install --with-deps chromium && bash tools/autonomous-factory/setup-roam.sh && az extension add --name application-insights --yes 2>/dev/null && curl -sSf https://temporal.download/cli.sh | sh && sudo install -m 0755 /home/node/.temporalio/bin/temporal /usr/local/bin/temporal",
+  "postCreateCommand": "sudo chown -R node:node /home/node/.azure && npm install && cd tools/autonomous-factory && npm install && cd ../.. && npx --yes playwright install --with-deps chromium && bash tools/autonomous-factory/setup-roam.sh && az extension add --name application-insights --yes 2>/dev/null && curl -sSf https://temporal.download/cli.sh | sh",
 
   "postStartCommand": "git config --global core.hooksPath tools/autonomous-factory/hooks",
 
