@@ -167,6 +167,15 @@ async function main(): Promise<void> {
     // resolution of node_modules. Always run from `npm run temporal:build`
     // output.
     workflowsPath: resolve(__dirname, "../workflow/index.js"),
+    // js-sha256 (used by domain/error-signature.ts) contains a static
+    // `require('crypto')` / `require('buffer')` inside its `nodeWrap`
+    // helper. The helper is only invoked when `NODE_JS` is true, which
+    // tests `typeof process === 'object'` — false inside Temporal's
+    // workflow sandbox, so the requires never execute at runtime. But
+    // webpack walks them statically and the SDK's determinism check
+    // rejects them. Telling the bundler to ignore these built-ins is
+    // the canonical escape hatch (see the SDK error message itself).
+    bundlerOptions: { ignoreModules: ["crypto", "buffer"] },
     activities,
     ...(otel.plugin ? { plugins: [otel.plugin] } : {}),
   });
