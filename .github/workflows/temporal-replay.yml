@@ -1,0 +1,69 @@
+# =============================================================================
+# Temporal Replay Tests — Session 5 P2
+# =============================================================================
+# Replays committed workflow histories against the compiled
+# `dist/temporal/workflow/` bundle. A `DeterminismViolationError` raised
+# during replay fails the build — preventing workflow code changes that
+# break compatibility with already-running production executions.
+#
+# Triggered on PRs that touch workflow code or the fixture corpus, plus
+# the workflow file itself.
+# =============================================================================
+
+name: Temporal Replay
+
+concurrency:
+  group: temporal-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tools/autonomous-factory/src/temporal/workflow/**'
+      - 'tools/autonomous-factory/src/temporal/__tests__/replay/**'
+      - 'tools/autonomous-factory/scripts/synth-replay-history.mjs'
+      - 'tools/autonomous-factory/package.json'
+      - 'tools/autonomous-factory/package-lock.json'
+      - '.github/workflows/temporal-replay.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: Temporal — Replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        # Root npm ci runs the postinstall ajv shim — required for the
+        # SDK bundler to load (D5-5 in session-5 doc).
+        run: npm ci
+
+      - name: Compile workflow bundle
+        working-directory: tools/autonomous-factory
+        run: npm run temporal:build
+
+      - name: Ensure synthetic 8K-event fixture exists
+        # The committed fixture should already cover this; the script is
+        # idempotent and rebuilds it from scratch each run so the fixture
+        # never goes stale relative to the synthesizer.
+        working-directory: tools/autonomous-factory
+        run: node scripts/synth-replay-history.mjs synthetic-can-8k 8001
+
+      - name: Run replay harness
+        working-directory: tools/autonomous-factory
+        run: npm run test:replay

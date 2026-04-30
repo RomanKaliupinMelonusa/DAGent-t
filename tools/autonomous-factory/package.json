@@ -13,6 +13,8 @@
     "lint:test": "node scripts/lint-test.mjs",
     "check:do-not-delete": "node scripts/check-do-not-delete.mjs",
     "test": "vitest run",
+    "test:replay": "vitest run src/temporal/__tests__/replay/replay.test.ts",
+    "test:pr-equivalence": "vitest run src/temporal/__tests__/pr-equivalence.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "temporal:build": "tsc -p tsconfig.json",

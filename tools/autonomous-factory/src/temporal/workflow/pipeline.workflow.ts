@@ -32,8 +32,11 @@
  * Scope notes:
  *   - Triage cascade: WIRED. Newly-failed items with `on_failure.triage`
  *     dispatch the triage activity in parallel; returned commands are
- *     applied serially via `applyTriageCommand`. See `runTriageCascade`
- *     below.
+ *     applied serially via `applyTriageCommand` so the failed node is
+ *     re-queued (and its cycle counter incremented) before the next
+ *     batch is scheduled. See `runTriageCascade` below and
+ *     [__tests__/triage-cascade-reroute.test.ts](./__tests__/triage-cascade-reroute.test.ts)
+ *     for the end-to-end reroute proof (Session 5 P1, 2026-04-30).
  *   - Cycle-budget halt: WIRED. `applyResetNodes` halts when the
  *     `errorLog` count for `logKey` reaches `maxCycles`; halt reason
  *     bubbles up from `applyTriageCommand` → `runTriageCascade` → the
@@ -44,13 +47,15 @@
  *     `workflowInfo().historyLength` triggers `continueAsNew` with a
  *     `priorSnapshot` + `priorAttemptCounts` rehydration payload.
  *     Pending approvals block CAN to keep signal handlers stable.
- *     See [__tests__/continue-as-new.test.ts](./__tests__/continue-as-new.test.ts).
+ *     See [__tests__/continue-as-new.test.ts](./__tests__/continue-as-new.test.ts)
+ *     for round-trip rehydration coverage and
+ *     [../../__tests__/replay/replay.test.ts](../../__tests__/replay/replay.test.ts)
+ *     for the cluster-history replay harness (Session 5 P2, 2026-04-30).
  *
- * The skeleton compiles, runs against the local Temporal cluster, and
- * exercises the success path end-to-end. Failure paths fall through to
- * the legacy `outcome: "failed"` shape and surface verbatim in the
- * workflow result — sufficient to drive the Phase 6 admin CLI work in
- * parallel.
+ * The workflow body is the only orchestration entry-point post-cutover;
+ * happy path, hold/cancel, approval gating, triage-cascade reroute, and
+ * cycle-budget halts are all exercised end-to-end by the workflow-scope
+ * Vitest suite under `__tests__/`.
  */
 
 import {

@@ -23,7 +23,7 @@ See [00-spec.md](00-spec.md) for the full architectural mapping and risk registe
 
 ## Session-Based Execution Model
 
-The migration is decomposed into **5 GitHub Copilot Planning Agent sessions**. Each session:
+The migration is decomposed into **6 GitHub Copilot Planning Agent sessions**. Each session:
 
 - Has a single Planning Agent supervising 1–2 implementing Copilot Agents
 - Is independently committable (the project remains functional after each session ends)
@@ -36,9 +36,10 @@ The migration is decomposed into **5 GitHub Copilot Planning Agent sessions**. E
 | 2 | [Domain Port](session-2-domain-port.md) | 3 | Pure domain logic copied into workflow scope; `DagState` class | Yes — old code untouched | 4–5 days |
 | 3 | [Activities Port](session-3-activities.md) | 4 | Each handler → Temporal activity (5 activities) | Yes — old handlers still exist | 10–14 days |
 | 4 | [Workflow & Periphery](session-4-workflow-and-periphery.md) | 5 · 6 | Full workflow body, signals, queries, OTel, admin CLI rewrite | Yes (running both paths) | 9–13 days |
-| 5 | [Cutover & Hardening](session-5-cutover-and-harden.md) | 7 · 8 | Delete legacy kernel/loop/state-store; production hardening | **No — irreversible** | 8–11 days |
+| 5 | [Cutover & Hardening](session-5-cutover-and-harden.md) | 7 · 8 (trimmed) | Drain, deletions, workflow versioning, replay-in-CI, Dockerfile, basic DR runbook | **No — irreversible at Phase 7** | 5–7 days |
+| 6 | [Production Hardening](session-6-production-hardening.md) | (post-cutover) | Multi-tenancy + `SecretsProvider`, Helm + HPA, full DR drill | Yes — normal git revert | 6–9 days |
 
-**Total: 40–55 working days** for one engineer; ~6–7 calendar weeks for two engineers running parallel work where the dependency graph allows.
+**Total: ~46–60 working days** for one engineer; ~7–9 calendar weeks for two engineers running parallel work where the dependency graph allows.
 
 ---
 
@@ -50,22 +51,24 @@ flowchart LR
     S2["Session 2<br/>Domain Port"]
     S3["Session 3<br/>Activities Port"]
     S4["Session 4<br/>Workflow + Periphery"]
-    S5["Session 5<br/>Cutover + Harden"]
+    S5["Session 5<br/>Cutover<br/>(trimmed)"]
+    S6["Session 6<br/>Production Hardening"]
 
     S1 --> S2
     S1 --> S3
     S2 --> S4
     S3 --> S4
     S4 --> S5
+    S5 --> S6
 
     classDef reversible fill:#bbf7d0,stroke:#15803d,color:#052e16
     classDef irreversible fill:#fecaca,stroke:#b91c1c,color:#450a0a
 
-    class S1,S2,S3,S4 reversible
+    class S1,S2,S3,S4,S6 reversible
     class S5 irreversible
 ```
 
-Sessions 2 and 3 can run in parallel by separate engineers/agents — they touch disjoint code areas (domain logic vs handler/activity wrapping).
+Sessions 2 and 3 can run in parallel by separate engineers/agents — they touch disjoint code areas (domain logic vs handler/activity wrapping). Session 6 follows Session 5 after the 30-day stabilization window; it is *not* a hard cutover blocker.
 
 ---
 
@@ -120,7 +123,8 @@ Recommended cadence per session:
 - [session-2-domain-port.md](session-2-domain-port.md) — Phase 3
 - [session-3-activities.md](session-3-activities.md) — Phase 4
 - [session-4-workflow-and-periphery.md](session-4-workflow-and-periphery.md) — Phases 5-6
-- [session-5-cutover-and-harden.md](session-5-cutover-and-harden.md) — Phases 7-8
+- [session-5-cutover-and-harden.md](session-5-cutover-and-harden.md) — Phases 7-8 (trimmed)
+- [session-6-production-hardening.md](session-6-production-hardening.md) — multi-tenancy + Helm + DR drill (post-cutover)
 
 External:
 - Temporal docs: https://docs.temporal.io/
