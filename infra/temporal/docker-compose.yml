@@ -1,6 +1,11 @@
 # =============================================================================
 # Temporal local dev cluster — docker-compose
 # =============================================================================
+# This stack is for CI integration tests and production-like local soak.
+# For day-to-day dev inside the devcontainer, use:
+#   npm run temporal:dev --workspace=tools/autonomous-factory
+# That uses the bundled Temporal CLI's in-process server (no Docker required).
+#
 # Brings up a full Temporal stack (server + UI + Postgres) for local
 # development and CI integration tests. Mirrors the upstream reference
 # compose at https://github.com/temporalio/docker-compose, trimmed to the
