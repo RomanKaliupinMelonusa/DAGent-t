@@ -75,11 +75,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create feature branch
-        run: bash tools/autonomous-factory/agent-branch.sh create-feature ${{ inputs.feature-slug }}
-        env:
-          BASE_BRANCH: ${{ inputs.base-branch }}
-
       - name: Authenticate Copilot SDK
         run: gh auth login --with-token <<< "${{ secrets.COPILOT_PAT }}"
         env:
