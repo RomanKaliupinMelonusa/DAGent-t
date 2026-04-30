@@ -39,6 +39,10 @@ on:
         required: false
         type: string
         default: 'main'
+      spec-content:
+        description: 'Feature spec markdown (paste the full content)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -80,8 +84,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
 
+      - name: Stage spec file
+        id: spec
+        run: |
+          SPEC_PATH="${RUNNER_TEMP}/feature-spec.md"
+          cat > "$SPEC_PATH" <<'SPEC_EOF'
+          ${{ inputs.spec-content }}
+          SPEC_EOF
+          echo "path=${SPEC_PATH}" >> "$GITHUB_OUTPUT"
+
       - name: Run Agentic Pipeline
-        run: npm run agent:run -- --app ${{ inputs.app-path }} --workflow ${{ inputs.workflow-name }} ${{ inputs.feature-slug }}
+        run: npm run agent:run -- --app ${{ inputs.app-path }} --workflow ${{ inputs.workflow-name }} --spec-file ${{ steps.spec.outputs.path }} ${{ inputs.feature-slug }}
         env:
           POLL_MAX_RETRIES: "60"
           BASE_BRANCH: ${{ inputs.base-branch }}
