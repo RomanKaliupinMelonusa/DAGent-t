@@ -20,9 +20,11 @@ import {
   checkPort3000Free,
   checkPreflightAuth,
   checkGitHubLogin,
+  checkCopilotLogin,
   checkToolLimitsHygiene,
   runInitialIndex,
   runPreflightBaseline,
+  type PreflightCheckResult,
 } from "../lifecycle/preflight.js";
 import { checkPinnedDependencies, computeApiDrift } from "../lifecycle/dependency-pinning.js";
 import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
@@ -45,6 +47,23 @@ export interface BootstrapResult {
 // ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
+
+/**
+ * Throw `BootstrapError` listing every preflight check that returned
+ * `severity: "error"`. P3 of halt-discipline hardening — bootstrap
+ * MUST abort with a non-zero exit BEFORE `client.start()` so a misconfigured
+ * environment never connects to Temporal in the first place.
+ */
+function abortOnFatalPreflight(results: ReadonlyArray<PreflightCheckResult>): void {
+  const fatal = results.filter((r) => r.severity === "error");
+  if (fatal.length === 0) return;
+  const lines = fatal.map(
+    (r) => `  - ${r.name}: ${r.message}${r.remediation ? `\n    → ${r.remediation}` : ""}`,
+  );
+  throw new BootstrapError(
+    `Fatal preflight check(s) failed:\n${lines.join("\n")}`,
+  );
+}
 
 /**
  * Run all preflight checks and assemble the pipeline run config.
@@ -80,9 +99,16 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // Allow deploy-manager's poll-ci.sh to poll for up to ~30 min.
   process.env.POLL_MAX_RETRIES = "60";
 
-  // --- 1. CLI auth ---
+  // Collected fatal preflight results — drained at the end of bootstrap
+  // so a single message lists every error rather than aborting on the
+  // first one. P3 of halt-discipline hardening.
+  const preflightResults: PreflightCheckResult[] = [];
+
+  // --- 1. CLI auth (Copilot is unconditionally required) ---
   console.log("\n  🔐 CLI Authentication Status:");
-  checkGitHubLogin();
+  preflightResults.push(checkCopilotLogin());
+  // gh-auth severity depends on the compiled workflow's node set;
+  // defer until after step 3.
   console.log("");
 
   checkJunkFiles(repoRoot);
@@ -115,6 +141,21 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     }
     throw err;
   }
+
+  // --- 3b. GitHub CLI auth (severity depends on workflow node set) ---
+  // Now that the workflow is compiled we know whether `publish-pr` /
+  // `create-draft-pr` / `mark-pr-ready` are in scope. P3 of
+  // halt-discipline hardening: gh-auth missing is fatal when any of
+  // those nodes is part of the run; otherwise advisory.
+  const compiledWorkflow = apmContext.workflows?.[workflowName];
+  const workflowNodeKeys = compiledWorkflow
+    ? Object.keys(compiledWorkflow.nodes ?? {})
+    : [];
+  preflightResults.push(checkGitHubLogin(workflowNodeKeys));
+
+  // Drain fatal preflight results before any irreversible side-effect
+  // (artifact materialisation, code-index build, Temporal connect).
+  abortOnFatalPreflight(preflightResults);
 
   // --- 4. Environment resolution ---
   try {

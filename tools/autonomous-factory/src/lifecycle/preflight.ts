@@ -181,9 +181,32 @@ export function checkToolLimitsHygiene(apmContext: ApmCompiledOutput): void {
 
 /**
  * Validate that the GitHub CLI (`gh`) is logged in.
- * Non-fatal — logs ✔ or ✖ and returns the result.
+ * Returns a typed result so callers can decide whether the check is
+ * fatal (workflow needs a PR step) or advisory.
+ *
+ * Severity policy (P3 of the halt-discipline hardening):
+ *   - When the compiled workflow contains any node in
+ *     `PR_NODE_KEYS`, gh-auth missing is `error` (fail-closed).
+ *   - Otherwise it's a `warn` so non-PR workflows still proceed.
  */
-export function checkGitHubLogin(): boolean {
+export const PR_NODE_KEYS: ReadonlyArray<string> = Object.freeze([
+  "publish-pr",
+  "create-draft-pr",
+  "mark-pr-ready",
+]);
+
+export interface PreflightCheckResult {
+  readonly name: string;
+  readonly severity: "ok" | "warn" | "error";
+  readonly message: string;
+  /** Operator-actionable next step (e.g. "Run `gh auth login`"). */
+  readonly remediation?: string;
+}
+
+export function checkGitHubLogin(
+  workflowNodeKeys: ReadonlyArray<string> = [],
+): PreflightCheckResult {
+  const needsPr = workflowNodeKeys.some((k) => PR_NODE_KEYS.includes(k));
   try {
     execSync("gh auth status", {
       encoding: "utf-8",
@@ -191,10 +214,60 @@ export function checkGitHubLogin(): boolean {
       stdio: ["pipe", "pipe", "pipe"],
     });
     console.log("  ✔ GitHub CLI authenticated");
-    return true;
+    return { name: "gh-auth", severity: "ok", message: "GitHub CLI authenticated" };
   } catch {
-    console.log("  ✖ GitHub CLI not authenticated — run 'gh auth login' to authenticate");
-    return false;
+    if (needsPr) {
+      console.log("  ✖ GitHub CLI not authenticated — required for publish-pr / mark-pr-ready");
+      return {
+        name: "gh-auth",
+        severity: "error",
+        message:
+          "GitHub CLI (`gh`) is not authenticated, and the selected workflow includes a PR-publishing node " +
+          `(${PR_NODE_KEYS.join(", ")}).`,
+        remediation: "Run `gh auth login` and retry.",
+      };
+    }
+    console.log("  ⚠ GitHub CLI not authenticated — non-PR workflow, continuing");
+    return {
+      name: "gh-auth",
+      severity: "warn",
+      message:
+        "GitHub CLI (`gh`) is not authenticated. The selected workflow has no PR-publishing node so this is non-fatal.",
+      remediation: "Run `gh auth login` if you intend to use a PR-publishing workflow.",
+    };
+  }
+}
+
+/**
+ * Validate that the GitHub Copilot CLI (`copilot`) is logged in.
+ * Always fatal when missing — every agent node depends on it.
+ *
+ * Detection strategy: invoke `copilot auth status` and parse the exit
+ * code. We deliberately do NOT parse stdout because the CLI's output
+ * format is not stable across versions.
+ */
+export function checkCopilotLogin(): PreflightCheckResult {
+  try {
+    execSync("copilot -i auth status", {
+      encoding: "utf-8",
+      timeout: 15_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    console.log("  ✔ GitHub Copilot CLI authenticated");
+    return {
+      name: "copilot-auth",
+      severity: "ok",
+      message: "GitHub Copilot CLI authenticated",
+    };
+  } catch {
+    console.log("  ✖ GitHub Copilot CLI not authenticated — required for every agent node");
+    return {
+      name: "copilot-auth",
+      severity: "error",
+      message:
+        "GitHub Copilot CLI (`copilot`) is not authenticated. The engine cannot run any agent node without it.",
+      remediation: "Run `copilot auth login` and retry.",
+    };
   }
 }
 
