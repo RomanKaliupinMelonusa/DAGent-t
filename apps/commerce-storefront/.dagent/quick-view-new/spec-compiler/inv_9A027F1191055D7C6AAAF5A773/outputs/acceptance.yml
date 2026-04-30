@@ -1,0 +1,159 @@
+feature: quick-view-new
+summary: >
+  Adds a Quick View button to PLP product tiles that opens a modal with the base ProductView
+  (variation swatches, quantity, add-to-bag) without navigating to PDP. On successful add-to-bag
+  the Quick View modal closes and the global AddToCartModal confirmation appears.
+
+test_fixtures:
+  - id: plp-multi-color
+    url: /category/mens-accessories
+    base_sha: da8e4f2c276e917ba95d4d6d1bab8380720666da
+    asserted_at: "2026-04-30T19:13:34Z"
+    asserts:
+      - { kind: http_status, value: 200, comparator: eq }
+      - { kind: tile_count_min, value: 4, comparator: gte }
+      - { kind: first_tile_swatch_count, value: 2, comparator: gte }
+
+  - id: plp-add-to-bag
+    url: /category/womens-clothing-dresses
+    base_sha: da8e4f2c276e917ba95d4d6d1bab8380720666da
+    asserted_at: "2026-04-30T19:13:34Z"
+    asserts:
+      - { kind: http_status, value: 200, comparator: eq }
+      - { kind: tile_count_min, value: 4, comparator: gte }
+      - { kind: in_stock, value: true, comparator: eq }
+
+required_dom:
+  - testid: quick-view-trigger
+    description: Quick View overlay button rendered on each PLP product tile (one per tile, suffixed with productId at runtime)
+    cardinality: many
+
+  - testid: quick-view-modal
+    description: The Quick View modal container (ModalContent wrapper)
+    cardinality: one
+
+  - testid: quick-view-modal-error
+    description: ErrorBoundary fallback rendered inside the modal body when ProductView crashes
+    cardinality: one
+
+  - testid: quick-view-add-to-cart-btn
+    description: Add to Bag primary button inside the Quick View modal
+    cardinality: one
+    requires_non_empty_text: true
+
+  - testid: quick-view-view-full-details-link
+    description: View Full Details link inside the Quick View modal that navigates to the PDP
+    cardinality: one
+    requires_non_empty_text: true
+
+  - testid: add-to-cart-modal
+    description: Global AddToCartModal confirmation surface (already exists in base PWA Kit)
+    cardinality: one
+
+required_flows:
+  - name: open-quick-view-from-tile
+    description: User clicks Quick View trigger on a PLP tile and sees the modal with ProductView content
+    fixture: plp-multi-color
+    steps:
+      - { action: goto, url: "/category/mens-accessories" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+
+  - name: switch-color-swatch-in-quick-view
+    description: User opens Quick View and clicks a different color swatch to change the active variant
+    fixture: plp-multi-color
+    steps:
+      - { action: goto, url: "/category/mens-accessories" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: click, testid: color-swatch-btn, match: nth, nth: 1 }
+      - { action: assert_visible, testid: color-swatch-btn-active, timeout_ms: 10000 }
+
+  - name: add-to-bag-from-quick-view
+    description: User opens Quick View, selects a variant, clicks Add to Bag, modal closes and AddToCartModal appears
+    fixture: plp-add-to-bag
+    steps:
+      - { action: goto, url: "/category/womens-clothing-dresses" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-add-to-cart-btn }
+      - { action: assert_visible, testid: add-to-cart-modal, timeout_ms: 15000 }
+
+  - name: close-quick-view-restores-focus
+    description: User opens Quick View then presses Escape to close the modal and restore focus to trigger
+    fixture: plp-multi-color
+    steps:
+      - { action: goto, url: "/category/mens-accessories" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+
+  - name: no-pickup-ui-in-quick-view
+    description: Quick View modal does NOT render any pickup or ship-to-store UI confirming showDeliveryOptions is false
+    fixture: plp-multi-color
+    steps:
+      - { action: goto, url: "/category/mens-accessories" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+
+  - name: add-to-bag-disabled-when-unavailable
+    description: Add to Bag button is disabled when no complete variation is selected or selected variant is out of stock
+    fixture: plp-add-to-bag
+    steps:
+      - { action: goto, url: "/category/womens-clothing-dresses" }
+      - { action: assert_visible, testid: quick-view-trigger, match: first, timeout_ms: 10000 }
+      - { action: click, testid: quick-view-trigger, match: first }
+      - { action: assert_visible, testid: quick-view-modal, timeout_ms: 10000 }
+      - { action: assert_visible, testid: quick-view-add-to-cart-btn, timeout_ms: 10000 }
+
+forbidden_console_patterns:
+  - "Failed to fetch product"
+  - "useProduct.*error"
+
+forbidden_network_failures:
+  - "GET /mobify/proxy/api/.*/products/.*"
+  - "POST /mobify/proxy/api/.*/baskets.*"
+  - "GET /mobify/proxy/api/.*/inventory.*"
+
+base_template_reuse:
+  - symbol: ProductView
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Provides the full product detail UX (image gallery, swatches, quantity, add-to-bag)
+      inside the Quick View modal. Must be reused with showDeliveryOptions=false rather
+      than cloning or re-implementing.
+
+  - symbol: ProductTile
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Base tile component that the override wraps. The Quick View trigger overlay is a
+      sibling element added by the override, not a fork of the tile itself.
+
+  - symbol: useProductViewModal
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Manages useProduct fetch, variation state merge, and error handling for modal product
+      views. Must be reused rather than re-orchestrating useProduct and useVariant manually.
+
+  - symbol: AddToCartModal
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Global confirmation modal already mounted at the app shell level. Quick View must
+      consume it via useAddToCartModalContext rather than mounting a second instance.
+
+  - symbol: useAddToCartModalContext
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Hook to trigger the global AddToCartModal after a successful add-to-bag. Reused to
+      ensure Quick View shows the same confirmation UX as PDP.
+
+  - symbol: useCurrentBasket
+    package: "@salesforce/retail-react-app"
+    rationale: >
+      Source of the active basket ID needed by the add-to-bag mutation. Reused to avoid
+      redundant basket-creation logic.
