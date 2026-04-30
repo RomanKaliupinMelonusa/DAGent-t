@@ -7,7 +7,7 @@
  * arbitrary event count that ends with a `WorkflowExecutionContinuedAsNew`
  * event. The output is structurally valid (`historyFromJSON` accepts it),
  * but it does NOT correspond to executable workflow logic — so a strict
- * `Worker.runReplayHistories` against `dist/temporal/workflow/index.js`
+ * `Worker.runReplayHistories` against `dist/workflow/index.js`
  * will reject it with a determinism-mismatch error. That rejection is
  * exactly what we want: it proves the replay path is wired and surfacing
  * issues end-to-end.
@@ -21,7 +21,7 @@
  *
  * Example:
  *   node scripts/synth-replay-history.mjs pipeline-can-8k 8001
- *   # → src/temporal/__tests__/replay/fixtures/pipeline-can-8k.history.json
+ *   # → src/__tests__/replay/fixtures/pipeline-can-8k.history.json
  */
 
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -33,7 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(__dirname, "..");
 const fixturesDir = resolve(
   repoDir,
-  "src/temporal/__tests__/replay/fixtures",
+  "src/__tests__/replay/fixtures",
 );
 
 const args = argv.slice(2);

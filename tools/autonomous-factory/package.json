@@ -8,19 +8,19 @@
   },
   "scripts": {
     "postinstall": "node ../../scripts/postinstall-ajv-shim.mjs && node ../../scripts/postinstall-vscode-jsonrpc-shim.mjs",
-    "lint": "eslint src/temporal --ignore-pattern 'src/temporal/workflow/**/__fixtures__/**'",
-    "lint:fix": "eslint src/temporal --ignore-pattern 'src/temporal/workflow/**/__fixtures__/**' --fix",
+    "lint": "eslint 'src/{workflow,activities,worker,client,test-stubs}/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**'",
+    "lint:fix": "eslint 'src/{workflow,activities,worker,client,test-stubs}/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**' --fix",
     "lint:test": "node scripts/lint-test.mjs",
     "test": "vitest run",
-    "test:replay": "vitest run src/temporal/__tests__/replay/replay.test.ts",
+    "test:replay": "vitest run src/__tests__/replay/replay.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "temporal:build": "tsc -p tsconfig.json",
-    "temporal:worker": "npm run temporal:build && node dist/temporal/worker/main.js",
-    "temporal:hello": "npm run temporal:build && node dist/temporal/client/run-hello.js",
-    "temporal:skeleton": "npm run temporal:build && node dist/temporal/client/run-skeleton.js",
-    "temporal:dispatch": "npm run temporal:build && node dist/temporal/client/run-single-activity.js",
-    "temporal:test:integration": "npm run temporal:build && vitest run src/temporal"
+    "temporal:worker": "npm run temporal:build && node dist/worker/main.js",
+    "temporal:hello": "npm run temporal:build && node dist/client/run-hello.js",
+    "temporal:skeleton": "npm run temporal:build && node dist/client/run-skeleton.js",
+    "temporal:dispatch": "npm run temporal:build && node dist/client/run-single-activity.js",
+    "temporal:test:integration": "npm run temporal:build && vitest run src/__tests__"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",

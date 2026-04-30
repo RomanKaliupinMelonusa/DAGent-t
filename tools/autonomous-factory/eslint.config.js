@@ -1,12 +1,12 @@
 // =============================================================================
 // ESLint flat config — orchestrator (tools/autonomous-factory)
 // =============================================================================
-// Phase 1 scope is intentionally narrow: lint *only* src/temporal/** for
+// Phase 1 scope is intentionally narrow: lint *only* src/** for
 // determinism and import-hygiene. Existing src/{kernel,loop,handlers,...}
 // is excluded — that codebase predates ESLint and a full sweep is out of
 // scope for the Temporal migration.
 //
-// The determinism rule for src/temporal/workflow/** is the centerpiece:
+// The determinism rule for src/workflow/** is the centerpiece:
 // workflow code must be deterministic across replays. See
 // docs/temporal-migration/00-spec.md → "Determinism Constraints".
 // =============================================================================
@@ -47,7 +47,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
 
   {
-    files: ["src/temporal/**/*.ts"],
+    files: ["src/{workflow,activities,worker,client,test-stubs}/**/*.ts"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
@@ -61,7 +61,7 @@ export default tseslint.config(
   },
 
   // ---------------------------------------------------------------------------
-  // DETERMINISM RULE — src/temporal/workflow/**
+  // DETERMINISM RULE — src/workflow/**
   // ---------------------------------------------------------------------------
   // Workflow code is replayed from history. Any non-deterministic call
   // breaks replay. The bans below mirror 00-spec.md → "Forbidden" section.
@@ -73,8 +73,8 @@ export default tseslint.config(
   {
     // Determinism rule applies to runtime workflow code AND fixtures
     // (the lint regression test needs the fixture to trigger violations).
-    files: ["src/temporal/workflow/**/*.ts"],
-    ignores: ["src/temporal/workflow/**/__tests__/**"],
+    files: ["src/workflow/**/*.ts"],
+    ignores: ["src/workflow/**/__tests__/**"],
     rules: {
       "no-restricted-globals": [
         "error",

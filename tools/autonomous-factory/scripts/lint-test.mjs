@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(__dirname, "..");
-const fixture = "src/temporal/workflow/__fixtures__/forbidden.fixture.ts";
+const fixture = "src/workflow/__fixtures__/forbidden.fixture.ts";
 
 const MIN_VIOLATIONS = 5;
 const EXPECTED_RULES = [

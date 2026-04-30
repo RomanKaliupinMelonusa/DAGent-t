@@ -7,11 +7,11 @@
     "declarationMap": false,
     "sourceMap": true
   },
-  "include": ["src/temporal/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",
-    "src/temporal/**/__tests__/**",
-    "src/temporal/**/__fixtures__/**"
+    "src/**/__tests__/**",
+    "src/**/__fixtures__/**"
   ]
 }
