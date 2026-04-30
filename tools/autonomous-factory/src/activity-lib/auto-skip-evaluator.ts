@@ -11,6 +11,7 @@
  */
 
 import path from "node:path";
+import fs from "node:fs";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
 import type { SkipResult } from "./types.js";
@@ -26,6 +27,66 @@ export interface AutoSkipDecision {
   skip: SkipResult | null;
   /** Whether force_run_if_changed directories had changes (propagated to ctx.forceRunChanges) */
   forceRunChanges: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Positive output signal — P4 of halt-discipline hardening
+// ---------------------------------------------------------------------------
+
+/**
+ * Synchronously check whether at least one of the node's declared
+ * `produces_artifacts` kinds has materialised on disk under any prior
+ * sealed invocation directory:
+ *
+ *   <appRoot>/.dagent/<slug>/<nodeKey>/inv_<id>/meta.json
+ *
+ * Returns `true` when a `meta.json` lists at least one output whose
+ * `kind` matches one of `declaredKinds`. Returns `true` (vacuously) when
+ * `declaredKinds` is empty so legacy nodes that don't declare outputs
+ * keep their original auto-skip semantics.
+ *
+ * Fail-open on I/O errors (returns `true`) — a transient ENOENT must not
+ * convert a legitimate skip into an unexpected re-run.
+ */
+export function hasPositiveOutputSignal(
+  appRoot: string,
+  slug: string,
+  nodeKey: string,
+  declaredKinds: ReadonlyArray<string>,
+): boolean {
+  if (declaredKinds.length === 0) return true;
+  const declared = new Set(declaredKinds);
+  const nodeDir = path.join(appRoot, ".dagent", slug, nodeKey);
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(nodeDir);
+  } catch {
+    // No prior invocation directory at all — definitely no positive signal.
+    return false;
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith("inv_")) continue;
+    const metaPath = path.join(nodeDir, entry, "meta.json");
+    let raw: string;
+    try {
+      raw = fs.readFileSync(metaPath, "utf-8");
+    } catch {
+      continue;
+    }
+    let meta: { outputs?: Array<{ kind?: string }> };
+    try {
+      meta = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const outputs = Array.isArray(meta.outputs) ? meta.outputs : [];
+    for (const out of outputs) {
+      if (out && typeof out.kind === "string" && declared.has(out.kind)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +194,22 @@ export function evaluateAutoSkip(
       }
 
       if (!hasChanges) {
+        // P4 — auto-skip requires positive evidence that the node
+        // produced its declared outputs in a previous invocation.
+        // Without it, a fresh feature workspace would trivially skip
+        // any node whose source dirs happen to be empty in the diff.
+        const declared = (node.produces_artifacts ?? []) as ReadonlyArray<string>;
+        const slug = pipelineState?.feature ?? "";
+        if (
+          declared.length > 0 &&
+          slug &&
+          !hasPositiveOutputSignal(appRoot, slug, itemKey, declared)
+        ) {
+          console.log(
+            `  ▶ Running ${itemKey} — git diff is clean but no prior on-disk output for [${declared.join(", ")}] (P4 positive-signal gate)`,
+          );
+          return { skip: null, forceRunChanges };
+        }
         console.log(`  ⏭ Auto-skipping ${itemKey} — no changes in [${node.auto_skip_if_no_changes_in.join(", ")}] since ${devRef.slice(0, 8)}`);
         return {
           skip: {
