@@ -78,6 +78,10 @@ jobs:
         working-directory: tools/autonomous-factory
         run: npm run lint:test
 
+      - name: Cutover guardrail — do-not-delete allowlist
+        working-directory: tools/autonomous-factory
+        run: npm run check:do-not-delete
+
       - name: Temporal integration tests
         working-directory: tools/autonomous-factory
         env:

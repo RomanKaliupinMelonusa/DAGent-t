@@ -17,21 +17,52 @@ After a one-week soak test of Session 4's Temporal path, delete the legacy `Pipe
 
 ---
 
+## Phase 0 — Session 4 Pre-flight Closure (BLOCKERS)
+
+The Session 4 doc lists these as soft gates; in this revision they are hard
+blockers — Session 5 cannot start with any open. Each maps to a known stub or
+deferral in the as-built code (`pipeline.workflow.ts` self-documents most of
+these in its scope-notes header; the rest come from the Session 3 status
+memo).
+
+| # | Gate | Evidence required |
+|---|---|---|
+| P1 | Triage cascade no longer stubbed in `pipeline.workflow.ts` (currently records-but-does-not-route) | Workflow change + integration test that induces a `triage`-decorated failure and asserts the failed node reroutes |
+| P2 | Continue-as-new at >8K events with a state-rehydration helper | Workflow change + replay test against a synthesized 8K-event history <br/>**Status (2026-04-30):** WIRED. `DagState.fromSnapshot()` rehydrates dynamic flags (held / cancelled / cancelReason / batchNumber / cycleCounters / approvals) that `fromState` would lose; `pipelineWorkflow` checks `workflowInfo().historyLength >= continueAsNewHistoryThreshold` (default 8000) at the top of each iteration and calls `continueAsNew` with `priorSnapshot` + `priorAttemptCounts` carried forward. Pending approvals block CAN to keep buffered signals stable. 7 round-trip tests in [dag-state.from-snapshot.test.ts](../../src/temporal/workflow/__tests__/dag-state.from-snapshot.test.ts). Full replay test against a synthesized 8K-event history still requires a Temporal cluster — covered by the integration suite, not unit tests.
+| P3 | Cycle-budget exhaustion path verified end-to-end (`DagState.cycleBudgetExceeded()` is currently a no-op until reducers stamp `errorLog` entries) | Failing-feature integration test that exhausts the budget and asserts `{status: "halted", reason: "redev-cycle-limit"}` <br/>**Status (2026-04-30):** mechanism verified at the workflow-body level by [src/temporal/workflow/__tests__/cycle-budget.test.ts](../../src/temporal/workflow/__tests__/cycle-budget.test.ts) (5 tests; `applyTriageCommand` exported for testability; stale scope-note in `pipeline.workflow.ts` corrected). Full feature-level integration test still pending. |
+| P4 | Admin CLI parity gap closed: `init`, `reset-scripts`, `recover-elevated`, `redevelop-infra` all map to signals (deferred from S4 by D-S4-4) | `src/temporal/client/admin.ts` extension + per-verb tests <br/>**Status (2026-04-30):** mutate-and-return verbs LANDED via Temporal **Updates** (not signals — Updates are the right primitive for "send command + get reducer result back"). New surface: [src/temporal/workflow/updates.ts](../../src/temporal/workflow/updates.ts) (3 update defs), `setHandler` wired in `pipeline.workflow.ts`, [src/temporal/client/admin.ts](../../src/temporal/client/admin.ts) gains `reset-scripts`, `resume-after-elevated`, `recover-elevated` verbs (exit code 2 on `halted=true` for shell-pipeline parity with legacy CLI), parser extracted to [admin-parse.ts](../../src/temporal/client/admin-parse.ts) for testability. 22 new tests (4 update-wire, 18 CLI parser). `init` is intentionally NOT a signal/update — workflow start (`agent:run`) is the Temporal-native equivalent. `recover-dangling` is N/A under Temporal (heartbeats + start-to-close timeouts). `redevelop-infra` not present in legacy CLI either; the doc reference is speculative. |
+| P5 | OTel-emitting `PipelineLogger` adapter wired in worker bootstrap (replaces `NoopPipelineLogger`) | Adapter + smoke test against an OTLP collector <br/>**Status (2026-04-30):** LANDED. New adapter [src/temporal/telemetry/otel-pipeline-logger.ts](../../src/temporal/telemetry/otel-pipeline-logger.ts) implements `PipelineLogger` by emitting each `event(...)` as a span event on the active activity span (the span the `OpenTelemetryPlugin` opens per activity execution). `blob(...)` becomes a `blob:<label>` span event truncated at 8 KB. Worker bootstrap wires it via [logger-factory.ts](../../src/temporal/telemetry/logger-factory.ts) DI slot when `OTLP_ENDPOINT` is set; `buildNodeContext` consults the factory and falls back to `NoopPipelineLogger` when absent (preserves CI activity-smoke behaviour). 12 unit tests in [__tests__/otel-pipeline-logger.test.ts](../../src/temporal/telemetry/__tests__/otel-pipeline-logger.test.ts). Live OTLP-collector smoke test belongs to the soak window — emits to Tempo and asserts span events arrive.
+| P6 | Production worker DI wired: `setTriageDependencies` + `setCopilotAgentDependencies` called at worker startup with real `TriageLlm` (Anthropic) + `CopilotSessionRunner` adapters | Worker bootstrap diff + integration test exercising the live SDK <br/>**Status (2026-04-30):** WIRED in [src/temporal/worker/main.ts](../../src/temporal/worker/main.ts) `wireActivityDependencies()`: gates on `APP_ROOT` + `WORKER_DISABLE_LLM`, lazily imports `CopilotClient` + `CopilotTriageLlm` + `NodeCopilotSessionRunner`, calls both setters before `worker.run()`. Live-SDK integration test runs in `temporal-it.yml` against a real Temporal cluster + Copilot SDK; not reproducible in unit-test scope.
+| P7 | PR equivalence proof committed: reference feature on legacy → byte-identical PR on Temporal | Snapshot fixture + CI test |
+
+If any P-gate is open, Session 5 cannot start. Each P-gate ships as its own
+PR against `main` during the soak window.
+
+---
+
 ## Pre-flight Checks — Mandatory soak window
 
-Before kickoff:
+Before Session 5 task work begins, ALL of the following must hold. The soak
+gate is concrete and numeric, not subjective.
 
+### Hard gates (sign-offable)
+
+- [ ] Phase 0 P1–P7 all closed (PRs merged on `main`)
 - [ ] Session 4 exit criteria all met
-- [ ] **One full calendar week** of soak: ≥10 real features run on Temporal in parallel with legacy, all producing equivalent PRs
+- [ ] **Soak window**: ≥7 calendar days during which:
+  - [ ] ≥10 distinct features completed on Temporal
+  - [ ] 100% PR-byte-equivalence for any feature also replayed on legacy (sample of ≥3 random features)
+  - [ ] 0 unrecovered worker-restart-induced state losses
+  - [ ] ≤1 production OTel-dashboard gap incident, fully RCA'd
 - [ ] Crash-recovery test passes against production Temporal cluster
-- [ ] OTel pipeline stable; no telemetry gaps observed in soak week
-- [ ] Admin CLI feature parity confirmed by operations sign-off
+- [ ] Admin CLI feature parity confirmed by operations sign-off (every legacy `pipeline:*` verb has a `dagent` admin equivalent)
 - [ ] Every legacy operational runbook has a Temporal equivalent merged
-- [ ] All in-flight features on legacy path drained or migrated (see Phase 7 plan below)
-- [ ] Disaster recovery sketch from Session 1 expanded to a runbook
-- [ ] Final go/no-go meeting held with engineering + operations
+- [ ] All in-flight features on legacy path drained (see Phase 7 Group A)
+- [ ] Disaster recovery runbook drafted (full drill is Phase 8 Group J)
+- [ ] **ajv-shim survival check**: fresh `npm ci && npm run lint && npm run temporal:build` is clean (proves `scripts/postinstall-ajv-shim.mjs` is reproducible — see D5-5)
+- [ ] Final go/no-go meeting held with engineering + operations; minutes archived
 
-**This is the irreversible step.** Do not begin Session 5 task work without all checkboxes.
+**This is the irreversible step.** Do not begin Phase 7 task work without all checkboxes.
 
 ---
 
@@ -92,18 +123,48 @@ Group A — Drain in-flight features
 
 Group B — Deletion (each is a separate PR, sequential, reviewable)
 
+> **Correctness note (corrected from original Session 5 draft):** The original
+> draft proposed deleting `src/handlers/` wholesale. That would break the
+> Temporal path: activities still wrap legacy handler bodies through
+> `runActivityChain` and import the entire `src/handlers/middlewares/**` tree
+> via `src/temporal/activities/middleware-chain.ts`. The corrected delete
+> inventory below preserves those modules — see the **do-not-delete
+> allowlist** at the end of this group.
+
 | PR | Files deleted | Verification |
 |---|---|---|
-| PR-1 | `src/kernel/` (entire) | `git grep -E "PipelineKernel\|KernelRules\|ProcessResult" src/` returns zero |
-| PR-2 | `src/loop/` (entire) | `git grep "pipeline-loop\|signal-handler" src/` returns zero |
-| PR-3 | `src/adapters/json-file-state-store.ts`, `src/adapters/file-state/` | `git grep "JsonFileStateStore\|StateStore" src/` returns only port-interface refs (which can be deleted in PR-4) |
-| PR-4 | `src/ports/state-store.ts` (now unused) | `git grep "ports/state-store" src/` returns zero |
-| PR-5 | `src/adapters/subprocess-feature-runner.ts`, `src/entry/supervise.ts`, `src/entry/supervisor.ts` | `git grep "subprocess-feature\|supervise" src/` returns zero |
-| PR-6 | `src/cli/pipeline-state.ts`, legacy `npm run pipeline:*` script entries | `git grep "pipeline-state\.ts" .` returns zero |
-| PR-7 | `src/entry/main.ts`, `src/entry/watchdog.ts` (legacy bootstrap) | Replace with thin wrappers that delegate to `src/temporal/client/run-feature.ts` |
-| PR-8 | `src/handlers/` (entire), `src/handlers/middleware/`, `src/harness/outcome-tool.ts` (now reachable only from activities, retained inside activity scope) | `git grep "handlers/" src/` returns zero outside `activities/` |
-| PR-9 | `src/adapters/jsonl-telemetry.ts` | `git grep "jsonl-telemetry" src/` returns zero |
-| PR-10 | `src/domain/dangling-invocations.ts`, `src/domain/stall-detection.ts` | `git grep "dangling\|stall-detection" src/` returns zero |
+| PR-1 | `src/kernel/` (entire) | `git grep -E "PipelineKernel\|KernelRules\|ProcessResult\|KernelCommand" src/` returns zero outside `kernel/` itself before deletion |
+| PR-2 | `src/loop/` (entire) | `git grep -E "pipeline-loop\|signal-handler" src/` returns zero |
+| PR-3 | `src/adapters/json-file-state-store.ts`, `src/adapters/file-state/`, `src/ports/state-store.ts` | `git grep -E "JsonFileStateStore\|ports/state-store" src/` returns zero (Postgres + Temporal history own state) |
+| PR-4 | `src/adapters/subprocess-feature-runner.ts`, `src/entry/supervise.ts`, `src/entry/supervisor.ts` | `git grep -E "subprocess-feature\|supervise" src/` returns zero (multiple workflow executions replace subprocess multiplexing) |
+| PR-5 | `src/cli/pipeline-state.ts` + legacy `pipeline:*` npm script entries | `git grep "pipeline-state\.ts" .` returns zero (`src/temporal/client/admin.ts` is the new surface; requires P4 closed) |
+| PR-6 | `src/entry/main.ts`, `src/entry/watchdog.ts`, legacy paths in `src/entry/bootstrap.ts` | `npm run agent:run` continues to work — `scripts/run-agent.sh` becomes a thin wrapper invoking `node dist/temporal/client/run-feature.js` (see D5-4) |
+| PR-7 | `src/handlers/approval.ts` **only** | All other handler files survive (activities still wrap them). `git grep "handlers/approval" src/` returns zero |
+| PR-8 | `src/adapters/jsonl-telemetry.ts` and its consumers | `git grep "jsonl-telemetry" src/` returns zero (OTel is the only telemetry path) |
+| PR-9 | `src/domain/dangling-invocations.ts`, `src/domain/stall-detection.ts`, `src/domain/approval-sla.ts` | `git grep -E "dangling-invocations\|stall-detection\|approval-sla" src/` returns zero (replaced by Temporal heartbeats / start-to-close timeouts / signal+sleep races) |
+| PR-10 | Legacy state-store-reading projections under `src/reporting/` (keep Temporal-query-based projections under `src/temporal/reporting/`) | Compile + `npm test` green; new reporting only reads from Temporal queries |
+| PR-11 | Dead handler/middleware barrels and helper modules that re-export legacy `pipeline-loop` integration only | Identified by `git grep` after PRs 1–2 land; per-file justification in PR description |
+
+### Do-not-delete allowlist (lint-enforced before every Group B PR merge)
+
+A CI check (`scripts/check-do-not-delete.mjs`, lands as part of PR-1) asserts
+that each path below still exists at HEAD. The check fails the build if any
+entry is removed; bypass requires an ADR amendment.
+
+- `src/handlers/middleware.ts` (the source — `.js` lives only in `dist/` after build)
+- `src/handlers/middlewares/**` (entire)
+- `src/handlers/local-exec.ts`
+- `src/handlers/github-ci-poll.ts`
+- `src/handlers/copilot-agent.ts`
+- `src/handlers/triage-handler.ts`
+- `src/handlers/types.ts` and shared support modules
+- `src/apm/**`
+- `src/triage/**`
+- `src/harness/**`
+- `src/lifecycle/**`
+- `src/reporting/**` *except* legacy state-store-reading projections explicitly named in PR-10
+- All `src/ports/**` *except* `state-store.ts`
+- All `src/adapters/**` *except* `json-file-state-store.ts`, `file-state/`, `subprocess-feature-runner.ts`, `jsonl-telemetry.ts`
 
 Group C — Documentation overhaul
 
@@ -121,8 +182,10 @@ Group D — In-flight migration
 | # | Task | Files |
 |---|---|---|
 | D1 | Delete `npm run agent:run:detached` legacy fallback (Temporal handles durability natively) | `scripts/run-agent.sh`, `package.json` |
-| D2 | Update `scripts/reset-dagent.sh` to issue Temporal `terminate` calls instead of state-file deletion | `scripts/reset-dagent.sh` |
-| D3 | Update `.github/workflows/agentic-feature.yml` to invoke the new Temporal-based `agent:run` | workflow file |
+| D2 | `scripts/run-agent.sh` becomes a thin shell wrapper invoking `node dist/temporal/client/run-feature.js`, preserving the existing CLI surface (`--app`, `--workflow`, `--spec-file`, `--base-branch`) — operations muscle memory unchanged (D5-4) | `scripts/run-agent.sh` |
+| D3 | Update `scripts/reset-dagent.sh` to issue Temporal `workflow terminate` calls instead of state-file deletion | `scripts/reset-dagent.sh` |
+| D4 | Update `.github/workflows/agentic-feature.yml` to invoke the new Temporal-based `agent:run` | workflow file |
+| D5 | Verify `scripts/postinstall-ajv-shim.mjs` runs in production worker container build (`Dockerfile.worker` must NOT use `--ignore-scripts`); add a CI test that builds the image and boots the worker (D5-5) | `Dockerfile.worker`, `.github/workflows/temporal-it.yml` |
 
 ---
 
@@ -150,23 +213,34 @@ Group F — Multi-tenancy
 
 Group G — Replay testing
 
+> **Correctness note (corrected from original Session 5 draft):** The original
+> draft implied a `TestWorkflowEnvironment`-based runner. That API does NOT
+> work in this workspace — Session 1's webpack/`tsx` resolution conflict (see
+> the Session 1 status memo) breaks in-process worker bundling. The corrected
+> approach uses `Worker.runReplayHistories(bundleOrPath, histories)`, the
+> static replay API, against the **compiled** worker bundle in
+> `dist/temporal/workflow/`. No in-process cluster needed; no devcontainer
+> dependencies bundled.
+
 | # | Task | Files |
 |---|---|---|
-| G1 | Capture production histories: `temporal workflow show --output json` for representative completed workflows | `tools/autonomous-factory/test-fixtures/replay-histories/` |
-| G2 | Replay test runner: `npm run temporal:replay-test <history.json>` runs current code against captured history | `src/temporal/__tests__/replay/runner.ts` |
-| G3 | CI integration: every PR that touches `src/temporal/workflow/` runs replay against all captured histories | `.github/workflows/temporal-replay.yml` |
-| G4 | Documentation: how to capture + add new replay fixtures | `tools/autonomous-factory/docs/temporal-migration/09-replay-testing.md` |
+| G1 | Capture production histories via `temporal workflow show --workflow-id <id> --output json`. Redact via Temporal's `data-converter` codec (see D5-6) before committing fixtures | `tools/autonomous-factory/test-fixtures/replay-histories/<slug>.history.json` |
+| G2 | Replay runner: `npm run temporal:replay <pattern>` loads compiled bundle from `dist/temporal/workflow/` and calls `Worker.runReplayHistories(bundlePath, histories)`. Fails on `DeterminismViolationError`. NO `TestWorkflowEnvironment` dependency | `src/temporal/__tests__/replay/runner.ts` |
+| G3 | CI integration: PR triggers on `src/temporal/workflow/**` change; runs the replay against all committed histories | `.github/workflows/temporal-replay.yml` |
+| G4 | Documentation: how to capture, redact, and add new replay fixtures (including the "compiled-worker only" constraint) | `tools/autonomous-factory/docs/temporal-migration/09-replay-testing.md` |
+| G5 | Seed corpus: ≥5 captured histories committed at session end (mix of happy path, triage cycle, approval gate, cancellation, cycle-budget halt) | as in G1 |
 
 Group H — Worker fleet
 
 | # | Task | Files |
 |---|---|---|
-| H1 | Dockerfile for worker | `tools/autonomous-factory/Dockerfile.worker` |
-| H2 | Health check endpoint (HTTP `/healthz`) — reports SDK connection, last poll | `src/temporal/worker/health.ts` |
+| H1 | Dockerfile for worker. Base: same Node 22 as devcontainer. Build steps: `npm ci` (NOT `--ignore-scripts` — postinstall must run for ajv shim, see D5-5) → `npm run temporal:build` → CMD `node dist/temporal/worker/main.js` | `tools/autonomous-factory/Dockerfile.worker` |
+| H2 | Health check endpoint (HTTP `/healthz`) — liveness probe must verify `Connection.connect()` succeeds before reporting healthy; readiness reports SDK connection + last poll | `src/temporal/worker/health.ts` |
 | H3 | Graceful shutdown: drain in-flight activities, then exit | `src/temporal/worker/main.ts` |
 | H4 | Helm chart for worker fleet | `infra/temporal/helm/worker/` |
 | H5 | HPA policy: scale on Temporal task queue depth metric | `infra/temporal/helm/worker/templates/hpa.yaml` |
 | H6 | Load test: 10 concurrent features, verify horizontal scaling triggers | `tools/autonomous-factory/scripts/load-test.sh` |
+| H7 | Cold-build verification: fresh `docker build -f Dockerfile.worker .` from a clean cache → worker container boots and serves a hello workflow. Proves ajv-shim survives reproducible builds | CI job in `.github/workflows/temporal-it.yml` |
 
 Group I — Observability
 
@@ -182,23 +256,24 @@ Group J — Disaster recovery
 |---|---|---|
 | J1 | Backup policy: Postgres PITR ≥ 7 days; weekly logical dump to cold storage | infra config + doc |
 | J2 | DR runbook: restore Postgres → restart Temporal cluster → reconnect workers → verify in-flight workflows resume | `tools/autonomous-factory/docs/temporal-migration/11-dr-runbook.md` |
-| J3 | **DR drill** — actually perform restore on staging, document any deltas | drill report committed to docs |
+| J3 | **DR drill** — actually perform restore on staging. MUST include cold-restore verification of the ajv-shim and the worker compile step (rebuild image from scratch on the restored host). Document any deltas | drill report committed to docs |
 | J4 | Tabletop exercise: full region failure response | doc |
 
 ---
 
 ## Files Affected
 
-**Deleted (post-cutover):**
+**Deleted (post-cutover) — corrected inventory:**
 - `src/kernel/` (entire)
 - `src/loop/` (entire)
-- `src/handlers/` (entire)
+- `src/handlers/approval.ts` (only — replaced by signal pattern; the rest of `src/handlers/` survives as activity-internal logic, see do-not-delete allowlist)
 - `src/adapters/json-file-state-store.ts`, `src/adapters/file-state/`, `src/adapters/subprocess-feature-runner.ts`, `src/adapters/jsonl-telemetry.ts`
 - `src/cli/pipeline-state.ts`
-- `src/entry/main.ts`, `src/entry/watchdog.ts`, `src/entry/supervise.ts`, `src/entry/supervisor.ts`
+- `src/entry/main.ts`, `src/entry/watchdog.ts`, `src/entry/supervise.ts`, `src/entry/supervisor.ts` (legacy paths in `src/entry/bootstrap.ts` deleted; the file may survive in trimmed form if a Temporal-side caller still uses it)
 - `src/ports/state-store.ts`
-- `src/domain/dangling-invocations.ts`, `src/domain/stall-detection.ts`
-- Several layer READMEs
+- `src/domain/dangling-invocations.ts`, `src/domain/stall-detection.ts`, `src/domain/approval-sla.ts`
+- Legacy state-store-reading projections under `src/reporting/` (selective; non-state-store reporting kept)
+- Several layer READMEs (`src/kernel/README.md`, `src/loop/README.md`, `src/cli/README.md`)
 
 **Created:**
 - `infra/temporal/helm/worker/` (entire)
@@ -216,7 +291,10 @@ Group J — Disaster recovery
 - `tools/autonomous-factory/docs/04-state-machine.md` (rewrite)
 - `tools/autonomous-factory/docs/01-watchdog.md` (rewrite)
 - `.github/workflows/agentic-feature.yml`, `.github/workflows/temporal-replay.yml` (new)
-- `scripts/run-agent.sh`, `scripts/reset-dagent.sh`
+- `.github/workflows/temporal-it.yml` (extend with Dockerfile-cold-build job, H7)
+- `scripts/run-agent.sh` (becomes thin wrapper around `dist/temporal/client/run-feature.js`)
+- `scripts/reset-dagent.sh` (Temporal `workflow terminate` instead of state-file delete)
+- `scripts/check-do-not-delete.mjs` (new — guards the do-not-delete allowlist)
 
 ---
 
@@ -236,16 +314,17 @@ Group J — Disaster recovery
 
 Before declaring "production-ready":
 
-- [ ] All Phase 7 deletions complete; `git grep` confirms zero references to deleted symbols
+- [ ] All Phase 7 deletions complete; `git grep -E "PipelineKernel|JsonFileStateStore|pipeline-loop|subprocess-feature"` returns zero
+- [ ] Do-not-delete allowlist check (`scripts/check-do-not-delete.mjs`) green on every PR
 - [ ] Documentation map fully updated; no broken doc links
 - [ ] Workflow versioning policy in place + tested
 - [ ] Multi-tenancy: namespace/queue convention live; isolation test passes
 - [ ] `SecretsProvider` port + 2 adapters merged
-- [ ] Replay tests in CI; pass against captured histories
-- [ ] Worker Dockerfile + Helm chart deployed to staging
+- [ ] Replay tests in CI via `Worker.runReplayHistories` against ≥5 captured histories
+- [ ] Worker Dockerfile + Helm chart deployed to staging; cold-build (H7) green
 - [ ] Load test (10 concurrent features) passes with HPA scaling
 - [ ] Grafana dashboard live; alerts firing on staging tests
-- [ ] DR drill performed and documented
+- [ ] DR drill performed and documented (incl. ajv-shim cold-restore verification)
 - [ ] On-call runbook reviewed by operations
 - [ ] Engineering + operations sign-off on production readiness
 
@@ -300,3 +379,19 @@ After Session 5 ships:
 - [ ] Security review passed (Temporal cluster access, secrets handling, audit logs)
 - [ ] Compliance review passed (if applicable to deployment env)
 - [ ] Architecture overview doc shareable with external partners
+
+---
+
+## Locked-in Decisions
+
+Resolved during Session 5 planning. Implementing agents must not relitigate.
+
+| # | Decision | Choice | Rationale |
+|---|---|---|---|
+| D5-1 | Physically rename `src/handlers/` → `src/activity-logic/`? | **No** | Activities still depend on it; rename is pure churn that breaks blame. Doc-only relabel suffices. Defer to a post-Session-5 hygiene PR if anyone insists. |
+| D5-2 | Replay testing approach | **`Worker.runReplayHistories` against compiled bundle** | `TestWorkflowEnvironment` is broken in this workspace per Session 1 memory (webpack/`tsx` resolution conflict). The static replay API needs only the compiled bundle and is sufficient for determinism replay. |
+| D5-3 | Soak gate semantics | **Concrete numeric thresholds, OTel-evidence-backed** | "≥10 features" alone is not sign-offable. Numeric gates (≥7 days, ≥10 distinct features, 100% PR-byte-equivalence on ≥3 random samples, 0 unrecovered state losses, ≤1 RCA'd OTel gap) are. |
+| D5-4 | Fate of `npm run agent:run` | **Keep as shell wrapper** | Operations muscle memory preserved. Wrapper invokes `node dist/temporal/client/run-feature.js`. Legacy `--detached` flag removed (Temporal owns durability). |
+| D5-5 | Fate of `scripts/postinstall-ajv-shim.mjs` | **Permanent production infrastructure** | The webpack→`schema-utils`→`ajv-keywords`@v8 vs ESLint v9→`@eslint/eslintrc`→`ajv@v6` conflict (Session 1) does not go away post-cutover. Treat the shim as runbook-grade infra: CI invariant, Dockerfile dependency, runbook entry. NEVER use `npm install --ignore-scripts` in any production build path. |
+| D5-6 | Replay-history secret redaction | **Temporal `data-converter` codec for sensitive fields** | Captured histories may contain spec text and LLM tool-call payloads. Either redact via codec at capture time, or use sandbox-only features for the replay corpus. PII never lands in committed fixtures. |
+| D5-7 | Multi-tenancy timing within Phase 8 | **Group F lands first in Phase 8** | If partner pilots are imminent (Antigravity, Salesforce per principal-architect notes), namespaces + `SecretsProvider` must exist before any partner onboarding. Versioning, replay, worker fleet (Groups E, G, H) follow. |

@@ -51,6 +51,7 @@ import { FileInvocationFilesystem } from "../../../adapters/file-invocation-file
 import { FileInvocationLogger } from "../../../adapters/file-invocation-logger.js";
 import { FileTriageArtifactLoader } from "../../../adapters/file-triage-artifact-loader.js";
 import { NoopPipelineLogger } from "../../../telemetry/noop-logger.js";
+import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
 import type { NodeContext } from "../../../handlers/types.js";
 import type { ApmCompiledOutput } from "../../../apm/types.js";
 import type { StateStore } from "../../../ports/state-store.js";
@@ -180,7 +181,13 @@ export async function buildNodeContext(
   const apmContext = await loadApmContext(input.apmContextPath);
   const filesystem = new LocalFilesystem();
   const shell = new NodeShellAdapter();
-  const logger = options.logger ?? new NoopPipelineLogger();
+  // Logger resolution order:
+  //   1. Caller-supplied `options.logger` (tests / explicit injection).
+  //   2. Worker-installed factory via `setActivityLoggerFactory`
+  //      (production: emits to OTel through `OtelPipelineLogger`).
+  //   3. Fallback NoopPipelineLogger (CI activity smoke without OTel).
+  const factory = getActivityLoggerFactory();
+  const logger = options.logger ?? (factory ? factory() : new NoopPipelineLogger());
 
   const vcs = new GitShellAdapter(input.repoRoot, logger);
   const strictArtifacts = apmContext.config?.strict_artifacts === true;

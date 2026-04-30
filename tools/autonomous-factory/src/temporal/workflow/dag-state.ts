@@ -154,6 +154,35 @@ export class DagState {
     return new DagState(state);
   }
 
+  /**
+   * Rehydrate from a `snapshot()` payload — used by Session 5 P2
+   * continue-as-new to carry full dynamic state (held / cancelled /
+   * batch counter / cycle counters / approvals) across workflow
+   * incarnations. `fromState` would lose these.
+   *
+   * Approvals revive in their persisted state; pending requests
+   * return to `pending` and the workflow body re-installs handlers
+   * before the first await (Temporal ordering rule).
+   */
+  static fromSnapshot(snap: DagSnapshot): DagState {
+    // Inject cycleCounters via the InitialState-shaped path so the
+    // private constructor's `counters ? { ...counters } : {}` branch
+    // copies them. Cast retains structural typing.
+    const seed = {
+      ...snap.state,
+      cycleCounters: snap.cycleCounters,
+    } as unknown as TransitionState;
+    const dag = new DagState(seed);
+    dag.held = snap.held;
+    dag.cancelled = snap.cancelled;
+    dag.cancelReason = snap.cancelReason;
+    dag.batchNumber = snap.batchNumber;
+    for (const a of snap.approvals) {
+      dag.approvals.set(a.gateKey, { ...a });
+    }
+    return dag;
+  }
+
   private constructor(seed: TransitionState | InitialState) {
     // Normalise: the InitialState shape carries `cycleCounters` separately,
     // but TransitionState allows pass-through fields. Treat the inner

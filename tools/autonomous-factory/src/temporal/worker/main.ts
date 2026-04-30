@@ -44,6 +44,8 @@ import { NativeConnection, Worker } from "@temporalio/worker";
 import type { CopilotClient } from "@github/copilot-sdk";
 import * as activities from "../activities/index.js";
 import { bootstrapOtel } from "../telemetry/otel.js";
+import { setActivityLoggerFactory } from "../telemetry/logger-factory.js";
+import { OtelPipelineLogger } from "../telemetry/otel-pipeline-logger.js";
 import {
   setTriageDependencies,
   setCopilotAgentDependencies,
@@ -143,6 +145,12 @@ async function main(): Promise<void> {
     console.log(
       `[worker] otel enabled endpoint=${process.env.OTLP_ENDPOINT}`,
     );
+    // Session 5 P5 — wire the OTel-emitting PipelineLogger so every
+    // existing `ctx.logger.event(...)` call inside an activity becomes
+    // a span event on the activity span the OpenTelemetryPlugin opens.
+    // Factory returns a fresh logger per activity execution so the
+    // per-itemKey attempt counter doesn't leak across executions.
+    setActivityLoggerFactory(() => new OtelPipelineLogger("dagent-worker"));
   }
 
   const connection = await NativeConnection.connect({ address });

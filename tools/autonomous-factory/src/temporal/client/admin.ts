@@ -32,9 +32,9 @@
  * `DEBUG=1`.
  */
 
-import { parseArgs } from "node:util";
 import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import { bootstrapOtel } from "../telemetry/otel.js";
+import { parseAdminArgs } from "./admin-parse.js";
 import {
   holdPipelineSignal,
   resumePipelineSignal,
@@ -48,6 +48,11 @@ import {
   nextBatchQuery,
   summaryQuery,
 } from "../workflow/queries.js";
+import {
+  resetScriptsUpdate,
+  resumeAfterElevatedUpdate,
+  recoverElevatedUpdate,
+} from "../workflow/updates.js";
 
 const VERB_HELP = `\
 Usage: agent:admin:temporal <verb> <slug> [options]
@@ -60,6 +65,14 @@ Verbs:
     approve   <slug> --gate <key>                   — approve an approval gate
     reject    <slug> --gate <key> --reason <s>      — reject an approval gate
 
+  Updates (admin mutate-and-return — Session 5 P4):
+    reset-scripts <slug> --category <c> [--max-cycles N]
+                                                    — reset script nodes for re-push (default max 10)
+    resume-after-elevated <slug> [--max-cycles N]
+                                                    — resume after elevated apply (default max 5)
+    recover-elevated <slug> --error <msg> [--max-fail-count N] [--max-dev-cycles N]
+                                                    — recover after elevated apply failure (defaults 10/5)
+
   Queries:
     status    <slug>                                — full StateSnapshot (JSON)
     progress  <slug>                                — count summary + percent
@@ -67,13 +80,23 @@ Verbs:
     summary   <slug>                                — terminal summary snapshot
 
 Common options:
-  --workflow <name>   Workflow name (default: storefront)
-  --gate <key>        Approval gate key (approve / reject only)
-  --reason <text>     Human reason (cancel / reject only)
+  --workflow <name>      Workflow name (default: storefront)
+  --gate <key>           Approval gate key (approve / reject only)
+  --reason <text>        Human reason (cancel / reject only)
+  --category <c>         Script-node category (reset-scripts only)
+  --error <msg>          Elevated-apply error message (recover-elevated only)
+  --max-cycles N         Cycle budget override (reset-scripts, resume-after-elevated)
+  --max-fail-count N     Fail-count budget override (recover-elevated)
+  --max-dev-cycles N     Dev-cycle budget override (recover-elevated)
 
 Environment:
   TEMPORAL_ADDRESS    Temporal frontend gRPC address (default localhost:7233)
   TEMPORAL_NAMESPACE  Namespace (default default)
+
+Exit codes:
+  0  success
+  1  invocation error or workflow not found
+  2  update succeeded but reducer reports halted=true (cycle budget exhausted)
 `;
 
 function workflowId(slug: string, workflowName: string): string {
@@ -91,33 +114,20 @@ interface ParsedArgs {
   readonly workflowName: string;
   readonly gate?: string;
   readonly reason?: string;
+  readonly category?: string;
+  readonly error?: string;
+  readonly maxCycles?: number;
+  readonly maxFailCount?: number;
+  readonly maxDevCycles?: number;
 }
 
 function parse(argv: readonly string[]): ParsedArgs {
-  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
+  const result = parseAdminArgs(argv, fail);
+  if (result === null) {
     console.log(VERB_HELP);
     process.exit(0);
   }
-  const [verb, ...rest] = argv;
-  const { values, positionals } = parseArgs({
-    args: rest as string[],
-    options: {
-      workflow: { type: "string", default: "storefront" },
-      gate: { type: "string" },
-      reason: { type: "string" },
-    },
-    allowPositionals: true,
-    strict: true,
-  });
-  const slug = positionals[0];
-  if (!slug) fail(`verb '${verb}' requires <slug> as positional argument`);
-  return {
-    verb,
-    slug,
-    workflowName: values.workflow as string,
-    ...(values.gate ? { gate: values.gate as string } : {}),
-    ...(values.reason ? { reason: values.reason as string } : {}),
-  };
+  return result;
 }
 
 async function withClient<T>(
@@ -199,8 +209,49 @@ async function main(): Promise<void> {
           break;
         case "summary":
           printJson(await handle.query(summaryQuery));
+          break;        // ─── Updates (admin mutate-and-return) ─────────────────────
+        // Each prints `{halted, cycleCount, ...}` JSON to stdout. Exit
+        // code 2 when `halted=true` so operators can pipe into
+        // shell-style error handling without parsing JSON.
+        case "reset-scripts": {
+          if (!args.category) fail("reset-scripts requires --category <c>");
+          const result = await handle.executeUpdate(resetScriptsUpdate, {
+            args: [
+              {
+                category: args.category as string,
+                ...(args.maxCycles !== undefined ? { maxCycles: args.maxCycles } : {}),
+              },
+            ],
+          });
+          printJson(result);
+          if (result.halted) process.exit(2);
           break;
-        default:
+        }
+        case "resume-after-elevated": {
+          const result = await handle.executeUpdate(resumeAfterElevatedUpdate, {
+            args: [
+              args.maxCycles !== undefined ? { maxCycles: args.maxCycles } : {},
+            ],
+          });
+          printJson(result);
+          if (result.halted) process.exit(2);
+          break;
+        }
+        case "recover-elevated": {
+          if (!args.error) fail("recover-elevated requires --error <msg>");
+          const result = await handle.executeUpdate(recoverElevatedUpdate, {
+            args: [
+              {
+                errorMessage: args.error as string,
+                ...(args.maxFailCount !== undefined ? { maxFailCount: args.maxFailCount } : {}),
+                ...(args.maxDevCycles !== undefined ? { maxDevCycles: args.maxDevCycles } : {}),
+              },
+            ],
+          });
+          printJson(result);
+          if (result.halted) process.exit(2);
+          break;
+        }        default:
           fail(`unknown verb '${args.verb}'. Run with --help for usage.`);
       }
     } catch (err) {

@@ -29,15 +29,22 @@
  *   - All UUIDs come from `Workflow.uuid4()`.
  *   - No `Date`, no `Math.random`, no `node:*`, no adapters.
  *
- * Scope notes (Session 4 MVP):
- *   - Triage cascade: stubbed in this skeleton — failed items with
- *     `on_failure.triage` are recorded but not yet rerouted to a triage
- *     activity. Group B6 will land that as a follow-up commit before the
- *     S4 exit gate.
- *   - Continue-as-new at >8K events: stubbed; rehydration helper coming.
- *   - Cycle-budget halt: relies on `DagState.cycleBudgetExceeded()`
- *     which is a no-op until reducers stamp errorLog entries; full
- *     wiring lands with the triage cascade.
+ * Scope notes:
+ *   - Triage cascade: WIRED. Newly-failed items with `on_failure.triage`
+ *     dispatch the triage activity in parallel; returned commands are
+ *     applied serially via `applyTriageCommand`. See `runTriageCascade`
+ *     below.
+ *   - Cycle-budget halt: WIRED. `applyResetNodes` halts when the
+ *     `errorLog` count for `logKey` reaches `maxCycles`; halt reason
+ *     bubbles up from `applyTriageCommand` → `runTriageCascade` → the
+ *     main loop, which sets `finalStatus = "halted"` and `finalReason =
+ *     "triage-halt: ..."`. Verified by
+ *     [__tests__/cycle-budget.test.ts](./__tests__/cycle-budget.test.ts).
+ *   - Continue-as-new at >8K events: WIRED. Top-of-loop check on
+ *     `workflowInfo().historyLength` triggers `continueAsNew` with a
+ *     `priorSnapshot` + `priorAttemptCounts` rehydration payload.
+ *     Pending approvals block CAN to keep signal handlers stable.
+ *     See [__tests__/continue-as-new.test.ts](./__tests__/continue-as-new.test.ts).
  *
  * The skeleton compiles, runs against the local Temporal cluster, and
  * exercises the success path end-to-end. Failure paths fall through to
@@ -50,11 +57,13 @@ import {
   condition,
   setHandler,
   workflowInfo,
+  continueAsNew,
   CancelledFailure,
   isCancellation,
 } from "@temporalio/workflow";
 import { getNowMs } from "./clock.js";
 import { DagState } from "./dag-state.js";
+import type { DagSnapshot } from "./dag-state.js";
 import {
   installApprovalRegistry,
   awaitApproval,
@@ -75,6 +84,11 @@ import {
   type NextBatchItem,
   type SummarySnapshot,
 } from "./queries.js";
+import {
+  resetScriptsUpdate,
+  resumeAfterElevatedUpdate,
+  recoverElevatedUpdate,
+} from "./updates.js";
 import { formatIsoFromMs } from "./iso-time.js";
 import {
   dispatchNodeActivity,
@@ -154,6 +168,27 @@ export interface PipelineInput {
   /** Workflow start time (ms since epoch). Captured at client side and
    *  passed in so the workflow's `started` ISO is stable. */
   readonly startedMs: number;
+  /**
+   * Session 5 P2 — when present, the workflow rehydrates from this
+   * `DagState.snapshot()` payload instead of `fromInit`. Set by
+   * continueAsNew to carry full dynamic state (held / cancelled /
+   * approvals / cycleCounters / batchNumber) across incarnations.
+   * Production clients leave this undefined.
+   */
+  readonly priorSnapshot?: DagSnapshot;
+  /**
+   * Per-itemKey attempt counter at the moment continueAsNew fired.
+   * Carried so the new incarnation's `attempt = (counts.get(k) ?? 0) + 1`
+   * arithmetic stays monotonic across incarnations.
+   */
+  readonly priorAttemptCounts?: Readonly<Record<string, number>>;
+  /**
+   * Override for the history-length threshold that triggers
+   * continueAsNew. Default 8000. Tests use a tiny number to exercise
+   * the path without growing the history; production leaves it
+   * undefined.
+   */
+  readonly continueAsNewHistoryThreshold?: number;
 }
 
 export type PipelineFinalStatus =
@@ -416,8 +451,14 @@ function buildTriageActivityInput(
  *                         indexer activity; deferred).
  *   - `note-triage-blocked` → no-op (advisory; not required for MVP
  *                         routing correctness).
+ *
+ * Exported (in addition to being used inside `pipelineWorkflow`) so
+ * unit tests can exercise the cycle-budget halt-reason emission
+ * without booting a workflow runtime. The function is pure aside from
+ * the in-place `DagState` mutation and is safe to call outside
+ * workflow context.
  */
-function applyTriageCommand(
+export function applyTriageCommand(
   cmd: DagCommand,
   dag: DagState,
   nowIso: string,
@@ -547,15 +588,19 @@ async function runTriageCascade(
 
 export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineResult> {
   const startedIso = formatIsoFromMs(input.startedMs);
-  const dag = DagState.fromInit({
-    feature: input.slug,
-    workflowName: input.workflowName,
-    started: startedIso,
-    // The PipelineNodeSpec/CompiledNode delta is read-only-ness on
-    // optional array fields; the structurally compatible cast is safe
-    // (DagState only reads, never mutates the arrays).
-    nodes: input.nodes as unknown as Parameters<typeof DagState.fromInit>[0]["nodes"],
-  });
+  // Session 5 P2 — rehydrate from a prior snapshot when the workflow
+  // was just continued-as-new; otherwise build fresh from compiled nodes.
+  const dag = input.priorSnapshot
+    ? DagState.fromSnapshot(input.priorSnapshot)
+    : DagState.fromInit({
+        feature: input.slug,
+        workflowName: input.workflowName,
+        started: startedIso,
+        // The PipelineNodeSpec/CompiledNode delta is read-only-ness on
+        // optional array fields; the structurally compatible cast is safe
+        // (DagState only reads, never mutates the arrays).
+        nodes: input.nodes as unknown as Parameters<typeof DagState.fromInit>[0]["nodes"],
+      });
 
   // Project the input into the shape `domain/failure-routing.ts` expects
   // (`RoutableWorkflow`). Cheap to build once at workflow start; pure
@@ -587,18 +632,71 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
   setHandler(nextBatchQuery, () => projectNextBatch(dag));
   setHandler(summaryQuery, () => projectSummary(dag, input, startedIso));
 
-  // Per-item attempt counter — workflow-local; resets on continue-as-new.
-  const attemptCounts = new Map<string, number>();
+  // Admin updates (Session 5 P4) — mutate-and-return primitives that
+  // replace the legacy `npm run pipeline:reset-scripts/resume/recover-elevated`
+  // CLI verbs. Each delegates straight to the existing `DagState.applyXxx`
+  // reducer and returns its `{halted, cycleCount, ...}` result so the
+  // CLI can print operator-facing feedback. Handlers stamp `nowIso`
+  // from the deterministic workflow clock; reducers themselves are pure.
+  setHandler(resetScriptsUpdate, (args) => {
+    const nowIso = formatIsoFromMs(getNowMs());
+    return dag.applyResetScripts(args.category, nowIso, args.maxCycles);
+  });
+  setHandler(resumeAfterElevatedUpdate, (args) => {
+    const nowIso = formatIsoFromMs(getNowMs());
+    return dag.applyResumeAfterElevated(nowIso, args.maxCycles);
+  });
+  setHandler(recoverElevatedUpdate, (args) => {
+    const nowIso = formatIsoFromMs(getNowMs());
+    return dag.applyRecoverElevated(
+      args.errorMessage,
+      nowIso,
+      args.maxFailCount,
+      args.maxDevCycles,
+    );
+  });
+
+  // Per-item attempt counter — workflow-local; survives continue-as-new
+  // when the client passes `priorAttemptCounts` on the new incarnation
+  // (Session 5 P2). Without that hand-off, attempt numbers would reset
+  // mid-feature and downstream telemetry would lose monotonicity.
+  const attemptCounts = new Map<string, number>(
+    input.priorAttemptCounts ? Object.entries(input.priorAttemptCounts) : [],
+  );
   // Safety valve — same magnitude as legacy `policy.max_iterations`. The
   // DAG itself bounds iterations, but a misconfigured DAG that loops on
   // `blocked` would otherwise spin forever.
   const maxIterations = 500;
+
+  // Session 5 P2 — continue-as-new threshold. Temporal's documented
+  // soft cap is ~10K events / ~50 MB; we trigger well below at 8K to
+  // give a margin for in-flight activities to finish without crossing
+  // the hard cap. Tests can lower this via `continueAsNewHistoryThreshold`.
+  const canThreshold = input.continueAsNewHistoryThreshold ?? 8000;
 
   let finalStatus: PipelineFinalStatus = "halted";
   let finalReason = "unspecified";
 
   try {
     for (let i = 0; i < maxIterations; i++) {
+      // (a0) Continue-as-new gate. Checked at the top of each
+      //      iteration so we never pre-empt a partially-applied batch.
+      //      Pending approvals block CAN — handlers can't be re-bound
+      //      mid-flight without losing buffered signals; we wait for
+      //      the gate to resolve in this incarnation.
+      if (
+        workflowInfo().historyLength >= canThreshold &&
+        !dag.hasPendingApproval()
+      ) {
+        const continueInput: PipelineInput = {
+          ...input,
+          priorSnapshot: dag.snapshot(),
+          priorAttemptCounts: Object.fromEntries(attemptCounts),
+        };
+        // continueAsNew never returns; throws ContinueAsNew internally.
+        await continueAsNew<typeof pipelineWorkflow>(continueInput);
+      }
+
       // (a) Hold gate. Cancellation is checked alongside so a cancel
       //     during hold unblocks the loop.
       await condition(() => !dag.isHeld() || dag.isCancelled());
