@@ -1,5 +1,7 @@
 # Autonomous Factory — Engine Architecture
 
+> Note: this README has stale content; see [docs/architecture.md](docs/architecture.md) for current reality. Full rewrite tracked separately.
+>
 > The orchestration engine that drives the agentic pipeline. This document is the **single source of truth for how the engine is structured**: layers, paradigm, data flow, extension points, and rough edges.
 >
 > Audience: senior engineers wanting to understand, modify, or extend the engine. For a user-facing tour of the platform see the [repo README](../../README.md). For operational runbook (CI secrets, ChatOps, commands) see [.github/AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md).

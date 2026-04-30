@@ -1,5 +1,7 @@
 # DAGent — Deterministic Agentic Coding Pipeline
 
+> Note: this README has stale content; see [tools/autonomous-factory/docs/architecture.md](tools/autonomous-factory/docs/architecture.md) for current reality. Full rewrite tracked separately.
+
 Write a spec. Get a tested Pull Request.
 
 DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents hand off through a dependency-aware state machine with self-healing recovery, real browser testing, and CI/CD integration — zero human interaction between spec and code review.
