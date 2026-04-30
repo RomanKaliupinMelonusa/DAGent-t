@@ -1,5 +1,8 @@
 # `src/ports/` — Hexagonal Interface Contracts
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > Interfaces only. No code. Every I/O boundary the engine crosses is declared here.
 
 ## Role in the architecture

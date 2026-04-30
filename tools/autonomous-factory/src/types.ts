@@ -1,9 +1,7 @@
 /**
  * types.ts — Shared TypeScript interfaces for the orchestrator.
  *
- * These types mirror the runtime shapes produced by the JsonFileStateStore
- * adapter (src/adapters/json-file-state-store.ts) and consumed by the
- * kernel, loop, and handlers.
+ * Runtime shapes consumed by activities and helpers under `src/`.
  */
 
 // ---------------------------------------------------------------------------

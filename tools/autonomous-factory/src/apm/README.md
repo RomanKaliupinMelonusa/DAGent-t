@@ -1,5 +1,8 @@
 # `src/apm/` — Agent Persona Manifest Compiler & Context Loader
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > Compiles `.apm/apm.yml` + instruction fragments + MCP/skill declarations into a validated, per-agent system prompt. Every agent's rules come from here.
 
 ## Role in the architecture

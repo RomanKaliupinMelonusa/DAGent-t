@@ -1,11 +1,8 @@
 /**
  * src/workflow/signals.ts — Workflow signal definitions.
  *
- * Signals are the Temporal-native replacement for the legacy
- * `signal: "approval-pending"` flag returned by
- * [src/handlers/approval.ts](../../handlers/approval.ts) and the
- * out-of-band `npm run pipeline:complete <slug> <gate>` ChatOps verb
- * documented in
+ * Signals carry approval and lifecycle events into the workflow from the
+ * `dagent-admin` Temporal client and from
  * [.github/workflows/elevated-infra-deploy.yml](../../../.github/workflows/elevated-infra-deploy.yml).
  *
  * Wire model (Session 6 will dispatch these from the CLI / GitHub Actions):

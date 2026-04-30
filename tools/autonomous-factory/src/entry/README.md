@@ -1,5 +1,8 @@
 # `src/entry/` — Composition Root & Bootstrap
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > The only place where adapters are constructed and wired. Every other layer depends on ports, not concretions.
 
 ## Role in the architecture

@@ -27,7 +27,7 @@
 #       dagent/worker:<tag>
 #
 # Environment variables consumed by the worker
-# (defaults documented in src/temporal/worker/main.ts):
+# (defaults documented in src/worker/main.ts):
 #   TEMPORAL_ADDRESS    — Temporal frontend gRPC address (default localhost:7233)
 #   TEMPORAL_TASK_QUEUE — Task queue this worker polls (default dagent-hello)
 #   TEMPORAL_NAMESPACE  — Temporal namespace (default default)

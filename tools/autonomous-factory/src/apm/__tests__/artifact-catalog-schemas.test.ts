@@ -289,7 +289,7 @@ const VALID_DEBUG_NOTES_ENVELOPE = [
   "producedAt: 2026-04-23T12:34:56Z",
   "rootCause: race in foo()",
   "touchedFiles:",
-  "  - src/handlers/foo.ts",
+  "  - src/activities/foo.ts",
   "---",
   "",
   "Debug body goes here.",

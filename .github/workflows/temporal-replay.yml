@@ -2,7 +2,7 @@
 # Temporal Replay Tests — Session 5 P2
 # =============================================================================
 # Replays committed workflow histories against the compiled
-# `dist/temporal/workflow/` bundle. A `DeterminismViolationError` raised
+# `dist/workflow/` bundle. A `DeterminismViolationError` raised
 # during replay fails the build — preventing workflow code changes that
 # break compatibility with already-running production executions.
 #
@@ -21,8 +21,8 @@ on:
     branches:
       - main
     paths:
-      - 'tools/autonomous-factory/src/temporal/workflow/**'
-      - 'tools/autonomous-factory/src/temporal/__tests__/replay/**'
+      - 'tools/autonomous-factory/src/workflow/**'
+      - 'tools/autonomous-factory/src/__tests__/replay/**'
       - 'tools/autonomous-factory/scripts/synth-replay-history.mjs'
       - 'tools/autonomous-factory/package.json'
       - 'tools/autonomous-factory/package-lock.json'

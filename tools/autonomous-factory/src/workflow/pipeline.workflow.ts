@@ -1,9 +1,8 @@
 /**
  * src/workflow/pipeline.workflow.ts — Full pipeline workflow body.
  *
- * Replaces [src/loop/pipeline-loop.ts](../../loop/pipeline-loop.ts) for
- * Temporal-backed runs. Composes the Phase 3 activities (`local-exec`,
- * `github-ci-poll`, `triage`, `copilot-agent`) with the Phase 3 approval
+ * Composes the Phase 3 activities (`local-exec`,
+ * `github-ci-poll`, `triage`, `copilot-agent`) with the approval
  * pattern around a `DagState` instance to walk the DAG to completion.
  *
  * Workflow lifecycle (one `pipelineWorkflow` execution per feature):

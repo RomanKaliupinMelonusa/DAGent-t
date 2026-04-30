@@ -7,11 +7,11 @@
  * success path — `getAgentConfig` / `buildTaskPrompt` / harness limits
  * resolution all expect a fully-compiled APM context with agent
  * declarations, MCP servers, and freshness metadata. Standing that up
- * would duplicate the legacy `src/handlers/__tests__/copilot-agent.*`
- * suites without testing anything new about the activity boundary.
+ * would duplicate the underlying body's full agent-success suites
+ * without testing anything new about the activity boundary.
  *
  * What we DO verify:
- *   1. Without DI wired, the legacy handler's `ctx.client` guard
+ *   1. Without DI wired, the underlying body's `ctx.client` guard
  *      fires — the activity surfaces `outcome: "error"` with the
  *      stable BUG message. Proves the no-DI default is loud, not
  *      silent.

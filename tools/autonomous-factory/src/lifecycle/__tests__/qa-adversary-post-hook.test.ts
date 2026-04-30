@@ -80,9 +80,9 @@ function setupRepo(): { repoRoot: string; appRoot: string } {
 }
 
 function runHook(repoRoot: string): { stdout: string; stderr: string } {
-  // Mirror the env vars the lifecycle-hooks middleware injects:
+  // Mirror the env vars lifecycle hooks expect:
   // APP_ROOT / REPO_ROOT are ABSOLUTE; hook cwd == ctx.appRoot.
-  // (See tools/autonomous-factory/src/handlers/middlewares/lifecycle-hooks.ts
+  // (See tools/autonomous-factory/src/lifecycle/hooks.ts
   //  and tools/autonomous-factory/src/entry/cli.ts.)
   const appRootAbs = path.join(repoRoot, "apps", "commerce-storefront");
   const env = {

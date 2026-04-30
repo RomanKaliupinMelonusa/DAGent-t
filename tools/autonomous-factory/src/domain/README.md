@@ -1,5 +1,8 @@
 # `src/domain/` — Pure Domain Logic
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > Pure functions. No I/O. No side effects. All the math behind the DAG lives here.
 
 ## Role in the architecture

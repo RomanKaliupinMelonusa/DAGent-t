@@ -23,9 +23,9 @@ import { fileURLToPath } from "node:url";
 import { compileApm } from "../src/apm/compiler.js";
 import { compileVolatilePatterns, DEFAULT_VOLATILE_PATTERNS } from "../src/domain/index.js";
 
-// Inlined from the deleted src/handlers/registry.ts. Resolves a workflow
-// node's handler reference (built-in key or "./local-path") for static
-// validation only — runtime dispatch is handled by Temporal activities.
+// Resolves a workflow node's handler reference (built-in key or
+// "./local-path") for static validation only — runtime dispatch is handled
+// by Temporal activities.
 const BUILTIN_INFERENCE: Record<string, string> = {
   "agent": "copilot-agent",
   "script:poll": "github-ci-poll",

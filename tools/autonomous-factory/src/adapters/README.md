@@ -1,5 +1,8 @@
 # `src/adapters/` — I/O Concretions
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > Every adapter implements a [port](../ports/README.md). Every file in this folder is allowed to do I/O; nothing outside this folder is.
 
 ## Role in the architecture

@@ -45,8 +45,8 @@ pkill -f '\.cache/ms-playwright/.*/(chrome|headless_shell)(\s|$)' 2>/dev/null ||
 rm -rf /tmp/.org.chromium.Chromium.* 2>/dev/null || true
 
 # ─── QA-adversary transient artefacts ───────────────────────────────────
-# The orchestrator's lifecycle middleware passes APP_ROOT and REPO_ROOT
-# as ABSOLUTE paths (see src/handlers/middlewares/lifecycle-hooks.ts:
+# The orchestrator's lifecycle hooks runner passes APP_ROOT and REPO_ROOT
+# as ABSOLUTE paths (see src/lifecycle/hooks.ts:
 # `APP_ROOT: ctx.appRoot, REPO_ROOT: ctx.repoRoot`, both resolved by
 # entry/cli.ts via path.resolve). cwd at hook entry == APP_ROOT.
 REPO_ROOT_ABS="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"

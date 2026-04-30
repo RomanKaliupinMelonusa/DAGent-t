@@ -1,5 +1,8 @@
 # `src/triage/` — 2-Layer Failure Classifier
 
+> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+
+
 > When a post-deploy test fails, this layer decides which agents to re-wake and with what evidence.
 
 ## Role in the architecture

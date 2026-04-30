@@ -7,7 +7,7 @@
  * git-based checks.
  *
  * Uses Node.js built-in test runner (node:test).
- * Run: npx tsx src/handlers/support/__tests__/auto-skip-evaluator.test.ts
+ * Run: npx tsx src/activity-lib/__tests__/auto-skip-evaluator.test.ts
  */
 
 import { describe, it } from "node:test";

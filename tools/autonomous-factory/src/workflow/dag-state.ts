@@ -1,11 +1,9 @@
 /**
- * temporal/workflow/dag-state.ts — Workflow-local DAG state façade.
+ * src/workflow/dag-state.ts — Workflow-local DAG state façade.
  *
  * Encapsulates the in-workflow pipeline state and the reducer surface the
- * workflow body calls to drive it. Replaces the legacy
- * `PipelineKernel` + `KernelRules` + `applyAdminCommand` triplet with a
- * single class whose method names map 1:1 to the discrete state transitions
- * the workflow performs.
+ * workflow body calls to drive it. Methods on this class map 1:1 to the
+ * discrete state transitions the workflow performs.
  *
  * Determinism contract — every method that emits an `errorLog` entry
  * requires a `now: string` parameter (ISO-8601). The workflow body sources

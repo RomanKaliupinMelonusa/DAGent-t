@@ -52,7 +52,7 @@
  * - It does not own `report_outcome` validation — that's the harness
  *   tool's job, fed via the runner's `precompletionGate`.
  * - It does not own no-op-dev detection — that's still inside the
- *   legacy handler (and tested in `src/handlers/__tests__/`).
+ *   underlying body and its dedicated tests.
  * - It does not own change-manifest writing — that's a side effect
  *   of the handler against `ctx.vcs` / `ctx.filesystem`, kept
  *   verbatim through the middleware chain.

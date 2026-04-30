@@ -1,7 +1,9 @@
 # Agentic Coding Workflow
 
 > Operational hub for the DAG-based feature-branch agent pipeline.
-> Detailed architecture lives in [`tools/autonomous-factory/docs/`](../tools/autonomous-factory/docs/) — this file provides configuration, commands, and operational reference.
+> Detailed architecture lives in [`tools/autonomous-factory/docs/architecture.md`](../tools/autonomous-factory/docs/architecture.md) — this file provides configuration, commands, and operational reference.
+>
+> Note: portions of this file describe orchestrator structure that has shifted to a Temporal-based engine; refer to the architecture doc above for current code paths. Full rewrite tracked separately.
 
 ---
 
@@ -26,7 +28,7 @@
 
 ## Overview
 
-This project uses a **DAG-based feature-branch pipeline** for autonomous feature implementation. A deterministic TypeScript orchestrator (`tools/autonomous-factory/src/entry/watchdog.ts` + supporting modules) drives the pipeline — reading state, spinning up `@github/copilot-sdk` sessions per specialist task, and advancing through phases until the feature is complete. Independent items within each phase run in parallel.
+This project uses a **DAG-based feature-branch pipeline** for autonomous feature implementation. A Temporal-backed TypeScript orchestrator (`tools/autonomous-factory/src/client/run-feature.ts` plus the workflow + activities under `src/workflow/` and `src/activities/`) drives the pipeline — advancing the workflow's `DagState`, spinning up `@github/copilot-sdk` sessions per specialist task, and walking the DAG to completion. Independent items within each phase run in parallel.
 
 **Key design principles:**
 

@@ -10,7 +10,7 @@
  *     current timestamp, and the policy — whether the loop should exit with
  *     `idle-timeout` or `failure-budget`.
  *
- * Pure — no I/O, no mutation. Consumed by `loop/pipeline-loop.ts`.
+ * Pure — no I/O, no mutation. Consumed by `src/workflow/pipeline.workflow.ts`.
  */
 
 /** Minimal item shape: only the status field is consulted. */
