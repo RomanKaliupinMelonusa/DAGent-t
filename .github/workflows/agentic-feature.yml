@@ -9,7 +9,7 @@
 #   2. GitHub Secret: COPILOT_PAT (PAT with copilot scope for SDK auth)
 #
 # References:
-#   - tools/autonomous-factory/src/entry/watchdog.ts
+#   - tools/autonomous-factory/src/client/run-feature.ts
 # =============================================================================
 
 name: Agentic Feature Pipeline
@@ -80,24 +80,13 @@ jobs:
         env:
           BASE_BRANCH: ${{ inputs.base-branch }}
 
-      - name: Initialize pipeline
-        run: |
-          STATE_FILE="${{ inputs.app-path }}/.dagent/${{ inputs.feature-slug }}_STATE.json"
-          if [ -f "$STATE_FILE" ]; then
-            echo "✔ Pipeline state already exists — preserving existing state"
-          else
-            npm run pipeline:init ${{ inputs.feature-slug }} "${{ inputs.workflow-name }}"
-          fi
-        env:
-          APP_ROOT: ${{ inputs.app-path }}
-
       - name: Authenticate Copilot SDK
         run: gh auth login --with-token <<< "${{ secrets.COPILOT_PAT }}"
         env:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
 
       - name: Run Agentic Pipeline
-        run: npm run agent:run -- --app ${{ inputs.app-path }} ${{ inputs.feature-slug }}
+        run: npm run agent:run -- --app ${{ inputs.app-path }} --workflow ${{ inputs.workflow-name }} ${{ inputs.feature-slug }}
         env:
           POLL_MAX_RETRIES: "60"
           BASE_BRANCH: ${{ inputs.base-branch }}
