@@ -91,7 +91,10 @@ function deterministicWorkflowId(slug: string, workflowName: string): string {
 }
 
 async function main(): Promise<void> {
-  const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+  // dirname for the compiled file:
+  //   <repo>/tools/autonomous-factory/dist/client/run-feature.js
+  // 4 levels up == repo root.
+  const repoRoot = path.resolve(import.meta.dirname, "../../../..");
   const cli = parseCli(process.argv.slice(2), repoRoot);
   const { config } = await bootstrap(cli);
 
