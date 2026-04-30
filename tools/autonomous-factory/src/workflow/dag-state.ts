@@ -367,8 +367,12 @@ export class DagState {
 
   /** Frozen, JSON-serializable snapshot for query handlers / persistence. */
   snapshot(): DagSnapshot {
+    // `structuredClone` is not exposed inside Temporal's isolated workflow
+    // VM. The state is JSON-serializable by contract (it round-trips through
+    // workflow history on every checkpoint), so a JSON deep-clone is both
+    // sufficient and deterministic.
     return Object.freeze({
-      state: structuredClone(this.state),
+      state: JSON.parse(JSON.stringify(this.state)) as TransitionState,
       cycleCounters: { ...this.cycleCounters },
       approvals: Array.from(this.approvals.values()).map((a) => ({ ...a })),
       held: this.held,
