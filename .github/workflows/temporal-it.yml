@@ -5,8 +5,8 @@
 # specific test suite from tools/autonomous-factory.
 #
 # Trigger is paths-filtered to keep CI minutes bounded — only fires when
-# code under src/temporal/** or infra/temporal/** changes, plus the workflow
-# file itself.
+# orchestrator code (workflow/activities/worker/client) or infra/temporal/**
+# changes, plus the workflow file itself.
 # =============================================================================
 
 name: Temporal Integration
@@ -20,7 +20,7 @@ on:
     branches:
       - main
     paths:
-      - 'tools/autonomous-factory/src/temporal/**'
+      - 'tools/autonomous-factory/src/{workflow,activities,worker,client}/**'
       - 'tools/autonomous-factory/package.json'
       - 'tools/autonomous-factory/package-lock.json'
       - 'tools/autonomous-factory/eslint.config.js'
