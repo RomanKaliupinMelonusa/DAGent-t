@@ -12,5 +12,14 @@
       "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/_kickoff/spec.md"
     }
   ],
-  "outputs": []
+  "outputs": [
+    {
+      "kind": "acceptance",
+      "scope": "node",
+      "slug": "quick-view-new",
+      "nodeKey": "spec-compiler",
+      "invocationId": "inv_9A027F1191055D7C6AAAF5A773",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/outputs/acceptance.yml"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-30T19:16:25.204Z",
+  "generatedAt": "2026-04-30T19:16:32.548Z",
   "featureSlug": "quick-view-new",
   "items": [
     {
@@ -64,26 +64,38 @@
           "command": "python3 -c \" ↵ import yaml ↵ with open('/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/outputs/acceptance.yml') as f: ↵ data = yaml.s",
           "timestamp": "2026-04-30T19:16:19.601Z",
           "isPipelineOp": false
+        },
+        {
+          "command": "cd /workspaces/DAGent-t && bash tools/autonomous-factory/agent-commit.sh pipeline \"chore(spec): compile acceptance contract for quick-view-new\"",
+          "timestamp": "2026-04-30T19:16:25.206Z",
+          "isPipelineOp": true
         }
       ],
       "toolCounts": {
         "intent": 1,
         "file-read": 7,
-        "shell": 9,
+        "shell": 10,
         "create": 2,
-        "edit": 2
+        "edit": 2,
+        "outcome": 1
       },
       "messages": [
         "Now let me read the full spec and the baseline:",
         "Now let me read the baseline:",
         "Now I have everything I need. Let me write the acceptance contract:",
         "Now let me verify the file was written correctly:",
-        "The YAML issue is with the quoted description on line 45. Let me fix it:"
+        "The YAML issue is with the quoted description on line 45. Let me fix it:",
+        "The YAML is valid. Now let me commit:",
+        "The acceptance contract has been compiled and committed successfully. Let me finalize:"
       ],
-      "inputTokens": 486223,
-      "outputTokens": 10428,
-      "cacheReadTokens": 446285,
-      "cacheWriteTokens": 0
+      "inputTokens": 565955,
+      "outputTokens": 10499,
+      "cacheReadTokens": 525303,
+      "cacheWriteTokens": 0,
+      "reportedOutcome": {
+        "status": "completed"
+      },
+      "reportOutcomeTerminal": true
     }
   ]
 }

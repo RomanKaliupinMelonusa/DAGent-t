@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "triage-storefront",
+  "producedAt": "2026-04-30T19:17:13.151Z",
+  "failingItem": "baseline-analyzer",
+  "errorExcerpt": "Missing required upstream input on node \"baseline-analyzer\": kind=\"acceptance\" (from=\"spec-compiler\")",
+  "errorSignature": "240a8bda",
+  "triageDomain": "test-data",
+  "triageReason": "The spec-compiler failed to emit the required acceptance contract artifact needed by the baseline-analyzer, indicating the test fixture/acceptance configuration is misconfigured for the current pipeline run.",
+  "priorAttemptCount": 0,
+  "degraded": true,
+  "triageInvocationId": "inv_825C97EC99714EBCF64E9DFE99"
+}
