@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
-import { newInvocationId } from "../kernel/invocation-id.js";
+import { newInvocationId } from "../domain/invocation-id.js";
 import type { InvocationRecord } from "../types.js";
 
 describe("Phase 2 — outputs land in <inv>/outputs/", () => {

@@ -34,7 +34,6 @@ const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
   "local-exec": async () => (await import("./local-exec.js")).default,
   "triage": async () => (await import("./triage-handler.js")).default,
-  "approval": async () => (await import("./approval.js")).default,
 };
 
 /** Cache to avoid re-importing handlers on every dispatch */

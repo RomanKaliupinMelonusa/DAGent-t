@@ -54,8 +54,17 @@ import { NoopPipelineLogger } from "../../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
 import type { NodeContext } from "../../../handlers/types.js";
 import type { ApmCompiledOutput } from "../../../apm/types.js";
-import type { StateStore } from "../../../ports/state-store.js";
 import type { PipelineLogger } from "../../../telemetry/events.js";
+import type { PipelineState } from "../../../types.js";
+
+// Minimal StateStore-shaped surface kept locally — the legacy
+// `ports/state-store.ts` is deleted with the kernel. Only the methods
+// the surviving handler bodies reference are listed here.
+interface StateStore {
+  getStatus(slug: string): Promise<PipelineState>;
+  attachInvocationInputs(slug: string, invocationId: string, inputs: ReadonlyArray<unknown>): Promise<void>;
+  attachInvocationRoutedTo(slug: string, invocationId: string, routedTo: unknown): Promise<void>;
+}
 import type { TriageLlm } from "../../../ports/triage-llm.js";
 import type { BaselineLoader } from "../../../ports/baseline-loader.js";
 import type { CopilotSessionRunner } from "../../../ports/copilot-session-runner.js";

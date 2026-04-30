@@ -95,15 +95,6 @@ export {
 } from "./error-classification.js";
 
 export {
-  resolveApprovalSla,
-  checkApprovalExpired,
-  type ApprovalNodeLike,
-  type ApprovalPolicyLike,
-  type ResolvedApprovalSla,
-  type ApprovalSlaStatus,
-} from "./approval-sla.js";
-
-export {
   snapshotProgress,
   evaluateHardening,
   type ProgressTrackable,
@@ -112,10 +103,3 @@ export {
   type HardeningState,
   type HardeningVerdict,
 } from "./progress-tracker.js";
-
-export {
-  detectStalledItems,
-  formatStallError,
-  type StallableItem,
-  type StalledItem,
-} from "./stall-detection.js";

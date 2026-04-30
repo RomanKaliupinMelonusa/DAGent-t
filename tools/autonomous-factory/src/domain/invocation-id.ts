@@ -1,5 +1,5 @@
 /**
- * kernel/invocation-id.ts — Time-sortable invocation identifiers.
+ * domain/invocation-id.ts — Time-sortable invocation identifiers.
  *
  * The Artifact Bus assigns one `invocationId` per dispatch. The identifier
  * must be:
@@ -19,59 +19,61 @@
  * any conceivable dispatch rate. Adopt the `ulid` package if/when we need
  * monotonic same-ms ordering.
  */
+
 import { randomBytes } from "node:crypto";
+
 const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32
 const ENCODING_LEN = ENCODING.length; // 32
 const TIME_LEN = 10;
 const RANDOM_LEN = 16;
-function encodeTime(ms) {
-    if (!Number.isFinite(ms) || ms < 0) {
-        throw new Error(`invocation-id: invalid timestamp ${ms}`);
-    }
-    let out = "";
-    let t = Math.floor(ms);
-    for (let i = TIME_LEN - 1; i >= 0; i--) {
-        const mod = t % ENCODING_LEN;
-        out = ENCODING[mod] + out;
-        t = (t - mod) / ENCODING_LEN;
-    }
-    return out;
+
+function encodeTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    throw new Error(`invocation-id: invalid timestamp ${ms}`);
+  }
+  let out = "";
+  let t = Math.floor(ms);
+  for (let i = TIME_LEN - 1; i >= 0; i--) {
+    const mod = t % ENCODING_LEN;
+    out = ENCODING[mod] + out;
+    t = (t - mod) / ENCODING_LEN;
+  }
+  return out;
 }
-function encodeRandom() {
-    // 16 base32 chars carry 80 bits. Draw 10 random bytes and map every 5 bits.
-    const bytes = randomBytes(10);
-    let bits = 0;
-    let bitCount = 0;
-    let out = "";
-    for (const b of bytes) {
-        bits = (bits << 8) | b;
-        bitCount += 8;
-        while (bitCount >= 5) {
-            bitCount -= 5;
-            const idx = (bits >> bitCount) & 0b11111;
-            out += ENCODING[idx];
-        }
+
+function encodeRandom(): string {
+  // 16 base32 chars carry 80 bits. Draw 10 random bytes and map every 5 bits.
+  const bytes = randomBytes(10);
+  let bits = 0;
+  let bitCount = 0;
+  let out = "";
+  for (const b of bytes) {
+    bits = (bits << 8) | b;
+    bitCount += 8;
+    while (bitCount >= 5) {
+      bitCount -= 5;
+      const idx = (bits >> bitCount) & 0b11111;
+      out += ENCODING[idx];
     }
-    return out;
+  }
+  return out;
 }
+
 /**
  * Create a new `invocationId` using the current wall clock.
  * Length: 26 characters, `[0-9A-HJKMNPQ-TV-Z]+`, prefixed by `inv_`.
  */
-export function newInvocationId(now = Date.now()) {
-    return `inv_${encodeTime(now)}${encodeRandom()}`;
+export function newInvocationId(now: number = Date.now()): string {
+  return `inv_${encodeTime(now)}${encodeRandom()}`;
 }
+
 /** `true` when the string matches the shape emitted by `newInvocationId`. */
-export function isInvocationId(value) {
-    if (!value.startsWith("inv_"))
-        return false;
-    const body = value.slice(4);
-    if (body.length !== TIME_LEN + RANDOM_LEN)
-        return false;
-    for (const ch of body) {
-        if (!ENCODING.includes(ch))
-            return false;
-    }
-    return true;
+export function isInvocationId(value: string): boolean {
+  if (!value.startsWith("inv_")) return false;
+  const body = value.slice(4);
+  if (body.length !== TIME_LEN + RANDOM_LEN) return false;
+  for (const ch of body) {
+    if (!ENCODING.includes(ch)) return false;
+  }
+  return true;
 }
-//# sourceMappingURL=invocation-id.js.map

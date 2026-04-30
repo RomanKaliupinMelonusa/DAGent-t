@@ -19,7 +19,7 @@ import type {
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { InvocationRecord } from "../types.js";
-import { isInvocationId } from "../kernel/invocation-id.js";
+import { isInvocationId } from "../domain/invocation-id.js";
 import { WORKING_DIR } from "../paths/feature-paths.js";
 
 const META_FILENAME = "meta.json";

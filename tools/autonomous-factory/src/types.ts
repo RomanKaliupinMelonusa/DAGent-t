@@ -123,7 +123,7 @@ export type InvocationTrigger =
  * handler runs.
  */
 export interface InvocationRecord {
-  /** Unique id — see `kernel/invocation-id.ts`. Lexicographically time-sortable. */
+  /** Unique id — see `domain/invocation-id.ts`. Lexicographically time-sortable. */
   readonly invocationId: string;
   /** Owning DAG node (e.g. "storefront-dev"). */
   readonly nodeKey: string;

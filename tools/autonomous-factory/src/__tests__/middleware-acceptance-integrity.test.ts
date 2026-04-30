@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { acceptanceIntegrityMiddleware } from "../handlers/middlewares/acceptance-integrity.js";
 import type { NodeContext, NodeResult } from "../handlers/types.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
-import { newInvocationId } from "../kernel/invocation-id.js";
+import { newInvocationId } from "../domain/invocation-id.js";
 
 function makeCtx(overrides: Partial<NodeContext> = {}): NodeContext {
   const logger = {

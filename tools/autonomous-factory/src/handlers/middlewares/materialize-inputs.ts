@@ -28,10 +28,19 @@ import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import {
   materializeInputs,
   MissingRequiredInputError,
-} from "../../loop/dispatch/invocation-builder.js";
-import { classifyInvocationTrigger } from "../../loop/dispatch/invocation-ledger-hooks.js";
+} from "../support/invocation-builder.js";
 import { ArtifactValidationError } from "../../apm/artifact-catalog.js";
-import type { InvocationRecord } from "../../types.js";
+import type { InvocationRecord, InvocationTrigger } from "../../types.js";
+
+// Inlined from the deleted loop/dispatch/invocation-ledger-hooks.ts.
+// Classifies the trigger for a fresh dispatch when the staged invocation
+// record (set by triage's `stage-invocation` command) does not provide one.
+function classifyInvocationTrigger(ctx: NodeContext): InvocationTrigger {
+  if (ctx.currentInvocation?.trigger) return ctx.currentInvocation.trigger;
+  if (ctx.previousAttempt) return "retry";
+  if (ctx.attempt > 1) return "redevelopment-cycle";
+  return "initial";
+}
 
 /**
  * Cache compiled contracts per node identity. Cheap to recompute, but the

@@ -8,12 +8,10 @@
  * runtime-port adapter.
  */
 
-export { JsonFileStateStore } from "./json-file-state-store.js";
 export { GitShellAdapter } from "./git-shell-adapter.js";
 export { ShellHookExecutor } from "./shell-hook-executor.js";
 export { GithubCiAdapter } from "./github-ci-adapter.js";
 export { ApmFileCompiler } from "./apm-file-compiler.js";
 export { LocalFilesystem } from "./local-filesystem.js";
-export { JsonlTelemetry } from "./jsonl-telemetry.js";
 export { runCopilotSession } from "./copilot-session-runner.js";
 export type { CopilotSessionParams, CopilotSessionResult } from "./copilot-session-runner.js";

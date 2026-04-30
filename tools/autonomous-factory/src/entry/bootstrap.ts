@@ -16,19 +16,12 @@ import { loadApmContext } from "../apm/context-loader.js";
 import { loadAppPlugins } from "../apm/plugin-loader.js";
 import { registerMiddlewares } from "../handlers/middlewares/registry.js";
 import { runResolveEnvironment } from "../lifecycle/hooks.js";
-// Bootstrap runs at the composition root level — it legitimately owns the
-// entry-time read of persisted state. Importing the file-state I/O helpers
-// directly keeps the dependency explicit without threading the StateStore
-// port through preflight checks.
-import type { PipelineState } from "../types.js";
-import { readStateOrThrow, readStateOrNull } from "../adapters/file-state/io.js";
 import {
   checkJunkFiles,
   checkInProgressArtifacts,
   checkPort3000Free,
   checkPreflightAuth,
   checkGitHubLogin,
-  checkStateContextDrift,
   checkToolLimitsHygiene,
   runInitialIndex,
   runPreflightBaseline,
@@ -182,17 +175,8 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     console.log("    will inject advisory into storefront-dev / storefront-debug / e2e-author prompts.\n");
   }
 
-  // --- 6. State-context drift (auto-heals when no items are done; fatal otherwise) ---
-  const { JsonFileStateStore } = await import("../adapters/json-file-state-store.js");
-  const bootstrapStore = new JsonFileStateStore();
-  await checkStateContextDrift(
-    slug,
-    apmContext,
-    async (s) => readStateOrThrow(s),
-    async (s, workflowName) => {
-      await bootstrapStore.initState(s, workflowName);
-    },
-  );
+  // --- 6. State seeding is owned by the Temporal workflow now; bootstrap
+  // no longer touches on-disk pipeline state. (T1 cutover.)
 
   // --- 7. Cloud CLI auth ---
   checkPreflightAuth(repoRoot, appRoot, apmContext);
@@ -214,25 +198,8 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // --- 9. Logger ---
   const logger = createPipelineLogger(appRoot, slug);
 
-  // --- 10. Seed state if absent; validate workflow matches on resume ---
-  // State seeding is the one genesis step the kernel cannot run without —
-  // it cannot dispatch a DAG it hasn't yet materialized. We fold it into
-  // the single `agent:run` entry point (no separate `pipeline:init`
-  // required on the happy path) by seeding here when no state file exists.
-  const existingState: PipelineState | null = readStateOrNull(slug);
-  if (!existingState) {
-    console.log(`\n  🌱 Seeding fresh pipeline state for "${slug}" (workflow: ${workflowName})...`);
-    await bootstrapStore.initState(slug, workflowName);
-    readStateOrThrow(slug); // post-condition: state file exists
-    console.log(`  ✔ Pipeline state initialized\n`);
-  } else if (existingState.workflowName !== workflowName) {
-    throw new BootstrapError(
-      `Workflow mismatch for "${slug}": persisted state uses "${existingState.workflowName}", ` +
-      `but --workflow was "${workflowName}". ` +
-      `Either pass --workflow ${existingState.workflowName} to resume, or re-init with ` +
-      `\`npm run pipeline:init ${slug} ${workflowName}\` to start a new pipeline.`,
-    );
-  }
+  // State seeding has moved to the Temporal workflow itself. The legacy
+  // `_STATE.json` seed/resume path was removed in the T1 cutover.
 
   // --- Boot-time telemetry ---
   const baseTelemetry = loadPreviousSummary(appRoot, slug);
