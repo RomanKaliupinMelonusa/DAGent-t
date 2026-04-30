@@ -15,8 +15,8 @@ import {
   type ContractGatePathResolver,
 } from "../node-contract-gate.js";
 import { buildContractRecoveryPrompt } from "../node-contract-prompt.js";
-import type { ArtifactRef } from "../../../ports/artifact-bus.js";
-import type { ReportedOutcome } from "../../../harness/outcome-tool.js";
+import type { ArtifactRef } from "../../ports/artifact-bus.js";
+import type { ReportedOutcome } from "../../harness/outcome-tool.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

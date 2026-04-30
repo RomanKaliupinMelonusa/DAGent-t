@@ -5,10 +5,10 @@
  * to reject silently-idle dev sessions that never moved HEAD.
  */
 
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import { detectNoOpDev } from "../copilot-agent.js";
-import type { ItemSummary } from "../../types.js";
+import { detectNoOpDev } from "../copilot-agent-body.js";
+import type { ItemSummary } from "../../../types.js";
 
 function summary(partial: Partial<ItemSummary>): ItemSummary {
   return {

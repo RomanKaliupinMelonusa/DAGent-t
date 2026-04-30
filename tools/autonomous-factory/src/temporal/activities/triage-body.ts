@@ -22,27 +22,27 @@
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
-import type { NodeBudgetPolicy } from "../app-types.js";
-import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "./types.js";
-import type { CompiledTriageProfile } from "../apm/types.js";
-import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
-import { RESET_OPS } from "../types.js";
-import { newInvocationId } from "../domain/invocation-id.js";
-import { evaluateTriage } from "../triage/index.js";
-import { computeErrorSignature } from "../triage/error-fingerprint.js";
-import { classifyOrchestratorContractError } from "../triage/index.js";
-import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
-import { extractPriorAttempts } from "../triage/historian.js";import type { AcceptanceContract } from "../apm/acceptance-schema.js";
-import { isEvidenceEmpty } from "../triage/llm-router.js";
-import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
-import { getUpstream } from "../domain/dag-graph.js";
-import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
-import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
-import { buildEnvelope } from "../apm/artifact-catalog.js";
-import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
-import { toFailedTests } from "../triage/handoff-evidence.js";
-import type { BaselineProfile } from "../ports/baseline-loader.js";
+import type { NodeBudgetPolicy } from "../../app-types.js";
+import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "../../activity-lib/types.js";
+import type { CompiledTriageProfile } from "../../apm/types.js";
+import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../../types.js";
+import { RESET_OPS } from "../../types.js";
+import { newInvocationId } from "../../domain/invocation-id.js";
+import { evaluateTriage } from "../../triage/index.js";
+import { computeErrorSignature } from "../../triage/error-fingerprint.js";
+import { classifyOrchestratorContractError } from "../../triage/index.js";
+import { evaluateProfilePatterns } from "../../triage/contract-classifier.js";
+import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestLoop } from "../../triage/handoff-builder.js";
+import { extractPriorAttempts } from "../../triage/historian.js";import type { AcceptanceContract } from "../../apm/acceptance-schema.js";
+import { isEvidenceEmpty } from "../../triage/llm-router.js";
+import { getWorkflowNode, resolveNodeBudgetPolicy } from "../../session/dag-utils.js";
+import { getUpstream } from "../../domain/dag-graph.js";
+import { resolveIdleTimeoutLimit } from "../../activity-lib/agent-limits.js";
+import type { TriageArtifactLoader } from "../../ports/triage-artifact-loader.js";
+import { buildEnvelope } from "../../apm/artifact-catalog.js";
+import { filterNoise, getLastDropCounts } from "../../triage/baseline-filter.js";
+import { toFailedTests } from "../../triage/handoff-evidence.js";
+import type { BaselineProfile } from "../../ports/baseline-loader.js";
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
 // ---------------------------------------------------------------------------

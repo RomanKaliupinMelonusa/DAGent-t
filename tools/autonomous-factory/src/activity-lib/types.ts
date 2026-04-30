@@ -34,14 +34,17 @@ import type { BaselineLoader } from "../ports/baseline-loader.js";
 import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { DagCommand } from "../dag-commands.js";
 
-// Minimal StateStore-shaped surface kept locally now that the legacy
-// `ports/state-store.ts` is deleted. Only the methods the surviving
-// handler bodies (and the noop ledger in temporal/build-context) reference
-// are listed. The whole `handlers/` directory is itself slated for removal
-// when activity bodies inline the handler logic; this stub is a load-bearing
-// shim until then.
-export interface StateStore {
+// Narrow read/write surfaces exposed to activity bodies. Replaces the
+// legacy state-store stub — only the operations actually consumed by
+// the surviving NodeContext fields (stateReader, ledger) are described.
+
+/** Read-only status surface used by `NodeContext.stateReader`. */
+export interface StatusReader {
   getStatus(slug: string): Promise<PipelineState>;
+}
+
+/** Narrow ledger-mutation surface used by `NodeContext.ledger`. */
+export interface LineageWriter {
   attachInvocationInputs(
     slug: string,
     invocationId: string,
@@ -177,22 +180,18 @@ export interface NodeContext {
    * authoritative state through this port rather than importing state
    * modules directly. Full read methods exposed; handlers MUST NOT mutate.
    */
-  readonly stateReader: Pick<StateStore, "getStatus">;
+  readonly stateReader: StatusReader;
   /**
-   * Narrow ledger-mutation port. Lets middleware / handlers attach
-   * lineage metadata onto an in-flight invocation record without taking
-   * a dependency on the full StateStore surface. Two operations only:
-   *   - `attachInvocationInputs` — called by the `materialize-inputs`
-   *     middleware after it has resolved the declared `consumes_*`
-   *     against the on-disk artifact tree, so the persisted record
-   *     carries the producer (`nodeKey`+`invocationId`) lineage.
-   *   - `attachInvocationRoutedTo` — called by the triage handler when
+   * Narrow ledger-mutation port. Lets the activity body attach lineage
+   * metadata onto an in-flight invocation record. Two operations only:
+   *   - `attachInvocationInputs` — called when the activity has resolved
+   *     declared `consumes_*` against the on-disk artifact tree, so the
+   *     persisted record carries the producer (`nodeKey`+`invocationId`)
+   *     lineage.
+   *   - `attachInvocationRoutedTo` — called by the triage activity when
    *     it reroutes, so the triage record self-describes its callee.
    */
-  readonly ledger: Pick<
-    StateStore,
-    "attachInvocationInputs" | "attachInvocationRoutedTo"
-  >;
+  readonly ledger: LineageWriter;
   /**
    * Shell port — handlers that need to shell out (local-exec, CI poll,
    * artifact download) must go through this port rather than importing

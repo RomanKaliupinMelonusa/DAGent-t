@@ -7,9 +7,9 @@
  */
 
 import path from "node:path";
-import type { NodeContext } from "../types.js";
-import type { ItemSummary } from "../../types.js";
-import { getAgentDirectoryPrefixes } from "../../session/dag-utils.js";
+import type { NodeContext } from "./types.js";
+import type { ItemSummary } from "../types.js";
+import { getAgentDirectoryPrefixes } from "../session/dag-utils.js";
 
 function getWorkflowNode(ctx: NodeContext) {
   return ctx.apmContext.workflows?.[ctx.pipelineState.workflowName]?.nodes?.[ctx.itemKey];

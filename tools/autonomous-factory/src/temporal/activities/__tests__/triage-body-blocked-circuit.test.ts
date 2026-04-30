@@ -12,12 +12,12 @@
  *      advisory when two prior cycles share the same domain.
  */
 
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import triageHandler from "../triage-handler.js";
-import type { NodeContext, DagCommand } from "../types.js";
-import type { PipelineState, TriageRecord } from "../../types.js";
-import type { TriageHandlerOutput } from "../triage-handler.js";
+import triageHandler from "../triage-body.js";
+import type { NodeContext, DagCommand } from "../../../activity-lib/types.js";
+import type { PipelineState, TriageRecord } from "../../../types.js";
+import type { TriageHandlerOutput } from "../triage-body.js";
 
 // ---------------------------------------------------------------------------
 // Minimal stub helpers — only what the A4 short-circuit + first-$BLOCKED

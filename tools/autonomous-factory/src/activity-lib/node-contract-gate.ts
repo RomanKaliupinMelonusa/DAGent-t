@@ -18,8 +18,8 @@
  * is trivially unit-testable.
  */
 
-import type { ReportedOutcome } from "../../harness/outcome-tool.js";
-import type { ArtifactRef } from "../../ports/artifact-bus.js";
+import type { ReportedOutcome } from "../harness/outcome-tool.js";
+import type { ArtifactRef } from "../ports/artifact-bus.js";
 import {
   ArtifactValidationError,
   getArtifactKind,
@@ -27,7 +27,7 @@ import {
   sidecarPath,
   stampSidecarEnvelope,
   validateEnvelope,
-} from "../../apm/artifact-catalog.js";
+} from "../apm/artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Public types

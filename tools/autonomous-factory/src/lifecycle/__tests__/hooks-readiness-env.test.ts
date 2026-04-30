@@ -13,7 +13,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildE2eReadinessEnv } from "../../handlers/middlewares/lifecycle-hooks.js";
+import { buildE2eReadinessEnv } from "../../activity-lib/e2e-readiness-env.js";
 import type { ApmConfig } from "../../apm/types.js";
 
 const FULL: ApmConfig = {

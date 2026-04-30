@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ingestHandlerOutputEnvelope } from "../middlewares/handler-output-ingestion.js";
+import { ingestHandlerOutputEnvelope } from "../handler-output-ingestion.js";
 import { LocalFilesystem } from "../../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { newInvocationId } from "../../domain/invocation-id.js";

@@ -51,12 +51,12 @@
  * backed `TriageLlm` adapter and a `FileBaselineLoader`.
  */
 
-import triageHandler from "../../handlers/triage-handler.js";
+import triageHandler from "../../temporal/activities/triage-body.js";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
-import type { NodeResult } from "../../handlers/types.js";
+import type { NodeResult } from "../../activity-lib/types.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
 import type { BaselineLoader } from "../../ports/baseline-loader.js";
 

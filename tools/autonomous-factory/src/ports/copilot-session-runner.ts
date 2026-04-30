@@ -16,7 +16,7 @@ import type { ItemSummary } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { ReportedOutcome } from "../harness/outcome-tool.js";
 import type { NextFailureHintValidation, PrecompletionGate } from "../harness/outcome-tool.js";
-import type { NodeContractGateParams } from "../handlers/support/node-contract-gate.js";
+import type { NodeContractGateParams } from "../activity-lib/node-contract-gate.js";
 
 export interface CopilotSessionParams {
   slug: string;

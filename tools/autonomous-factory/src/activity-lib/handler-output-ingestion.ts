@@ -1,62 +1,51 @@
 /**
- * handlers/middlewares/handler-output-ingestion.ts — Symmetric handoff
- * channel for script / agent nodes.
+ * activity-lib/handler-output-ingestion.ts — Symmetric handoff channel
+ * for script / agent nodes.
  *
- * Probes `$OUTPUTS_DIR/handler-output.json` at the end of every dispatch
- * (after the handler body AND after any `post:` lifecycle hook has run),
- * validates the envelope against `HandlerOutputArtifactSchema`, and
- * merges the envelope's `output` bag into `NodeResult.handlerOutput`.
+ * Pure helper extracted from the deleted
+ * `handlers/middlewares/handler-output-ingestion.ts` wrapper. Activities
+ * (local-exec, copilot-agent) call this at the end of every dispatch to
+ * probe `$OUTPUTS_DIR/handler-output.json`, validate the envelope, and
+ * surface the resulting `output` bag and artifact ref.
  *
- * Scripts surface structured data to downstream nodes through the same
- * `NodeResult.handlerOutput` channel agents populate via the
- * `report_outcome` SDK tool. The two producer ergonomics differ; the
- * wire format is shared.
- *
- * Position in the default chain: OUTER of `lifecycle-hooks` so that
- * post-hooks can emit the envelope file and have it ingested before the
- * result reaches the dispatcher. See `item-dispatch.ts` /
- * `middlewares/registry.ts` for wiring.
- *
- * All failure modes are advisory — the underlying handler outcome is
+ * All failure modes are advisory — the caller's handler outcome is
  * never changed:
  *   - file absent              → no-op
  *   - invalid JSON / envelope  → `handler-output.invalid` telemetry
  *   - shadowed reserved keys   → dropped + `handler-output.reserved_key`
  */
 
-import type { NodeMiddleware, MiddlewareNext } from "../middleware.js";
-import type { NodeContext, NodeResult } from "../types.js";
-import type { ArtifactRefSerialized } from "../../types.js";
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
+import type { NodeContext } from "./types.js";
+import type { ArtifactRefSerialized } from "../types.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import {
   HandlerOutputArtifactSchema,
   validateArtifactPayload,
-} from "../../apm/artifact-catalog.js";
+} from "../apm/artifact-catalog.js";
 
-/** Reserved keys owned by the `local-exec` handler. Scripts must not
+/** Reserved keys owned by the `local-exec` activity. Scripts must not
  *  shadow these via the envelope; anything the envelope places under one
  *  of them is dropped with a telemetry warning. `structuredFailure` is
  *  intentionally NOT reserved — it's the primary payload a script
- *  surfaces through the envelope (see `hooks/emit-playwright-handler-output.mjs`). */
+ *  surfaces through the envelope. */
 const RESERVED_HANDLER_OUTPUT_KEYS: ReadonlySet<string> = new Set([
   "scriptOutput",
   "exitCode",
   "timedOut",
 ]);
 
-interface IngestedEnvelope {
+export interface IngestedEnvelope {
   readonly output: Record<string, unknown>;
   readonly artifact?: ArtifactRefSerialized;
 }
 
-/** Pure probe helper — exported for focused unit tests. */
+/** Pure probe helper. */
 export async function ingestHandlerOutputEnvelope(
   ctx: NodeContext,
 ): Promise<IngestedEnvelope> {
   // Guard ref construction — tests / edge cases may supply non-canonical
   // executionIds. Treat any failure here as "no envelope present" so the
-  // ingestion channel stays strictly advisory (consistent with the rest
-  // of the helper's error paths).
+  // ingestion channel stays strictly advisory.
   let ref;
   try {
     const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
@@ -132,30 +121,3 @@ export async function ingestHandlerOutputEnvelope(
   });
   return { output: filtered, artifact };
 }
-
-export const handlerOutputIngestionMiddleware: NodeMiddleware = {
-  name: "handler-output-ingestion",
-
-  async run(ctx: NodeContext, next: MiddlewareNext): Promise<NodeResult> {
-    const result = await next();
-    const envelope = await ingestHandlerOutputEnvelope(ctx);
-    if (Object.keys(envelope.output).length === 0 && !envelope.artifact) {
-      return result;
-    }
-    return {
-      ...result,
-      // Merge UNDER existing handlerOutput so handler-owned keys
-      // (scriptOutput, exitCode, timedOut) always win. `filtered`
-      // already has reserved keys stripped, so this is belt-and-braces.
-      handlerOutput: { ...envelope.output, ...(result.handlerOutput ?? {}) },
-      ...(envelope.artifact
-        ? {
-            producedArtifacts: [
-              ...(result.producedArtifacts ?? []),
-              envelope.artifact,
-            ],
-          }
-        : {}),
-    };
-  },
-};

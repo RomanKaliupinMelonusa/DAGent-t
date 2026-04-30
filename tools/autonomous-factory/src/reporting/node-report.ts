@@ -15,7 +15,7 @@ import type {
   InvocationTrigger,
   ItemSummary,
 } from "../types.js";
-import type { NodeContext } from "../handlers/types.js";
+import type { NodeContext } from "../activity-lib/types.js";
 import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { NodeReport } from "../apm/artifact-catalog.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";

@@ -13,12 +13,12 @@
  *      `triage.override.same_test_loop_skipped` event is logged.
  */
 
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import triageHandler from "../triage-handler.js";
-import type { NodeContext, DagCommand } from "../types.js";
-import type { PipelineState } from "../../types.js";
-import type { TriageHandlerOutput } from "../triage-handler.js";
+import triageHandler from "../triage-body.js";
+import type { NodeContext, DagCommand } from "../../../activity-lib/types.js";
+import type { PipelineState } from "../../../types.js";
+import type { TriageHandlerOutput } from "../triage-body.js";
 
 const FAILING_KEY = "e2e-runner";
 const TRIAGE_KEY = "triage-storefront";

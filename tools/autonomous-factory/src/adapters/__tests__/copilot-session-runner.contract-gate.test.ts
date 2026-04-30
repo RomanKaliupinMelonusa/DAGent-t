@@ -25,7 +25,7 @@ import type {
   ContractGateFs,
   ContractGatePathResolver,
   NodeContractGateParams,
-} from "../../handlers/support/node-contract-gate.js";
+} from "../../activity-lib/node-contract-gate.js";
 import type { ArtifactRef } from "../../ports/artifact-bus.js";
 
 // ---------------------------------------------------------------------------

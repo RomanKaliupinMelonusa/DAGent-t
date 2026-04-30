@@ -52,19 +52,10 @@ import { FileInvocationLogger } from "../../../adapters/file-invocation-logger.j
 import { FileTriageArtifactLoader } from "../../../adapters/file-triage-artifact-loader.js";
 import { NoopPipelineLogger } from "../../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
-import type { NodeContext } from "../../../handlers/types.js";
+import type { NodeContext, StatusReader, LineageWriter } from "../../../activity-lib/types.js";
 import type { ApmCompiledOutput } from "../../../apm/types.js";
 import type { PipelineLogger } from "../../../telemetry/events.js";
-import type { PipelineState } from "../../../types.js";
 
-// Minimal StateStore-shaped surface kept locally — the legacy
-// `ports/state-store.ts` is deleted with the kernel. Only the methods
-// the surviving handler bodies reference are listed here.
-interface StateStore {
-  getStatus(slug: string): Promise<PipelineState>;
-  attachInvocationInputs(slug: string, invocationId: string, inputs: ReadonlyArray<unknown>): Promise<void>;
-  attachInvocationRoutedTo(slug: string, invocationId: string, routedTo: unknown): Promise<void>;
-}
 import type { TriageLlm } from "../../../ports/triage-llm.js";
 import type { BaselineLoader } from "../../../ports/baseline-loader.js";
 import type { CopilotSessionRunner } from "../../../ports/copilot-session-runner.js";
@@ -81,7 +72,7 @@ import type { NodeActivityInput } from "../types.js";
  * (`materialize-inputs`, `triage-handler`) are the only legacy callers;
  * they are not yet enabled in the activity-side middleware chain.
  */
-const noopLedger: Pick<StateStore, "attachInvocationInputs" | "attachInvocationRoutedTo"> = {
+const noopLedger: LineageWriter = {
   async attachInvocationInputs() {
     throw new Error(
       "[temporal/activity] ledger.attachInvocationInputs() invoked. " +
@@ -114,7 +105,7 @@ const noopLedger: Pick<StateStore, "attachInvocationInputs" | "attachInvocationR
  */
 function makeFrozenStateReader(
   input: NodeActivityInput,
-): Pick<StateStore, "getStatus"> {
+): StatusReader {
   return {
     getStatus: async () => input.pipelineState,
   };
