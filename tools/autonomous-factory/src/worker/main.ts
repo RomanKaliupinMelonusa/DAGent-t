@@ -7,7 +7,7 @@
  *
  * Environment:
  *   TEMPORAL_ADDRESS        — Temporal frontend gRPC address (default localhost:7233)
- *   TEMPORAL_TASK_QUEUE     — Task queue (default dagent-hello)
+ *   TEMPORAL_TASK_QUEUE     — Task queue (default dagent-pipeline)
  *   TEMPORAL_NAMESPACE      — Namespace (default default)
  *   APP_ROOT                — Absolute path to the app root that this worker
  *                             services (e.g. /workspaces/DAGent-t/apps/commerce-storefront).
@@ -59,7 +59,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
-const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-hello";
+const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-pipeline";
 const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
 const appRoot = process.env.APP_ROOT;
 const llmDisabled =

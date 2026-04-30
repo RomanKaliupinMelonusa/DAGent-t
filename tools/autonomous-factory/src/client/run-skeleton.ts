@@ -15,7 +15,7 @@ import { Client, Connection } from "@temporalio/client";
 import type { skeletonPipelineWorkflow, SkeletonPipelineInput } from "../workflow/skeleton-pipeline.workflow.js";
 
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
-const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-hello";
+const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-pipeline";
 const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
 
 const FIXTURE: SkeletonPipelineInput = {

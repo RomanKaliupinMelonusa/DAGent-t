@@ -113,7 +113,7 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
     apm,
     workflow: flags.get("workflow"),
     execId: flags.get("exec-id") ?? newInvocationId(),
-    taskQueue: flags.get("task-queue") ?? process.env.TEMPORAL_TASK_QUEUE ?? "dagent-hello",
+    taskQueue: flags.get("task-queue") ?? process.env.TEMPORAL_TASK_QUEUE ?? "dagent-pipeline",
     address: flags.get("address") ?? process.env.TEMPORAL_ADDRESS ?? "localhost:7233",
     namespace: flags.get("namespace") ?? process.env.TEMPORAL_NAMESPACE ?? "default",
   };

@@ -29,7 +29,7 @@
 # Environment variables consumed by the worker
 # (defaults documented in src/worker/main.ts):
 #   TEMPORAL_ADDRESS    — Temporal frontend gRPC address (default localhost:7233)
-#   TEMPORAL_TASK_QUEUE — Task queue this worker polls (default dagent-hello)
+#   TEMPORAL_TASK_QUEUE — Task queue this worker polls (default dagent-pipeline)
 #   TEMPORAL_NAMESPACE  — Temporal namespace (default default)
 #   APP_ROOT            — Absolute path to the app directory (required for
 #                         the LLM-backed activities; degraded mode when

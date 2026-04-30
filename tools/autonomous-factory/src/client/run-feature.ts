@@ -23,7 +23,7 @@
  *
  * Environment:
  *   TEMPORAL_ADDRESS    (default localhost:7233)
- *   TEMPORAL_TASK_QUEUE (default dagent-hello — match the worker)
+ *   TEMPORAL_TASK_QUEUE (default dagent-pipeline — match the worker)
  *   TEMPORAL_NAMESPACE  (default default)
  *
  * Idempotency: the workflowId is deterministic from `<slug>:<workflowName>`.
@@ -42,7 +42,7 @@ import { bootstrap } from "../entry/bootstrap.js";
 import type { ApmWorkflowNode } from "../apm/types.js";
 
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
-const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-hello";
+const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-pipeline";
 const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
 
 /**
