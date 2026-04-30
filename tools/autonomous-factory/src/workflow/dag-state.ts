@@ -50,6 +50,11 @@ import {
   type BypassResult,
 } from "./domain/transitions.js";
 import { checkCycleBudget } from "./domain/cycle-counter.js";
+import type {
+  ArtifactRefSerialized,
+  InvocationRecord,
+  InvocationTrigger,
+} from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Wire types — distinct from the implementation types so workflow-input
@@ -202,6 +207,63 @@ export class DagState {
    */
   getReady(opts?: ScheduleOptions): ScheduleResult {
     return schedule(this.state.items, this.state.dependencies, opts);
+  }
+
+  // -------------------------------------------------------------------
+  // Invocation ledger (artifact-bus mirror)
+  //
+  // The workflow body calls `recordInvocation(...)` after every activity
+  // result so consumer-side input materialization (`materializeUpstream`
+  // in `activity-lib/invocation-builder.ts`) can resolve completed
+  // producer outputs from `pipelineState.artifacts`. Without this the
+  // consumer falls through to `MissingRequiredInputError` even though
+  // the bytes are on disk.
+  // -------------------------------------------------------------------
+
+  /**
+   * Record a sealed invocation (completed or failed) and any artifacts
+   * it produced. Mirrors the legacy `appendInvocation`/`sealInvocation`
+   * pair the kernel's artifact-bus adapter used to manage. The minimum
+   * shape required by `pickUpstreamInvocation`: nodeKey, invocationId,
+   * outcome, and outputs[].
+   */
+  recordInvocation(args: {
+    readonly invocationId: string;
+    readonly nodeKey: string;
+    readonly attempt: number;
+    readonly trigger: InvocationTrigger;
+    readonly outcome: "completed" | "failed" | "error";
+    readonly outputs?: ReadonlyArray<ArtifactRefSerialized>;
+    readonly inputs?: ReadonlyArray<ArtifactRefSerialized>;
+    readonly finishedAt: string;
+  }): void {
+    const record: InvocationRecord = {
+      invocationId: args.invocationId,
+      nodeKey: args.nodeKey,
+      cycleIndex: args.attempt,
+      trigger: args.trigger,
+      inputs: args.inputs ? [...args.inputs] : [],
+      outputs: args.outputs ? [...args.outputs] : [],
+      outcome: args.outcome,
+      sealed: true,
+      finishedAt: args.finishedAt,
+    };
+    const prev =
+      (this.state as { artifacts?: Record<string, InvocationRecord> })
+        .artifacts ?? {};
+    this.state = {
+      ...this.state,
+      artifacts: { ...prev, [record.invocationId]: record },
+    } as TransitionState;
+  }
+
+  /** Read-only view of the invocation ledger — used by `buildPipelineState`
+   *  to surface `state.artifacts` to dispatched activities. */
+  getInvocationLedger(): Readonly<Record<string, InvocationRecord>> {
+    return (
+      (this.state as { artifacts?: Record<string, InvocationRecord> })
+        .artifacts ?? {}
+    );
   }
 
   // -------------------------------------------------------------------

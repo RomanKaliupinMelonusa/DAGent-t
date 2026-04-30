@@ -6,4 +6,4 @@
  * call is REQUIRED for any PR that mutates files under src/workflow/.
  * Enforced by scripts/lint-workflow-version.mjs.
  */
-export const WORKFLOW_VERSION = 2;
+export const WORKFLOW_VERSION = 3;

@@ -117,6 +117,25 @@ export function evaluateAutoSkip(
   const node = apmContext.workflows?.[wfName]?.nodes?.[itemKey];
   if (!node) return { skip: null, forceRunChanges: false };
 
+  // ── First-run guard (Cause B) ─────────────────────────────────────────
+  // A node that declares `produces_artifacts` but has no prior completed
+  // invocation on disk has never run for this feature. The auto-skip
+  // heuristics below ("no diff in declared dirs", "no deletions") would
+  // otherwise mark a fresh feature node `na` before the LLM ever runs —
+  // exactly how `quick-view-new` died with `baseline-analyzer/storefront-dev`
+  // skipped on a clean branch. We exempt `auto_skip_unless_triage_reroute`
+  // (the storefront-debug happy path skip) since that path is intentional.
+  const declaredOutputs = (node.produces_artifacts ?? []) as ReadonlyArray<string>;
+  const slug = pipelineState?.feature ?? "";
+  if (
+    declaredOutputs.length > 0 &&
+    slug &&
+    !node.auto_skip_unless_triage_reroute &&
+    !hasPositiveOutputSignal(appRoot, slug, itemKey, declaredOutputs)
+  ) {
+    return { skip: null, forceRunChanges: false };
+  }
+
   let forceRunChanges = false;
 
   // ── Triage-reroute gate: skip unless routed in by the triage handler ──

@@ -285,6 +285,14 @@ function buildPipelineState(
     jsonGated: {},
     naByType: snap.state.naByType,
     salvageSurvivors: snap.state.salvageSurvivors,
+    // Cause-A fix — surface the invocation ledger so `materializeUpstream`
+    // (`activity-lib/invocation-builder.ts`) can resolve completed
+    // producer outputs from in-memory state. Without this, the consumer
+    // throws `MissingRequiredInputError` on the very first dispatch even
+    // though the bytes (and producer-side `meta.json#outputs`) are on
+    // disk. The workflow body populates this map via `dag.recordInvocation`
+    // after each activity outcome.
+    artifacts: { ...dag.getInvocationLedger() },
   };
 }
 
@@ -608,12 +616,12 @@ async function runTriageCascade(
       executionId,
     );
     const result = await triageActivity(activityInput);
-    return { dispatch, result };
+    return { dispatch, result, attempt, executionId };
   });
   const triageResults = await Promise.all(triagePromises);
 
   // Apply commands serially for deterministic reducer ordering.
-  for (const { dispatch, result } of triageResults) {
+  for (const { dispatch, result, attempt, executionId } of triageResults) {
     // Mark the triage node itself complete or failed in the DAG. The
     // commands the triage handler emits (reset/salvage/bypass) operate
     // on the *failing* node and its dependents — the triage node only
@@ -635,6 +643,20 @@ async function runTriageCascade(
         nowIso,
       );
     }
+
+    // Cause-A fix — register the triage invocation in the ledger so
+    // downstream `consumes_reroute` (`kind: triage-handoff`) edges can
+    // resolve via `pipelineState.artifacts` instead of falling through
+    // to `MissingRequiredInputError`.
+    dag.recordInvocation({
+      invocationId: executionId,
+      nodeKey: dispatch.triageNodeKey,
+      attempt,
+      trigger: "initial",
+      outcome: result.outcome,
+      outputs: result.producedArtifacts ?? [],
+      finishedAt: nowIso,
+    });
 
     const commands = (result.commands ?? []) as ReadonlyArray<DagCommand>;
     for (const cmd of commands) {
@@ -798,7 +820,13 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
       //     proxy. Each promise produces a `{itemKey, kind, result}` row
       //     the `Promise.all` collects for serial application below.
       type DispatchOutcome =
-        | { kind: "activity"; itemKey: string; result: NodeActivityResult }
+        | {
+            kind: "activity";
+            itemKey: string;
+            executionId: string;
+            attempt: number;
+            result: NodeActivityResult;
+          }
         | { kind: "approval"; itemKey: string; rejected: false }
         | {
             kind: "approval";
@@ -850,7 +878,13 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
         );
         dispatchPromises.push(
           dispatchNodeActivity(handlerKind, activityInput).then(
-            (result) => ({ kind: "activity", itemKey: item.key, result } as const),
+            (result) => ({
+              kind: "activity",
+              itemKey: item.key,
+              executionId,
+              attempt,
+              result,
+            } as const),
           ),
         );
       }
@@ -896,6 +930,20 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
           );
           newlyFailed.push({ itemKey: out.itemKey, result: r });
         }
+        // Cause-A fix — record the invocation in the ledger so consumer
+        // nodes can resolve `consumes_artifacts` references via
+        // `pipelineState.artifacts`. Triage and materializeUpstream both
+        // filter on `outcome === "completed"`; we record failures too so
+        // the ledger is a faithful audit trail.
+        dag.recordInvocation({
+          invocationId: out.executionId,
+          nodeKey: out.itemKey,
+          attempt: out.attempt,
+          trigger: "initial",
+          outcome: r.outcome,
+          outputs: r.producedArtifacts ?? [],
+          finishedAt: nowIso,
+        });
       }
 
       // (g) Triage cascade. For every newly-failed item with a

@@ -92,4 +92,27 @@ export const BUILTIN_TRIAGE_PATTERNS: readonly TriagePattern[] = [
       "as misconfigured for the running config. Re-emit acceptance.yml " +
       "with a different fixture (product / category / locale): ${errFirstLine}",
   },
+  // Cause-C fix — `MissingRequiredInputError` is deterministic: an
+  // upstream producer's declared output isn't where the consumer's
+  // input-materializer looks for it. The failure has nothing to do with
+  // test data, code defects, or test code (which is what an LLM router
+  // tends to guess). Bypass the LLM with a stable verdict so the
+  // failure either halts cleanly (when no route maps the domain) or
+  // bounces back to the producer for self-repair (when a workflow
+  // routes `missing-required-input` to that producer).
+  //
+  // Matches the canonical message emitted by
+  // `activity-lib/invocation-builder.ts#MissingRequiredInputError`.
+  {
+    match_kind: "raw-regex",
+    pattern:
+      'Missing required (?:upstream|kickoff|reroute) input on node "[^"]+": kind="[^"]+"',
+    domain: "missing-required-input",
+    reason_template:
+      "Consumer-side input materializer could not find a declared upstream " +
+      "artifact. This is a deterministic state error — re-running the consumer " +
+      "will not change the outcome. Either the producer never emitted the kind, " +
+      "the producer's invocation was not registered in pipelineState.artifacts, " +
+      "or the bytes were deleted from disk. ${errFirstLine}",
+  },
 ];
