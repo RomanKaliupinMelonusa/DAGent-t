@@ -66,7 +66,9 @@ case "$SLUG" in
   -*|"") SLUG="dagent-$(date +%s)" ;;
 esac
 
-cd "$REPO_ROOT"
+# `agent:run` lives in the orchestrator workspace package
+# (tools/autonomous-factory/package.json), not the repo-root package.json.
+cd "$REPO_ROOT/tools/autonomous-factory"
 
 if command -v systemd-run >/dev/null 2>&1 \
   && systemd-run --user --version >/dev/null 2>&1; then

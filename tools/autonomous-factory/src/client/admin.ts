@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * src/client/admin.ts — Admin CLI as Temporal client.
  *

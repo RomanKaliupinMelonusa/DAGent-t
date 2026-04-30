@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * src/client/run-feature.ts — Temporal-mode pipeline entry.
  *

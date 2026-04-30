@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * src/worker/main.ts — Worker process bootstrap.
  *
