@@ -66,12 +66,22 @@ export DEV_SERVER_PGID_FILE="${OUTPUTS_DIR}/dev-server.pgid"
 unset E2E_READINESS_URL
 
 # ─── Teardown trap (idempotent) ──────────────────────────────────────────
+# Catch every termination path that the orchestrator can throw at us:
+#   - EXIT  : normal completion / `exit` / set -e abort.
+#   - INT   : Ctrl-C from an interactive operator.
+#   - TERM  : `kill <pid>` from the activity cancellation path or the
+#             local-exec handler's timeout.
+#   - HUP   : controlling terminal disconnect (devcontainer rebuild,
+#             SSH session drop) — without HUP the dev-server PGID is
+#             orphaned and continues to hold port 3000.
+# SIGKILL of *this* shell is unrecoverable here; the bootstrap-side
+# self-heal in checkPort3000Free is the safety net for that path.
 cleanup() {
   local rc=$?
   bash "$LIB" stop >/dev/null 2>&1 || true
   return "$rc"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 # ─── Probe a single route ────────────────────────────────────────────────
 # Records HTTP status + any SSR console errors emitted to the log while

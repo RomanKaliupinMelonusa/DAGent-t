@@ -107,7 +107,7 @@ exit 99
 
 import { chmodSync } from "node:fs";
 
-function runScript(env, { signalAfterMs, timeoutMs = 30_000 } = {}) {
+function runScript(env, { signalAfterMs, signal = "SIGTERM", timeoutMs = 30_000 } = {}) {
   return new Promise((resolve) => {
     const child = spawn("bash", [SCRIPT], {
       env: { ...process.env, ...env },
@@ -122,7 +122,7 @@ function runScript(env, { signalAfterMs, timeoutMs = 30_000 } = {}) {
     if (signalAfterMs) {
       signalTimer = setTimeout(() => {
         signalled = true;
-        child.kill("SIGTERM");
+        child.kill(signal);
       }, signalAfterMs);
     }
     const killer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
@@ -231,4 +231,20 @@ test("SIGTERM mid-run: trap reaps process group, no orphan listener", async () =
   // Allow a brief settle window for OS-level port release after the trap fires.
   await new Promise((res) => setTimeout(res, 1_000));
   assert.equal(await isPortFree(port), true, "port must be reaped after SIGTERM");
+});
+
+test("SIGHUP mid-run: trap reaps process group (regression for terminal-disconnect leak)", async () => {
+  // Without HUP in the trap list, a devcontainer rebuild / SSH drop
+  // would leave the dev server PGID orphaned and port 3000 stuck.
+  const port = await getFreePort();
+  const fx = makeFakeNpm("ok-200", port);
+  chmodSync(fx.fakeNpm, 0o755);
+
+  const r = await runScript(
+    envFor(fx, { STOREFRONT_SMOKE_PORT: String(port), STOREFRONT_SMOKE_TIMEOUT_S: "60" }),
+    { signalAfterMs: 2_000, signal: "SIGHUP", timeoutMs: 20_000 },
+  );
+  assert.equal(r.signalled, true);
+  await new Promise((res) => setTimeout(res, 1_000));
+  assert.equal(await isPortFree(port), true, "port must be reaped after SIGHUP");
 });

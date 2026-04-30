@@ -74,8 +74,20 @@ free_port() {
 reap_pgid() {
   local pgid="$1"
   [[ -z "$pgid" ]] && return 0
+  # Skip if no process group with that id is alive — `kill -0` against a
+  # negative pgid checks group membership without sending a signal.
+  if ! kill -0 "-$pgid" 2>/dev/null; then
+    return 0
+  fi
+  # Graceful TERM, then poll up to ~2s for the group to drain.
   kill -TERM "-$pgid" 2>/dev/null || true
-  sleep 2
+  local i
+  for i in 1 2 3 4; do
+    sleep 0.5
+    kill -0 "-$pgid" 2>/dev/null || return 0
+  done
+  # Survivors → SIGKILL. Belt-and-suspenders only; pwa-kit-dev's
+  # webpack-dev-server fork has historically ignored TERM under load.
   kill -KILL "-$pgid" 2>/dev/null || true
 }
 
