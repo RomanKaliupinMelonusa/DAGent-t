@@ -114,6 +114,8 @@ Recommended cadence per session:
 ## Reference Documents
 
 - [00-spec.md](00-spec.md) — Architectural mapping (current → Temporal), risk register, ADR
+- [01-topology-decision.md](01-topology-decision.md) — Workflow topology / orchestration shape
+- [02-parity-notes.md](02-parity-notes.md) — Session 2 deltas between legacy `domain/` and the workflow-scoped twin
 - [session-1-foundation.md](session-1-foundation.md) — Phases 0-2
 - [session-2-domain-port.md](session-2-domain-port.md) — Phase 3
 - [session-3-activities.md](session-3-activities.md) — Phase 4

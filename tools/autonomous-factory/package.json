@@ -17,6 +17,7 @@
     "temporal:build": "tsc -p tsconfig.temporal.json",
     "temporal:worker": "npm run temporal:build && node dist/temporal/worker/main.js",
     "temporal:hello": "npm run temporal:build && node dist/temporal/client/run-hello.js",
+    "temporal:skeleton": "npm run temporal:build && node dist/temporal/client/run-skeleton.js",
     "temporal:test:integration": "npm run temporal:build && vitest run src/temporal"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@temporalio/worker": "^1.16.1",
     "@temporalio/workflow": "^1.16.1",
     "handlebars": "^4.7.8",
+    "js-sha256": "^0.11.1",
     "js-tiktoken": "^1.0.21",
     "js-yaml": "^4.1.0",
     "zod": "^4.3.6"
