@@ -67,9 +67,33 @@ import copilotAgentHandler from "../../handlers/copilot-agent.js";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
-import { runActivityChain } from "./middleware-chain.js";
+import { evaluateAutoSkip } from "../../handlers/support/auto-skip-evaluator.js";
+import { compileNodeIOContract } from "../../apm/compile-node-io-contract.js";
+import { getWorkflowNode } from "../../session/dag-utils.js";
+import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
+import {
+  materializeInputs as materializeInvocationInputs,
+  MissingRequiredInputError,
+} from "../../handlers/support/invocation-builder.js";
+import { ArtifactValidationError } from "../../apm/artifact-catalog.js";
+import { executeHook } from "../../lifecycle/hooks.js";
+import { sanitizeOutput } from "../../handlers/support/result-processor-regex.js";
+import { ingestHandlerOutputEnvelope } from "../../handlers/middlewares/handler-output-ingestion.js";
+import { buildE2eReadinessEnv } from "../../handlers/middlewares/lifecycle-hooks.js";
+import {
+  ACCEPTANCE_HASH_FIELD,
+  ACCEPTANCE_PATH_FIELD,
+  SPEC_COMPILER_KEY,
+} from "../../handlers/middlewares/acceptance-integrity.js";
+import {
+  hashAcceptanceContract,
+  loadAcceptanceContract,
+} from "../../apm/acceptance-schema.js";
+import { featurePath } from "../../paths/feature-paths.js";
+import { validateFixtures, formatViolationsError } from "../../lifecycle/fixture-validator.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
-import type { NodeResult } from "../../handlers/types.js";
+import type { NodeContext, NodeResult } from "../../handlers/types.js";
+import type { InvocationRecord, InvocationTrigger } from "../../types.js";
 import type { CopilotSessionRunner, CopilotSessionParams, CopilotSessionResult } from "../../ports/copilot-session-runner.js";
 import type { CodeIndexer } from "../../ports/code-indexer.js";
 import type { CopilotClient } from "@github/copilot-sdk";
@@ -188,6 +212,71 @@ function toActivityResult(result: NodeResult): NodeActivityResult {
 }
 
 // ---------------------------------------------------------------------------
+// Inlined chain helpers
+// ---------------------------------------------------------------------------
+
+const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+
+function classifyTrigger(ctx: NodeContext): InvocationTrigger {
+  if (ctx.currentInvocation?.trigger) return ctx.currentInvocation.trigger;
+  if (ctx.previousAttempt) return "retry";
+  if (ctx.attempt > 1) return "redevelopment-cycle";
+  return "initial";
+}
+
+function buildHookEnv(ctx: NodeContext): Record<string, string> {
+  const invocationDir = ctx.filesystem.joinPath(
+    ctx.appRoot,
+    ".dagent",
+    ctx.slug,
+    ctx.itemKey,
+    ctx.executionId,
+  );
+  const env: Record<string, string> = {
+    ...ctx.environment,
+    SLUG: ctx.slug,
+    APP_ROOT: ctx.appRoot,
+    REPO_ROOT: ctx.repoRoot,
+    BASE_BRANCH: ctx.baseBranch,
+    ITEM_KEY: ctx.itemKey,
+    NODE_KEY: ctx.itemKey,
+    INVOCATION_ID: ctx.executionId,
+    INVOCATION_DIR: invocationDir,
+    INPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "inputs"),
+    OUTPUTS_DIR: ctx.filesystem.joinPath(invocationDir, "outputs"),
+    LOGS_DIR: ctx.filesystem.joinPath(invocationDir, "logs"),
+  };
+  // Baseline-validation map (best-effort).
+  const flightPath = featurePath(ctx.appRoot, ctx.slug, "flight-data");
+  if (ctx.filesystem.existsSync(flightPath)) {
+    try {
+      const parsed = JSON.parse(ctx.filesystem.readFileSync(flightPath)) as Record<string, unknown>;
+      const baseline = parsed["baselineValidation"];
+      if (baseline && typeof baseline === "object") {
+        env.BASELINE_VALIDATION = JSON.stringify(baseline);
+      }
+    } catch { /* ignored */ }
+  }
+  Object.assign(env, buildE2eReadinessEnv(ctx.itemKey, ctx.apmContext.config));
+  return env;
+}
+
+/** Read a previously recorded `acceptance-integrity` hash off ctx.handlerData. */
+function readRecordedAcceptanceHash(ctx: NodeContext): { hash: string; path: string } | null {
+  const flatHash = ctx.handlerData[ACCEPTANCE_HASH_FIELD];
+  const flatPath = ctx.handlerData[ACCEPTANCE_PATH_FIELD];
+  if (typeof flatHash === "string" && typeof flatPath === "string" && flatHash && flatPath) {
+    return { hash: flatHash, path: flatPath };
+  }
+  const nsHash = ctx.handlerData[`${SPEC_COMPILER_KEY}.${ACCEPTANCE_HASH_FIELD}`];
+  const nsPath = ctx.handlerData[`${SPEC_COMPILER_KEY}.${ACCEPTANCE_PATH_FIELD}`];
+  if (typeof nsHash === "string" && typeof nsPath === "string" && nsHash && nsPath) {
+    return { hash: nsHash, path: nsPath };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Activity entry point
 // ---------------------------------------------------------------------------
 
@@ -196,6 +285,13 @@ function toActivityResult(result: NodeResult): NodeActivityResult {
  * Cancellation propagates two ways: the prefix race (deterministic
  * `outcome: "failed"`) AND the `abortSignal` plumbing into the SDK
  * (which actually disconnects the session). Both must be present.
+ *
+ * The chain (auto-skip → acceptance-integrity → lifecycle-hooks pre →
+ * materialize-inputs → handler.execute() → lifecycle-hooks post →
+ * handler-output-ingestion → acceptance-integrity post → fixture-validation
+ * → result-processor) is inlined below in one function — there is no
+ * middleware-composition layer between the activity boundary and the
+ * unit of work.
  */
 export async function copilotAgentActivity(
   input: NodeActivityInput,
@@ -217,22 +313,309 @@ export async function copilotAgentActivity(
         onHeartbeat: () => emit({ stage: "agent-running", itemKey: input.itemKey }),
       });
 
-      // Pre-abort gap: `withHeartbeat`'s controller signal listener is
-      // registered after construction, so a cancellation issued before
-      // `env.run()` won't propagate into `signal` (DOM AbortSignal
-      // semantics: `addEventListener("abort", ...)` on an already-
-      // aborted signal does not auto-fire). The shared helper checks
-      // BOTH the heartbeat signal and Temporal's cancellationSignal
-      // directly to close the gap. Bug history lives in
-      // [support/cancellation.ts](./support/cancellation.ts).
+      // Pre-abort gap: see [support/cancellation.ts](./support/cancellation.ts).
       const cancelled = buildCancellationRace({
         prefix: COPILOT_AGENT_CANCELLED_PREFIX,
         heartbeatSignal: signal,
       });
 
       const handled = (async (): Promise<NodeActivityResult> => {
-        const result = await runActivityChain(copilotAgentHandler, ctx);
-        return toActivityResult(result as NodeResult);
+        // ── Auto-skip ─────────────────────────────────────────────────
+        const skipDecision = evaluateAutoSkip(
+          ctx.itemKey,
+          ctx.apmContext,
+          ctx.repoRoot,
+          ctx.baseBranch,
+          ctx.appRoot,
+          ctx.preStepRefs,
+          ctx.pipelineState.workflowName,
+          ctx.pipelineState,
+        );
+        if (skipDecision.skip) {
+          return toActivityResult({
+            outcome: "completed",
+            errorMessage: `Skipped: ${skipDecision.skip.reason}`,
+            signals: { skipped: true },
+            summary: {
+              outcome: "completed",
+              errorMessage: `Skipped: ${skipDecision.skip.reason}`,
+              ...(skipDecision.skip.filesChanged && { filesChanged: skipDecision.skip.filesChanged }),
+            },
+          });
+        }
+        const liveCtx: NodeContext = skipDecision.forceRunChanges && !ctx.forceRunChanges
+          ? { ...ctx, forceRunChanges: true }
+          : ctx;
+
+        // ── Acceptance-integrity pre-check (non-spec-compiler nodes) ──
+        if (liveCtx.itemKey !== SPEC_COMPILER_KEY) {
+          const recorded = readRecordedAcceptanceHash(liveCtx);
+          if (recorded) {
+            if (!liveCtx.filesystem.existsSync(recorded.path)) {
+              return toActivityResult({
+                outcome: "failed",
+                signal: "halt",
+                errorMessage:
+                  `Acceptance contract missing: ${recorded.path} was removed after spec-compiler ` +
+                  `recorded its hash. The kernel requires the contract to be stable for the ` +
+                  `duration of the run. Halting to prevent false-green outcomes.`,
+                summary: { intents: [`Acceptance contract missing for ${liveCtx.itemKey}`] },
+              });
+            }
+            try {
+              const current = loadAcceptanceContract(recorded.path);
+              const currentHash = hashAcceptanceContract(current);
+              if (currentHash !== recorded.hash) {
+                return toActivityResult({
+                  outcome: "failed",
+                  signal: "halt",
+                  errorMessage:
+                    `Acceptance contract modified mid-run.\n` +
+                    `  path:    ${recorded.path}\n` +
+                    `  pinned:  ${recorded.hash}\n` +
+                    `  current: ${currentHash}\n` +
+                    `The contract is immutable after spec-compiler completes. Halting.`,
+                  summary: { intents: [`Acceptance contract modified mid-run for ${liveCtx.itemKey}`] },
+                });
+              }
+            } catch (err) {
+              return toActivityResult({
+                outcome: "failed",
+                signal: "halt",
+                errorMessage:
+                  `Acceptance contract became unparseable mid-run at ${recorded.path}: ` +
+                  `${(err as Error).message}. Halting.`,
+                summary: { intents: [`Acceptance contract unparseable for ${liveCtx.itemKey}`] },
+              });
+            }
+          }
+        }
+
+        // ── Lifecycle pre-hook + materialize-inputs setup ─────────────
+        const node = getWorkflowNode(liveCtx.apmContext, liveCtx.pipelineState.workflowName, liveCtx.itemKey);
+        const preCmd = node?.pre;
+        const postCmd = node?.post;
+        const hookTimeoutMs = node?.timeout_minutes && node.timeout_minutes > 0
+          ? node.timeout_minutes * 60_000
+          : DEFAULT_HOOK_TIMEOUT_MS;
+        const hookEnv = preCmd || postCmd ? buildHookEnv(liveCtx) : undefined;
+        if (preCmd && hookEnv) {
+          liveCtx.logger.event("hook.pre.start", liveCtx.itemKey, { command: preCmd });
+          const pre = executeHook(preCmd, hookEnv, liveCtx.appRoot, hookTimeoutMs);
+          if (pre && pre.exitCode !== 0) {
+            const message = `Pre-hook failed (exit ${pre.exitCode}): ${preCmd}\n${pre.stdout.slice(-2048)}`;
+            liveCtx.logger.event("hook.pre.end", liveCtx.itemKey, { exit_code: pre.exitCode, failed: true });
+            return toActivityResult({
+              outcome: "failed",
+              errorMessage: message,
+              summary: { intents: [`Pre-hook failed for ${liveCtx.itemKey}`] },
+              signals: { preHookFailure: true },
+            });
+          }
+          liveCtx.logger.event("hook.pre.end", liveCtx.itemKey, { exit_code: 0 });
+        }
+
+        // ── Materialize declared inputs ───────────────────────────────
+        const declaredInputs =
+          (node?.consumes_kickoff?.length ?? 0) +
+          (node?.consumes_artifacts?.length ?? 0) +
+          (node?.consumes_reroute?.length ?? 0);
+        if (node && declaredInputs > 0) {
+          const contract = compileNodeIOContract(liveCtx.itemKey, node);
+          const bus = new FileArtifactBus(liveCtx.appRoot, liveCtx.filesystem);
+          try {
+            const { inputs } = await materializeInvocationInputs({
+              contract,
+              slug: liveCtx.slug,
+              nodeKey: liveCtx.itemKey,
+              invocationId: liveCtx.executionId,
+              trigger: classifyTrigger(liveCtx),
+              state: liveCtx.pipelineState,
+              bus,
+              invocation: liveCtx.invocation,
+              fs: liveCtx.filesystem,
+              strictArtifacts: liveCtx.apmContext.config?.strict_artifacts === true,
+            });
+            try {
+              const prior = await liveCtx.invocation.readMeta(liveCtx.slug, liveCtx.itemKey, liveCtx.executionId);
+              const patched: InvocationRecord = prior
+                ? { ...prior, inputs }
+                : {
+                    invocationId: liveCtx.executionId,
+                    nodeKey: liveCtx.itemKey,
+                    cycleIndex: liveCtx.attempt,
+                    trigger: classifyTrigger(liveCtx),
+                    startedAt: new Date().toISOString(),
+                    inputs,
+                    outputs: [],
+                  };
+              await liveCtx.invocation.writeMeta(liveCtx.slug, liveCtx.itemKey, liveCtx.executionId, patched);
+            } catch { /* ignored — meta is a mirror */ }
+            if (inputs.length > 0) {
+              try {
+                await liveCtx.ledger.attachInvocationInputs(liveCtx.slug, liveCtx.executionId, inputs);
+              } catch (lerr) {
+                liveCtx.logger.event("invocation.attach_inputs_failed", liveCtx.itemKey, {
+                  invocationId: liveCtx.executionId,
+                  error: lerr instanceof Error ? lerr.message : String(lerr),
+                });
+              }
+            }
+          } catch (err) {
+            if (err instanceof MissingRequiredInputError) {
+              const sig = err.signature();
+              return toActivityResult({
+                outcome: "failed",
+                errorMessage: err.message,
+                errorSignature: sig,
+                summary: { errorSignature: sig } as NodeResult["summary"],
+              } as NodeResult);
+            }
+            if (err instanceof ArtifactValidationError) {
+              const sig = `invalid_envelope_input:${err.kind}`;
+              return toActivityResult({
+                outcome: "failed",
+                errorMessage: `Upstream artifact '${err.kind}' failed consumer-side validation: ${err.message}`,
+                errorSignature: sig,
+                summary: { errorSignature: sig } as NodeResult["summary"],
+              } as NodeResult);
+            }
+            throw err;
+          }
+        }
+
+        // ── Handler body ──────────────────────────────────────────────
+        let result = await copilotAgentHandler.execute(liveCtx);
+
+        // ── Lifecycle post-hook (runs on BOTH outcomes) ───────────────
+        if (postCmd && hookEnv) {
+          liveCtx.logger.event("hook.post.start", liveCtx.itemKey, { command: postCmd });
+          const post = executeHook(postCmd, hookEnv, liveCtx.appRoot, hookTimeoutMs);
+          if (post && post.exitCode !== 0) {
+            const message = `Post-hook failed (exit ${post.exitCode}): ${postCmd}\n${post.stdout.slice(-2048)}`;
+            liveCtx.logger.event("hook.post.end", liveCtx.itemKey, { exit_code: post.exitCode, failed: true });
+            if (result.outcome === "completed") {
+              result = {
+                ...result,
+                outcome: "failed",
+                errorMessage: message,
+                signals: { ...(result.signals ?? {}), postHookFailure: true },
+              };
+            }
+            // Handler already failed — preserve original failure.
+          } else {
+            liveCtx.logger.event("hook.post.end", liveCtx.itemKey, { exit_code: 0 });
+          }
+        }
+
+        // ── Handler-output ingestion ($OUTPUTS_DIR/handler-output.json) ─
+        const envelope = await ingestHandlerOutputEnvelope(liveCtx);
+        if (Object.keys(envelope.output).length > 0 || envelope.artifact) {
+          result = {
+            ...result,
+            handlerOutput: { ...envelope.output, ...(result.handlerOutput ?? {}) },
+            ...(envelope.artifact
+              ? { producedArtifacts: [...(result.producedArtifacts ?? []), envelope.artifact] }
+              : {}),
+          };
+        }
+
+        // ── Acceptance-integrity post-record (spec-compiler only) ─────
+        if (liveCtx.itemKey === SPEC_COMPILER_KEY && result.outcome === "completed") {
+          const bus = new FileArtifactBus(liveCtx.appRoot, liveCtx.filesystem);
+          const nodeAcceptancePath = bus.nodePath(
+            liveCtx.slug,
+            liveCtx.itemKey,
+            liveCtx.executionId,
+            "acceptance",
+          );
+          const kickoffAcceptancePath = featurePath(liveCtx.appRoot, liveCtx.slug, "acceptance");
+          const acceptancePath = liveCtx.filesystem.existsSync(nodeAcceptancePath)
+            ? nodeAcceptancePath
+            : kickoffAcceptancePath;
+          if (!liveCtx.filesystem.existsSync(acceptancePath)) {
+            result = {
+              outcome: "failed",
+              errorMessage:
+                `spec-compiler reported success but did not produce acceptance.yml at ` +
+                `${nodeAcceptancePath} (or legacy ${kickoffAcceptancePath}). ` +
+                `The acceptance contract is required for downstream nodes.`,
+              summary: { intents: [`spec-compiler produced no acceptance contract`] },
+            };
+          } else {
+            let hash: string | undefined;
+            try {
+              const contract = loadAcceptanceContract(acceptancePath);
+              hash = hashAcceptanceContract(contract);
+            } catch (err) {
+              result = {
+                outcome: "failed",
+                errorMessage:
+                  `spec-compiler produced an invalid acceptance contract at ${acceptancePath}: ` +
+                  `${(err as Error).message}`,
+                summary: { intents: [`spec-compiler produced an invalid acceptance contract`] },
+              };
+            }
+            if (hash !== undefined) {
+              result = {
+                ...result,
+                handlerOutput: {
+                  ...(result.handlerOutput ?? {}),
+                  [ACCEPTANCE_HASH_FIELD]: hash,
+                  [ACCEPTANCE_PATH_FIELD]: acceptancePath,
+                },
+              };
+
+              // ── Fixture-validation (spec-compiler only, post-completed) ──
+              try {
+                const contract = loadAcceptanceContract(acceptancePath);
+                if (contract.test_fixtures.length > 0) {
+                  const baseline = liveCtx.baselineLoader
+                    ? (() => {
+                        try {
+                          return liveCtx.baselineLoader!.loadBaseline(liveCtx.slug);
+                        } catch {
+                          return null;
+                        }
+                      })()
+                    : null;
+                  const verdict = validateFixtures(contract, baseline);
+                  if (!verdict.ok) {
+                    result = {
+                      outcome: "failed",
+                      errorMessage: formatViolationsError(verdict.violations),
+                      summary: {
+                        intents: [
+                          `Fixture validation failed for ${liveCtx.itemKey} (${verdict.violations.length} violation(s))`,
+                        ],
+                      },
+                    };
+                  }
+                }
+              } catch {
+                // acceptance-integrity already handled parse failures above.
+              }
+            }
+          }
+        }
+
+        // ── Result-processor (sanitize scriptOutput on failure) ───────
+        if (result.outcome === "failed") {
+          const so = result.handlerOutput?.scriptOutput;
+          if (typeof so === "string" && so.length > 0) {
+            const sanitized = sanitizeOutput(so);
+            const existing = result.errorMessage;
+            const needsPrefix = typeof existing === "string"
+              && existing.length > 0
+              && !existing.includes(sanitized.condensed);
+            result = {
+              ...result,
+              errorMessage: needsPrefix ? `${existing}\n\n${sanitized.condensed}` : sanitized.condensed,
+            };
+          }
+        }
+
+        return toActivityResult(result);
       })();
 
       return Promise.race([handled, cancelled]);

@@ -55,7 +55,6 @@ import triageHandler from "../../handlers/triage-handler.js";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
-import { runActivityChain } from "./middleware-chain.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
 import type { NodeResult } from "../../handlers/types.js";
 import type { TriageLlm } from "../../ports/triage-llm.js";
@@ -134,8 +133,16 @@ export async function triageActivity(
       });
 
       const classified = (async (): Promise<NodeActivityResult> => {
-        const result = await runActivityChain(triageHandler, ctx);
-        return toActivityResult(result as NodeResult);
+        // Triage runs no chain middleware. Audited drops:
+        //   - auto-skip:           triage is `on_failure`, never auto-skipped
+        //   - fixture-validation:  spec-compiler-only
+        //   - acceptance-integrity:read-only classifier; can't mutate contract
+        //   - handler-output-ingestion: triage doesn't write envelopes
+        //   - lifecycle-hooks:     triage nodes never declare pre/post
+        //   - materialize-inputs:  triage reads via TriageArtifactLoader, not contract inputs
+        //   - result-processor:    sanitizes scriptOutput; triage has none
+        const result = await triageHandler.execute(ctx);
+        return toActivityResult(result);
       })();
 
       return Promise.race([classified, cancelled]);

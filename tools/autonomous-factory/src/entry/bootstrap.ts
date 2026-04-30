@@ -13,8 +13,6 @@ import type { ApmCompiledOutput } from "../apm/types.js";
 import { ApmCompileError, ApmBudgetExceededError } from "../apm/types.js";
 import { BootstrapError } from "../errors.js";
 import { loadApmContext } from "../apm/context-loader.js";
-import { loadAppPlugins } from "../apm/plugin-loader.js";
-import { registerMiddlewares } from "../handlers/middlewares/registry.js";
 import { runResolveEnvironment } from "../lifecycle/hooks.js";
 import {
   checkJunkFiles,
@@ -116,23 +114,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
       throw new BootstrapError(`APM compilation failed: ${err.message}`);
     }
     throw err;
-  }
-
-  // --- 3b. App-local plugin auto-discovery ---
-  try {
-    const plugins = await loadAppPlugins(appRoot, repoRoot);
-    if (plugins.middlewares.length > 0) {
-      registerMiddlewares(plugins.middlewares);
-      console.log(
-        `  ✔ Registered ${plugins.middlewares.length} app-local middleware(s): ` +
-          plugins.middlewares.map((m) => m.name).join(", ") +
-          "\n",
-      );
-    }
-  } catch (err) {
-    throw new BootstrapError(
-      `App-local plugin load failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
   }
 
   // --- 4. Environment resolution ---
