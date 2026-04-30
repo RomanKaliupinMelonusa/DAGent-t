@@ -54,6 +54,13 @@ jobs:
         # No second install step needed — would only break lockfile.
         run: npm ci
 
+      - name: Lint workflow version discipline
+        # Fail fast before the heavier integration suite if a workflow
+        # change landed without bumping WORKFLOW_VERSION or toggling a
+        # patched() call. See scripts/lint-workflow-version.mjs.
+        working-directory: tools/autonomous-factory
+        run: npm run lint:workflow-version
+
       - name: Start Temporal cluster
         run: docker compose -f infra/temporal/docker-compose.yml up -d
 
