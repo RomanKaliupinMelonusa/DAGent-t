@@ -30,9 +30,7 @@ import { resolveLocalPluginPath } from "../apm/local-path-validator.js";
  * handlers are only imported when first referenced.
  */
 const BUILTIN_HANDLERS: Record<string, () => Promise<NodeHandler>> = {
-  "github-ci-poll": async () => (await import("./github-ci-poll.js")).default,
   "copilot-agent": async () => (await import("./copilot-agent.js")).default,
-  "local-exec": async () => (await import("./local-exec.js")).default,
   "triage": async () => (await import("./triage-handler.js")).default,
 };
 
