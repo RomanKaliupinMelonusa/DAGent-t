@@ -4,7 +4,6 @@
  * Every module in ports/ is a pure interface (zero executable code).
  */
 
-export type { StateStore } from "./state-store.js";
 export type { VersionControl } from "./version-control.js";
 export type { Telemetry, EventContext } from "./telemetry.js";
 export type { HookExecutor, HookResult } from "./hook-executor.js";

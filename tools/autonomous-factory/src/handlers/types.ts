@@ -22,7 +22,6 @@ import type { PipelineState, ItemSummary, ArtifactRefSerialized, InvocationRecor
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";
-import type { StateStore } from "../ports/state-store.js";
 import type { Shell } from "../ports/shell.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
@@ -34,6 +33,26 @@ import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import type { BaselineLoader } from "../ports/baseline-loader.js";
 import type { ArtifactBus } from "../ports/artifact-bus.js";
 import type { DagCommand } from "../dag-commands.js";
+
+// Minimal StateStore-shaped surface kept locally now that the legacy
+// `ports/state-store.ts` is deleted. Only the methods the surviving
+// handler bodies (and the noop ledger in temporal/build-context) reference
+// are listed. The whole `handlers/` directory is itself slated for removal
+// when activity bodies inline the handler logic; this stub is a load-bearing
+// shim until then.
+export interface StateStore {
+  getStatus(slug: string): Promise<PipelineState>;
+  attachInvocationInputs(
+    slug: string,
+    invocationId: string,
+    inputs: ReadonlyArray<unknown>,
+  ): Promise<void>;
+  attachInvocationRoutedTo(
+    slug: string,
+    invocationId: string,
+    routedTo: unknown,
+  ): Promise<void>;
+}
 
 // Re-export for backwards compatibility — the authoritative types live in
 // src/dag-commands.ts so both handlers/ and kernel/ can import them

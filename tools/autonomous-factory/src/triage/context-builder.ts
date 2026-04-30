@@ -25,14 +25,31 @@ import fs from "node:fs";
 import type { TriageRecord, InvocationRecord } from "../types.js";
 import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
 import type { PipelineState } from "../types.js";
-// Direct import of the file-state I/O helpers. `context-builder` is part of
-// the triage subsystem and is allowed to read state synchronously; wrapping
-// it behind the StateStore port would force every caller to thread the port
-// through. `readStateOrThrow` throws on missing files (catch-able below);
-// the old CLI-backed `readState` would call process.exit mid-session.
-import { readStateOrThrow } from "../adapters/file-state/io.js";
+import { readFileSync } from "node:fs";
+import { join, dirname, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { featurePath } from "../adapters/feature-paths.js";
 import { getHeadSha } from "../session/dag-utils.js";
+
+// Inlined from the deleted adapters/file-state/io.ts. The triage cascade
+// historically reads PipelineState from the on-disk `_state.json` artifact
+// staged by the legacy file-state adapter. Post-T1 cutover, Temporal owns
+// authoritative workflow state; this loader survives only for activities
+// that still consume the on-disk envelope written by triage staging.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, "../../../..");
+function getAppRoot(): string {
+  const env = process.env.APP_ROOT;
+  if (!env) return REPO_ROOT;
+  return isAbsolute(env) ? env : join(REPO_ROOT, env);
+}
+function statePath(slug: string): string {
+  return join(getAppRoot(), ".dagent", slug, "_state.json");
+}
+function readStateOrThrow(slug: string): PipelineState {
+  const raw = readFileSync(statePath(slug), "utf8");
+  return JSON.parse(raw) as PipelineState;
+}
 
 // ---------------------------------------------------------------------------
 // Triage rejection context (reroute notification)

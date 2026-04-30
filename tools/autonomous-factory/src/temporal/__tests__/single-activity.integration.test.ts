@@ -32,7 +32,7 @@ import fs from "node:fs/promises";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { localExecActivity } from "../activities/local-exec.activity.js";
 import { _clearApmContextCacheForTests } from "../activities/support/build-context.js";
-import { newInvocationId } from "../../kernel/invocation-id.js";
+import { newInvocationId } from "../../domain/invocation-id.js";
 import type { NodeActivityInput, NodeActivityResult } from "../activities/types.js";
 import type { PipelineState } from "../../types.js";
 

@@ -45,7 +45,7 @@ import type {
 import type { NodeActivityInput } from "../activities/types.js";
 import type { PipelineState } from "../../types.js";
 import type { ApmCompiledOutput } from "../../apm/types.js";
-import { newInvocationId } from "../../kernel/invocation-id.js";
+import { newInvocationId } from "../../domain/invocation-id.js";
 
 const VALID_HANDLERS: ReadonlySet<SingleActivityHandlerKind> = new Set([
   "local-exec",

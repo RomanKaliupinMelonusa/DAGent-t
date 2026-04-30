@@ -31,7 +31,7 @@ import {
   validateArtifactPayload,
   validateEnvelope,
 } from "../apm/artifact-catalog.js";
-import { isInvocationId } from "../kernel/invocation-id.js";
+import { isInvocationId } from "../domain/invocation-id.js";
 import { WORKING_DIR } from "../paths/feature-paths.js";
 
 const KICKOFF_DIR = "_kickoff";

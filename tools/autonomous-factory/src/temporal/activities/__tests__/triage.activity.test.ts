@@ -31,7 +31,7 @@ import {
   TRIAGE_CANCELLED_PREFIX,
 } from "../triage.activity.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
-import { newInvocationId } from "../../../kernel/invocation-id.js";
+import { newInvocationId } from "../../../domain/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../../types.js";
 import type { TriageLlm } from "../../../ports/triage-llm.js";

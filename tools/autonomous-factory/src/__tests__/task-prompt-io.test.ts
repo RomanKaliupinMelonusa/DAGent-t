@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { buildTaskPrompt } from "../apm/agents.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
-import { newInvocationId } from "../kernel/invocation-id.js";
+import { newInvocationId } from "../domain/invocation-id.js";
 import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
 import type { PipelineState, InvocationRecord } from "../types.js";
 
