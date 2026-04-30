@@ -22,6 +22,12 @@ export interface ParsedArgs {
   readonly maxCycles?: number;
   readonly maxFailCount?: number;
   readonly maxDevCycles?: number;
+  /** `nuke`-only — workspace-relative or absolute path to the app dir. */
+  readonly app?: string;
+  /** `nuke`-only — also delete the feature branch (local + remote). */
+  readonly deleteBranch?: boolean;
+  /** `nuke`-only — required to actually run the destructive plan. */
+  readonly confirm?: boolean;
 }
 
 export type FailHook = (msg: string) => never;
@@ -64,6 +70,9 @@ export function parseAdminArgs(
       "max-cycles": { type: "string" },
       "max-fail-count": { type: "string" },
       "max-dev-cycles": { type: "string" },
+      app: { type: "string" },
+      "delete-branch": { type: "boolean", default: false },
+      confirm: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: true,
@@ -84,5 +93,8 @@ export function parseAdminArgs(
     ...(maxCycles !== undefined ? { maxCycles } : {}),
     ...(maxFailCount !== undefined ? { maxFailCount } : {}),
     ...(maxDevCycles !== undefined ? { maxDevCycles } : {}),
+    ...(values.app ? { app: values.app as string } : {}),
+    ...(values["delete-branch"] ? { deleteBranch: true } : {}),
+    ...(values.confirm ? { confirm: true } : {}),
   };
 }

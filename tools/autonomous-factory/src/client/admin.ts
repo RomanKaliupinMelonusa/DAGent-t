@@ -34,6 +34,7 @@
  */
 
 import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
+import path from "node:path";
 import { bootstrapOtel } from "../telemetry/otel.js";
 import { parseAdminArgs } from "./admin-parse.js";
 import {
@@ -54,6 +55,7 @@ import {
   resumeAfterElevatedUpdate,
   recoverElevatedUpdate,
 } from "../workflow/updates.js";
+import { executeNuke, defaultNukeDeps } from "./nuke.js";
 
 const VERB_HELP = `\
 Usage: agent:admin:temporal <verb> <slug> [options]
@@ -73,6 +75,13 @@ Verbs:
                                                     — resume after elevated apply (default max 5)
     recover-elevated <slug> --error <msg> [--max-fail-count N] [--max-dev-cycles N]
                                                     — recover after elevated apply failure (defaults 10/5)
+
+  Teardown:
+    nuke      <slug> [--app <path>] [--delete-branch] [--confirm]
+                                                    — terminate workflow, remove .dagent/<slug>/,
+                                                      optionally delete feature/<slug> (local + remote).
+                                                      Requires --confirm to execute; without it,
+                                                      prints plan and exits 1.
 
   Queries:
     status    <slug>                                — full StateSnapshot (JSON)
@@ -120,6 +129,9 @@ interface ParsedArgs {
   readonly maxCycles?: number;
   readonly maxFailCount?: number;
   readonly maxDevCycles?: number;
+  readonly app?: string;
+  readonly deleteBranch?: boolean;
+  readonly confirm?: boolean;
 }
 
 function parse(argv: readonly string[]): ParsedArgs {
@@ -252,7 +264,56 @@ async function main(): Promise<void> {
           printJson(result);
           if (result.halted) process.exit(2);
           break;
-        }        default:
+        }
+        // ─── Nuke (P6 — destructive teardown) ─────────────────────
+        // Single-shot tear-down: terminate Temporal workflow, remove
+        // `.dagent/<slug>/`, optionally delete the feature branch
+        // (local + remote). Requires `--confirm` to actually run;
+        // without it, the plan is printed for review.
+        case "nuke": {
+          // dirname for the compiled file:
+          //   <repo>/tools/autonomous-factory/dist/client/admin.js
+          // 4 levels up == repo root.
+          const reposRoot = path.resolve(import.meta.dirname, "../../../..");
+          const result = await executeNuke(
+            {
+              slug: args.slug,
+              workflowName: args.workflowName,
+              ...(args.app ? { app: args.app } : {}),
+              ...(args.deleteBranch ? { deleteBranch: true } : {}),
+              ...(args.confirm ? { confirm: true } : {}),
+              reposRoot,
+            },
+            {
+              ...defaultNukeDeps(),
+              async terminateWorkflow(workflowId: string, reason: string) {
+                const h = client.workflow.getHandle(workflowId);
+                try {
+                  await h.terminate(reason);
+                } catch (err) {
+                  if (err instanceof WorkflowNotFoundError) return;
+                  throw err;
+                }
+              },
+            },
+          );
+          if (!args.confirm) {
+            // Plan-only mode — exit non-zero so callers don't mistake
+            // the dry-run for a successful destructive op.
+            process.exit(1);
+          }
+          // When confirm was set, success-emit the JSON result for
+          // jq-pipeable scripting.
+          printJson({
+            terminated: result.terminated,
+            removedDir: result.removedDir,
+            deletedBranch: result.deletedBranch,
+            workflowId: result.plan.workflowId,
+            dagentDir: result.plan.dagentDir,
+          });
+          break;
+        }
+        default:
           fail(`unknown verb '${args.verb}'. Run with --help for usage.`);
       }
     } catch (err) {
