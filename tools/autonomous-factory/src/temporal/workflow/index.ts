@@ -8,3 +8,4 @@
 
 export { helloWorkflow } from "./hello.workflow.js";
 export { skeletonPipelineWorkflow } from "./skeleton-pipeline.workflow.js";
+export { singleActivityWorkflow } from "./single-activity.workflow.js";

@@ -14,10 +14,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "temporal:build": "tsc -p tsconfig.temporal.json",
+    "temporal:build": "tsc -p tsconfig.json",
     "temporal:worker": "npm run temporal:build && node dist/temporal/worker/main.js",
     "temporal:hello": "npm run temporal:build && node dist/temporal/client/run-hello.js",
     "temporal:skeleton": "npm run temporal:build && node dist/temporal/client/run-skeleton.js",
+    "temporal:dispatch": "npm run temporal:build && node dist/temporal/client/run-single-activity.js",
     "temporal:test:integration": "npm run temporal:build && vitest run src/temporal"
   },
   "dependencies": {

@@ -92,6 +92,14 @@ export interface CopilotSessionParams {
    * inspects its contents.
    */
   freshnessGate?: import("../harness/hooks.js").FreshnessGate;
+  /**
+   * Optional external cancellation signal (Temporal S3 Phase 5).
+   * Wired by `copilot-agent.activity.ts`; on abort the runner calls
+   * `session.disconnect()` so the in-flight `sendAndWait` rejects and
+   * the worker slot frees promptly. See port docstring for full
+   * rationale.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface CopilotSessionResult {
@@ -155,6 +163,31 @@ export async function runCopilotSession(
       ? { mcpServers: params.mcpServers as Record<string, MCPServerConfig> }
       : {}),
   });
+
+  // External cancellation hook (Temporal S3 Phase 5). Wired by the
+  // activity layer so workflow-initiated cancellation can disconnect
+  // the live SDK session. We register AFTER `createSession` so the
+  // session object exists; the legacy in-process cancellation paths
+  // (breaker, post-completion timer, finally) remain untouched.
+  let abortListener: (() => void) | undefined;
+  if (params.abortSignal) {
+    if (params.abortSignal.aborted) {
+      // Already cancelled before we even got a session — disconnect
+      // immediately and let the sendAndWait below reject promptly.
+      session.disconnect().catch(() => { /* best-effort */ });
+    } else {
+      abortListener = () => {
+        logger.event("breaker.fire", itemKey, {
+          type: "external_abort",
+          reason: String(
+            (params.abortSignal as AbortSignal & { reason?: unknown }).reason ?? "abort",
+          ),
+        });
+        session.disconnect().catch(() => { /* best-effort */ });
+      };
+      params.abortSignal.addEventListener("abort", abortListener, { once: true });
+    }
+  }
 
   // Heartbeat: snapshot _FLIGHT.json while the session is live so the
   // watcher (or Live UI) can render progress without waiting for finish.
@@ -359,6 +392,12 @@ export async function runCopilotSession(
   } finally {
     isSessionActive = false;
     if (postCompletionDisconnectTimer) clearTimeout(postCompletionDisconnectTimer);
+    if (abortListener && params.abortSignal) {
+      // Detach the abort listener so the AbortSignal doesn't keep the
+      // session reference alive after disconnect (and so the listener
+      // can't fire against a torn-down session).
+      params.abortSignal.removeEventListener("abort", abortListener);
+    }
     await session.disconnect();
     const snapshotAfter = captureGitFilesSnapshot(params.repoRoot);
     const touched = diffGitFilesSnapshots(snapshotBefore, snapshotAfter, params.repoRoot);

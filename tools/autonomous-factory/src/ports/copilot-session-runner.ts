@@ -55,6 +55,27 @@ export interface CopilotSessionParams {
    *  whose name is in `tools`. Stack-agnostic; the engine never inspects
    *  the contents. */
   freshnessGate?: import("../harness/hooks.js").FreshnessGate;
+  /**
+   * Optional external cancellation signal (Temporal Session 3 Phase 5).
+   *
+   * Wired by `copilot-agent.activity.ts` so workflow-initiated activity
+   * cancellation can disconnect the live SDK session. Without this hook
+   * the runner's only cancellation paths are the cognitive circuit
+   * breaker, the post-completion grace timer, and `params.timeout` —
+   * none of which observe the activity context, so a cancelled
+   * activity would otherwise hang until the SDK timeout (potentially
+   * hours) and starve the worker slot.
+   *
+   * When the signal aborts, the adapter calls `session.disconnect()`
+   * best-effort; the in-flight `sendAndWait` rejects, and the runner's
+   * existing `catch` path classifies the error and returns
+   * `sessionError` with the abort reason. Activity-side code surfaces
+   * the result through the `COPILOT_AGENT_CANCELLED_PREFIX` race
+   * (see `copilot-agent.activity.ts`) rather than relying on this
+   * error path alone — the prefix race is more deterministic when the
+   * SDK's reject message is opaque.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface CopilotSessionResult {

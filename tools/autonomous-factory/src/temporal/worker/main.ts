@@ -8,6 +8,24 @@
  *   TEMPORAL_ADDRESS    — Temporal frontend gRPC address (default localhost:7233)
  *   TEMPORAL_TASK_QUEUE — Task queue (default dagent-hello)
  *   TEMPORAL_NAMESPACE  — Namespace (default default)
+ *
+ * Activity dependency injection
+ * -----------------------------
+ * The triage and copilot-agent activities use module-scoped DI for
+ * heavyweight ports (LLM clients, baseline loader, Copilot SDK client,
+ * session runner). Production wiring is deferred to a follow-up
+ * commit — until then the worker boots WITHOUT injecting these,
+ * which means:
+ *   - `localExecActivity` and `githubCiPollActivity` work end-to-end
+ *     (no DI needed).
+ *   - `triageActivity` works in contract-only / fallback mode (LLM
+ *     path skipped — handler degrades gracefully).
+ *   - `copilotAgentActivity` returns the deterministic BUG message
+ *     ("ctx.client is undefined") — the activity registers and runs,
+ *     but the handler short-circuits before reaching the SDK. This
+ *     is intentional: production deployment must explicitly inject
+ *     the Copilot client and runner via `setCopilotAgentDependencies`
+ *     before the worker accepts copilot-agent tasks.
  */
 
 import { fileURLToPath } from "node:url";

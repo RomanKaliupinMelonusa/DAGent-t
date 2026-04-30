@@ -1,4 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
@@ -19,6 +23,20 @@ export default defineConfig({
     // Workflow tests boot TestWorkflowEnvironment (Rust core); cold start ~1–2s.
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    // Alias `@github/copilot-sdk` to a hand-rolled stub. The real SDK's
+    // `index.js` value-imports `./session.js`, which fails to ESM-resolve
+    // under vitest (`vscode-jsonrpc/node` extension issue). The triage
+    // handler in particular reaches the SDK transitively via
+    // `harness/index.ts`. The stub reimplements just the surface
+    // legacy handlers value-import (`defineTool`, `approveAll`,
+    // `CopilotSession`, `CopilotClient`). Phase-5 tests that need a
+    // real session inject the runner through `setCopilotSessionRunner`.
+    alias: {
+      "@github/copilot-sdk": resolve(
+        __dirname,
+        "src/temporal/test-stubs/copilot-sdk-stub.ts",
+      ),
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

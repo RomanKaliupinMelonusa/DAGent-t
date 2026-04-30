@@ -398,7 +398,7 @@ export async function runPipelineLoop(
           gateEffects: batch.gateEffects,
           triageActivations: triageActivationCountThisTick,
           stallFails: stallFailsThisTick,
-        }),
+        }) as unknown as Record<string, unknown>,
       );
 
       // All items in batch are triage-only — skip to next iteration
