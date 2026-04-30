@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "temporal:build": "tsc -p tsconfig.json",
+    "temporal:dev": "temporal server start-dev --ui-port 8233 --db-filename $HOME/.temporal-dev.db --log-level warn",
     "temporal:worker": "npm run temporal:build && node dist/worker/main.js",
     "temporal:hello": "npm run temporal:build && node dist/client/run-hello.js",
     "temporal:skeleton": "npm run temporal:build && node dist/client/run-skeleton.js",
