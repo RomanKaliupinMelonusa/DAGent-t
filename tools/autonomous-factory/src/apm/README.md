@@ -1,9 +1,10 @@
 # `src/apm/` — Agent Persona Manifest Compiler & Context Loader
 
-> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+Compiles `.apm/apm.yml` + instruction fragments + MCP/skill declarations into a validated, per-agent system prompt. Every agent's rules come from here.
 
-
-> Compiles `.apm/apm.yml` + instruction fragments + MCP/skill declarations into a validated, per-agent system prompt. Every agent's rules come from here.
+See [Architecture overview](../../docs/architecture.md) for how the APM
+context flows from client-side bootstrap into the workflow's
+`PipelineInput` and out to the `copilot-agent` activity.
 
 ## Role in the architecture
 
@@ -22,8 +23,7 @@ This layer is the reason the engine is stack-agnostic. All cloud/framework-speci
 | [acceptance-schema.ts](acceptance-schema.ts) | Schema for the acceptance block in `apm.yml`. |
 | [canvas.ts](canvas.ts) | DAG visualization export helpers consumed by `scripts/export-canvas.ts`. |
 | [capability-profiles.ts](capability-profiles.ts) | Resolves and renders capability profiles (grouped instruction preferences). |
-| [plugin-loader.ts](plugin-loader.ts) | Loads app-local plugin modules (middlewares, handlers) at bootstrap. |
-| [local-path-validator.ts](local-path-validator.ts) | Path security: resolves user-provided paths against `appRoot`/`repoRoot`, rejects directory traversal. Used by `plugin-loader` and the handler registry. |
+| [local-path-validator.ts](local-path-validator.ts) | Path security: resolves user-provided paths against `appRoot`/`repoRoot`, rejects directory traversal. Used by every place the engine resolves a path declared in `apm.yml` (custom triage classifiers, capability profiles). |
 | [artifact-catalog.ts](artifact-catalog.ts) | Declared artefact-kind registry. Every `kind` referenced in `consumes_*` / `produces_artifacts` must be catalogued here with its file extension, schema, and reserved keys (e.g. `spec`, `change-manifest`, `triage-handoff`, `handler-output`). |
 | [artifact-io-validator.ts](artifact-io-validator.ts) | Compile-time validator that every node's `consumes_*` / `produces_artifacts` references a known kind, and that producers exist for every consumed artefact in the workflow DAG. |
 | [compile-node-io-contract.ts](compile-node-io-contract.ts) | Compiles each node's I/O contract from `workflows.yml` into a typed structure consumed by the dispatcher and the contract gate. |
@@ -52,7 +52,7 @@ The compiled `context.json` cache lives under `<appRoot>/.apm/.compiled/context.
 1. **Budget enforcement is fatal at startup.** If any agent's rule block exceeds `budget.tokens` in `apm.yml`, bootstrap throws `ApmBudgetExceededError`. No pipeline runs with a budget overrun.
 2. **No agent-prompt text is hardcoded in `agents.ts`.** Identity, rules, environment — all come from the manifest. The engine only provides generic prompt scaffolding.
 3. **Instruction resolution is alphabetical within a directory.** `instructions: [backend]` loads every `.md` under `backend/` sorted by name; authors control ordering via filename prefixes (`00-identity.md`, `10-testing.md`).
-4. **Path validation is mandatory for plugins.** `plugin-loader` and the handlers registry call `local-path-validator` before `import()`-ing anything; directory traversal outside `appRoot` is rejected.
+4. **Path validation is mandatory for user-supplied paths.** Custom triage classifiers and any other manifest-declared file path are validated by `local-path-validator` before resolution; directory traversal outside `appRoot` is rejected.
 5. **Schema is validated twice.** Once at compile (inside `compiler.ts`), once at load (inside `context-loader.ts`) — defense in depth against a stale or corrupted `context.json`.
 
 ## How to extend
@@ -74,11 +74,6 @@ The compiled `context.json` cache lives under `<appRoot>/.apm/.compiled/context.
 1. Add the profile block in `apm.yml`.
 2. [capability-profiles.ts](capability-profiles.ts) renders profile preferences into the rule block.
 
-**Add an app-local plugin** (middleware or handler):
-
-1. Write the `.ts` under `apps/<app>/.apm/middlewares/` or `.apm/handlers/`.
-2. Compiler picks it up via `scanPluginDirs()`; `plugin-loader.ts` imports it at bootstrap.
-
 ## Gotchas
 
 - **Stale cache bites.** `.apm/.compiled/context.json` is mtime-gated; if you edit an instruction `.md` and the filesystem clock is off (containers), compile may not re-run. Delete `.compiled/` when in doubt.
@@ -89,7 +84,7 @@ The compiled `context.json` cache lives under `<appRoot>/.apm/.compiled/context.
 
 ## Related layers
 
-- Produces input for → [src/handlers/copilot-agent.ts](../handlers/README.md) via `getAgentConfig` / `buildTaskPrompt`
-- Consumed at → [src/entry/bootstrap.ts](../entry/README.md) (`loadApmContext`)
-- Feeds → [src/triage/](../triage/README.md) (`CompiledTriageProfile` from triage packs)
-- Depends on → `ApmFileCompiler` adapter in [src/adapters/](../adapters/README.md)
+- Produces input for → [`src/activities/copilot-agent.activity.ts`](../activities/README.md) via `getAgentConfig` / `buildTaskPrompt`
+- Consumed at → [`src/entry/bootstrap.ts`](../entry/README.md) (`loadApmContext`)
+- Feeds → [`src/triage/`](../triage/README.md) (`CompiledTriageProfile` from triage packs)
+- Depends on → `ApmFileCompiler` adapter in [`src/adapters/`](../adapters/README.md)

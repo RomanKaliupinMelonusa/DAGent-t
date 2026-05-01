@@ -1,15 +1,22 @@
 # `src/domain/` — Pure Domain Logic
 
-> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+Pure functions. No I/O. No side effects. All the math behind the DAG lives here.
 
-
-> Pure functions. No I/O. No side effects. All the math behind the DAG lives here.
+See [Architecture overview](../../docs/architecture.md) for how the
+workflow and activities consume this layer. A workflow-VM-safe twin of
+these modules lives at [`src/workflow/domain/`](../workflow/domain/README.md);
+that README explains why the duplication is intentional and which files
+diverge.
 
 ## Role in the architecture
 
-`domain/` is the algorithmic core. Every module here is a pure function — given the same inputs, it always returns the same outputs, and it never touches the filesystem, network, or subprocess. This is what keeps the kernel deterministic.
+`domain/` is the algorithmic core. Every module here is a pure function — given the same inputs, it always returns the same outputs, and it never touches the filesystem, network, or subprocess.
 
-Nothing in this folder may import `node:fs`, `node:child_process`, `@github/copilot-sdk`, or anything from `adapters/`, `handlers/`, `ports/`, or `kernel/`. The direction of dependency is strictly one-way: the kernel depends on the domain; the domain depends on nothing in the engine.
+Nothing in this folder may import `node:fs`, `node:child_process`,
+`@github/copilot-sdk`, or anything from `adapters/`, `activities/`,
+`ports/`, or `workflow/`. The direction of dependency is strictly one-way:
+activities and the workflow's twin domain depend on this folder; this
+folder depends on nothing in the engine.
 
 ## Files
 
@@ -24,13 +31,16 @@ Nothing in this folder may import `node:fs`, `node:child_process`, `@github/copi
 | [error-classification.ts](error-classification.ts) | Classifies SDK errors as fatal vs retriable. | `isFatalSdkError`, `DEFAULT_FATAL_SDK_PATTERNS` |
 | [volatile-patterns.ts](volatile-patterns.ts) | Regex library that strips timestamps / run IDs / SHAs before fingerprinting. | `compileVolatilePatterns`, `mergeVolatilePatterns`, `DEFAULT_VOLATILE_PATTERNS` |
 | [cycle-counter.ts](cycle-counter.ts) | Enforces the 5-redev-cycle / 3-redeploy budget. | `checkCycleBudget`, `countErrorSignature` |
-| [stall-detection.ts](stall-detection.ts) | Detects items that have been dormant past a timeout. | `detectStalledItems`, `formatStallError`, `StalledItem` |
 | [pruning.ts](pruning.ts) | Computes `dormant` keys at init based on workflow type. | `computeDormantKeys`, `PrunableNode` |
 | [batch-interpreter.ts](batch-interpreter.ts) | Classifies a scheduled batch into outcome categories (all-complete, mixed, all-failed…). | `interpretBatch`, `BatchOutcome`, `BatchSignals` |
-| [approval-sla.ts](approval-sla.ts) | Enforces approval-gate SLA windows. | `resolveApprovalSla`, `checkApprovalExpired` |
 | [progress-tracker.ts](progress-tracker.ts) | Snapshots DAG progress for telemetry. | `snapshotProgress` |
-| [dangling-invocations.ts](dangling-invocations.ts) | Detects invocations that crashed mid-dispatch (no seal, no failure) and emits the reconcile commands consumed by `pipeline:recover-dangling`. | `findDanglingInvocations`, `reconcileDangling` |
+| [invocation-id.ts](invocation-id.ts) | Deterministic per-attempt invocation id. Used identically by the workflow twin so replays produce stable ids. | `computeInvocationId` |
 | [index.ts](index.ts) | Barrel re-exports. | (all of the above) |
+
+Approval SLAs, stall detection, and dangling-invocation recovery are no
+longer this layer's concern — Temporal handles them via
+`Workflow.condition()` + activity timeouts + heartbeat timeouts. See the
+[workflow/domain README](../workflow/domain/README.md).
 
 ## Public interface
 
@@ -62,14 +72,14 @@ Transition results always carry a `nextState` — callers apply it as a replacem
 
 1. Add a pure function in [transitions.ts](transitions.ts) taking `(state, …args) => { nextState, … }`.
 2. Export it from [index.ts](index.ts).
-3. Reference it from `DefaultKernelRules` in [src/kernel/rules.ts](../kernel/rules.ts).
-4. Add a new `Command` in [src/kernel/commands.ts](../kernel/commands.ts) that wires to it.
-5. Unit-test the transition in `__tests__/`.
+3. Mirror the function in the workflow-VM twin at [`src/workflow/domain/transitions.ts`](../workflow/domain/transitions.ts) (no `node:crypto`, no I/O); call it from the workflow's signal/update/dispatch handlers.
+4. Bump `WORKFLOW_VERSION` (or wrap with `patched()`) per the determinism rules in [`src/workflow/README.md`](../workflow/README.md).
+5. Unit-test both copies in `__tests__/`.
 
 **Add a new scheduling rule** (e.g. priority boosting):
 
 1. Extend [scheduling.ts](scheduling.ts) or wrap it — prefer a new function rather than mutating `schedule()`.
-2. Update `KernelRules` if the new rule needs to be pluggable.
+2. Mirror the change in [`src/workflow/domain/scheduling.ts`](../workflow/domain/scheduling.ts).
 
 **Add a new failure-fingerprint strategy**:
 
@@ -85,6 +95,7 @@ Transition results always carry a `nextState` — callers apply it as a replacem
 
 ## Related layers
 
-- Consumed by → [src/kernel/](../kernel/README.md) via `DefaultKernelRules`
-- Consumed by → [src/triage/](../triage/README.md) for fingerprinting and failure routing
-- Not consumed by handlers, adapters, or ports (one-way rule)
+- Mirrored by → [`src/workflow/domain/`](../workflow/domain/README.md) (the workflow-VM-safe twin)
+- Consumed by → [`src/triage/`](../triage/README.md) for fingerprinting and failure routing
+- Consumed by → [`src/activities/`](../activities/README.md) and [`src/activity-lib/`](../activity-lib/README.md) for non-workflow contexts
+- Not consumed by adapters or ports (one-way rule)

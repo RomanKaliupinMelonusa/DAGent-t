@@ -1,327 +1,144 @@
-# Autonomous Factory — Engine Architecture
+# Autonomous Factory — Engine
 
-> Note: this README has stale content; see [docs/architecture.md](docs/architecture.md) for current reality. Full rewrite tracked separately.
->
-> The orchestration engine that drives the agentic pipeline. This document is the **single source of truth for how the engine is structured**: layers, paradigm, data flow, extension points, and rough edges.
->
-> Audience: senior engineers wanting to understand, modify, or extend the engine. For a user-facing tour of the platform see the [repo README](../../README.md). For operational runbook (CI secrets, ChatOps, commands) see [.github/AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md).
+The Temporal-based orchestration engine that drives the agentic pipeline. A
+single worker process executes activities for a DAG-shaped workflow that walks
+a feature spec from kickoff to PR. Operators interact through a thin admin CLI
+that talks to Temporal via signals, queries, and updates.
 
----
+> Audience: contributors modifying or extending the engine. For the
+> end-to-end platform tour see the [repo README](../../README.md). For
+> operational runbook (CI secrets, ChatOps, commands) see
+> [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md).
 
-## Paradigm
+## What's authoritative
 
-Four mutually reinforcing patterns. Understand these and the rest follows.
+The architecture overview — topology diagram, state taxonomy, activities
+catalog, admin CLI verbs, versioning policy — lives in
+[`docs/architecture.md`](docs/architecture.md). This README links to it
+rather than duplicating the diagram. The Temporal-migration decision and
+determinism rules live in [`docs/adr/0001-temporal.md`](docs/adr/0001-temporal.md).
 
-| Pattern | What it means here |
-|---|---|
-| **Command-sourced kernel** | All pipeline state lives in one object (`PipelineKernel`). Nothing else mutates state. Callers submit typed `Command`s; the kernel returns a `CommandResult` plus a list of `Effect`s describing I/O the caller must perform. Kernel is synchronous and pure. |
-| **Hexagonal ports & adapters** | Business logic depends on [ports](src/ports/) (interfaces). I/O concretions live in [adapters](src/adapters/). Swapping GitHub for GitLab, JSON files for SQLite, or the Copilot SDK for another LLM provider is a composition-root change, not a rewrite. |
-| **Handler plugin system** | DAG nodes are executed by [handlers](src/handlers/) (`copilot-agent`, `local-exec`, `github-ci-poll`, `approval`, `triage`). New node types register a new handler; the kernel does not know what a "backend-dev" is. |
-| **Reactive DAG loop** | The orchestrator is a deterministic `while` loop ([pipeline-loop.ts](src/loop/pipeline-loop.ts)) — ask the kernel for ready items, dispatch them to handlers in parallel, translate results back into commands, repeat. No LLM decides what runs next. |
+## Layer map
 
-**The design invariant**: deterministic orchestration wraps LLM execution. Agents are untrusted workers; the kernel is the brain.
+Every layer below has its own README with file inventory, invariants, and
+extension recipes. Start there when you need to change one layer in
+isolation.
 
----
-
-## Layer Stack
-
-```mermaid
-flowchart TB
-    subgraph CR["Composition Root"]
-        ENTRY["entry/<br/>watchdog.ts · main.ts · bootstrap.ts · cli.ts"]
-    end
-
-    subgraph DRIVE["Drive Layer (reactive loop)"]
-        LOOP["loop/<br/>pipeline-loop.ts · signal-handler.ts"]
-    end
-
-    subgraph DISP["Dispatch Layer"]
-        DISPATCH["loop/dispatch/<br/>NodeContext builder · batch dispatcher"]
-    end
-
-    subgraph PLUG["Plugin Layer"]
-        HANDLERS["handlers/<br/>copilot-agent · local-exec · github-ci-poll · approval · triage"]
-        HARNESS["harness/<br/>RBAC · shell guards · outcome tool · sandbox"]
-    end
-
-    subgraph CORE["Pure Core (no I/O)"]
-        KERNEL["kernel/<br/>PipelineKernel · Command · Effect · Rules"]
-        DOMAIN["domain/<br/>schedule · transitions · dag-graph · failure-routing · error-signature"]
-        APM["apm/<br/>compiler · context-loader · capability-profiles"]
-        TRIAGE["triage/<br/>retriever · llm-router · classifier · handoff-builder"]
-    end
-
-    subgraph IO["I/O Layer"]
-        PORTS["ports/<br/>StateStore · VersionControl · CiGateway · TriageLlm · HookExecutor · Shell · Telemetry"]
-        ADAPTERS["adapters/<br/>json-file-state-store · git-shell · github-ci · copilot-session-runner · shell-hook · apm-file-compiler"]
-    end
-
-    subgraph XCUT["Cross-Cutting"]
-        REPORTING["reporting/<br/>summaries · cost · flight-data · change-manifest"]
-        LIFECYCLE["lifecycle/<br/>preflight · hooks · auto-skip · archive"]
-        SESSION["session/<br/>dag-utils · session-events · telemetry helpers"]
-        TELEMETRY["telemetry/<br/>structured logger · jsonl"]
-    end
-
-    ENTRY --> LOOP
-    LOOP --> DISPATCH
-    DISPATCH --> HANDLERS
-    HANDLERS --> HARNESS
-    HANDLERS --> KERNEL
-    HANDLERS --> TRIAGE
-    HANDLERS --> PORTS
-    KERNEL --> DOMAIN
-    DISPATCH --> APM
-    APM -.->|reads| PORTS
-    ADAPTERS -.->|implements| PORTS
-    ENTRY -.->|wires| ADAPTERS
-    LOOP --> REPORTING
-    LOOP --> LIFECYCLE
-    HANDLERS --> SESSION
-
-    %% Node styles — vivid fills, dark text
-    classDef compRoot fill:#e0e7ff,stroke:#4338ca,stroke-width:2px,color:#1e1b4b
-    classDef drive fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#431407
-    classDef dispatch fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#451a03
-    classDef plugin fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#052e16
-    classDef core fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#172554
-    classDef io fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#3b0764
-    classDef xcut fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
-
-    class ENTRY compRoot
-    class LOOP drive
-    class DISPATCH dispatch
-    class HANDLERS,HARNESS plugin
-    class KERNEL,DOMAIN,APM,TRIAGE core
-    class PORTS,ADAPTERS io
-    class REPORTING,LIFECYCLE,SESSION,TELEMETRY xcut
-
-    %% Subgraph container tints (matching each layer, lighter)
-    style CR fill:#eef2ff,stroke:#6366f1,stroke-width:1px,color:#1e1b4b
-    style DRIVE fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#431407
-    style DISP fill:#fffbeb,stroke:#d97706,stroke-width:1px,color:#451a03
-    style PLUG fill:#f0fdf4,stroke:#16a34a,stroke-width:1px,color:#052e16
-    style CORE fill:#eff6ff,stroke:#2563eb,stroke-width:1px,color:#172554
-    style IO fill:#faf5ff,stroke:#9333ea,stroke-width:1px,color:#3b0764
-    style XCUT fill:#f9fafb,stroke:#6b7280,stroke-width:1px,color:#111827
-```
-
-**Dependency direction rules** (enforced by ESLint `no-restricted-imports` in [domain/](src/domain/) and [kernel/](src/kernel/)):
-
-- `domain/` and `ports/` import nothing from the rest of the engine.
-- `kernel/` imports from `domain/` and `ports/` only.
-- `adapters/` implements `ports/`; imports I/O libs (`node:fs`, `@github/copilot-sdk`, `gh`, `git`).
-- `handlers/` coordinates the above; calls `kernel/` via commands, uses `ports/` for I/O.
-- `entry/main.ts` is the only place where adapters are wired.
-
-Violations of this direction are the main source of tech debt (see [Rough edges](#rough-edges)).
-
----
-
-## Data Flow — One Feature, End to End
-
-1. **Bootstrap** ([entry/bootstrap.ts](src/entry/bootstrap.ts))
-   Preflight auth → compile APM (`apm/compiler.ts`) → build `PipelineRunConfig`. Fatal if agent token budgets exceed manifest limits.
-2. **Composition** ([entry/main.ts](src/entry/main.ts))
-   Adapters are instantiated and wired: `JsonFileStateStore`, `GitShellAdapter`, `GithubCiAdapter`, `CopilotTriageLlm`, `ShellHookExecutor`, etc. A `PipelineKernel` is created with `DefaultKernelRules` (which delegate to `domain/`).
-3. **Loop** ([loop/pipeline-loop.ts](src/loop/pipeline-loop.ts))
-   `while (true)` → `kernel.getNextBatch()` → if items ready, dispatch.
-4. **Dispatch** ([loop/dispatch/](src/loop/dispatch/))
-   For each ready item: build `NodeContext` (item key, slug, APM config, previous attempt, environment). Resolve handler via [handlers/registry.ts](src/handlers/registry.ts).
-5. **Handler execution** ([handlers/](src/handlers/))
-   - `copilot-agent`: spin up a Copilot SDK session with a compiled prompt; agent calls `report_outcome` SDK tool on completion.
-   - `local-exec`: run a bash script (push, poll, publish).
-   - `github-ci-poll`: watch a GitHub Actions run for a pinned SHA.
-   - `approval`: wait on a human gate (elevated-infra).
-   - `triage`: classify a prior failure, emit DAG reset commands.
-6. **Commands back to kernel**
-   Handler returns a `NodeResult` containing `DagCommand[]` (e.g. `reset-nodes`, `stage-invocation`). Dispatch wraps these into kernel `Command`s; `kernel.process()` returns the updated state + `Effect[]`.
-7. **Effect execution** ([kernel/effect-executor.ts](src/kernel/effect-executor.ts))
-   `persist-state`, `persist-execution-record`, `telemetry-event`, `reindex`, `write-halt-artifact` flow to adapters.
-8. **Advance** — next iteration. When the kernel reports `complete`/`blocked`/`halt`, the loop exits; `lifecycle/archive.ts` moves feature artifacts out of `.dagent/`.
-
-**Failure path**: if post-deploy verification (`integration-test`, `live-ui`) fails, the `triage` handler runs the [2-layer classifier](src/triage/index.ts) (RAG substring → optional LLM fallback), emits a `reset-nodes` command with the responsible domain's items, and the loop picks them up on the next batch. Bounded by 5 redevelopment cycles.
-
----
-
-## The Node I/O Contract
-
-Every DAG node's I/O flows through one declarative contract backed by the [`ArtifactBus`](src/ports/artifact-bus.ts) port. Agents declare `consumes_kickoff`, `consumes_artifacts`, and `produces_artifacts` in `workflows.yml`; the kernel resolves inputs, enforces declared outputs, and indexes every dispatch in `state.artifacts[invocationId]` — the authoritative lineage ledger. No handler hardcodes filenames.
-
-```
-apps/<app>/.dagent/<slug>/
-  _state.json                      # DAG state + invocation ledger (artifacts[inv])
-  _kickoff/<kind>.<ext>            # feature inputs authored BEFORE any node runs
-  <nodeKey>/<invocationId>/        # immutable once sealed
-    meta.json                      # mirror of InvocationRecord
-    inputs/                        # materialized from declared consumes_*
-      params.in.json               # resolved input manifest
-      <kind>.<ext>                 # one file per resolved input (copied, not symlinked)
-    outputs/                       # one file per declared produces_artifacts
-      <kind>.<ext>                 # e.g. summary.md, deployment-url.json, ci-result.json, triage-handoff.json
-      screenshots/                 # MCP-side scratch evidence (e.g. Playwright `--output-dir`); slug-scoped via `{invocationDir}` placeholder, archived with the feature
-    logs/
-      events.jsonl · tool-calls.jsonl · messages.jsonl · stdout.log · stderr.log
-```
-
-Re-runs never overwrite — each dispatch creates a fresh invocation dir. `report_outcome` is now `{ status, message? }` only; everything else is a declared artifact. The kernel hard-fails when declared `produces_artifacts` are missing (errorSignature `missing_required_output:<kind>`) and routes through `on_failure.triage`. Inputs are materialized into `<inv>/inputs/` *before* the handler runs — `INPUTS_DIR`, `OUTPUTS_DIR`, and `LOGS_DIR` env vars are real, file-backed paths. Every handler emits the same `node.*` event schema keyed by `invocationId`; per-invocation logs sink to `<inv>/logs/` via the `InvocationLogger` port. Triage hands off to retried dev agents through `outputs/triage-handoff.json` — no prose injection, no `pendingContext` string. See [`docs/04-state-machine.md` → "The Node I/O Contract"](docs/04-state-machine.md#the-node-io-contract) for the full reference.
-
----
-
-## How Each Layer Scales and Extends
-
-| Add this | Touch these | Do NOT touch |
+| Layer | What it owns | README |
 |---|---|---|
-| **New agent** (e.g. `security-reviewer`) | `apps/<app>/.apm/apm.yml` agents block; instruction fragments in `.apm/instructions/`; entry in `.apm/workflows.yml`. | Engine source. |
-| **New pipeline node** | `.apm/workflows.yml` (`nodes:` with `depends_on`, `handler`); optional `.apm/skills/*.skill.md`. | Engine source (provided an existing handler fits). |
-| **New handler type** (e.g. `grpc-health-poll`) | [handlers/registry.ts](src/handlers/registry.ts) `BUILTIN_HANDLERS` map; new file under `handlers/`; declare in workflow node's `handler:`. | Kernel, loop. |
-| **New adapter** (e.g. `SqliteStateStore`) | New file under `adapters/`; swap instantiation in [entry/main.ts](src/entry/main.ts). | Ports, kernel, domain. |
-| **New error classification rule** | [triage/contract-classifier.ts](src/triage/contract-classifier.ts) patterns, or `.apm/triage-packs/*.json` (no code change). | Kernel, handlers. |
-| **New command / effect type** | `kernel/commands.ts` + `kernel/effects.ts` + `kernel/pipeline-kernel.ts` handler; `kernel/effect-executor.ts` for the effect side. | Domain, ports, adapters. |
-| **Non-Azure cloud target** | `apps/<app>/.apm/hooks/*.sh` (validateApp, validateInfra, preflightAuth); `.apm/instructions/` identity docs; `config.environment` in `apm.yml`. | Engine source. |
+| `src/workflow/` | Deterministic pipeline workflow, `DagState`, signals/queries/updates, `WORKFLOW_VERSION`. | [README](src/workflow/README.md) |
+| `src/workflow/domain/` | Twin of `src/domain/` callable from inside the workflow VM (no `node:crypto`, no I/O). | [README](src/workflow/domain/README.md) |
+| `src/activities/` | Side-effecting work invoked by the workflow (`copilot-agent`, `local-exec`, `github-ci-poll`, `triage`, `archive`, `hello`). | [README](src/activities/README.md) |
+| `src/activity-lib/` | Pure helpers shared by activities — no Temporal SDK imports, unit-testable. | [README](src/activity-lib/README.md) |
+| `src/worker/` | Worker bootstrap — registers workflows + activities, polls task queue, wires OTel. | [README](src/worker/README.md) |
+| `src/client/` | Temporal client surfaces: `dagent-admin`, feature-run CLI, smoke-test runners. | [README](src/client/README.md) |
+| `src/domain/` | Pure DAG math, transitions, scheduling, error fingerprinting (used outside the workflow VM). | [README](src/domain/README.md) |
+| `src/ports/` | Hexagonal interface contracts. Implementations live in `src/adapters/`. | [README](src/ports/README.md) |
+| `src/adapters/` | I/O concretions — every filesystem, subprocess, git, GitHub, or LLM call goes through one of these. | [README](src/adapters/README.md) |
+| `src/apm/` | APM manifest compiler, context loader, agent prompt factory, artifact catalog. | [README](src/apm/README.md) |
+| `src/triage/` | Failure classifier (declarative L0 → RAG → LLM) and structured handoff builder. | [README](src/triage/README.md) |
+| `src/lifecycle/` | Preflight checks, lifecycle hooks, auto-skip, branch flush, state-commit mutex. | [README](src/lifecycle/README.md) |
+| `src/harness/` | Agent SDK session safety: tool RBAC, tool-call limits, shell guards, `report_outcome` tool. | [README](src/harness/README.md) |
+| `src/reporting/` | Pipeline executive surfaces: `_TRANS.md` projection, summaries, cost, retrospectives. | [README](src/reporting/README.md) |
+| `src/telemetry/` | `PipelineLogger` interface, JSONL/noop/multiplex/OTel implementations, OTel bootstrap. | [README](src/telemetry/README.md) |
+| `src/session/` | Activity-side session helpers (git snapshots, SDK event wiring, transient retry, CI artefact poster). | [README](src/session/README.md) |
+| `src/entry/` | Composition root for client-side entry points (bootstrap, CLI parser, supervisor). | [README](src/entry/README.md) |
 
-**Scaling properties:**
+Two thin layers without their own README:
 
-- **Horizontal (per feature)**: one engine process per feature slug; state files and git branches are isolated. Features on the same repo do not share state.
-- **Parallelism within a feature**: the DAG scheduler returns every item whose deps are `done` or `na`; the loop dispatches them concurrently. Typical wave size: 2–4 items. Bound by Copilot SDK rate limits and GitHub Actions concurrency.
-- **Per-agent token budgets**: enforced at APM compile time ([apm/compiler.ts](src/apm/compiler.ts)). Budget overruns are fatal at startup, not runtime — you cannot ship a pipeline whose prompts exceed their declared limits.
-- **Cognitive circuit breaker**: [harness/limits.ts](src/harness/limits.ts) caps tool calls per session. Soft limit injects a frustration prompt into the tool result; hard limit force-disconnects the session.
+- `src/contracts/` — declarative `node-io-contract.ts` shape (one file).
+- `src/paths/` — `feature-paths.ts`, the canonical translator from `(slug, itemKey, invocationId)` to on-disk paths.
 
----
+## How to run
 
-## Paradigm Guarantees
-
-These are invariants the engine currently upholds. If you change code in a way that violates one, you have introduced a regression.
-
-1. **Kernel is the sole state writer.** No adapter, handler, or loop module mutates `PipelineState` directly. Enforce: grep for `state.items[...] =` outside `kernel/` and `domain/transitions.ts`.
-2. **Kernel is synchronous and pure.** No `async`, no I/O. `PipelineKernel.process()` returns within microseconds.
-3. **Handlers are observers, not writers.** Handlers return `DagCommand[]` describing desired state changes; the kernel decides whether to apply them. Agents never write state directly — they call the `report_outcome` SDK tool, which the handler translates into a kernel command. The shell-level outcome verbs (`pipeline:complete` / `pipeline:fail` / `pipeline:doc-note` / `pipeline:set-url` / `pipeline:set-note` / `pipeline:handoff-artifact`) were removed in Phase A.6.
-4. **Ports define I/O boundaries.** Every file-system, subprocess, or network call in the engine flows through a port. The domain and kernel layers have zero `node:fs` / `node:child_process` imports.
-5. **APM manifest is the single source of truth for agent context.** No agent prompt text is hardcoded in the engine. `agents.ts` is a generic prompt assembler; all identity, rules, and MCP bindings come from `.apm/apm.yml`.
-6. **Git operations go through wrappers.** `agent-commit.sh` and `agent-branch.sh` are the only sanctioned git entry points for agents. The engine's own git calls go through `ports/version-control.ts` → `adapters/git-shell-adapter.ts`.
-
----
-
-## Rough Edges
-
-Candid tech-debt notes based on a code audit. These are real; each cites a file so you can see for yourself.
-
-### Layering
-
-- **`loop/dispatch/` location drift.** Historically referenced as `src/dispatch/` (see the older project docs). It currently lives nested under [src/loop/dispatch/](src/loop/dispatch/), which makes the dependency arrow "loop → dispatch" implicit rather than explicit. Candidate for promotion to a sibling folder.
-- **Two entry points, two scopes.** [entry/watchdog.ts](src/entry/watchdog.ts) runs one feature per process (`npm run agent:run`). [entry/supervise.ts](src/entry/supervise.ts) + [entry/supervisor.ts](src/entry/supervisor.ts) run multiple features in parallel by spawning child orchestrators (`npm run agent:supervise`, used by `.github/workflows/agentic-supervisor.yml`). Both are active; no consolidation planned. The supervisor uses [adapters/subprocess-feature-runner.ts](src/adapters/subprocess-feature-runner.ts) to isolate `APP_ROOT` and the middleware registry per-slug.
-- **`src/agents.ts` lives in [src/apm/agents.ts](src/apm/agents.ts).** The top-level `agents.ts` referenced in older docs has moved; external docs still point to the old path.
-
-### Adapter boundary leaks
-
-- **Copilot SDK reference in handlers/types.ts.** [handlers/types.ts](src/handlers/types.ts) imports `CopilotClient` from `@github/copilot-sdk`. The handler layer should depend on `ports/copilot-session-runner.ts`, not on the SDK type directly. In practice the SDK leaks through `NodeContext`.
-- **`adapters/copilot-session-runner.ts` is invoked from `handlers/copilot-agent.ts`** (documented as such in `adapters/index.ts`). There is no runtime-port indirection for the Copilot session runner — a deliberate simplification, but it means swapping LLM providers requires a handler edit, not just an adapter swap.
-- **GitHub CLI coupling.** `gh` commands are invoked from adapters and, in a few places, directly from scripts (`poll-ci.sh`, `hooks/publish-pr.sh`). There is no `ScmProvider` port — moving to GitLab or Bitbucket is a larger task than the hexagonal diagram suggests.
-
-### Overlap between `handlers/middleware/` and `harness/`
-
-Both layers wrap handler execution with safety concerns. [handlers/middleware.ts](src/handlers/middleware.ts) + [handlers/middlewares/](src/handlers/middlewares/) implement a plugin chain; [harness/](src/harness/) contains RBAC, shell guards, and the outcome tool. The division of labour is "middleware = per-dispatch concerns, harness = per-session concerns" but this is not documented in code and the line is fuzzy — `harness/hooks.ts` and middleware overlap in what they can intercept.
-
-### Schema validation gaps
-
-- **`workflows.yml` has no schema validation**. `apm.yml` is Zod-validated ([apm/types.ts](src/apm/types.ts)); `workflows.yml` is parsed but not type-checked at load time. Malformed `depends_on` or missing nodes surface as runtime errors deep in `domain/scheduling.ts`.
-- **Triage pack JSON** (`.apm/triage-packs/*.json`) has a schema ([apm/types.ts](src/apm/types.ts) `CompiledTriageProfile`) but authoring errors are caught late.
-
-### Other
-
-- **Telemetry coverage is partial.** [telemetry/factory.ts](src/telemetry/factory.ts) produces a structured logger, but many adapters still `console.log` directly (grep for `console.log` under `adapters/`).
-- **In-memory vs persisted state.** `PipelineRunState` (in-memory counters, bypass tracking) and `PipelineState` (durable DAG) are two separate state systems. Restarting the orchestrator resets run state, which is intentional but subtle — `computeEffectiveDevAttempts()` in [triage/context-builder.ts](src/triage/context-builder.ts) exists specifically to paper over this by merging persisted redev cycles with the in-memory attempt counter.
-- **Auto-skip evaluator is complex.** [handlers/support/auto-skip-evaluator.ts](src/handlers/support/auto-skip-evaluator.ts) uses git-merge-base heuristics that are easy to get wrong on shallow clones (CI) — has been iterated on multiple times.
-- **`__tests__` folders scattered through layers.** Inconsistent placement — some layers have them, some don't. Coverage is uneven.
-
----
-
-## Evolution Notes
-
-### Stack decoupling (spring 2026)
-
-The engine was originally coupled to Azure: inline `az` CLI calls in session-runner, hardcoded "Azure Functions v4" identity strings, hardcoded workflow filenames. This was unwound as follows — all orchestrator TS is now cloud-agnostic.
-
-- **Cloud CLI calls** → `.apm/hooks/*.sh` per app (`validateApp`, `validateInfra`, `preflightAuth`). Scripts are self-mutating: agents append new `curl` checks when they provision new endpoints/resources.
-- **Agent identity** → `.apm/instructions/<persona>/identity.md`. The engine's `agents.ts` renders a generic `## Environment` block from `config.environment` dict in `apm.yml`.
-- **CI workflow filenames** → `config.ciWorkflows.filePatterns` / `config.ciWorkflows.infraPlanFile` in `apm.yml`; the engine reads these for triage signal detection.
-
-### Command-sourced kernel (winter 2026)
-
-Originally, state mutation was scattered across `session-runner.ts` (direct `state.items[key].status = "done"` calls). This was consolidated into the [kernel](src/kernel/) with the Command/Effect model, eliminating TOCTOU races between parallel handlers and making state transitions reviewable in one file.
-
-### Adapting to a non-Azure stack
-
-To port to AWS Lambda + CloudFront (or any other stack):
-
-1. Swap `.apm/hooks/*.sh` — `validate-infra.sh` uses `aws sts`, `validate-app.sh` curls CloudFront + API Gateway, `preflight-auth.sh` runs `aws sts get-caller-identity`.
-2. Swap `.apm/instructions/{backend,infra}/identity.md` — declare your runtime, SDK, IaC tool.
-3. Update `config.environment` keys in `apm.yml` (`FRONTEND_URL`, `BACKEND_URL`, cloud-specific resource names).
-4. Point `config.ciWorkflows` at your GitHub Actions workflow filenames.
-
-Zero engine source changes.
-
----
-
-## How to Run
-
-Foreground (single feature, blocks the terminal):
+Local dev requires Node 22 (the devcontainer provides it). Start a Temporal
+dev server, then a worker, then a feature run:
 
 ```bash
-npm run agent:run -- --app apps/<app> --workflow <name> \
-  --spec-file <path-to-spec> <feature-slug>
+# Terminal 1 — dev Temporal server (frontend on :7233, UI on :8233).
+npm run temporal:dev --workspace=orchestrator
+
+# Terminal 2 — orchestrator worker.
+npm run worker --workspace=orchestrator
+
+# Terminal 3 — start a feature pipeline.
+npm run agent:run --workspace=orchestrator -- \
+  --app apps/<app> \
+  --workflow <workflow-name> \
+  --spec-file /path/to/spec.md \
+  <feature-slug>
 ```
 
-### Detached mode
-
-Use `npm run agent:run:detached` when a run is expected to outlive the
-current editor session — e.g. multi-hour storefront workflows, or any
-time VS Code may reload the window (extension upgrade, devcontainer
-rebuild, intermittent SSH). The wrapper at [scripts/run-agent.sh](../../scripts/run-agent.sh)
-forks the orchestrator into a `systemd-run --user --scope` unit when
-available (with a `MemoryMax=${DAGENT_MEMORY_MAX:-2G}` cgroup cap), or
-falls back to `setsid nohup` writing logs into `.dagent/_runs/<slug>.{log,pid}`.
-The wrapper prints the appropriate follow-logs command:
+Operate a running pipeline via the admin CLI:
 
 ```bash
-# systemd path
-journalctl --user -u <unit-name> -f
-
-# fallback path
-tail -f .dagent/_runs/<slug>.log
+npm run admin --workspace=orchestrator -- status   <slug>
+npm run admin --workspace=orchestrator -- hold     <slug>
+npm run admin --workspace=orchestrator -- resume   <slug>
+npm run admin --workspace=orchestrator -- approve  <slug> --gate <key>
+npm run admin --workspace=orchestrator -- cancel   <slug> --reason "<text>"
 ```
 
-Detached and foreground runs share the same `.dagent/<slug>/_state.json`,
-so re-running `npm run agent:run` in the foreground for the same slug
-later resumes cleanly from wherever the detached run left off.
+The full verb reference is in [`docs/architecture.md`](docs/architecture.md#admin-cli-verbs).
+For detached runs that need to survive editor reloads, use
+[`scripts/run-agent.sh`](../../scripts/run-agent.sh) (wraps the same CLI in
+`systemd-run --user --scope` with a `MemoryMax` cap, falling back to
+`setsid nohup`).
 
----
+### Other npm scripts
 
-## Reference — Where to Go Next
+| Script | Purpose |
+|---|---|
+| `temporal:build` | Compile TypeScript (`tsc -p`). Workers must run from `dist/`, not `tsx`. |
+| `test` | Vitest unit + workflow-replay tests. |
+| `test:replay` | Just the replay regression suite (`src/__tests__/replay/`). |
+| `temporal:test:integration` | Build then run the integration suite under `src/__tests__`. |
+| `lint` | ESLint with workflow-determinism rules over `workflow/`, `activities/`, `worker/`, `client/`. |
+| `lint:workflow-version` | Fails CI if `src/workflow/**` changed without a `WORKFLOW_VERSION` bump or `patched()` wrap. |
+| `temporal:hello` / `temporal:skeleton` / `temporal:dispatch` | Smoke-test runners for the toy workflows in `src/workflow/`. |
 
-**Contributor-level docs** (one README per layer boundary — file purposes, public interface, extension recipes):
+`bin` entries: `dagent-worker` → `dist/worker/main.js`,
+`dagent-admin` → `dist/client/admin.js`.
 
-- [src/kernel/README.md](src/kernel/README.md) — Command-sourced state machine.
-- [src/domain/README.md](src/domain/README.md) — Pure DAG math, transitions, routing.
-- [src/ports/README.md](src/ports/README.md) — Hexagonal interfaces.
-- [src/adapters/README.md](src/adapters/README.md) — I/O concretions.
-- [src/handlers/README.md](src/handlers/README.md) — Handler plugin system.
-- [src/apm/README.md](src/apm/README.md) — Manifest compiler & context loader.
-- [src/triage/README.md](src/triage/README.md) — 2-layer failure classifier.
-- [src/entry/README.md](src/entry/README.md) — Composition root & bootstrap.
+## Hard rules for contributors
 
-**Subject deep dives** (narrative — complement the layer READMEs):
+1. **The Temporal workflow owns pipeline state.** Activities return
+   `NodeResult` payloads; the workflow folds them into `DagState`.
+   Operators mutate state through admin signals/updates only — never edit
+   `_state.json` projections by hand.
+2. **Workflow code is deterministic.** No `Date.now()`, no
+   `Math.random()`, no timers, no `node:fs`, no network, no LLM SDKs, no
+   imports from `adapters/`, `ports/`, `domain/` (use the workflow-safe
+   twin under `src/workflow/domain/`). All bans are ESLint-enforced.
+3. **Workers run from compiled JS.** `npm run temporal:build` first; the
+   worker entry is `node dist/worker/main.js`.
+4. **Bump `WORKFLOW_VERSION` or wrap with `patched(<id>)`** whenever
+   workflow logic changes shape. `npm run lint:workflow-version` fails
+   the build otherwise. ADR
+   [0001](docs/adr/0001-temporal.md) explains why.
+5. **APM manifest is the single source of truth for agent context.**
+   Agent identity, rules, MCP bindings, and token budgets all come from
+   `apps/<app>/.apm/apm.yml`. Engine TS contains zero agent-specific
+   prompt text.
+6. **Git operations use the wrapper scripts.** [`agent-commit.sh`](agent-commit.sh)
+   for commits, [`agent-branch.sh`](agent-branch.sh) for branching. No
+   raw `git add/commit/push` in agent prompts or activities.
 
-- [docs/01-watchdog.md](docs/01-watchdog.md) — Orchestrator loop internals.
-- [docs/02-roam-code.md](docs/02-roam-code.md) — Structural code intelligence.
-- [docs/03-apm-context.md](docs/03-apm-context.md) — APM manifest schema, rule assembly.
-- [docs/04-state-machine.md](docs/04-state-machine.md) — DAG, workflow types, status lifecycle.
-- [docs/05-agents.md](docs/05-agents.md) — Agent catalog.
-- [docs/07-mental-model.md](docs/07-mental-model.md) — SDLC → agentic mapping.
-- [docs/06-roadmap/](docs/06-roadmap/) — Standing feature deep-dives.
+## Subject deep-dives
 
-**Reference:**
+- [`docs/architecture.md`](docs/architecture.md) — canonical topology, state
+  taxonomy, activities catalog, admin verbs, versioning policy.
+- [`docs/02-roam-code.md`](docs/02-roam-code.md) — structural code
+  intelligence (the MCP semantic graph agents use).
+- [`docs/03-apm-context.md`](docs/03-apm-context.md) — APM manifest schema
+  and rule assembly.
+- [`docs/adr/0001-temporal.md`](docs/adr/0001-temporal.md) — Temporal
+  migration decision, mapping from the predecessor kernel/loop model, and
+  workflow-determinism rules.
 
-- [KERNEL-API.md](KERNEL-API.md) — State-machine CLI primitives.
-- [.github/AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md) — Operational hub: CI/CD setup, ChatOps, commands.
-- [docs/temporal-migration/](docs/temporal-migration/) — Temporal OSS migration plan (Sessions 1–5). Active during the migration window.
+## Reference
+
+- [`.github/AGENTIC-WORKFLOW.md`](../../.github/AGENTIC-WORKFLOW.md) —
+  operational hub: CI/CD setup, ChatOps, commands.
+- [`infra/temporal/docker-compose.yml`](../../infra/temporal/docker-compose.yml)
+  — Postgres-backed Temporal cluster for non-dev runs.

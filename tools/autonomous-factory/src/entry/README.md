@@ -1,93 +1,89 @@
-# `src/entry/` — Composition Root & Bootstrap
+# `src/entry/` — Client-side Bootstrap
 
-> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+> Composition for the **client side** of the engine — preflight checks, APM
+> compilation, and CLI parsing — invoked by [`src/client/run-feature.ts`](../client/README.md)
+> before it asks Temporal to start a pipeline workflow. The worker process
+> has its own composition root in [`src/worker/main.ts`](../worker/README.md).
 
-
-> The only place where adapters are constructed and wired. Every other layer depends on ports, not concretions.
-
-## Role in the architecture
-
-`entry/` is where the engine turns from a pile of pure logic + interfaces into a running program. It parses CLI args, runs preflight checks, compiles APM, instantiates adapters, constructs the `PipelineKernel`, and hands off to the loop.
-
-Two CLI shapes are supported:
-
-- **Single feature** (`npm run agent:run`) — [watchdog.ts](watchdog.ts) → [bootstrap.ts](bootstrap.ts) → [main.ts](main.ts). One feature per process.
-- **Multi-feature supervisor** (`npm run agent:supervise`) — [supervise.ts](supervise.ts) → [supervisor.ts](supervisor.ts) fans out one child `agent:run` per feature via [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts) with bounded parallelism.
+See [Architecture overview](../../docs/architecture.md) for how the worker,
+client, and Temporal cluster fit together.
 
 ## Files
 
 | File | Role |
 |---|---|
-| [watchdog.ts](watchdog.ts) | Process entry point. Parses CLI via `cli.ts`, calls `bootstrap()`, creates a `CopilotClient`, starts the SDK, calls `runWithKernel()`, handles SIGINT for graceful shutdown. |
-| [cli.ts](cli.ts) | Argv parsing. Returns a typed `CliArgs` (feature slug, app path, `--workflow` name, `--spec-file` path, base branch, flags). Validates that the spec file exists before bootstrap runs. |
-| [bootstrap.ts](bootstrap.ts) | Runs every preflight check in order: GitHub auth, preflight cloud auth hook, APM compile + validation, workflow lookup, state seeding (when `_STATE.json` is absent) or schema/workflow drift check (when resuming), junk-file scan, .dagent artifact scan, roam index build, baseline load. Feature-branch creation is **not** a preflight step — it is a DAG node (`create-branch`). Returns a fully-assembled `PipelineRunConfig` + `baseTelemetry`. Throws `FatalPipelineError` subtypes on failure (no `process.exit`). |
-| [main.ts](main.ts) | Composition root. Constructs all adapters, the `PipelineKernel`, `RegistryHandlerResolver`, `LoopLifecycle`, and calls `runPipelineLoop()`. |
-| [supervise.ts](supervise.ts) | Multi-slug supervisor CLI (`npm run agent:supervise`). Parses an intake JSON of `{ slug, app }` entries and delegates to `runSupervisor()`. Used by [.github/workflows/agentic-supervisor.yml](../../../../.github/workflows/agentic-supervisor.yml). |
-| [supervisor.ts](supervisor.ts) | Supervisor engine. `runSupervisor(intake, runner, { maxConcurrent })` drives a bounded-parallel scheduler over features, each executed by a `FeatureRunner` (typically [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts) — one child `agent:run` per feature so `APP_ROOT` and the middleware registry stay isolated). |
+| [bootstrap.ts](bootstrap.ts) | `bootstrap(cli)` — runs every preflight check (GitHub auth, Copilot login, preflight cloud-auth hook, junk-file scan, in-progress artifact scan, port-3000 check, tool-limits hygiene, APM compile + budget validation, environment resolution via `.apm/hooks/resolve-environment.sh`, dependency pinning, baseline + roam-index loads), then returns a `BootstrapResult` (extended `PipelineRunConfig` plus baseline + roam indexer + telemetry). Throws `BootstrapError` / `ApmCompileError` / `ApmBudgetExceededError` on fatal failures — never calls `process.exit`. |
+| [cli.ts](cli.ts) | Argv parsing. Returns a typed `CliArgs` (feature slug, app path, `--workflow` name, `--spec-file` path, base branch, flags). Validates the spec file exists before bootstrap runs. |
+| [resolve-volatile-patterns.ts](resolve-volatile-patterns.ts) | Pure helper that compiles the merged volatile-pattern set from the APM manifest. Used by bootstrap to seed the error-fingerprint configuration that the workflow consumes. |
+
+There is no `main.ts`, `watchdog.ts`, or `supervisor.ts` in this folder — the
+predecessor in-process pipeline loop is gone. Pipeline execution lives in the
+Temporal workflow under [`src/workflow/`](../workflow/README.md), driven by
+the worker.
 
 ## Public interface
 
-From the command line:
-
-```bash
-npm run agent:run -- --app apps/sample-app --workflow full-stack --spec-file /tmp/spec.md my-feature
-#   → watchdog.ts → bootstrap() → runWithKernel()
-```
-
-Programmatically (used by tests and nested feature runs):
-
 ```ts
+import { parseArgs } from "./entry/cli.js";
 import { bootstrap } from "./entry/bootstrap.js";
-import { runWithKernel } from "./entry/main.js";
 
-const { config, baseTelemetry } = await bootstrap(cliArgs);
-const result = await runWithKernel(config, client, logger, baseTelemetry);
+const cli = parseArgs(process.argv.slice(2));
+const boot = await bootstrap(cli);
+//   → BootstrapResult: PipelineRunConfig + apmContext + baseline + telemetry
+//
+// run-feature.ts then maps boot.apmContext.workflows[name].nodes
+// into PipelineNodeSpec[] and calls client.workflow.signalWithStart(...).
 ```
 
 ## Invariants & contracts
 
-1. **`main.ts` is the only place adapters are instantiated.** Every other file depends on ports.
-2. **Preflight failures are fatal and typed.** `BootstrapError`, `ApmCompileError`, `ApmBudgetExceededError`. Callers match on type; no string scraping.
-3. **SDK client lifecycle is owned by `watchdog.ts`.** Exactly one `CopilotClient` per run; `client.stop()` on SIGINT with a 10-second timeout to avoid hanging on stale connections.
-4. **Composition is synchronous.** All adapter constructors are non-async; async work (APM compile, auth checks) happens in `bootstrap.ts` before composition.
-5. **Config is immutable after bootstrap.** `PipelineRunConfig` is passed by value; no layer reaches back up to mutate it.
+1. **Bootstrap is a pure preparation step.** It does not start a pipeline,
+   touch Temporal, or open Copilot SDK sessions — those live in the Temporal
+   client (`src/client/run-feature.ts`) and in activities respectively.
+2. **Preflight failures are fatal and typed.** `BootstrapError`,
+   `ApmCompileError`, `ApmBudgetExceededError`. Callers match on type; no
+   string scraping.
+3. **State seeding is the workflow's job.** Bootstrap no longer writes
+   `_STATE.json`; the Temporal workflow owns the DAG state (see ADR
+   [0001](../../docs/adr/0001-temporal.md)). Bootstrap just hands the client
+   the inputs needed to `signalWithStart`.
+4. **Branch creation is a DAG node, not a preflight.** `create-branch` runs
+   `agent-branch.sh create-feature` as the first workflow node;
+   `stage-spec` materializes `--spec-file` into `_kickoff/spec.md`.
+   Bootstrap does not shell out to `agent-branch.sh`.
 
 ## How to extend
 
 **Add a new preflight check:**
 
-1. Add the check function to [src/lifecycle/preflight.ts](../lifecycle/preflight.ts).
-2. Call it from [bootstrap.ts](bootstrap.ts) in the right phase order (auth → APM → state → junk → roam). Scaffolding work that needs to run per-feature (branch creation, spec staging) belongs in the DAG, not here.
+1. Add the check function to [`src/lifecycle/preflight.ts`](../lifecycle/README.md).
+2. Call it from [bootstrap.ts](bootstrap.ts) in phase order
+   (auth → APM → env → state-shape → junk → roam).
 3. If it's fatal, throw a `BootstrapError` (or a new typed subclass).
-
-**Swap an adapter implementation:**
-
-1. Change the instantiation line in [main.ts](main.ts).
-2. Everything downstream keeps working because it depends on the port.
 
 **Add a new CLI flag:**
 
 1. Extend `CliArgs` and parsing in [cli.ts](cli.ts).
-2. Thread through `PipelineRunConfig` in [bootstrap.ts](bootstrap.ts) and [app-types.ts](../app-types.ts).
-3. Consume wherever needed — never via `process.argv` outside this folder.
-
-**Change loop lifecycle** (e.g. pre/post-run hooks):
-
-1. Edit the `LoopLifecycle` assembly in [main.ts](main.ts).
-2. The loop ([src/loop/pipeline-loop.ts](../loop/)) calls lifecycle methods at documented points.
+2. Thread through `PipelineRunConfig` and on into the workflow's
+   `PipelineInput` (declared in [`src/workflow/index.ts`](../workflow/README.md)).
+3. Consume in the workflow or activities — never via `process.argv` outside
+   this folder.
 
 ## Gotchas
 
-- **Two entry points, two scopes.** [watchdog.ts](watchdog.ts) runs one feature per process. [supervise.ts](supervise.ts) + [supervisor.ts](supervisor.ts) run many features in parallel by spawning child `agent:run` processes via [SubprocessFeatureRunner](../adapters/subprocess-feature-runner.ts). They are not redundant — each has a distinct CLI (`agent:run` vs `agent:supervise`) and workflow consumer.
-- **`repoRoot` is computed relative to `import.meta.dirname`.** The `"../../../.."` hop count is brittle — moving this file breaks that path.
-- **Bootstrap does a lot.** Ten-plus checks run sequentially. Keep new checks fast; anything > 5s should be optional or parallelised.
-- **Branch creation is a DAG node, not a preflight.** `create-branch` runs `agent-branch.sh create-feature` as the first workflow node; `stage-spec` materializes `--spec-file` into `_kickoff/spec.md`. Bootstrap no longer shells out to `agent-branch.sh`.
-- **The roam index build is non-fatal.** If roam-code bootstrap fails, the run continues without structural intelligence. Watch for this in logs if agents start behaving like it's 2024.
+- **Bootstrap does a lot.** Ten-plus checks run sequentially. Keep new
+  checks fast; anything > 5s should be optional or parallelised.
+- **`repoRoot` is computed relative to `import.meta.dirname`.** The
+  `"../../../.."` hop count is brittle — moving this file breaks that path.
+- **The roam index build is non-fatal.** If roam-code bootstrap fails, the
+  run continues without structural intelligence. Watch for this in logs if
+  agents start behaving like it's 2024.
 
 ## Related layers
 
-- Wires → [src/adapters/](../adapters/README.md) against [src/ports/](../ports/README.md)
-- Constructs → [src/kernel/PipelineKernel](../kernel/README.md) with `DefaultKernelRules`
-- Calls → [src/loop/pipeline-loop.ts](../loop/) via `runPipelineLoop()`
-- Uses → [src/apm/context-loader.ts](../apm/README.md) for APM compile/load
-- Uses → [src/lifecycle/preflight.ts](../lifecycle/) for preflight checks
+- Consumed by → [`src/client/run-feature.ts`](../client/README.md)
+- Uses → [`src/apm/context-loader.ts`](../apm/README.md) for APM compile/load
+- Uses → [`src/lifecycle/preflight.ts`](../lifecycle/README.md) and
+  [`src/lifecycle/dependency-pinning.ts`](../lifecycle/README.md)
+- Uses → [`src/adapters/roam-code-indexer.ts`](../adapters/README.md) (the
+  `CodeIndexer` adapter constructed at boot)

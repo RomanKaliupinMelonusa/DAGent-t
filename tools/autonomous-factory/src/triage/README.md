@@ -1,13 +1,14 @@
 # `src/triage/` — 2-Layer Failure Classifier
 
-> Note: portions of this README reference predecessor code paths (kernel/loop/handlers). Current code structure is documented in [../../docs/architecture.md](../../docs/architecture.md). Full rewrite tracked separately.
+When a post-deploy test fails, this layer decides which agents to re-wake and with what evidence.
 
-
-> When a post-deploy test fails, this layer decides which agents to re-wake and with what evidence.
+See [Architecture overview](../../docs/architecture.md) for how the
+triage activity sits between the workflow's failure handler and the
+rerouted dev nodes.
 
 ## Role in the architecture
 
-Triage takes a raw error trace and a compiled triage profile (from the APM manifest) and returns a `TriageResult` — a fault domain + reason + source layer. The dispatch layer then asks the kernel to reset the corresponding DAG nodes and injects handoff evidence into their next prompt.
+Triage takes a raw error trace and a compiled triage profile (from the APM manifest) and returns a `TriageResult` — a fault domain + reason + source layer. The triage activity ([`src/activities/triage.activity.ts`](../activities/triage.activity.ts)) returns the verdict to the workflow, which resets the corresponding DAG nodes and emits a `triage-handoff` artifact for the rerouted dev node to consume.
 
 Triage is the "brain" of self-healing. It turns a random stack trace into a routing decision: *"this is a backend handler bug → reset `backend-dev`, give it the exact 500 response the test saw"*.
 
@@ -44,12 +45,12 @@ const routeTo = profile.routing[result.domain].route_to;   // array of node keys
 // → dispatch emits reset-nodes command for routeTo
 ```
 
-Triage handoff evidence is structured by `handoff-builder.ts` (`buildTriageHandoff`) and emitted as a declared `triage-handoff` artifact at `outputs/triage-handoff.json` by the triage handler. The rerouted dev node declares `consumes_reroute: [triage-handoff]`; the dispatcher copies the JSON into the next invocation's `inputs/triage-handoff.json` — the agent reads from disk. No prose injection, no `pendingContext` string.
+Triage handoff evidence is structured by `handoff-builder.ts` (`buildTriageHandoff`) and emitted as a declared `triage-handoff` artifact at `outputs/triage-handoff.json` by the triage activity. The rerouted dev node declares `consumes_reroute: [triage-handoff]`; the artifact bus copies the JSON into the next invocation's `inputs/triage-handoff.json` — the agent reads from disk. No prose injection, no `pendingContext` string.
 
 ## Invariants & contracts
 
-1. **Pre-triage guards are the kernel's job, not this layer's.** Unfixable signals (permission-denied, AAD MFA), SDK timeouts, and the death-spiral circuit breaker are evaluated *before* `evaluateTriage` is called.
-2. **The classifier classifies; the DAG state machine routes.** This layer never mutates state — it returns a domain, and the caller uses `profile.routing[domain].route_to`.
+1. **Pre-triage guards are the workflow's job, not this layer's.** Unfixable signals (permission-denied, AAD MFA), SDK timeouts, and the identical-error circuit breaker are evaluated *before* `evaluateTriage` is called.
+2. **The classifier classifies; the workflow routes.** This layer never mutates state — it returns a domain, and the workflow uses `profile.routing[domain].route_to`.
 3. **RAG → LLM order is fixed.** RAG first (deterministic, cheap). LLM only as fallback. No LLM call on paths where RAG had a confident match.
 4. **Custom classifiers are sandboxed by path.** Validated via `apm/local-path-validator.ts`. Must return a domain that exists in `profile.routing` or `$SELF` — anything else throws.
 5. **Volatile-pattern stripping is what makes the circuit breaker work.** Two runs of the same bug must produce identical signatures; if they don't, the breaker fails open.
@@ -120,13 +121,13 @@ Triage handoff evidence is structured by `handoff-builder.ts` (`buildTriageHando
 
 - **RAG is substring-match, not semantic.** "Cannot read property 'id' of undefined" and "Cannot read properties of undefined (reading 'id')" are different substrings. Add both to the triage pack or rely on the LLM layer.
 - **LLM fallback costs add up.** Every novel error triggers an LLM call. The `_NOVEL_TRIAGE.jsonl` file is the flywheel — review it, promote recurring errors to the RAG pack.
-- **`computeEffectiveDevAttempts` is sneaky.** It merges persisted cycles from `_state.json`'s `errorLog` with the in-memory counter. After an orchestrator restart the in-memory count resets but the effective count does not.
+- **`computeEffectiveDevAttempts` is sneaky.** It merges persisted cycles from the workflow's `errorLog` (queryable via `summaryQuery`) with the per-invocation in-memory counter. After a worker restart, Temporal replays the workflow so persisted cycles are reconstructed; only the in-memory counter resets.
 - **Baseline filtering can mask real regressions.** If a test was failing before your change *and* after, baseline filter silences it. Review `_VALIDATION_REPORT.json` if you suspect a test that "didn't fail" actually did.
 - **Playwright report parsing is brittle.** `_PW-REPORT.json` schema differs across Playwright versions; [playwright-report.ts](playwright-report.ts) tolerates missing fields but may lose detail on very old/new versions.
 
 ## Related layers
 
-- Invoked by → [src/handlers/triage-handler.ts](../handlers/README.md)
-- Depends on → `TriageLlm` port, `TriageArtifactLoader` port, `BaselineLoader` port (all in [src/ports/](../ports/README.md))
-- Uses pure helpers from → [src/domain/](../domain/README.md) (`computeErrorSignature`, `volatile-patterns`, `failure-routing`)
-- Output feeds → `outputs/triage-handoff.json` artifact, materialized into the rerouted dev node's `inputs/triage-handoff.json` by [src/loop/dispatch/invocation-builder.ts](../loop/dispatch/invocation-builder.ts)
+- Invoked by → [`src/activities/triage.activity.ts`](../activities/README.md) (delegates to [`triage-body.ts`](../activities/triage-body.ts))
+- Depends on → `TriageLlm`, `TriageArtifactLoader`, `BaselineLoader` ports (all in [`src/ports/`](../ports/README.md))
+- Uses pure helpers from → [`src/domain/`](../domain/README.md) (`computeErrorSignature`, `volatile-patterns`, `failure-routing`)
+- Output feeds → `outputs/triage-handoff.json` artifact, materialized into the rerouted dev node's `inputs/triage-handoff.json` by [`src/activity-lib/invocation-builder.ts`](../activity-lib/invocation-builder.ts)
