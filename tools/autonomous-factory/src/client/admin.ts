@@ -38,11 +38,7 @@ import path from "node:path";
 import { bootstrapOtel } from "../telemetry/otel.js";
 import { parseAdminArgs } from "./admin-parse.js";
 import {
-  holdPipelineSignal,
-  resumePipelineSignal,
   cancelPipelineSignal,
-  approveGateSignal,
-  rejectGateSignal,
 } from "../workflow/signals.js";
 import {
   stateQuery,
@@ -177,37 +173,10 @@ async function main(): Promise<void> {
     try {
       switch (args.verb) {
         // ─── Signals ──────────────────────────────────────────────
-        case "hold":
-          await handle.signal(holdPipelineSignal);
-          console.log(`✓ hold sent to ${wfId}`);
-          break;
-        case "resume":
-          await handle.signal(resumePipelineSignal);
-          console.log(`✓ resume sent to ${wfId}`);
-          break;
         case "cancel": {
           const reason = args.reason ?? "operator-cancelled";
           await handle.signal(cancelPipelineSignal, reason);
           console.log(`✓ cancel sent to ${wfId} reason="${reason}"`);
-          break;
-        }
-        case "approve": {
-          if (!args.gate) fail("approve requires --gate <key>");
-          await handle.signal(approveGateSignal, args.gate as string);
-          console.log(`✓ approve gate=${args.gate} sent to ${wfId}`);
-          break;
-        }
-        case "reject": {
-          if (!args.gate) fail("reject requires --gate <key>");
-          if (!args.reason) fail("reject requires --reason <text>");
-          await handle.signal(
-            rejectGateSignal,
-            args.gate as string,
-            args.reason as string,
-          );
-          console.log(
-            `✓ reject gate=${args.gate} reason="${args.reason}" sent to ${wfId}`,
-          );
           break;
         }
         // ─── Queries ──────────────────────────────────────────────

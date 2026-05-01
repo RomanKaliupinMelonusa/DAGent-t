@@ -69,7 +69,6 @@ import type { NodeActivityInput, NodeActivityResult } from "../activities/types.
  */
 export type SingleActivityHandlerKind =
   | "local-exec"
-  | "github-ci-poll"
   | "triage"
   | "copilot-agent";
 
@@ -96,16 +95,7 @@ const { localExecActivity } = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 1 },
 });
 
-/** GitHub Actions CI polling — plan §4b.4 pins
- *  `startToCloseTimeout: 2 hours` (GH Actions runs commonly stretch),
- *  `heartbeatTimeout: 90 seconds` (less chatty than 30s; the heartbeat
- *  interval is 30s so 90s = 3× safety margin), and
- *  `maximumAttempts: 3` for transient `gh`/network failures. */
-const { githubCiPollActivity } = proxyActivities<typeof activities>({
-  startToCloseTimeout: "2 hours",
-  heartbeatTimeout: "90 seconds",
-  retry: { maximumAttempts: 3 },
-});
+/** GitHub-CI polling activity removed in storefront-spine refactor. */
 
 /** Triage — RAG / LLM classification. Plan §4d.5/4d.6 pins
  *  `startToCloseTimeout: 5 minutes` (triage is fast or it's broken)
@@ -144,8 +134,6 @@ export async function singleActivityWorkflow(
   switch (args.handlerKind) {
     case "local-exec":
       return await localExecActivity(args.input);
-    case "github-ci-poll":
-      return await githubCiPollActivity(args.input);
     case "triage":
       return await triageActivity(args.input);
     case "copilot-agent":

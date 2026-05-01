@@ -25,12 +25,6 @@ export const { localExecActivity } = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 1 },
 });
 
-export const { githubCiPollActivity } = proxyActivities<typeof activities>({
-  startToCloseTimeout: "2 hours",
-  heartbeatTimeout: "90 seconds",
-  retry: { maximumAttempts: 3 },
-});
-
 export const { triageActivity } = proxyActivities<typeof activities>({
   startToCloseTimeout: "5 minutes",
   heartbeatTimeout: "60 seconds",
@@ -40,12 +34,5 @@ export const { triageActivity } = proxyActivities<typeof activities>({
 export const { copilotAgentActivity } = proxyActivities<typeof activities>({
   startToCloseTimeout: "4 hours",
   heartbeatTimeout: "90 seconds",
-  retry: { maximumAttempts: 1 },
-});
-
-/** Final-step archive activity. Bundled here for symmetry; Session 4
- *  Group C wires the implementation. */
-export const { archiveActivity } = proxyActivities<typeof activities>({
-  startToCloseTimeout: "30 minutes",
   retry: { maximumAttempts: 1 },
 });

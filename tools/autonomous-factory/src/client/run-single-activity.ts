@@ -49,7 +49,6 @@ import { newInvocationId } from "../activities/support/invocation-id.js";
 
 const VALID_HANDLERS: ReadonlySet<SingleActivityHandlerKind> = new Set([
   "local-exec",
-  "github-ci-poll",
   "triage",
   "copilot-agent",
 ]);

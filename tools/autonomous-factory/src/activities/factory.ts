@@ -14,9 +14,7 @@
  * type exactly.
  */
 
-import { makeArchiveActivity } from "./archive.activity.js";
 import { makeCopilotAgentActivity } from "./copilot-agent.activity.js";
-import { makeGithubCiPollActivity } from "./github-ci-poll.activity.js";
 import { makeLocalExecActivity } from "./local-exec.activity.js";
 import { makeSayHello } from "./hello.activity.js";
 import { makeTriageActivity } from "./triage.activity.js";
@@ -31,10 +29,8 @@ export function createActivities(deps: ActivityDeps) {
   return {
     sayHello: makeSayHello(deps),
     localExecActivity: makeLocalExecActivity(deps),
-    githubCiPollActivity: makeGithubCiPollActivity(deps),
     triageActivity: makeTriageActivity(deps),
     copilotAgentActivity: makeCopilotAgentActivity(deps),
-    archiveActivity: makeArchiveActivity(deps),
   };
 }
 

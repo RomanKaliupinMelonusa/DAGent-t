@@ -40,7 +40,6 @@ describe("singleActivityWorkflow — Session 3 Phase 6 export contract", () => {
     // cheap insurance).
     const expected = [
       "local-exec",
-      "github-ci-poll",
       "triage",
       "copilot-agent",
     ] as const;
@@ -49,6 +48,6 @@ describe("singleActivityWorkflow — Session 3 Phase 6 export contract", () => {
     const _reverseCheck: SingleActivityHandlerKind extends Expected ? true : false = true;
     void _typeCheck;
     void _reverseCheck;
-    expect(expected).toHaveLength(4);
+    expect(expected).toHaveLength(3);
   });
 });

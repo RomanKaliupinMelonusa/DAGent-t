@@ -13,7 +13,6 @@
 
 import {
   localExecActivity,
-  githubCiPollActivity,
   triageActivity,
   copilotAgentActivity,
 } from "./activity-proxies.js";
@@ -30,10 +29,8 @@ import type {
  */
 export type HandlerKind =
   | "local-exec"
-  | "github-ci-poll"
   | "triage"
-  | "copilot-agent"
-  | "approval";
+  | "copilot-agent";
 
 /**
  * Compiled-node fields the resolver consults. Subset of `ApmWorkflowNode`
@@ -63,19 +60,15 @@ export function resolveHandlerKind(node: DispatchableNode | undefined): HandlerK
   if (node.handler) {
     switch (node.handler) {
       case "local-exec":
-      case "github-ci-poll":
       case "triage":
       case "copilot-agent":
-      case "approval":
         return node.handler;
       default:
         return "copilot-agent";
     }
   }
-  if (node.type === "approval") return "approval";
   if (node.type === "triage") return "triage";
   if (node.type === "script") {
-    if (node.script_type === "poll") return "github-ci-poll";
     return "local-exec";
   }
   return "copilot-agent";
@@ -94,18 +87,10 @@ export async function dispatchNodeActivity(
   switch (kind) {
     case "local-exec":
       return await localExecActivity(input);
-    case "github-ci-poll":
-      return await githubCiPollActivity(input);
     case "triage":
       return await triageActivity(input);
     case "copilot-agent":
       return await copilotAgentActivity(input);
-    case "approval":
-      // Bug: the workflow body should have resolved this via awaitApproval.
-      throw new Error(
-        `dispatchNodeActivity received handler-kind 'approval' for activity dispatch; ` +
-          `approval gates must be handled via awaitApproval(), not proxyActivities.`,
-      );
     default: {
       const exhaustive: never = kind;
       throw new Error(`Unknown handler kind: ${String(exhaustive)}`);

@@ -34,14 +34,11 @@ export type { ActivityDeps } from "./deps.js";
 
 export declare const sayHello: Activities["sayHello"];
 export declare const localExecActivity: Activities["localExecActivity"];
-export declare const githubCiPollActivity: Activities["githubCiPollActivity"];
 export declare const triageActivity: Activities["triageActivity"];
 export declare const copilotAgentActivity: Activities["copilotAgentActivity"];
-export declare const archiveActivity: Activities["archiveActivity"];
 
 // Stable cancellation prefixes — runtime constants, used by both the
 // workflow body (string match against `errorMessage`) and tests.
-export { CI_POLL_CANCELLED_PREFIX } from "./github-ci-poll.activity.js";
 export { TRIAGE_CANCELLED_PREFIX } from "./triage.activity.js";
 export { COPILOT_AGENT_CANCELLED_PREFIX } from "./copilot-agent.activity.js";
 
