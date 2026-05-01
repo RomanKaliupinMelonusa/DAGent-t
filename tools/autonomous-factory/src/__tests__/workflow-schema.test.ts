@@ -15,7 +15,7 @@ import { ApmWorkflowSchema, topoSort } from "../apm/manifest/types.js";
 /** Graph-only fields that are never inherited from the node pool. */
 const GRAPH_ONLY_FIELDS = new Set(["depends_on", "on_failure"]);
 
-const APP_ROOT = path.resolve(import.meta.dirname, "../../../../apps/sample-app");
+const APP_ROOT = path.resolve(import.meta.dirname, "../../../../apps/commerce-storefront");
 const WF_PATH = path.join(APP_ROOT, ".apm", "workflows.yml");
 const APM_PATH = path.join(APP_ROOT, ".apm", "apm.yml");
 

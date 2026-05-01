@@ -68,8 +68,8 @@ export function parseCli(argv: string[], repoRoot: string): CliArgs {
   if (!slug) {
     throw new CliValidationError(
       "Usage: watchdog.ts [--app <path>] --workflow <name> --spec-file <path> <feature-slug>\n" +
-      "  --app         <path>   App directory relative to repo root (e.g. apps/sample-app)\n" +
-      "  --workflow    <name>   Workflow name from <app>/.apm/workflows.yml (required for fresh runs)\n" +
+      "  --app         <path>   App directory relative to repo root (default: apps/commerce-storefront)\n" +
+      "  --workflow    <name>   Workflow name from <app>/.apm/workflows.yml (default: storefront)\n" +
       "  --spec-file   <path>   Absolute/relative path to the feature spec markdown (required)\n" +
       "  --base-branch <name>   Base branch (default: env BASE_BRANCH or 'main')\n" +
       "  Runs the agentic pipeline for the given feature.\n" +
@@ -79,7 +79,7 @@ export function parseCli(argv: string[], repoRoot: string): CliArgs {
 
   const appRoot = values.app
     ? path.resolve(repoRoot, values.app)
-    : repoRoot;
+    : path.resolve(repoRoot, "apps/commerce-storefront");
 
   if (!fs.existsSync(appRoot)) {
     throw new CliValidationError(`--app directory does not exist: ${appRoot}`);
@@ -92,13 +92,7 @@ export function parseCli(argv: string[], repoRoot: string): CliArgs {
     );
   }
 
-  const workflowName = values.workflow;
-  if (!workflowName) {
-    throw new CliValidationError(
-      "--workflow <name> is required. It must match a workflow defined in " +
-      `${path.relative(repoRoot, path.join(appRoot, ".apm", "workflows.yml"))}.`,
-    );
-  }
+  const workflowName = values.workflow ?? "storefront";
 
   const specFileArg = values["spec-file"];
   if (!specFileArg) {
