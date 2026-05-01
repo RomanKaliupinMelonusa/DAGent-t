@@ -1,0 +1,20 @@
+{
+  "nodeKey": "baseline-analyzer",
+  "invocationId": "inv_1ECAA80172CA01BD008437D3FF",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "spec",
+      "source": "kickoff",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/_kickoff/spec.md",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/baseline-analyzer/inv_1ECAA80172CA01BD008437D3FF/inputs/spec.md"
+    },
+    {
+      "kind": "acceptance",
+      "source": "upstream",
+      "from": "spec-compiler",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/outputs/acceptance.yml",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/baseline-analyzer/inv_1ECAA80172CA01BD008437D3FF/inputs/acceptance.yml"
+    }
+  ]
+}

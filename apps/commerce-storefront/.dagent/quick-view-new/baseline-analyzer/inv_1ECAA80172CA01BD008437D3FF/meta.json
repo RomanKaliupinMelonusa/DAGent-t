@@ -1,25 +1,24 @@
 {
-  "invocationId": "inv_9A027F1191055D7C6AAAF5A773",
-  "nodeKey": "spec-compiler",
+  "invocationId": "inv_1ECAA80172CA01BD008437D3FF",
+  "nodeKey": "baseline-analyzer",
   "cycleIndex": 1,
   "trigger": "initial",
-  "startedAt": "2026-05-01T01:47:42.681Z",
+  "startedAt": "2026-05-01T01:50:41.354Z",
   "inputs": [
     {
       "kind": "spec",
       "scope": "kickoff",
       "slug": "quick-view-new",
       "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/_kickoff/spec.md"
-    }
-  ],
-  "outputs": [
+    },
     {
       "kind": "acceptance",
       "scope": "node",
       "slug": "quick-view-new",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/outputs/acceptance.yml",
       "nodeKey": "spec-compiler",
-      "invocationId": "inv_9A027F1191055D7C6AAAF5A773",
-      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/outputs/acceptance.yml"
+      "invocationId": "inv_9A027F1191055D7C6AAAF5A773"
     }
-  ]
+  ],
+  "outputs": []
 }
