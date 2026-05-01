@@ -34,7 +34,6 @@ import {
 } from "./capability-profiles.js";
 import { validateArtifactIO } from "../artifacts/artifact-io-validator.js";
 import { lintAssembledInstructions, formatViolations } from "./instruction-lint.js";
-import { BUILTIN_TRIAGE_PATTERNS } from "../../triage/builtin-patterns.js";
 
 // ---------------------------------------------------------------------------
 // Plugin discovery — record app-local plugin paths in compiled output
@@ -877,23 +876,14 @@ export function compileApm(appRoot: string): ApmCompiledOutput {
       }
       const domainSet = new Set(declaredDomains ?? routingKeys);
 
-      // Resolve patterns: prepend built-ins unless opted out. Built-in
-      // patterns are silently filtered out when their suggested domain is
-      // not in this profile's domain set — they are general-purpose hints,
-      // not required routes. User-declared patterns (from `profile.patterns`)
-      // are strictly validated: an unrouted domain is a config error.
+      // Phase 4.3b: built-in L0 patterns retired. Triage is LLM-only;
+      // declarative patterns are still parsed (so existing user manifests
+      // do not error) but are validated and passed through unchanged.
       const declaredPatterns = profile.patterns ?? [];
-      const includeBuiltins = profile.builtin_patterns !== false;
-      const filteredBuiltins = includeBuiltins
-        ? BUILTIN_TRIAGE_PATTERNS.filter(
-            (p) => domainSet.has(p.domain) || RESERVED_DOMAINS.has(p.domain),
-          )
-        : [];
-      const patterns = [...filteredBuiltins, ...declaredPatterns];
+      const patterns = declaredPatterns;
 
       // Validate declared-pattern domains against the profile's domain set.
-      // Reserved pseudo-domains are allowed. Built-ins are not validated
-      // here — they were already filtered above.
+      // Reserved pseudo-domains are allowed.
       for (const pat of declaredPatterns) {
         if (!domainSet.has(pat.domain) && !RESERVED_DOMAINS.has(pat.domain)) {
           throw new ApmCompileError(

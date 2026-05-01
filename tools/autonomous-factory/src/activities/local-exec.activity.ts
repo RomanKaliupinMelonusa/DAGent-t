@@ -19,7 +19,6 @@ import path from "node:path";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
-import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
 import { compileNodeIOContract } from "../apm/compile/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import {
@@ -162,32 +161,7 @@ export function makeLocalExecActivity(
       });
 
       const handled = (async (): Promise<NodeActivityResult> => {
-        // ── Auto-skip ─────────────────────────────────────────────────
-        const skipDecision = evaluateAutoSkip(
-          ctx.itemKey,
-          ctx.apmContext,
-          ctx.repoRoot,
-          ctx.baseBranch,
-          ctx.appRoot,
-          ctx.preStepRefs,
-          ctx.pipelineState.workflowName,
-          ctx.pipelineState,
-        );
-        if (skipDecision.skip) {
-          return toActivityResult({
-            outcome: "completed",
-            errorMessage: `Skipped: ${skipDecision.skip.reason}`,
-            signals: { skipped: true },
-            summary: {
-              outcome: "completed",
-              errorMessage: `Skipped: ${skipDecision.skip.reason}`,
-              ...(skipDecision.skip.filesChanged && { filesChanged: skipDecision.skip.filesChanged }),
-            },
-          });
-        }
-        const liveCtx: NodeContext = skipDecision.forceRunChanges && !ctx.forceRunChanges
-          ? { ...ctx, forceRunChanges: true }
-          : ctx;
+        const liveCtx: NodeContext = ctx;
 
         // ── Materialize declared inputs ───────────────────────────────
         const node = getWorkflowNode(liveCtx.apmContext, liveCtx.pipelineState.workflowName, liveCtx.itemKey);

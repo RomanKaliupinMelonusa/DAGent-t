@@ -50,7 +50,6 @@ function makeState(): PipelineRunState {
     pipelineSummaries: [],
     attemptCounts: {},
     preStepRefs: {},
-    baseTelemetry: null,
     handlerOutputs: {},
     forceRunChangesDetected: {},
   };

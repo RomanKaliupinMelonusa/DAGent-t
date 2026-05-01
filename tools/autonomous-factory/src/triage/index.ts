@@ -16,10 +16,8 @@ import type { TriageResult } from "../types.js";
 import type { CompiledTriageProfile } from "../apm/index.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
-import { retrieveTopMatches } from "./retriever.js";
 import { askLlmRouter } from "./llm-router.js";
 import { extractPriorAttempts } from "./historian.js";
-import { loadCustomClassifier } from "./custom-classifier.js";
 
 /** Minimal errorLog shape consumed by `extractPriorAttempts`. Matches the
  *  shape on `PipelineState.errorLog` without importing the full state
@@ -58,106 +56,38 @@ export async function evaluateTriage(
   priorDebugRecommendation?: { readonly domain: string; readonly note: string; readonly cycleIndex: number },
   filteredStructuredFailure?: unknown,
 ): Promise<TriageResult> {
-  // Resolve classifier strategy.
-  // - Built-in strategy keywords are the canonical enum + friendly aliases.
-  // - Anything starting with "./" is treated as a sandboxed custom classifier module.
-  // - Anything else falls back to "rag+llm" / "rag-only" derived from llm_fallback.
-  const raw = profile.classifier;
-  const builtinMap: Record<string, "rag+llm" | "rag-only" | "llm-only"> = {
-    "rag+llm": "rag+llm",
-    "rag-only": "rag-only",
-    "rag": "rag-only",
-    "llm-only": "llm-only",
-    "llm": "llm-only",
-  };
-
-  // Custom classifier path → delegate entirely.
-  if (raw && raw.startsWith("./")) {
-    if (!appRoot) {
-      throw new Error(`Custom classifier "${raw}" requires an appRoot for path resolution.`);
-    }
-    const classify = await loadCustomClassifier(raw, appRoot, repoRoot ?? appRoot);
-    const result = await classify(errorTrace, profile, { triageLlm, slug, logger });
-    // Validate that the returned domain exists in the routing table (or is $SELF).
-    if (result.domain !== "$SELF" && !(result.domain in profile.routing)) {
-      throw new Error(
-        `Custom classifier "${raw}" returned domain "${result.domain}" ` +
-        `which is not in profile.routing. Valid domains: ${Object.keys(profile.routing).join(", ")} or $SELF.`,
-      );
-    }
-    return result;
-  }
-
-  const classifier: "rag+llm" | "rag-only" | "llm-only" =
-    (raw ? builtinMap[raw] : undefined) ?? (profile.llm_fallback ? "rag+llm" : "rag-only");
-
-  const useRag = classifier !== "llm-only";
-  const useLlm = classifier !== "rag-only";
-
-  // --- Layer 1: RAG — deterministic substring match ---
-  const topMatches = useRag && profile.signatures.length > 0
-    ? retrieveTopMatches(errorTrace, profile.signatures)
-    : [];
-
-  // Build structured rag_matches for the result record
-  const ragMatches = topMatches.map((m, i) => ({
-    snippet: m.error_snippet,
-    domain: m.fault_domain,
-    reason: m.reason,
-    rank: i + 1,
-  }));
-
-  if (useRag && topMatches.length > 0) {
-    const bestMatch = topMatches[0];
-    // Validate that the matched domain exists in this profile's routing
-    if (bestMatch.fault_domain in profile.routing) {
-      return {
-        domain: bestMatch.fault_domain,
-        reason: bestMatch.reason,
-        source: "rag",
-        rag_matches: ragMatches,
-      };
-    }
-    // RAG matched a domain not in this profile's routing — fall through to LLM
-    logger?.event("triage.evaluate", null, {
-      domain: bestMatch.fault_domain,
-      reason: `RAG match domain "${bestMatch.fault_domain}" not in profile routing — falling through to LLM`,
-      source: "fallback",
-      rag_match_count: topMatches.length,
-    });
-  }
-
-  // --- Layer 2: LLM — cognitive classification ---
-  if (useLlm && triageLlm && slug && appRoot) {
-    const domains = Object.keys(profile.routing);
-    const routingDescriptions: Record<string, { description?: string }> = {};
-    for (const [d, entry] of Object.entries(profile.routing)) {
-      if (entry.description) routingDescriptions[d] = { description: entry.description };
-    }
-    const priorAttempts = errorLog ? extractPriorAttempts(errorLog) : [];
-    const t0 = Date.now();
-    const result = await askLlmRouter(
-      triageLlm, errorTrace, domains, topMatches, slug, appRoot,
-      routingDescriptions, baseline ?? null, priorAttempts, failingNodeKey,
-      priorDebugRecommendation,
-      filteredStructuredFailure,
-    );
-    const llmResponseMs = Date.now() - t0;
+  // LLM-only single-call classifier. RAG and custom-classifier paths
+  // were retired in Phase 4.3 — the storefront triage profile uses
+  // `classifier: llm-only` and there is exactly one profile.
+  if (!triageLlm || !slug || !appRoot) {
     return {
-      domain: result.fault_domain,
-      reason: result.reason,
-      source: "llm",
-      rag_matches: ragMatches,
-      llm_response_ms: llmResponseMs,
+      domain: "$SELF",
+      reason: "LLM unavailable — bounded self-retry",
+      source: "fallback",
+      rag_matches: [],
     };
   }
 
-  // --- Fallback: unclassified — retry $SELF ---
+  const domains = Object.keys(profile.routing);
+  const routingDescriptions: Record<string, { description?: string }> = {};
+  for (const [d, entry] of Object.entries(profile.routing)) {
+    if (entry.description) routingDescriptions[d] = { description: entry.description };
+  }
+  const priorAttempts = errorLog ? extractPriorAttempts(errorLog) : [];
+  const t0 = Date.now();
+  const result = await askLlmRouter(
+    triageLlm, errorTrace, domains, [], slug, appRoot,
+    routingDescriptions, baseline ?? null, priorAttempts, failingNodeKey,
+    priorDebugRecommendation,
+    filteredStructuredFailure,
+  );
+  const llmResponseMs = Date.now() - t0;
   return {
-    domain: "$SELF",
-    reason: "unclassified — no RAG matches, LLM unavailable",
-    source: "fallback",
-    rag_matches: ragMatches,
+    domain: result.fault_domain,
+    reason: result.reason,
+    source: "llm",
+    rag_matches: [],
+    llm_response_ms: llmResponseMs,
   };
 }
 
@@ -219,7 +149,7 @@ export function isOrchestratorTimeout(errorMessage: string): boolean {
  * it would emit X and either emitted nothing or emitted with a malformed
  * envelope. They are routed via the workflow's `schema-violation` route
  * (typically `$SELF` for bounded self-repair) by L0 patterns in
- * `triage/builtin-patterns.ts`.
+ * the LLM router (Phase 4.3a).
  *
  * Returns `null` when the signature is not orchestrator-contract origin.
  */

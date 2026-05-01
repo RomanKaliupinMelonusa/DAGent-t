@@ -127,6 +127,10 @@ function makeContext(opts: {
       loadAcceptance: () => null,
       loadStructuredFailure: () => null,
     } as never,
+    triageLlm: {
+      classify: async () =>
+        '{"fault_domain":"frontend","reason":"ui timeout","evidence_line":"TimeoutError"}',
+    } as never,
     stateReader: {
       getStatus: async () => pipelineState,
     } as never,

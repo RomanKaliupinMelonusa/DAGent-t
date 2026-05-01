@@ -26,9 +26,6 @@ import {
   runPreflightBaseline,
   type PreflightCheckResult,
 } from "../lifecycle/preflight.js";
-import { checkPinnedDependencies, computeApiDrift } from "../lifecycle/dependency-pinning.js";
-import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
-import type { PreviousSummaryTotals } from "../reporting/index.js";
 import { createPipelineLogger } from "../telemetry/index.js";
 import { RoamCodeIndexer } from "../adapters/roam-code-indexer.js";
 import type { CodeIndexer } from "../ports/code-indexer.js";
@@ -40,8 +37,6 @@ import type { CodeIndexer } from "../ports/code-indexer.js";
 export interface BootstrapResult {
   /** Immutable pipeline run config. */
   config: PipelineRunConfig;
-  /** Telemetry from a prior session (parsed once, merged into totals). */
-  baseTelemetry: PreviousSummaryTotals | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,10 +121,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     console.log("  ✔ APM context loaded — all agent budgets within limits\n");
 
     checkToolLimitsHygiene(apmContext);
-
-    if (apmContext.config?.model_pricing) {
-      setModelPricing(apmContext.config.model_pricing);
-    }
   } catch (err) {
     if (err instanceof ApmBudgetExceededError) {
       throw new BootstrapError(
@@ -172,32 +163,7 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // --- 5. Artifact scan ---
   checkInProgressArtifacts(repoRoot, appRoot);
 
-  // --- 5b. Pinned dependency check (fatal on out-of-range drift) ---
-  // Runs after env resolution so any hook-authored lockfile is already in
-  // place, and before state-context drift so an out-of-range package fails
-  // the run with a single, unambiguous BootstrapError — not a cascade of
-  // downstream agent confusion.
-  const pinReport = checkPinnedDependencies(appRoot, apmContext.config);
-  if (pinReport && pinReport.checked.length > 0) {
-    const summary = pinReport.checked
-      .map((p) => `${p.pkg}@${p.installed} ✓ ${p.range}`)
-      .join(", ");
-    console.log(`  ✔ Pinned dependencies within declared ranges: ${summary}\n`);
-  }
-
-  // --- 5c. API-surface drift (advisory) ---
-  // Non-fatal: a drift inside the pinned range is something agents should
-  // know about but not refuse to ship over. The report is stashed on the
-  // run config so per-agent prompt rendering can inject it.
-  const pwaKitDriftReport = computeApiDrift(appRoot, apmContext.config) ?? undefined;
-  if (pwaKitDriftReport) {
-    console.log(
-      "  ⚠ Pinned package API-surface drift detected against vendored snapshot — ",
-    );
-    console.log("    will inject advisory into storefront-dev / storefront-debug / e2e-author prompts.\n");
-  }
-
-  // --- 6. State seeding is owned by the Temporal workflow now; bootstrap
+  // --- 5b. State seeding is owned by the Temporal workflow now; bootstrap
   // no longer touches on-disk pipeline state. (T1 cutover.)
 
   // --- 7. Cloud CLI auth ---
@@ -223,15 +189,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // State seeding has moved to the Temporal workflow itself. The legacy
   // `_STATE.json` seed/resume path was removed in the T1 cutover.
 
-  // --- Boot-time telemetry ---
-  const baseTelemetry = loadPreviousSummary(appRoot, slug);
-  if (baseTelemetry) {
-    console.log(
-      `  📊 Prior session detected: ${baseTelemetry.steps} steps, ` +
-      `${baseTelemetry.tokens.toLocaleString()} tokens, $${baseTelemetry.costUsd.toFixed(4)} cost — will merge into totals.`,
-    );
-  }
-
   // Propagation of `appRoot` and `POLL_MAX_RETRIES` to `process.env` was
   // performed at the top of `bootstrap()` so every preflight step and
   // every dynamically-imported adapter sees the chosen app from the
@@ -248,8 +205,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
       apmContext,
       codeIndexer,
       logger,
-      ...(pwaKitDriftReport ? { pwaKitDriftReport } : {}),
     },
-    baseTelemetry,
   };
 }

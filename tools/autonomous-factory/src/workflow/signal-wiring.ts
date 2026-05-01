@@ -17,8 +17,6 @@ import { getNowMs } from "./clock.js";
 import { formatIsoFromMs } from "./iso-time.js";
 import type { DagState } from "./dag-state.js";
 import {
-  holdPipelineSignal,
-  resumePipelineSignal,
   cancelPipelineSignal,
 } from "./signals.js";
 import {
@@ -173,12 +171,6 @@ export function installHandlers(
   input: PipelineInput,
   startedIso: string,
 ): void {
-  setHandler(holdPipelineSignal, () => {
-    dag.markHeld();
-  });
-  setHandler(resumePipelineSignal, () => {
-    dag.markResumed();
-  });
   setHandler(cancelPipelineSignal, (reason: string) => {
     dag.markCancelled(reason);
   });

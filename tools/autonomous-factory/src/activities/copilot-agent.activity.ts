@@ -68,7 +68,6 @@ import copilotAgentHandler from "./copilot-agent-body.js";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
-import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
 import { compileNodeIOContract } from "../apm/compile/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import {
@@ -91,7 +90,6 @@ import {
   loadAcceptanceContract,
 } from "../apm/manifest/acceptance-schema.js";
 import { featurePath } from "../paths/feature-paths.js";
-import { validateFixtures, formatViolationsError } from "../lifecycle/fixture-validator.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
 import type { NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { InvocationRecord, InvocationTrigger } from "../types.js";
@@ -305,32 +303,7 @@ export function makeCopilotAgentActivity(
       });
 
       const handled = (async (): Promise<NodeActivityResult> => {
-        // ── Auto-skip ─────────────────────────────────────────────────
-        const skipDecision = evaluateAutoSkip(
-          ctx.itemKey,
-          ctx.apmContext,
-          ctx.repoRoot,
-          ctx.baseBranch,
-          ctx.appRoot,
-          ctx.preStepRefs,
-          ctx.pipelineState.workflowName,
-          ctx.pipelineState,
-        );
-        if (skipDecision.skip) {
-          return toActivityResult({
-            outcome: "completed",
-            errorMessage: `Skipped: ${skipDecision.skip.reason}`,
-            signals: { skipped: true },
-            summary: {
-              outcome: "completed",
-              errorMessage: `Skipped: ${skipDecision.skip.reason}`,
-              ...(skipDecision.skip.filesChanged && { filesChanged: skipDecision.skip.filesChanged }),
-            },
-          });
-        }
-        const liveCtx: NodeContext = skipDecision.forceRunChanges && !ctx.forceRunChanges
-          ? { ...ctx, forceRunChanges: true }
-          : ctx;
+        const liveCtx: NodeContext = ctx;
 
         // ── Acceptance-integrity pre-check (non-spec-compiler nodes) ──
         if (liveCtx.itemKey !== SPEC_COMPILER_KEY) {
@@ -577,36 +550,6 @@ export function makeCopilotAgentActivity(
                   [ACCEPTANCE_PATH_FIELD]: acceptancePath,
                 },
               };
-
-              // ── Fixture-validation (spec-compiler only, post-completed) ──
-              try {
-                const contract = loadAcceptanceContract(acceptancePath);
-                if (contract.test_fixtures.length > 0) {
-                  const baseline = liveCtx.baselineLoader
-                    ? (() => {
-                        try {
-                          return liveCtx.baselineLoader!.loadBaseline(liveCtx.slug);
-                        } catch {
-                          return null;
-                        }
-                      })()
-                    : null;
-                  const verdict = validateFixtures(contract, baseline);
-                  if (!verdict.ok) {
-                    result = {
-                      outcome: "failed",
-                      errorMessage: formatViolationsError(verdict.violations),
-                      summary: {
-                        intents: [
-                          `Fixture validation failed for ${liveCtx.itemKey} (${verdict.violations.length} violation(s))`,
-                        ],
-                      },
-                    };
-                  }
-                }
-              } catch {
-                // acceptance-integrity already handled parse failures above.
-              }
             }
           }
         }

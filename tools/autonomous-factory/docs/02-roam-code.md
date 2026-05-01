@@ -430,4 +430,4 @@ Current config: `tools: ["*"]` (full preset — all 102 tools exposed). Roam sup
 
 ---
 
-*← [01 Watchdog](01-watchdog.md) · [03 APM Context →](03-apm-context.md)*
+*← [01 Watchdog](01-watchdog.md)*

@@ -107,7 +107,6 @@ export type PipelineFinalStatus =
   | "halted"
   | "blocked"
   | "cancelled"
-  | "approval-rejected"
   | "failed";
 
 export interface PipelineResult {

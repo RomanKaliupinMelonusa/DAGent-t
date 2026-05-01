@@ -8,18 +8,20 @@
  * are NOT included — those map to admin signals deferred to Session 5
  * (see `session-5-cutover-and-harden.md` per D-S4-4).
  *
- * MVP verb surface (D-S4-4 locked decisions):
- *   Signals (5):
- *     hold      <slug> [--workflow <name>]                — pause loop
- *     resume    <slug> [--workflow <name>]                — release hold
+ * Verb surface:
+ *   Signals (1):
  *     cancel    <slug> [--workflow <name>] [--reason <s>] — terminal halt
- *     approve   <slug> --gate <key> [--workflow <name>]   — approve gate
- *     reject    <slug> --gate <key> --reason <s> [--workflow <name>]
  *   Queries (4):
  *     status    <slug> [--workflow <name>]   — full StateSnapshot (JSON)
  *     progress  <slug> [--workflow <name>]   — counts + percent
  *     next      <slug> [--workflow <name>]   — ready batch
  *     summary   <slug> [--workflow <name>]   — terminal summary
+ *   Updates (3):
+ *     reset-scripts <slug> --category <c> [--max-cycles N]
+ *     resume-after-elevated <slug> [--max-cycles N]
+ *     recover-elevated <slug> --error <msg> [--max-fail-count N] [--max-dev-cycles N]
+ *   Teardown (1):
+ *     nuke      <slug> [--app <path>] [--delete-branch] [--confirm]
  *
  * Workflow ID convention: matches `run-feature.ts` —
  *   `dagent-<workflowName>-<slug>`. Default `--workflow=storefront`.
@@ -35,14 +37,9 @@
 
 import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import path from "node:path";
-import { bootstrapOtel } from "../telemetry/otel.js";
 import { parseAdminArgs } from "./admin-parse.js";
 import {
-  holdPipelineSignal,
-  resumePipelineSignal,
   cancelPipelineSignal,
-  approveGateSignal,
-  rejectGateSignal,
 } from "../workflow/signals.js";
 import {
   stateQuery,
@@ -62,13 +59,9 @@ Usage: agent:admin:temporal <verb> <slug> [options]
 
 Verbs:
   Signals:
-    hold      <slug>                                — pause the pipeline loop
-    resume    <slug>                                — release a held loop
     cancel    <slug> [--reason <s>]                 — terminal halt with reason
-    approve   <slug> --gate <key>                   — approve an approval gate
-    reject    <slug> --gate <key> --reason <s>      — reject an approval gate
 
-  Updates (admin mutate-and-return — Session 5 P4):
+  Updates (admin mutate-and-return):
     reset-scripts <slug> --category <c> [--max-cycles N]
                                                     — reset script nodes for re-push (default max 10)
     resume-after-elevated <slug> [--max-cycles N]
@@ -91,8 +84,7 @@ Verbs:
 
 Common options:
   --workflow <name>      Workflow name (default: storefront)
-  --gate <key>           Approval gate key (approve / reject only)
-  --reason <text>        Human reason (cancel / reject only)
+  --reason <text>        Human reason (cancel only)
   --category <c>         Script-node category (reset-scripts only)
   --error <msg>          Elevated-apply error message (recover-elevated only)
   --max-cycles N         Cycle budget override (reset-scripts, resume-after-elevated)
@@ -148,18 +140,15 @@ async function withClient<T>(
 ): Promise<T> {
   const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
   const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
-  const otel = bootstrapOtel("dagent-admin");
   const connection = await Connection.connect({ address });
   try {
     const client = new Client({
       connection,
       namespace,
-      ...(otel.plugin ? { plugins: [otel.plugin] } : {}),
     });
     return await fn(client);
   } finally {
     await connection.close();
-    await otel.shutdown();
   }
 }
 
@@ -177,37 +166,10 @@ async function main(): Promise<void> {
     try {
       switch (args.verb) {
         // ─── Signals ──────────────────────────────────────────────
-        case "hold":
-          await handle.signal(holdPipelineSignal);
-          console.log(`✓ hold sent to ${wfId}`);
-          break;
-        case "resume":
-          await handle.signal(resumePipelineSignal);
-          console.log(`✓ resume sent to ${wfId}`);
-          break;
         case "cancel": {
           const reason = args.reason ?? "operator-cancelled";
           await handle.signal(cancelPipelineSignal, reason);
           console.log(`✓ cancel sent to ${wfId} reason="${reason}"`);
-          break;
-        }
-        case "approve": {
-          if (!args.gate) fail("approve requires --gate <key>");
-          await handle.signal(approveGateSignal, args.gate as string);
-          console.log(`✓ approve gate=${args.gate} sent to ${wfId}`);
-          break;
-        }
-        case "reject": {
-          if (!args.gate) fail("reject requires --gate <key>");
-          if (!args.reason) fail("reject requires --reason <text>");
-          await handle.signal(
-            rejectGateSignal,
-            args.gate as string,
-            args.reason as string,
-          );
-          console.log(
-            `✓ reject gate=${args.gate} reason="${args.reason}" sent to ${wfId}`,
-          );
           break;
         }
         // ─── Queries ──────────────────────────────────────────────

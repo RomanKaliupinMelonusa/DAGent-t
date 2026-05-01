@@ -14,11 +14,6 @@ import { workflowInfo } from "@temporalio/workflow";
 import { getNowMs } from "./clock.js";
 import { formatIsoFromMs } from "./iso-time.js";
 import type { DagState } from "./dag-state.js";
-import {
-  type ApprovalRegistry,
-  awaitApproval,
-  ApprovalRejectedError,
-} from "./approval-pattern.js";
 import { dispatchNodeActivity, resolveHandlerKind } from "./dispatch-node.js";
 import { makeInvocationId } from "./invocation-id.js";
 import { buildActivityInput } from "./activity-input.js";
@@ -31,21 +26,13 @@ import type { PipelineInput } from "./pipeline-types.js";
  * dispatch metadata needed for `recordInvocation`; `approval` only
  * carries the gate's accept/reject decision.
  */
-type DispatchOutcome =
-  | {
-      kind: "activity";
-      itemKey: string;
-      executionId: string;
-      attempt: number;
-      result: NodeActivityResult;
-    }
-  | { kind: "approval"; itemKey: string; rejected: false }
-  | {
-      kind: "approval";
-      itemKey: string;
-      rejected: true;
-      reason: string;
-    };
+type DispatchOutcome = {
+  kind: "activity";
+  itemKey: string;
+  executionId: string;
+  attempt: number;
+  result: NodeActivityResult;
+};
 
 /** Items the dispatcher needs from a `DagState.getReady()` `items` payload. */
 export interface ReadyItem {
@@ -64,13 +51,6 @@ export interface BatchOutcome {
     result: NodeActivityResult;
   }>;
   /**
-   * First approval rejection seen in this batch (Map iteration order).
-   * Approval rejections halt the workflow with `approval-rejected`
-   * status; the failed gate is also recorded in the errorLog via
-   * `applyFail`.
-   */
-  readonly approvalRejection: { itemKey: string; reason: string } | null;
-  /**
    * The deterministic ISO timestamp used for every reducer call this
    * batch (`applyComplete` / `applyFail` / `recordInvocation`). Returned
    * so the workflow body can pass the same value to `runTriageCascade`,
@@ -85,7 +65,6 @@ export interface DispatchBatchInputs {
   readonly readyItems: ReadonlyArray<ReadyItem>;
   readonly input: PipelineInput;
   readonly startedIso: string;
-  readonly approvalRegistry: ApprovalRegistry;
   readonly attemptCounts: Map<string, number>;
 }
 
@@ -98,39 +77,12 @@ export interface DispatchBatchInputs {
 export async function dispatchBatch(
   inputs: DispatchBatchInputs,
 ): Promise<BatchOutcome> {
-  const { dag, readyItems, input, startedIso, approvalRegistry, attemptCounts } =
-    inputs;
+  const { dag, readyItems, input, startedIso, attemptCounts } = inputs;
 
   const dispatchPromises: Array<Promise<DispatchOutcome>> = [];
   for (const item of readyItems) {
     const node = input.nodes[item.key];
     const handlerKind = resolveHandlerKind(node);
-
-    if (handlerKind === "approval") {
-      dispatchPromises.push(
-        awaitApproval(approvalRegistry, item.key)
-          .then(
-            () =>
-              ({
-                kind: "approval",
-                itemKey: item.key,
-                rejected: false,
-              }) as const,
-          )
-          .catch((err: unknown) => {
-            if (err instanceof ApprovalRejectedError) {
-              return {
-                kind: "approval",
-                itemKey: item.key,
-                rejected: true,
-                reason: err.rejectionReason,
-              } as const;
-            }
-            throw err;
-          }),
-      );
-      continue;
-    }
 
     const attempt = (attemptCounts.get(item.key) ?? 0) + 1;
     attemptCounts.set(item.key, attempt);
@@ -165,26 +117,12 @@ export async function dispatchBatch(
 
   // Apply results serially for deterministic reducer ordering.
   const nowIso = formatIsoFromMs(getNowMs());
-  let approvalRejection: { itemKey: string; reason: string } | null = null;
   const newlyFailed: Array<{
     itemKey: string;
     result: NodeActivityResult;
   }> = [];
 
   for (const out of outcomes) {
-    if (out.kind === "approval") {
-      if (out.rejected) {
-        approvalRejection ??= { itemKey: out.itemKey, reason: out.reason };
-        dag.applyFail(
-          out.itemKey,
-          `Approval rejected: ${out.reason}`,
-          nowIso,
-        );
-      } else {
-        dag.applyComplete(out.itemKey);
-      }
-      continue;
-    }
     const r = out.result;
     if (r.outcome === "completed") {
       dag.applyComplete(out.itemKey);
@@ -212,5 +150,5 @@ export async function dispatchBatch(
     });
   }
 
-  return { newlyFailed, approvalRejection, nowIso };
+  return { newlyFailed, nowIso };
 }

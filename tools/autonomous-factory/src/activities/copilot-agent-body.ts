@@ -21,7 +21,6 @@
 
 import { getAgentConfig, buildTaskPrompt } from "../apm/runtime/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
@@ -35,8 +34,6 @@ import type { ArtifactKind } from "../apm/index.js";
 import type { NodeContractGateParams } from "../contracts/node-contract-gate.js";
 import type { PrecompletionGate } from "../harness/index.js";
 import type { FreshnessGate } from "../harness/hooks.js";
-import { featurePath } from "../paths/feature-paths.js";
-import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
 import { SPEC_COMPILER_KEY } from "./support/acceptance-integrity.js";
 
 // ---------------------------------------------------------------------------
@@ -99,30 +96,10 @@ function getTimeout(ctx: NodeContext): number {
  */
 function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined {
   if (ctx.itemKey !== SPEC_COMPILER_KEY) return undefined;
-  const bus = ctx.artifactBus;
-  const nodeAcceptancePath = bus.nodePath(
-    ctx.slug,
-    ctx.itemKey,
-    ctx.executionId,
-    "acceptance",
-  );
-  const kickoffAcceptancePath = featurePath(ctx.appRoot, ctx.slug, "acceptance");
-  return {
-    maxCorrectiveTurns: 1,
-    validate: () =>
-      validateSpecCompilerOutput({
-        candidatePaths: [nodeAcceptancePath, kickoffAcceptancePath],
-        existsSync: (p) => ctx.filesystem.existsSync(p),
-        loadBaseline: () => {
-          if (!ctx.baselineLoader) return null;
-          try {
-            return ctx.baselineLoader.loadBaseline(ctx.slug);
-          } catch {
-            return null;
-          }
-        },
-      }),
-  };
+  // Spec-compiler-validator was removed in the storefront-spine refactor.
+  // The acceptance-integrity post-check (in copilot-agent.activity.ts) plus
+  // the `loadAcceptanceContract` schema parser are sufficient on their own.
+  return undefined;
 }
 
 /**
@@ -315,16 +292,6 @@ const copilotAgentHandler: NodeHandler = {
           stale: currentBaseSha !== undefined && baseline?.base_sha !== undefined && baseline.base_sha !== currentBaseSha,
         });
       }
-    }
-
-    if (node?.generates_change_manifest) {
-      await writeChangeManifest(
-        slug,
-        appRoot,
-        repoRoot,
-        pipelineSummaries as ItemSummary[],
-        (s) => ctx.stateReader.getStatus(s),
-      );
     }
 
     // ── 4. Run the SDK session via adapter ──────────────────────────────────

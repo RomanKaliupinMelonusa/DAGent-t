@@ -9,19 +9,17 @@
  */
 
 import {
-  condition,
   patched,
   CancelledFailure,
   isCancellation,
 } from "@temporalio/workflow";
 import { DagState } from "./dag-state.js";
-import { installApprovalRegistry } from "./approval-pattern.js";
 import { formatIsoFromMs } from "./iso-time.js";
-import { archiveActivity } from "./activity-proxies.js";
 import { installHandlers, projectState } from "./signal-wiring.js";
 import { dispatchBatch } from "./batch-dispatcher.js";
 import { maybeContinueAsNew } from "./continue-as-new-controller.js";
 import { runTriageCascade } from "./triage-driver.js";
+import { haltAndFlushActivity } from "./activity-proxies.js";
 import type { RoutableWorkflow } from "./domain/index.js";
 import type {
   PipelineInput,
@@ -86,7 +84,6 @@ export async function pipelineWorkflow(
   // Both calls must be synchronous — Temporal only buffers signals
   // delivered prior to handler registration when registration happens
   // in the workflow's first task.
-  const approvalRegistry = installApprovalRegistry();
   installHandlers(dag, input, startedIso);
 
   // Per-item attempt counter — survives continue-as-new via
@@ -110,9 +107,7 @@ export async function pipelineWorkflow(
       //      so handlers can stay bound).
       await maybeContinueAsNew({ dag, attemptCounts, input });
 
-      // (a) Hold gate — cancellation alongside so a cancel during hold
-      //     unblocks the loop. (b) Cancellation halt.
-      await condition(() => !dag.isHeld() || dag.isCancelled());
+      // (a) Cancellation halt.
       if (dag.isCancelled()) {
         finalStatus = "cancelled";
         finalReason = dag.getCancelReason() ?? "cancelled";
@@ -157,8 +152,8 @@ export async function pipelineWorkflow(
       }
 
       // (e/f) Dispatch ready items in parallel and fold results back.
-      const { newlyFailed, approvalRejection, nowIso } = await dispatchBatch({
-        dag, readyItems: ready.items, input, startedIso, approvalRegistry, attemptCounts,
+      const { newlyFailed, nowIso } = await dispatchBatch({
+        dag, readyItems: ready.items, input, startedIso, attemptCounts,
       });
 
       // (g) Triage cascade for newly-failed items. Halts when a
@@ -196,35 +191,11 @@ export async function pipelineWorkflow(
           break;
         }
       }
-
-      // Approval rejections halt by default (most stringent).
-      if (approvalRejection) {
-        finalStatus = "approval-rejected";
-        finalReason = `Gate '${approvalRejection.itemKey}' rejected: ${approvalRejection.reason}`;
-        break;
-      }
     }
 
     // Loop fall-through (max iterations exhausted).
     if (finalStatus === "halted" && finalReason === "unspecified") {
       finalReason = `max-iterations (${maxIterations}) exhausted`;
-    }
-
-    // Final archive on natural completion only. Cancelled / rejected /
-    // blocked runs leave the workspace untouched for operator inspection.
-    if (finalStatus === "complete") {
-      try {
-        await archiveActivity({
-          slug: input.slug,
-          appRoot: input.appRoot,
-          repoRoot: input.repoRoot,
-          baseBranch: input.baseBranch,
-        });
-      } catch (err) {
-        finalReason = `complete-but-archive-failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`;
-      }
     }
   } catch (err) {
     if (isCancellation(err)) {
@@ -238,6 +209,27 @@ export async function pipelineWorkflow(
         : new CancelledFailure(finalReason);
     }
     throw err;
+  }
+
+  // Phase 3 — unconditional halt-and-flush. Any non-complete terminal
+  // state captures pending feature-branch state to remote so an
+  // operator can land on a halted run without inspecting the worker
+  // filesystem. Best-effort; failures must not mask the terminal
+  // status. Wrapped under `patched()` so existing histories that
+  // terminated without this step continue to replay deterministically.
+  if (
+    patched("phase3-halt-and-flush") &&
+    finalStatus !== "complete"
+  ) {
+    try {
+      await haltAndFlushActivity({
+        slug: input.slug,
+        appRoot: input.appRoot,
+        reason: `${finalStatus}:${finalReason}`,
+      });
+    } catch {
+      // Swallow — terminal status is the operator's source of truth.
+    }
   }
 
   return {

@@ -4,9 +4,6 @@
   "private": true,
   "description": "Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to PR",
   "workspaces": [
-    "apps/**",
-    "!apps/commerce-storefront",
-    "!apps/commerce-storefront/**",
     "tools/*"
   ],
   "scripts": {

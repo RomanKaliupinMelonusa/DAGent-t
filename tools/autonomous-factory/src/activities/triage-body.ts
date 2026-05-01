@@ -22,28 +22,26 @@
  *   - guardResult: string        — pre-triage guard outcome ("passed" | guard name)
  */
 
-import type { NodeBudgetPolicy } from "../app-types.js";
 import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "../contracts/node-context.js";
 import type { CompiledTriageProfile } from "../apm/index.js";
 import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
 import { RESET_OPS } from "../types.js";
-import { newInvocationId } from "../activities/support/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
-import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
-import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
-import { extractPriorAttempts } from "../triage/historian.js";
-import type { AcceptanceContract } from "../apm/index.js";
+import { buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
-import { getUpstream } from "../domain/dag-graph.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildEnvelope } from "../apm/artifacts/artifact-catalog.js";
 import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";
 import { toFailedTests } from "../triage/handoff-evidence.js";
-import type { BaselineProfile } from "../ports/baseline-loader.js";
+import {
+  type LoadedDebugRecommendation,
+  loadDebugRecommendation,
+  buildRerouteCommands,
+} from "./triage-body-reroute.js";
 // ---------------------------------------------------------------------------
 // Triage handler output — typed contract for kernel consumption
 // ---------------------------------------------------------------------------
@@ -175,238 +173,6 @@ function truncateErrorExcerpt(raw: string, maxLines = 40): string {
   return `${lines.slice(0, maxLines).join("\n")}\n… (${lines.length - maxLines} more lines)`;
 }
 
-// ---------------------------------------------------------------------------
-// Prior debug-cycle structured-hint lookup
-// ---------------------------------------------------------------------------
-
-/**
- * Resolved hint surfaced to the LLM router and the dev-agent handoff.
- * Shape matches `TriageHandoff.priorDebugRecommendation` so the outer
- * caller can pass it through unmodified.
- */
-interface LoadedDebugRecommendation {
-  readonly cycleIndex: number;
-  readonly recommendation: { domain: string; note: string };
-}
-
-/**
- * Walk the persisted invocation ledger for the most recent
- * completed-and-sealed invocation whose agent emitted a structured
- * `nextFailureHint` via `report_outcome`. Producer-agnostic — any
- * debug-class agent that records a hint is eligible.
- *
- * Filters out hints whose `domain` is not in `allowedDomains` so the
- * recommendation cannot bias the LLM toward an unroutable verdict.
- *
- * Picks the lex-greatest `finishedAt` (ISO timestamps are
- * lex-sortable), tiebreak by lex-greatest `invocationId` — same
- * selector as `FileArtifactBus.findLatestArtifact`.
- *
- * Pure (apart from the in-memory `artifacts` walk). Returns `null` when
- * nothing eligible is found.
- */
-function loadDebugRecommendation(
-  artifacts:
-    | Record<string, {
-        nodeKey: string;
-        cycleIndex: number;
-        outcome?: string;
-        sealed?: boolean;
-        finishedAt?: string;
-        invocationId: string;
-        nextFailureHint?: { domain: string; target_node: string; summary: string };
-      }>
-    | undefined,
-  allowedDomains: readonly string[],
-): LoadedDebugRecommendation | null {
-  if (!artifacts) return null;
-  if (allowedDomains.length === 0) return null;
-
-  let best: { rec: NonNullable<typeof artifacts>[string] } | null = null;
-  for (const rec of Object.values(artifacts)) {
-    if (rec.sealed !== true) continue;
-    if (rec.outcome !== "completed") continue;
-    if (!rec.finishedAt) continue;
-    const hint = rec.nextFailureHint;
-    if (!hint) continue;
-    if (!allowedDomains.includes(hint.domain)) continue;
-    if (
-      !best
-      || (rec.finishedAt > (best.rec.finishedAt ?? ""))
-      || (rec.finishedAt === best.rec.finishedAt && rec.invocationId > best.rec.invocationId)
-    ) {
-      best = { rec };
-    }
-  }
-  if (!best) return null;
-
-  const hint = best.rec.nextFailureHint!;
-  return {
-    cycleIndex: best.rec.cycleIndex,
-    recommendation: { domain: hint.domain, note: hint.summary },
-  };
-}
-
-/**
- * Result of `buildRerouteCommands` — the kernel commands to push, plus
- * the structured `TriageHandoff` payload built along the way so the
- * caller can stash it on `handlerOutput.triageHandoff` for the outer
- * `attachTriageHandoffArtifact` wrapper to serialise.
- */
-interface RerouteBuildResult {
-  readonly commands: DagCommand[];
-  readonly handoff?: TriageHandoff;
-  /** Pre-allocated invocationId of the staged downstream record. Returned
-   *  so the outer execute wrapper can stamp it on `handlerOutput.routedTo`
-   *  and use it for the `triage.routed` event. */
-  readonly routedToInvocationId?: string;
-}
-
-/**
- * Build DagCommands for a successful reroute (reset target + downstream).
- * Assembles: reset-nodes → stage-invocation → reindex. Also builds the
- * structured `TriageHandoff` payload and returns it so the caller can
- * propagate it to `handlerOutput.triageHandoff` — the outer execute
- * wrapper serialises it to the on-disk `triage-handoff` artifact.
- */
-async function buildRerouteCommands(
-  ctx: NodeContext,
-  routeToKey: string,
-  triageRecord: TriageRecord,
-  triageResult: TriageResult,
-  maxReroutes: number,
-  routeToPolicy: NodeBudgetPolicy,
-  failingNodeKey: string,
-  rawError: string,
-  /** Baseline-filtered structured failure — same payload the classifier saw.
-   *  Projected into the dev-agent handoff so console/network/uncaught signals
-   *  travel alongside the Playwright assertion excerpt. */
-  structuredFailure: unknown,
-  /** Loaded baseline profile (may be null). Passed through to
-   *  `composeTriageContext` so the raw-mode narrative can subtract
-   *  pre-feature platform noise from the inlined failure output. */
-  baseline: BaselineProfile | null,
-  /** Per-channel counts of baseline-filtered signals from the
-   *  `filterNoise` invocation that produced `structuredFailure`. Rendered
-   *  as a provenance footer in the dev-agent handoff so the agent can
-   *  confirm the filter ran. Zero / omitted when no filtering happened. */
-  baselineDropCounts?: { console: number; network: number; uncaught: number },
-  /** Prior debug-cycle recommendation parsed from the most recent
-   *  `storefront-debug` `debug-notes.md`. Threaded into
-   *  `buildTriageHandoff` so the rerouted dev agent sees the diagnosis
-   *  inline. The same recommendation has already biased the LLM router
-   *  upstream of this call. Absent when no eligible debug-notes exist
-   *  or no recognised heading was present. */
-  priorDebugRecommendation?: LoadedDebugRecommendation | null,
-): Promise<RerouteBuildResult> {
-  const { slug } = ctx;
-  const commands: DagCommand[] = [];
-  let handoff: TriageHandoff | undefined;
-  let routedToInvocationId: string | undefined;
-
-  // 1. Reset target node + all downstream dependents
-  //    (the structured handoff is serialised to the `triage-handoff`
-  //    artifact by the outer execute wrapper using the `handoff` value
-  //    returned from this function — no persistence command needed.)
-  const taggedReason = `${formatDomainTag(triageResult.domain)} [source:${triageResult.source}] ${triageResult.reason}`;
-
-  // 0. Bypass the failing node when it is a transitive structural ancestor
-  //    of the reroute target. Without this, the scheduler keeps the route
-  //    target gated behind the still-failed parent and the reroute
-  //    live-locks. The kernel flips the failing item from `failed` → `na`
-  //    with a `bypassedFor: { routeTarget }` marker; the seal hook
-  //    consumes the marker on successful completion of the route target
-  //    to emit `reset-nodes` (logKey `reset-after-fix`) which re-validates
-  //    the gate against the fix.
-  //
-  //    Skip when failing == route target (`$SELF` reroute) or when the
-  //    failing node is downstream of the route target (the upstream node's
-  //    `reset-nodes` cascade already handles re-running the failing one).
-  if (failingNodeKey !== routeToKey) {
-    const ancestors = getUpstream(ctx.pipelineState.dependencies, [routeToKey]);
-    if (ancestors.includes(failingNodeKey)) {
-      commands.push({
-        type: "bypass-node",
-        nodeKey: failingNodeKey,
-        routeTarget: routeToKey,
-        reason: taggedReason,
-      });
-    }
-  }
-
-  commands.push({
-    type: "reset-nodes",
-    seedKey: routeToKey,
-    reason: taggedReason,
-    logKey: RESET_OPS.RESET_FOR_REROUTE,
-    maxCycles: maxReroutes,
-  });
-
-  // 2. Stage an unsealed `InvocationRecord` for the routed-to node.
-  //    Phase 6 — the staged record carries trigger + parent lineage only.
-  //    Re-entrance context flows through the `triage-handoff` JSON
-  //    artifact (declared via `consumes_reroute`); Phase 3's
-  //    `materializeInputsMiddleware` copies it into `<inv>/inputs/`
-  //    before the dev agent runs. No prose `pendingContext` is built or
-  //    persisted anymore.
-  // Pre-allocate the staged invocationId outside the try so we can carry
-  // it on `RerouteBuildResult.routedToInvocationId` even if the handoff
-  // assembly fails (the reset-nodes + reindex path still went through).
-  const stagedInvocationId = newInvocationId();
-  try {
-    const pipeStateForCtx = await ctx.stateReader.getStatus(slug);
-    // Build the structured handoff so the outer `attachTriageHandoffArtifact`
-    // wrapper can write `outputs/triage-handoff.json` for this triage
-    // invocation. The `priorAttemptCount` reflects feature-level effort
-    // (executionLog entries for the failing node + reset-for-reroute
-    // cycles) so the rendered "Prior attempts" line tells the truth.
-    const execAttempts = (pipeStateForCtx.executionLog ?? [])
-      .filter((r: { nodeKey: string }) => r.nodeKey === failingNodeKey).length;
-    const cycleAttempts = extractPriorAttempts(pipeStateForCtx.errorLog ?? []).length;
-    const priorAttemptCount = execAttempts + cycleAttempts;
-    handoff = buildTriageHandoff({
-      failingNodeKey,
-      rawError,
-      triageRecord,
-      triageResult,
-      priorAttemptCount,
-      pipelineSummaries: ctx.pipelineSummaries,
-      errorLog: pipeStateForCtx.errorLog ?? [],
-      structuredFailure,
-      routeToKey,
-      baselineDropCounts,
-      baseline,
-      slug,
-      triageInvocationId: ctx.executionId,
-      ...(priorDebugRecommendation
-        ? {
-            priorDebugRecommendation: {
-              domain: priorDebugRecommendation.recommendation.domain,
-              note: priorDebugRecommendation.recommendation.note,
-              cycleIndex: priorDebugRecommendation.cycleIndex,
-            },
-          }
-        : {}),
-    });
-    commands.push({
-      type: "stage-invocation",
-      itemKey: routeToKey,
-      invocationId: stagedInvocationId,
-      parentInvocationId: ctx.executionId,
-      trigger: "triage-reroute",
-      producedBy: `${ctx.itemKey}#${ctx.executionId}`,
-    });
-    routedToInvocationId = stagedInvocationId;
-  } catch { /* non-fatal — reroute still happens via reset-nodes alone */ }
-
-  // 3. Re-index semantic graph if target category needs it
-  const targetCat = getWorkflowNode(ctx.apmContext, ctx.pipelineState.workflowName, routeToKey)?.category;
-  if (targetCat) {
-    commands.push({ type: "reindex", categories: [targetCat] });
-  }
-
-  return { commands, handoff, ...(routedToInvocationId ? { routedToInvocationId } : {}) };
-}
 
 // ---------------------------------------------------------------------------
 // Handler implementation
@@ -689,7 +455,7 @@ const triageHandlerInner: NodeHandler = {
     // Producer-side faults (missing_required_output, invalid_envelope_output)
     // are NOT short-circuited here — they are genuine output-quality
     // failures and route via the L0 `schema-violation` patterns in
-    // `triage/builtin-patterns.ts`, typically back to `$SELF` for bounded
+    // the failing node's `failureRoutes` map, typically back to `$SELF` for bounded
     // self-repair via `routeProfiles.base`.
     const contractOrigin = classifyOrchestratorContractError(errorSig);
     if (contractOrigin) {
@@ -775,16 +541,10 @@ const triageHandlerInner: NodeHandler = {
     // route deterministically. The resolved domain must exist in the
     // failing node's `failureRoutes` map — otherwise we fall through.
     //
-    // Round-2 R2: load the feature's ACCEPTANCE.yml (best-effort) and pass
-    // it to the classifier so a Playwright timeout on a contract-declared
-    // testid deterministically classifies as `frontend`. Missing/malformed
-    // contract => null, classifier falls back to its uncaught-error rule.
-    let acceptance: AcceptanceContract | null = null;
-    try {
-      acceptance = artifacts.loadAcceptance(slug);
-    } catch {
-      acceptance = null;
-    }
+    // Phase 4.3b: the L0 deterministic classifier was retired (triage is
+    // LLM-only). The acceptance load below is preserved as documentation
+    // of the contract surface; future deterministic short-circuits should
+    // re-introduce a classifier here.
     // Baseline noise filter — when `baseline-analyzer` captured a
     // pre-feature console/network/uncaught baseline for the target pages,
     // subtract those known-noise signals from the structured failure BEFORE
@@ -814,17 +574,11 @@ const triageHandlerInner: NodeHandler = {
         }
       } catch { /* non-fatal — fall through with original payload */ }
     }
-    // Session B (Item 3) — profile-driven L0 pre-classifier. Built-in
-    // patterns (browser-uncaught, contract-testid-timeout,
-    // spec-schema-violation) are prepended by the APM compiler unless the
-    // profile sets `builtin_patterns: false`. Additional patterns declared
-    // on the profile in apm.yml run in order after the built-ins.
-    const preLlmVerdict = evaluateProfilePatterns(profile, {
-      structuredFailure: filteredStructuredFailure,
-      rawError,
-      acceptance,
-    });
-    const failureRoutesForContract = ctx.failureRoutes ?? {};
+    // Phase 4.3b: declarative L0 pre-classifier patterns retired. Triage
+    // is LLM-only — the profile.patterns array is always empty under the
+    // single-storefront-profile shape, so we go straight to evaluateTriage
+    // (with the orchestrator-contract short-circuit + evidence-empty
+    // self-reset guards already enforced above).
     // Fetch errorLog once so the LLM router can include prior-attempt
     // classifications in its prompt (anti-misclassification context).
     // Best-effort — a failure here just means the LLM gets a slightly
@@ -869,8 +623,6 @@ const triageHandlerInner: NodeHandler = {
             source: "fallback",
             rag_matches: [],
           } satisfies TriageResult)
-      : preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
-        ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
             undefined, baseline, errorLogForRouter, failingNodeKey,
