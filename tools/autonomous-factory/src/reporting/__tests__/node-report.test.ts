@@ -28,7 +28,7 @@ import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 import { synthesizeNodeReport, writeNodeReport } from "../node-report.js";
 import type { ItemSummary } from "../../types.js";
-import type { NodeContext } from "../../activity-lib/types.js";
+import type { NodeContext } from "../../contracts/node-context.js";
 
 const START = "2025-01-01T00:00:00.000Z";
 const FINISH = "2025-01-01T00:00:05.000Z";

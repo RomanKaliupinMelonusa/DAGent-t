@@ -45,5 +45,5 @@ session.hooks = hooks;
 ## Related layers
 
 - Constructed by → [`src/adapters/copilot-session-runner.ts`](../adapters/README.md)
-- Cooperates with → [`src/activity-lib/agent-limits.ts`](../activity-lib/README.md) (limit resolution) and [`src/activity-lib/node-contract-gate.ts`](../activity-lib/README.md) (post-session contract validation)
+- Cooperates with → [`src/activities/support/agent-limits.ts`](../activities/support/README.md) (limit resolution) and [`src/contracts/node-contract-gate.ts`](../activities/support/README.md) (post-session contract validation)
 - Configuration source of truth → `apps/<app>/.apm/apm.yml` (`toolLimits`, `securityProfile`, `defaultToolLimits`)

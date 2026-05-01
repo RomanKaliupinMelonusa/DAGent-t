@@ -1,5 +1,5 @@
 /**
- * activity-lib/produced-outputs-ingestion.ts — P5 of halt-discipline
+ * activities/support/produced-outputs-ingestion.ts — P5 of halt-discipline
  * hardening.
  *
  * After a node's handler returns `outcome: "completed"`, scan its
@@ -30,13 +30,13 @@
 
 import path from "node:path";
 import { readdirSync } from "node:fs";
-import type { NodeContext } from "./types.js";
-import type { ArtifactRefSerialized, InvocationRecord } from "../types.js";
+import type { NodeContext } from "../../contracts/node-context.js";
+import type { ArtifactRefSerialized, InvocationRecord } from "../../types.js";
 import {
   listArtifactKinds,
   validateArtifactPayload,
   type ArtifactKindDef,
-} from "../apm/artifact-catalog.js";
+} from "../../apm/artifact-catalog.js";
 
 const HANDLER_OUTPUT_FILENAME = "handler-output.json";
 const SIDECAR_SUFFIX = ".meta.json";

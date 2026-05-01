@@ -54,4 +54,4 @@ logger.event("node.start", itemKey, { invocationId });
 
 - Implements → `Telemetry` port in [`src/ports/`](../ports/README.md)
 - Bootstrapped from → [`src/worker/main.ts`](../worker/README.md) and [`src/client/run-feature.ts`](../client/README.md)
-- Consumed by → [`src/activities/`](../activities/README.md), [`src/activity-lib/`](../activity-lib/README.md), [`src/lifecycle/`](../lifecycle/README.md), [`src/reporting/`](../reporting/README.md)
+- Consumed by → [`src/activities/`](../activities/README.md), [`src/activities/support/`](../activities/support/README.md), [`src/lifecycle/`](../lifecycle/README.md), [`src/reporting/`](../reporting/README.md)

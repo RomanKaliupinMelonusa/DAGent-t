@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { workflowProducesAcceptance } from "../agent-context.js";
-import type { ApmWorkflow } from "../../apm/types.js";
+import type { ApmWorkflow } from "../../../apm/types.js";
 
 function wf(nodes: Record<string, { produces_artifacts?: string[] }>): ApmWorkflow {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

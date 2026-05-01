@@ -68,7 +68,7 @@ const triageLlm = new CopilotTriageLlm({ … });
    `@github/copilot-sdk` outside `adapters/` (plus the `worker/`,
    `client/`, `lifecycle/`, `reporting/`, `session/`, `telemetry/`,
    `harness/` layers that explicitly do I/O) — anything in `workflow/`,
-   `domain/`, `ports/`, `apm/`, `triage/`, or `activity-lib/` is a layering
+   `domain/`, `ports/`, `apm/`, `triage/`, or `activities/support/` is a layering
    violation.
 2. **One adapter, one port.** Adapters compose private helper functions in the same file rather than splitting them out as additional modules.
 3. **Adapters may depend on other adapters only via ports.**

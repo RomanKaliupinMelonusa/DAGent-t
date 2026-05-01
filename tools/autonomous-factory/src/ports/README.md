@@ -7,7 +7,7 @@ client / Temporal topology that consumes these ports.
 
 ## Role in the architecture
 
-`ports/` defines the contracts between business logic and the outside world. Activities, `activity-lib/`, and the `entry/` bootstrap depend on these interfaces — never on concrete implementations. Implementations live in [adapters/](../adapters/README.md) and are wired in [`src/worker/main.ts`](../worker/README.md).
+`ports/` defines the contracts between business logic and the outside world. Activities, `activities/support/`, and the `entry/` bootstrap depend on these interfaces — never on concrete implementations. Implementations live in [adapters/](../adapters/README.md) and are wired in [`src/worker/main.ts`](../worker/README.md).
 
 Ports are the **seam** that makes the engine substitutable: swap
 `GithubCiAdapter` for `GitlabCiAdapter`, `CopilotTriageLlm` for any other
@@ -70,7 +70,7 @@ Port methods are **async** even when the reference implementation is synchronous
 2. Add it to the barrel in [index.ts](index.ts).
 3. Implement it in `adapters/github-scm-adapter.ts` (and optionally `gitlab-scm-adapter.ts`).
 4. Wire the chosen implementation in [`src/worker/main.ts`](../worker/README.md) and inject via the relevant activity's dependency setter.
-5. Update callers (activities, `activity-lib`) to depend on the port, not the adapter.
+5. Update callers (activities, `activities/support`) to depend on the port, not the adapter.
 
 **Add a method to an existing port:**
 
@@ -87,5 +87,5 @@ Port methods are **async** even when the reference implementation is synchronous
 ## Related layers
 
 - Implemented by → [`src/adapters/`](../adapters/README.md)
-- Consumed by → [`src/activities/`](../activities/README.md), [`src/activity-lib/`](../activity-lib/README.md), [`src/entry/bootstrap.ts`](../entry/README.md)
+- Consumed by → [`src/activities/`](../activities/README.md), [`src/activities/support/`](../activities/support/README.md), [`src/entry/bootstrap.ts`](../entry/README.md)
 - Wired in → [`src/worker/main.ts`](../worker/README.md)

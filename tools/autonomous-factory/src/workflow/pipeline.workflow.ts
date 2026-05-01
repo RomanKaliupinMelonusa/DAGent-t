@@ -287,7 +287,7 @@ function buildPipelineState(
     naByType: snap.state.naByType,
     salvageSurvivors: snap.state.salvageSurvivors,
     // Cause-A fix — surface the invocation ledger so `materializeUpstream`
-    // (`activity-lib/invocation-builder.ts`) can resolve completed
+    // (`activities/support/invocation-builder.ts`) can resolve completed
     // producer outputs from in-memory state. Without this, the consumer
     // throws `MissingRequiredInputError` on the very first dispatch even
     // though the bytes (and producer-side `meta.json#outputs`) are on

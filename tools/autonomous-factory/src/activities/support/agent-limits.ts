@@ -6,22 +6,22 @@
  * Pure configuration assembly; no I/O.
  */
 
-import type { NodeContext } from "./types.js";
-import type { AgentSandbox } from "../harness/sandbox.js";
-import type { ResolvedHarnessLimits } from "../harness/index.js";
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { NodeContext } from "../../contracts/node-context.js";
+import type { AgentSandbox } from "../../harness/sandbox.js";
+import type { ResolvedHarnessLimits } from "../../harness/index.js";
+import type { ApmCompiledOutput } from "../../apm/types.js";
 import {
   DEFAULT_FILE_READ_LINE_LIMIT,
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_SHELL_OUTPUT_LIMIT,
   DEFAULT_SHELL_TIMEOUT_MS,
   buildCustomTools,
-} from "../harness/index.js";
-import { resolveAgentSandbox } from "../harness/sandbox.js";
+} from "../../harness/index.js";
+import { resolveAgentSandbox } from "../../harness/sandbox.js";
 import {
   TOOL_LIMIT_FALLBACK_SOFT,
   TOOL_LIMIT_FALLBACK_HARD,
-} from "../session/session-events.js";
+} from "../../session/session-events.js";
 
 /** Code-level fallback when neither the agent nor manifest defaults declare
  *  `idleTimeoutLimit`. Two prior session.idle timeouts salvage on the third. */

@@ -29,7 +29,8 @@ isolation.
 | `src/workflow/` | Deterministic pipeline workflow, `DagState`, signals/queries/updates, `WORKFLOW_VERSION`. | [README](src/workflow/README.md) |
 | `src/workflow/domain/` | Twin of `src/domain/` callable from inside the workflow VM (no `node:crypto`, no I/O). | [README](src/workflow/domain/README.md) |
 | `src/activities/` | Side-effecting work invoked by the workflow (`copilot-agent`, `local-exec`, `github-ci-poll`, `triage`, `archive`, `hello`). | [README](src/activities/README.md) |
-| `src/activity-lib/` | Pure helpers shared by activities — no Temporal SDK imports, unit-testable. | [README](src/activity-lib/README.md) |
+| `src/activities/support/` | Pure helpers shared by activities — no Temporal SDK imports, unit-testable. | — |
+| `src/contracts/` | Cross-cutting handler contracts: `NodeContext`, `NodeResult`, node I/O contract, post-session gate + recovery prompt. | — |
 | `src/worker/` | Worker bootstrap — registers workflows + activities, polls task queue, wires OTel. | [README](src/worker/README.md) |
 | `src/client/` | Temporal client surfaces: `dagent-admin`, feature-run CLI, smoke-test runners. | [README](src/client/README.md) |
 | `src/domain/` | Pure DAG math, transitions, scheduling, error fingerprinting (used outside the workflow VM). | [README](src/domain/README.md) |

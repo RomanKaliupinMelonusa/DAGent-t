@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hasPositiveOutputSignal } from "../../activity-lib/auto-skip-evaluator.js";
+import { hasPositiveOutputSignal } from "../../activities/support/auto-skip-evaluator.js";
 
 describe("hasPositiveOutputSignal (P4)", () => {
   let appRoot: string;

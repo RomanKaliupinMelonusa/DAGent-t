@@ -1,5 +1,5 @@
 /**
- * activity-lib/handler-output-ingestion.ts — Symmetric handoff channel
+ * activities/support/handler-output-ingestion.ts — Symmetric handoff channel
  * for script / agent nodes.
  *
  * Pure helper extracted from the deleted
@@ -15,13 +15,13 @@
  *   - shadowed reserved keys   → dropped + `handler-output.reserved_key`
  */
 
-import type { NodeContext } from "./types.js";
-import type { ArtifactRefSerialized } from "../types.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import type { NodeContext } from "../../contracts/node-context.js";
+import type { ArtifactRefSerialized } from "../../types.js";
+import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import {
   HandlerOutputArtifactSchema,
   validateArtifactPayload,
-} from "../apm/artifact-catalog.js";
+} from "../../apm/artifact-catalog.js";
 
 /** Reserved keys owned by the `local-exec` activity. Scripts must not
  *  shadow these via the envelope; anything the envelope places under one

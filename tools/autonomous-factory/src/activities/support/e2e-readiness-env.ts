@@ -1,5 +1,5 @@
 /**
- * activity-lib/e2e-readiness-env.ts — declarative `apm.e2e.readiness.*`
+ * activities/support/e2e-readiness-env.ts — declarative `apm.e2e.readiness.*`
  * env injection for pre/post lifecycle hooks of the e2e-runner family
  * of nodes.
  *
@@ -8,7 +8,7 @@
  * decide which `E2E_*` / `READY_*` env vars to inject for a given itemKey.
  */
 
-import type { ApmConfig } from "../apm/types.js";
+import type { ApmConfig } from "../../apm/types.js";
 
 /**
  * Node keys that share `apps/<app>/.apm/hooks/e2e-runner-{pre,post}.sh` and

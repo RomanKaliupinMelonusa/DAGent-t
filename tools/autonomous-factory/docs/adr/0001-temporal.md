@@ -28,7 +28,7 @@ Use **Temporal OSS** (MIT licensed, self-hosted on Postgres) as the
 orchestration kernel. Workflow code lives under `src/workflow/`, activities
 under `src/activities/`, the worker entry under `src/worker/main.ts`, and
 client surfaces under `src/client/`. Pure helpers shared by activities live
-under `src/activity-lib/`.
+under `src/activities/support/`.
 
 All IP-bearing layers above the kernel — APM compiler, activity contracts,
 triage classifier, artifact ledger, microkernel registries — sit on top of
@@ -119,7 +119,7 @@ across replays**. Forbidden:
 
 Allowed:
 
-- Pure functions from `src/activity-lib/` and in-tree workflow helpers
+- Pure functions from `src/activities/support/` and in-tree workflow helpers
 - Temporal SDK primitives: `proxyActivities`, `condition`, `sleep`,
   `setHandler`, `defineSignal`, `defineQuery`, `patched`
 - `JSON.parse/stringify` on workflow inputs

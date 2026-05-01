@@ -23,7 +23,7 @@
  */
 
 import type { NodeBudgetPolicy } from "../app-types.js";
-import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "../activity-lib/types.js";
+import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "../contracts/node-context.js";
 import type { CompiledTriageProfile } from "../apm/types.js";
 import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
 import { RESET_OPS } from "../types.js";
@@ -37,7 +37,7 @@ import { extractPriorAttempts } from "../triage/historian.js";import type { Acce
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { getUpstream } from "../domain/dag-graph.js";
-import { resolveIdleTimeoutLimit } from "../activity-lib/agent-limits.js";
+import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";
 import { filterNoise, getLastDropCounts } from "../triage/baseline-filter.js";

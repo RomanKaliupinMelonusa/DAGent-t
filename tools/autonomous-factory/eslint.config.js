@@ -48,7 +48,7 @@ const PORTS_RULE_ALLOWLIST = [
   // TODO: refactor away — see Session 3/8. Imports from ../apm/.
   "src/ports/context-compiler.ts",
   // TODO: refactor away — see Session 3/8. Imports from ../harness/,
-  // ../telemetry/, ../activity-lib/, and @github/copilot-sdk.
+  // ../telemetry/, ../contracts/, and @github/copilot-sdk.
   "src/ports/copilot-session-runner.ts",
   // TODO: refactor away — see Session 3/8. Imports from ../apm/ and
   // exports a runtime function (assertScopeSupported).
@@ -69,9 +69,9 @@ const ADAPTERS_RULE_ALLOWLIST = [
   // TODO: refactor away — see Session 3/8.
   "src/activities/support/build-context.ts",
   // TODO: refactor away — see Session 3/8.
-  "src/activity-lib/agent-context.ts",
+  "src/activities/support/agent-context.ts",
   // TODO: refactor away — see Session 3/8.
-  "src/activity-lib/handler-output-ingestion.ts",
+  "src/activities/support/handler-output-ingestion.ts",
   // TODO: refactor away — see Session 3/8.
   "src/session/session-events.ts",
 ];
@@ -259,7 +259,7 @@ export default tseslint.config(
           patterns: [
             { group: ["**/adapters/**"], message: "Domain → adapters is forbidden. Adapters depend on domain, never the reverse." },
             { group: ["**/activities/**"], message: "Domain → activities is forbidden. Activities depend on domain, never the reverse." },
-            { group: ["**/activity-lib/**"], message: "Domain → activity-lib is forbidden." },
+            { group: ["**/contracts/**"], message: "Domain → contracts is forbidden. Contracts depend on domain, never the reverse." },
             { group: ["**/workflow/**"], message: "Domain → workflow is forbidden. Workflows depend on domain, never the reverse." },
             { group: ["**/apm/**"], message: "Domain → apm is forbidden." },
             { group: ["**/triage/**"], message: "Domain → triage is forbidden." },
@@ -327,7 +327,7 @@ export default tseslint.config(
               group: [
                 "**/adapters/**",
                 "**/activities/**",
-                "**/activity-lib/**",
+                "**/contracts/**",
                 "**/workflow/**",
                 "**/apm/**",
                 "**/triage/**",

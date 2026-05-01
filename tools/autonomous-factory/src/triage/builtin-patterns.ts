@@ -102,7 +102,7 @@ export const BUILTIN_TRIAGE_PATTERNS: readonly TriagePattern[] = [
   // routes `missing-required-input` to that producer).
   //
   // Matches the canonical message emitted by
-  // `activity-lib/invocation-builder.ts#MissingRequiredInputError`.
+  // `activities/support/invocation-builder.ts#MissingRequiredInputError`.
   {
     match_kind: "raw-regex",
     pattern:

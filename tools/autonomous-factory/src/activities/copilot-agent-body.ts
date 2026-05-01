@@ -26,19 +26,19 @@ import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
 import { formatDerivedTargetsMarkdown } from "../triage/derive-baseline-targets.js";
-import { buildAgentContext } from "../activity-lib/agent-context.js";
-import { resolveAgentLimits } from "../activity-lib/agent-limits.js";
-import { enrichPostSessionTelemetry } from "../activity-lib/agent-post-session.js";
-import type { NodeHandler, NodeContext, NodeResult } from "../activity-lib/types.js";
+import { buildAgentContext } from "./support/agent-context.js";
+import { resolveAgentLimits } from "./support/agent-limits.js";
+import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
+import type { NodeHandler, NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { ItemSummary } from "../types.js";
 import type { ArtifactKind } from "../apm/artifact-catalog.js";
-import type { NodeContractGateParams } from "../activity-lib/node-contract-gate.js";
+import type { NodeContractGateParams } from "../contracts/node-contract-gate.js";
 import type { PrecompletionGate } from "../harness/index.js";
 import type { FreshnessGate } from "../harness/hooks.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { featurePath } from "../paths/feature-paths.js";
 import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
-import { SPEC_COMPILER_KEY } from "../activity-lib/acceptance-integrity.js";
+import { SPEC_COMPILER_KEY } from "./support/acceptance-integrity.js";
 
 // ---------------------------------------------------------------------------
 // B4 — no-op-dev sanity check (pure helper, exported for tests)

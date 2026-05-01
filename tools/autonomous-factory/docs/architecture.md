@@ -83,7 +83,7 @@ formatted dump of `stateQuery()`.
   - `archive.activity.ts` — finalizes feature workspace at terminal
     states.
   - `hello.activity.ts` — smoke-test activity, kept for replay tests.
-- [src/activity-lib/](../src/activity-lib/) — pure helpers shared by
+- [src/activities/support/](../src/activities/support/) — pure helpers shared by
   multiple activities (no Temporal SDK imports; safe to unit-test
   directly).
 - [src/worker/main.ts](../src/worker/main.ts) — worker entry point.

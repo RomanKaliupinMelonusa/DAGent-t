@@ -28,7 +28,7 @@ import {
 } from "../../apm/artifact-catalog.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 import { synthesizeNodeReport, writeNodeReport } from "../node-report.js";
-import type { NodeContext } from "../../activity-lib/types.js";
+import type { NodeContext } from "../../contracts/node-context.js";
 
 function baseNodeReportArgs(invocationId: string) {
   return {

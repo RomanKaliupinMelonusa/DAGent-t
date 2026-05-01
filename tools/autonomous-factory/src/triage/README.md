@@ -130,4 +130,4 @@ Triage handoff evidence is structured by `handoff-builder.ts` (`buildTriageHando
 - Invoked by → [`src/activities/triage.activity.ts`](../activities/README.md) (delegates to [`triage-body.ts`](../activities/triage-body.ts))
 - Depends on → `TriageLlm`, `TriageArtifactLoader`, `BaselineLoader` ports (all in [`src/ports/`](../ports/README.md))
 - Uses pure helpers from → [`src/domain/`](../domain/README.md) (`computeErrorSignature`, `volatile-patterns`, `failure-routing`)
-- Output feeds → `outputs/triage-handoff.json` artifact, materialized into the rerouted dev node's `inputs/triage-handoff.json` by [`src/activity-lib/invocation-builder.ts`](../activity-lib/invocation-builder.ts)
+- Output feeds → `outputs/triage-handoff.json` artifact, materialized into the rerouted dev node's `inputs/triage-handoff.json` by [`src/activities/support/invocation-builder.ts`](../activities/support/invocation-builder.ts)

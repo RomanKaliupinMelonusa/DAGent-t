@@ -1,5 +1,5 @@
 /**
- * activity-lib/acceptance-integrity.ts — Constants identifying the
+ * activities/support/acceptance-integrity.ts — Constants identifying the
  * spec-compiler node and its acceptance-contract handlerData fields.
  *
  * Pure constants extracted from the deleted

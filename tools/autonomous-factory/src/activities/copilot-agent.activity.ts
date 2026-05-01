@@ -67,25 +67,25 @@ import copilotAgentHandler from "./copilot-agent-body.js";
 import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
-import { evaluateAutoSkip } from "../activity-lib/auto-skip-evaluator.js";
+import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
 import { compileNodeIOContract } from "../apm/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import {
   materializeInputs as materializeInvocationInputs,
   MissingRequiredInputError,
-} from "../activity-lib/invocation-builder.js";
+} from "./support/invocation-builder.js";
 import { ArtifactValidationError } from "../apm/artifact-catalog.js";
 import { executeHook } from "../lifecycle/hooks.js";
-import { sanitizeOutput } from "../activity-lib/result-processor-regex.js";
-import { ingestHandlerOutputEnvelope } from "../activity-lib/handler-output-ingestion.js";
-import { ingestProducedOutputs } from "../activity-lib/produced-outputs-ingestion.js";
-import { buildE2eReadinessEnv } from "../activity-lib/e2e-readiness-env.js";
+import { sanitizeOutput } from "./support/result-processor-regex.js";
+import { ingestHandlerOutputEnvelope } from "./support/handler-output-ingestion.js";
+import { ingestProducedOutputs } from "./support/produced-outputs-ingestion.js";
+import { buildE2eReadinessEnv } from "./support/e2e-readiness-env.js";
 import {
   ACCEPTANCE_HASH_FIELD,
   ACCEPTANCE_PATH_FIELD,
   SPEC_COMPILER_KEY,
-} from "../activity-lib/acceptance-integrity.js";
+} from "./support/acceptance-integrity.js";
 import {
   hashAcceptanceContract,
   loadAcceptanceContract,
@@ -93,7 +93,7 @@ import {
 import { featurePath } from "../paths/feature-paths.js";
 import { validateFixtures, formatViolationsError } from "../lifecycle/fixture-validator.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
-import type { NodeContext, NodeResult } from "../activity-lib/types.js";
+import type { NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { InvocationRecord, InvocationTrigger } from "../types.js";
 import type { CopilotSessionRunner, CopilotSessionParams, CopilotSessionResult } from "../ports/copilot-session-runner.js";
 import type { CodeIndexer } from "../ports/code-indexer.js";

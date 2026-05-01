@@ -32,8 +32,8 @@ import {
   validateNodeContract,
   summarizeMissing,
   type NodeContractGateParams,
-} from "../activity-lib/node-contract-gate.js";
-import { buildContractRecoveryPrompt } from "../activity-lib/node-contract-prompt.js";
+} from "../contracts/node-contract-gate.js";
+import { buildContractRecoveryPrompt } from "../contracts/node-contract-prompt.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -73,7 +73,7 @@ export interface CopilotSessionParams {
    * validates the node's declared output contract after `sendAndWait`
    * resolves and nudges the SAME session up to 3 times if `report_outcome`
    * is missing or any declared `produces_artifacts` did not materialise.
-   * See `activity-lib/node-contract-gate.ts` for the full contract.
+   * See `contracts/node-contract-gate.ts` for the full contract.
    */
   nodeContract?: NodeContractGateParams;
   /**

@@ -14,18 +14,18 @@
  * `errorSignature = "missing_required_input:<kind>"`.
  */
 
-import type { NodeIOContract, KickoffConsumes, UpstreamConsumes, RerouteConsumes } from "../contracts/node-io-contract.js";
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
-import type { ArtifactBus, ArtifactRef } from "../ports/artifact-bus.js";
-import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
-import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
+import type { NodeIOContract, KickoffConsumes, UpstreamConsumes, RerouteConsumes } from "../../contracts/node-io-contract.js";
+import type { ArtifactKind } from "../../apm/artifact-catalog.js";
+import type { ArtifactBus, ArtifactRef } from "../../ports/artifact-bus.js";
+import type { InvocationFilesystem } from "../../ports/invocation-filesystem.js";
+import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
 import type {
   PipelineState,
   InvocationRecord,
   ArtifactRefSerialized,
   InvocationTrigger,
-} from "../types.js";
-import { getArtifactKind, stampEnvelope, validateArtifactPayload, validateEnvelope } from "../apm/artifact-catalog.js";
+} from "../../types.js";
+import { getArtifactKind, stampEnvelope, validateArtifactPayload, validateEnvelope } from "../../apm/artifact-catalog.js";
 
 export class MissingRequiredInputError extends Error {
   constructor(

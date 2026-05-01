@@ -14,11 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ingestHandlerOutputEnvelope } from "../handler-output-ingestion.js";
-import { LocalFilesystem } from "../../adapters/local-filesystem.js";
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
-import type { NodeContext } from "../types.js";
-import type { PipelineLogger, EventKind } from "../../telemetry/events.js";
+import { LocalFilesystem } from "../../../adapters/local-filesystem.js";
+import { FileArtifactBus } from "../../../adapters/file-artifact-bus.js";
+import { newInvocationId } from "../../../domain/invocation-id.js";
+import type { NodeContext } from "../../../contracts/node-context.js";
+import type { PipelineLogger, EventKind } from "../../../telemetry/events.js";
 
 interface LoggedEvent {
   kind: EventKind;

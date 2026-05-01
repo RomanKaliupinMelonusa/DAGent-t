@@ -214,7 +214,7 @@ export class DagState {
   //
   // The workflow body calls `recordInvocation(...)` after every activity
   // result so consumer-side input materialization (`materializeUpstream`
-  // in `activity-lib/invocation-builder.ts`) can resolve completed
+  // in `activities/support/invocation-builder.ts`) can resolve completed
   // producer outputs from `pipelineState.artifacts`. Without this the
   // consumer falls through to `MissingRequiredInputError` even though
   // the bytes are on disk.

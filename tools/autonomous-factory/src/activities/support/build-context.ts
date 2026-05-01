@@ -52,7 +52,7 @@ import { FileInvocationLogger } from "../../adapters/file-invocation-logger.js";
 import { FileTriageArtifactLoader } from "../../adapters/file-triage-artifact-loader.js";
 import { NoopPipelineLogger } from "../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
-import type { NodeContext, StatusReader, LineageWriter } from "../../activity-lib/types.js";
+import type { NodeContext, StatusReader, LineageWriter } from "../../contracts/node-context.js";
 import type { ApmCompiledOutput } from "../../apm/types.js";
 import type { PipelineLogger } from "../../telemetry/events.js";
 

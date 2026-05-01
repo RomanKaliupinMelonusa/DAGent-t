@@ -2,7 +2,7 @@
  * node-contract-gate.test.ts — Unit tests for the runner-internal node
  * contract validator + recovery-prompt builder.
  *
- * Run: npx tsx --test src/activity-lib/__tests__/node-contract-gate.test.ts
+ * Run: npx tsx --test src/contracts/__tests__/node-contract-gate.test.ts
  */
 
 import { describe, it } from "node:test";

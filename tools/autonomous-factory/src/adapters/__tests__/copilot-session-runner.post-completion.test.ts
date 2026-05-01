@@ -25,7 +25,7 @@ import { defaultHarnessLimits } from "../../harness/limits.js";
 import type { AgentSandbox } from "../../harness/sandbox.js";
 import type { ItemSummary } from "../../types.js";
 import type { ReportedOutcome } from "../../harness/outcome-tool.js";
-import type { NodeContractGateParams } from "../../activity-lib/node-contract-gate.js";
+import type { NodeContractGateParams } from "../../contracts/node-contract-gate.js";
 
 // ---------------------------------------------------------------------------
 // Test doubles

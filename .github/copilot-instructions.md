@@ -42,7 +42,8 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Narrative / design essays | `narrative/` |
 | Workflow code (pipeline workflow, DagState, signals/queries/updates, version) | `tools/autonomous-factory/src/workflow/` |
 | Activities (copilot-agent, local-exec, github-ci-poll, triage, archive, hello) | `tools/autonomous-factory/src/activities/` |
-| Pure helpers shared by activities | `tools/autonomous-factory/src/activity-lib/` |
+| Pure helpers shared by activities | `tools/autonomous-factory/src/activities/support/` |
+| Cross-cutting handler contracts (NodeContext, NodeResult, contract gate) | `tools/autonomous-factory/src/contracts/` |
 | Worker entry | `tools/autonomous-factory/src/worker/main.ts` |
 | Admin CLI (`dagent-admin`) | `tools/autonomous-factory/src/client/admin.ts` |
 | Feature-run CLI (`agent:run`) | `tools/autonomous-factory/src/client/run-feature.ts` |

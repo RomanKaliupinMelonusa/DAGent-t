@@ -15,7 +15,7 @@
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import triageHandler from "../triage-body.js";
-import type { NodeContext, DagCommand } from "../../activity-lib/types.js";
+import type { NodeContext, DagCommand } from "../../contracts/node-context.js";
 import type { PipelineState, TriageRecord } from "../../types.js";
 import type { TriageHandlerOutput } from "../triage-body.js";
 

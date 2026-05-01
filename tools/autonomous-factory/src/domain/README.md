@@ -97,5 +97,5 @@ Transition results always carry a `nextState` — callers apply it as a replacem
 
 - Mirrored by → [`src/workflow/domain/`](../workflow/domain/README.md) (the workflow-VM-safe twin)
 - Consumed by → [`src/triage/`](../triage/README.md) for fingerprinting and failure routing
-- Consumed by → [`src/activities/`](../activities/README.md) and [`src/activity-lib/`](../activity-lib/README.md) for non-workflow contexts
+- Consumed by → [`src/activities/`](../activities/README.md) and [`src/activities/support/`](../activities/support/README.md) for non-workflow contexts
 - Not consumed by adapters or ports (one-way rule)
