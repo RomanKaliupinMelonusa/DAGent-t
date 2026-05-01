@@ -143,9 +143,19 @@ async function main(): Promise<void> {
       args: [input],
       taskQueue,
       workflowId,
-      // Idempotency: surface the conflict to the operator rather than
-      // silently spawning a parallel run.
-      workflowIdReusePolicy: "ALLOW_DUPLICATE_FAILED_ONLY",
+      // Idempotency: surface a conflict to the operator only when a run
+      // is *actively running*. Any prior execution that ended in a
+      // terminal state — Completed, Failed, Canceled, Terminated — is
+      // safe to supersede with a fresh attempt under the same ID.
+      //
+      // Note: a workflow that returns `{ status: "halted" }` from the
+      // absolute-retry-ceiling guard is recorded by Temporal as
+      // COMPLETED (the function returned normally). Without
+      // ALLOW_DUPLICATE the operator is blocked on rerun and forced to
+      // manually `temporal workflow terminate` the already-finished
+      // execution. The unique RunId still disambiguates retries in
+      // history queries.
+      workflowIdReusePolicy: "ALLOW_DUPLICATE",
     },
   );
 
