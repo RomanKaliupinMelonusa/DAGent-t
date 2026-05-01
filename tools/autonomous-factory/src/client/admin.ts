@@ -8,18 +8,20 @@
  * are NOT included — those map to admin signals deferred to Session 5
  * (see `session-5-cutover-and-harden.md` per D-S4-4).
  *
- * MVP verb surface (D-S4-4 locked decisions):
- *   Signals (5):
- *     hold      <slug> [--workflow <name>]                — pause loop
- *     resume    <slug> [--workflow <name>]                — release hold
+ * Verb surface:
+ *   Signals (1):
  *     cancel    <slug> [--workflow <name>] [--reason <s>] — terminal halt
- *     approve   <slug> --gate <key> [--workflow <name>]   — approve gate
- *     reject    <slug> --gate <key> --reason <s> [--workflow <name>]
  *   Queries (4):
  *     status    <slug> [--workflow <name>]   — full StateSnapshot (JSON)
  *     progress  <slug> [--workflow <name>]   — counts + percent
  *     next      <slug> [--workflow <name>]   — ready batch
  *     summary   <slug> [--workflow <name>]   — terminal summary
+ *   Updates (3):
+ *     reset-scripts <slug> --category <c> [--max-cycles N]
+ *     resume-after-elevated <slug> [--max-cycles N]
+ *     recover-elevated <slug> --error <msg> [--max-fail-count N] [--max-dev-cycles N]
+ *   Teardown (1):
+ *     nuke      <slug> [--app <path>] [--delete-branch] [--confirm]
  *
  * Workflow ID convention: matches `run-feature.ts` —
  *   `dagent-<workflowName>-<slug>`. Default `--workflow=storefront`.
@@ -57,13 +59,9 @@ Usage: agent:admin:temporal <verb> <slug> [options]
 
 Verbs:
   Signals:
-    hold      <slug>                                — pause the pipeline loop
-    resume    <slug>                                — release a held loop
     cancel    <slug> [--reason <s>]                 — terminal halt with reason
-    approve   <slug> --gate <key>                   — approve an approval gate
-    reject    <slug> --gate <key> --reason <s>      — reject an approval gate
 
-  Updates (admin mutate-and-return — Session 5 P4):
+  Updates (admin mutate-and-return):
     reset-scripts <slug> --category <c> [--max-cycles N]
                                                     — reset script nodes for re-push (default max 10)
     resume-after-elevated <slug> [--max-cycles N]
@@ -86,8 +84,7 @@ Verbs:
 
 Common options:
   --workflow <name>      Workflow name (default: storefront)
-  --gate <key>           Approval gate key (approve / reject only)
-  --reason <text>        Human reason (cancel / reject only)
+  --reason <text>        Human reason (cancel only)
   --category <c>         Script-node category (reset-scripts only)
   --error <msg>          Elevated-apply error message (recover-elevated only)
   --max-cycles N         Cycle budget override (reset-scripts, resume-after-elevated)

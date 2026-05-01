@@ -11,19 +11,18 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 
 | Layer | Technology |
 |---|---|
-| Monorepo | npm workspaces · `apps/sample-app/` (skeleton) · `apps/commerce-storefront/` (PWA Kit) · `tools/autonomous-factory/` (engine) |
+| Monorepo | npm workspaces · `apps/commerce-storefront/` (PWA Kit) · `tools/autonomous-factory/` (engine) |
 | Orchestrator | TypeScript · Temporal OSS (`@temporalio/worker`, `@temporalio/client`, `@temporalio/workflow`) · `@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod v4 · Node 22 |
-| Pipeline state | Temporal workflow event history (Postgres-backed) · `dagent-admin` Temporal client for signals + queries + updates |
+| Pipeline state | Temporal workflow event history (Postgres-backed) · `dagent-admin` Temporal client for queries + updates |
 | APM Compiler | `apm-compiler.ts` · per-agent token budgets · modular `.md` instruction fragments |
 | Structural Intelligence | roam-code v11.2 · Python 3.11 · AST semantic graph · MCP server |
-| Telemetry | OpenTelemetry SDK · OTLP gRPC exporter |
+| Telemetry | JSONL + console (per-feature `.dagent/<slug>/_LOG.jsonl`) |
 | CI/CD | GitHub Actions · OIDC federated credentials |
 | Testing | Vitest 2.1.9 (workflow replay + unit) · Playwright (live browser) · integration tests against live endpoints |
-| Infra (sample) | Terraform (azurerm + azapi) · Azure Functions · Azure Static Web Apps |
 
 ## Hard Rules
 
-1. **Pipeline state is owned by the Temporal workflow.** The workflow under `tools/autonomous-factory/src/workflow/` is the only writer; activities under `src/activities/` return `NodeResult` payloads that the workflow folds into `DagState`. Operators interact via `dagent-admin` (signals/queries/updates) — never edit `_TRANS.md` or `_STATE.json` projections by hand.
+1. **Pipeline state is owned by the Temporal workflow.** The workflow under `tools/autonomous-factory/src/workflow/` is the only writer; activities under `src/activities/` return `NodeResult` payloads that the workflow folds into `DagState`. Operators interact via `dagent-admin` (queries/updates/cancel) — never edit `_TRANS.md` or `_STATE.json` projections by hand.
 2. **Git operations use wrapper scripts.** `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push` in agent prompts.
 3. **Devcontainer provides Node 22 and Python 3.11.** No NVM commands needed. `.nvmrc` at repo root is used by CI workflows (`node-version-file: '.nvmrc'`). Python is used only by the roam-code orchestrator toolchain.
 4. **Workers run from compiled JS, not `tsx`.** `npm run temporal:build` produces `dist/`; `node dist/worker/main.js` is the worker entry. Workflow code under `src/workflow/**` must be deterministic across replays — see [`tools/autonomous-factory/docs/adr/0001-temporal.md`](../tools/autonomous-factory/docs/adr/0001-temporal.md).
@@ -61,7 +60,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Git-based auto-skip | `tools/autonomous-factory/src/lifecycle/auto-skip.ts` |
 | Feature archiving | `tools/autonomous-factory/src/lifecycle/archive.ts` |
 | Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
-| Telemetry (OTel adapters) | `tools/autonomous-factory/src/telemetry/` |
+| Telemetry (JSONL + console) | `tools/autonomous-factory/src/telemetry/` |
 | Worker layer README | `tools/autonomous-factory/src/worker/README.md` |
 | Workflow layer README | `tools/autonomous-factory/src/workflow/README.md` |
 | Activities layer README | `tools/autonomous-factory/src/activities/README.md` |
@@ -76,13 +75,7 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Agent commit wrapper | `tools/autonomous-factory/agent-commit.sh` |
 | Agent branch wrapper | `tools/autonomous-factory/agent-branch.sh` |
 | CI polling script | `tools/autonomous-factory/poll-ci.sh` |
-| Sample app APM manifest | `apps/sample-app/.apm/apm.yml` |
-| Sample app DAG definition | `apps/sample-app/.apm/workflows.yml` |
-| Sample app instruction fragments | `apps/sample-app/.apm/instructions/**/*.md` |
-| Sample app lifecycle hooks | `apps/sample-app/.apm/hooks/*.sh` |
-| Sample app skill declarations | `apps/sample-app/.apm/skills/*.skill.md` |
-| Sample app MCP declarations | `apps/sample-app/.apm/mcp/*.mcp.yml` |
-| Sample app active feature workspace | `apps/sample-app/.dagent/` |
+| Sample app | _retired — single-app codebase, see `apps/commerce-storefront/`_ |
 | Commerce storefront APM manifest | `apps/commerce-storefront/.apm/apm.yml` |
 | Commerce storefront DAG definition | `apps/commerce-storefront/.apm/workflows.yml` |
 | Commerce storefront instruction fragments | `apps/commerce-storefront/.apm/instructions/**/*.md` |
@@ -93,15 +86,8 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Temporal docker-compose stack | `infra/temporal/docker-compose.yml` |
 | CI/CD: Integration tests & builds | `.github/workflows/ci-integration.yml` |
 | CI/CD: Temporal integration tests | `.github/workflows/temporal-it.yml` |
-| CI/CD: Backend deploy | `.github/workflows/deploy-backend.yml` |
-| CI/CD: Frontend deploy | `.github/workflows/deploy-frontend.yml` |
-| CI/CD: Infra plan/apply | `.github/workflows/deploy-infra.yml` |
-| CI/CD: Regression tests | `.github/workflows/regression-tests.yml` |
-| CI/CD: Schema drift check | `.github/workflows/schema-drift.yml` |
 | CI/CD: Agentic feature pipeline | `.github/workflows/agentic-feature.yml` |
 | CI/CD: Storefront deploy (Managed Runtime) | `.github/workflows/deploy-storefront.yml` |
-| ChatOps: Elevated TF apply | `.github/workflows/elevated-infra-deploy.yml` |
-| ChatOps: Hold + Resume | `.github/workflows/dagent-chatops.yml` |
 | Devcontainer config | `.devcontainer/devcontainer.json` |
 
 ### How to Run
@@ -114,14 +100,13 @@ npm run temporal:worker --workspace=orchestrator
 
 # Start a feature (another terminal). Branch creation & spec staging
 # are DAG nodes (create-branch, stage-spec) — no separate init step.
-npm run agent:run -- --app apps/sample-app --workflow full-stack --spec-file /path/to/spec.md <slug>
 npm run agent:run -- --app apps/commerce-storefront --workflow storefront --spec-file /path/to/spec.md <slug>
 # Optional: --base-branch develop (or BASE_BRANCH=develop env var)
 
 # Operate a running pipeline via the Temporal client
 node tools/autonomous-factory/dist/client/admin.js status <slug>
-node tools/autonomous-factory/dist/client/admin.js hold <slug>
-node tools/autonomous-factory/dist/client/admin.js resume <slug>
+node tools/autonomous-factory/dist/client/admin.js progress <slug>
+node tools/autonomous-factory/dist/client/admin.js cancel <slug> --reason "<msg>"
 ```
 
 **In CI (GitHub Actions):**
@@ -130,7 +115,7 @@ Trigger the `agentic-feature.yml` workflow via `workflow_dispatch` with a featur
 
 ### Operating Rules
 
-- **State management:** The Temporal workflow under `src/workflow/` owns pipeline state. Activities return `NodeResult` payloads; the workflow folds them into `DagState`. Operators interact via `dagent-admin` (signals + queries + updates). Never edit `_TRANS.md` or `_STATE.json` projections.
+- **State management:** The Temporal workflow under `src/workflow/` owns pipeline state. Activities return `NodeResult` payloads; the workflow folds them into `DagState`. Operators interact via `dagent-admin` (queries + updates + cancel). Never edit `_TRANS.md` or `_STATE.json` projections.
 - **Scaffolding as nodes:** Feature-branch creation and spec staging are DAG nodes (`create-branch`, `stage-spec`) at the head of every workflow. Bootstrap is pipeline-agnostic — it never shells out to `agent-branch.sh` directly.
 - **Git operations:** Use `tools/autonomous-factory/agent-commit.sh` for commits, `tools/autonomous-factory/agent-branch.sh` for branching. No raw `git add/commit/push`.
 - **Branch model:** All work happens on a single `feature/<slug>` branch. PR to the base branch (default: `main`, configurable via `--base-branch` or `BASE_BRANCH` env var) is the final administrative step.

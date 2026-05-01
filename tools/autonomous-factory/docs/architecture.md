@@ -9,13 +9,13 @@ feature spec from kickoff to PR.
 Operators interact with the system through `dagent-admin` (a Temporal
 client) and `dagent-worker` (a Temporal worker that executes the pipeline
 workflow and its activities). The Temporal cluster — frontend / history /
-matching services backed by Postgres — owns durable state. Telemetry flows
-out as OTLP spans into a collector (Tempo, Honeycomb, etc.).
+matching services backed by Postgres — owns durable state. Telemetry is
+written as JSONL plus a console mirror under each feature workspace.
 
 ```
                  +-------------------+
-                 |   dagent-admin    |   start <slug> | hold | resume |
-                 |  (Temporal client)|   approve | reject | status ...
+                 |   dagent-admin    |   start <slug> | cancel |
+                 |  (Temporal client)|   status | progress | summary
                  +---------+---------+
                            |
                            | gRPC :7233
@@ -32,8 +32,8 @@ out as OTLP spans into a collector (Tempo, Honeycomb, etc.).
         +----------------------+      |
         |    dagent-worker     |------+
         |  (workflow + activities)
-        |                      |--------> OTLP gRPC --> OTel collector
-        +----------+-----------+                        (Tempo / etc.)
+        |                      |--> .dagent/<slug>/_LOG.jsonl + console
+        +----------+-----------+
                    |
                    | shell exec / git / gh / Copilot SDK
                    v
@@ -48,7 +48,7 @@ Data flow for a feature run:
    pipeline workflow with that input.
 3. The worker polls the task queue, schedules ready DAG nodes, and invokes
    activities for each node.
-4. Activities emit OTel spans, write artifacts under
+4. Activities emit JSONL telemetry events, write artifacts under
    `apps/<app>/.dagent/<slug>/`, and return `NodeResult` payloads.
 5. The workflow advances the DAG, persists state to Temporal history, and
    continues until the pipeline reaches a terminal state.
@@ -59,7 +59,7 @@ Data flow for a feature run:
 |---|---|---|
 | Pipeline state (DAG, attempts, cycles, gates) | Temporal event history (Postgres) | Yes — single source of truth |
 | Per-feature artifacts (specs, kickoffs, agent outputs) | `apps/<app>/.dagent/<slug>/` on shared FS | Advisory — activities write here for review |
-| Telemetry (spans, structured logs) | OTLP collector (Tempo / Honeycomb / etc.) | Advisory — observability only |
+| Telemetry (events, structured logs) | `apps/<app>/.dagent/<slug>/_LOG.jsonl` + console | Advisory — observability only |
 | Code state (feature branches, PR diffs) | Git remote (GitHub) | Yes — for code; orchestrator only mediates |
 
 Anything not listed above is derived: `_trans.md` is a projection rendered
@@ -87,12 +87,12 @@ formatted dump of `stateQuery()`.
   multiple activities (no Temporal SDK imports; safe to unit-test
   directly).
 - [src/worker/main.ts](../src/worker/main.ts) — worker entry point.
-  Bootstraps OTel, registers workflows + activities, starts polling.
+  Registers workflows + activities and starts polling.
 - [src/client/admin.ts](../src/client/admin.ts) — admin CLI surface.
 - [src/client/run-feature.ts](../src/client/run-feature.ts) — feature
   start CLI; compiles APM context then starts the pipeline workflow.
-- [src/telemetry/](../src/telemetry/) — OTel adapter (gRPC OTLP exporter,
-  resource attributes, span helpers).
+- [src/telemetry/](../src/telemetry/) — JSONL pipeline-logger + console
+  rendering helpers.
 
 ## Admin CLI verbs
 
@@ -103,11 +103,7 @@ Usage: agent:admin:temporal <verb> <slug> [options]
 
 Verbs:
   Signals:
-    hold      <slug>                                — pause the pipeline loop
-    resume    <slug>                                — release a held loop
     cancel    <slug> [--reason <s>]                 — terminal halt with reason
-    approve   <slug> --gate <key>                   — approve an approval gate
-    reject    <slug> --gate <key> --reason <s>      — reject an approval gate
 
   Updates (admin mutate-and-return):
     reset-scripts <slug> --category <c> [--max-cycles N]
@@ -125,8 +121,7 @@ Verbs:
 
 Common options:
   --workflow <name>      Workflow name (default: storefront)
-  --gate <key>           Approval gate key (approve / reject only)
-  --reason <text>        Human reason (cancel / reject only)
+  --reason <text>        Human reason (cancel only)
   --category <c>         Script-node category (reset-scripts only)
   --error <msg>          Elevated-apply error message (recover-elevated only)
   --max-cycles N         Cycle budget override (reset-scripts, resume-after-elevated)

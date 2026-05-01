@@ -115,7 +115,7 @@ For a fundamentally different stack (AWS, GCP, on-prem), swap the lifecycle hook
 | **Understand the architecture** | [tools/autonomous-factory/README.md](tools/autonomous-factory/README.md) — layers, paradigm, scaling, tech debt |
 | **Contribute to the engine** | Layer-level READMEs under [tools/autonomous-factory/src/](tools/autonomous-factory/src/) — one per folder |
 | **Read about the design decisions** | [narrative/](narrative/) — essays on the patterns and trade-offs |
-| **Extend an agent** | [tools/autonomous-factory/docs/03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) + [docs/05-agents.md](tools/autonomous-factory/docs/05-agents.md) |
+| **Extend an agent** | [tools/autonomous-factory/src/apm/README.md](tools/autonomous-factory/src/apm/README.md) + [docs/05-agents.md](tools/autonomous-factory/docs/05-agents.md) |
 | **Understand self-healing** | [tools/autonomous-factory/docs/01-watchdog.md](tools/autonomous-factory/docs/01-watchdog.md) + [docs/04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) |
 | **Map to traditional SDLC** | [tools/autonomous-factory/docs/07-mental-model.md](tools/autonomous-factory/docs/07-mental-model.md) |
 
