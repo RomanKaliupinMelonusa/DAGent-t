@@ -28,43 +28,17 @@ import tseslint from "typescript-eslint";
 
 // Rule #1 (domain purity) — files inside src/domain/** that legitimately
 // (or temporarily) reach outside the domain layer.
-const DOMAIN_RULE_ALLOWLIST = [
-  // TODO: refactor away — see Session 3/8.
-  // Uses node:crypto for randomBytes. The helper is invoked from
-  // activity scope (not the workflow VM), so it's deterministic-safe at
-  // the call site, but the import still violates rule #1.
-  "src/domain/invocation-id.ts",
-];
+const DOMAIN_RULE_ALLOWLIST = [];
 
 // Rule #2 (ports as pure interfaces) — port files that import outside
 // of ../types.js and ../app-types.js, or that contain runtime exports.
-const PORTS_RULE_ALLOWLIST = [
-  // TODO: refactor away — see Session 3/8. Imports from ../apm/.
-  "src/ports/triage-artifact-loader.ts",
-  // TODO: refactor away — see Session 3/8. Imports from ../apm/.
-  "src/ports/context-compiler.ts",
-  // TODO: refactor away — see Session 3/8. Imports from ../harness/,
-  // ../telemetry/, ../contracts/, and @github/copilot-sdk.
-  "src/ports/copilot-session-runner.ts",
-  // TODO: refactor away — see Session 3/8. Imports from ../apm/ and
-  // exports a runtime function (assertScopeSupported).
-  "src/ports/artifact-bus.ts",
-];
+const PORTS_RULE_ALLOWLIST = [];
 
 // Rule #3 (adapter blast-radius) — non-adapter, non-entry, non-worker,
 // non-client, non-test files that currently import from src/adapters/**.
 // Seeded from `grep -rE 'from "(\.\./)+adapters/' src/` (excluding the
 // always-allowed dirs).
-const ADAPTERS_RULE_ALLOWLIST = [
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/support/build-context.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/support/agent-context.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/support/handler-output-ingestion.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/session/session-events.ts",
-];
+const ADAPTERS_RULE_ALLOWLIST = [];
 
 export default tseslint.config(
   {
@@ -310,16 +284,28 @@ export default tseslint.config(
         {
           patterns: [
             {
-              // Ban every relative import except ../types.js and ../app-types.js.
-              // ESLint's micromatch doesn't support negative globs inside a
-              // single group, so we list the forbidden parent layers
-              // explicitly.
+              // Type-only imports from `apm/` are allowed — `apm/` is the
+              // canonical data-vocabulary layer (artifact catalog, manifest
+              // schema). Type imports are erased at compile, so they cannot
+              // cause runtime cross-layer coupling. Runtime imports remain
+              // forbidden.
+              group: ["**/apm/**"],
+              message:
+                "ports/ may only import TYPES (not runtime values) from apm/. " +
+                "Use `import type { ... } from \"../apm/...\"`.",
+              allowTypeImports: true,
+            },
+            {
+              // Every other layer is forbidden, even for type imports —
+              // ports must not depend on the type vocabulary of layers that
+              // depend on ports (adapters, activities, contracts, workflow,
+              // triage, lifecycle, reporting, telemetry, session, harness,
+              // domain, entry, client, worker).
               group: [
                 "**/adapters/**",
                 "**/activities/**",
                 "**/contracts/**",
                 "**/workflow/**",
-                "**/apm/**",
                 "**/triage/**",
                 "**/lifecycle/**",
                 "**/reporting/**",
@@ -331,7 +317,7 @@ export default tseslint.config(
                 "**/client/**",
                 "**/worker/**",
               ],
-              message: "ports/ may only import types from ../types.js and ../app-types.js. Other layers are forbidden.",
+              message: "ports/ may only import types from ../types.js, ../app-types.js, and (type-only) ../apm/. Other layers are forbidden.",
               allowTypeImports: false,
             },
           ],

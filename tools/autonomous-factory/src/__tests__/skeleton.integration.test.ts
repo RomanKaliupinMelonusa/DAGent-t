@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoDir = resolve(__dirname, "../../..");
+const repoDir = resolve(__dirname, "../..");
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
 const taskQueue = `dagent-it-skeleton-${Date.now()}`;
 

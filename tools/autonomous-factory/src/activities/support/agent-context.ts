@@ -5,10 +5,9 @@
 
 import type { NodeContext } from "../../contracts/node-context.js";
 import type { AgentContext } from "../../apm/index.js";
-import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
+import type { ArtifactBus } from "../../ports/artifact-bus.js";
 import type { InvocationRecord, PipelineState } from "../../types.js";
 import type { ApmWorkflow } from "../../apm/index.js";
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { featurePath } from "../../paths/feature-paths.js";
 
 /**
@@ -49,16 +48,14 @@ export function workflowProducesAcceptance(
  * covered by a dedicated test so the migration boundary is explicit.
  *
  * Marked async because ArtifactBus reads hit the feature filesystem; callers
- * wire `ctx.appRoot` + `ctx.filesystem` through.
+ * pass the bus from `NodeContext.artifactBus`.
  */
 export async function collectUpstreamArtifacts(
   state: PipelineState,
-  appRoot?: string,
-  filesystem?: FeatureFilesystem,
+  bus?: ArtifactBus,
   declaredConsumes?: ReadonlyArray<{ from: string; kind: string }>,
 ): Promise<Record<string, unknown>> {
   const upstream: Record<string, unknown> = {};
-  const bus = appRoot && filesystem ? new FileArtifactBus(appRoot, filesystem) : undefined;
   const byNode = indexLatestCompletedByNode(state);
   // `undefined` → legacy fallback (expose every done upstream).
   // `[]`        → strict empty (scope has zero entries → filter rejects all).
@@ -122,8 +119,7 @@ export async function buildAgentContext(ctx: NodeContext): Promise<{
   const declaredConsumes = currentNode?.consumes_artifacts ?? [];
   const upstreamArtifacts = await collectUpstreamArtifacts(
     ctx.pipelineState as PipelineState,
-    appRoot,
-    ctx.filesystem,
+    ctx.artifactBus,
     declaredConsumes,
   );
   const hasArtifacts = Object.keys(upstreamArtifacts).length > 0;

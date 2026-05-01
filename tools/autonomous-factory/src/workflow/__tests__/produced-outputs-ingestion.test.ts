@@ -24,7 +24,7 @@ import path from "node:path";
 import { ingestProducedOutputs } from "../../activities/support/produced-outputs-ingestion.js";
 import { LocalFilesystem } from "../../adapters/local-filesystem.js";
 import { FileInvocationFilesystem } from "../../adapters/file-invocation-filesystem.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 import type { NodeContext } from "../../contracts/node-context.js";
 import type { PipelineLogger, EventKind } from "../../telemetry/events.js";
 import type { InvocationRecord } from "../../types.js";

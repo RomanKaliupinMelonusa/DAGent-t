@@ -5,7 +5,7 @@
  * Production adapter wraps apm-compiler.ts; tests use a stub.
  */
 
-import type { ApmCompiledOutput } from "../apm/index.js";
+import type { ApmCompiledOutput } from "../apm/manifest/types.js";
 
 export interface ContextCompiler {
   /** Compile APM context from the app's .apm/ directory. */

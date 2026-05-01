@@ -27,16 +27,16 @@ const FULL: ApmConfig = {
   },
   // Only fields buildE2eReadinessEnv reads matter — cast through to keep
   // the test ergonomic without restating the full config schema.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 } as any;
 
 const URL_ONLY: ApmConfig = {
   e2e: { readiness: { url: "http://localhost:3000/" } },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 } as any;
 
 const NONE: ApmConfig = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 } as any;
 
 describe("buildE2eReadinessEnv (Session B Phase 1)", () => {

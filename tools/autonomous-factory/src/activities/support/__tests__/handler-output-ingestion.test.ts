@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { ingestHandlerOutputEnvelope } from "../handler-output-ingestion.js";
 import { LocalFilesystem } from "../../../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../../../adapters/file-artifact-bus.js";
-import { newInvocationId } from "../../../domain/invocation-id.js";
+import { newInvocationId } from "../../../activities/support/invocation-id.js";
 import type { NodeContext } from "../../../contracts/node-context.js";
 import type { PipelineLogger, EventKind } from "../../../telemetry/events.js";
 

@@ -16,13 +16,7 @@ import type { CopilotClient, MCPServerConfig } from "@github/copilot-sdk";
 import {
   buildSessionHooks,
   buildReportOutcomeTool,
-  type ResolvedHarnessLimits,
-  type NextFailureHintValidation,
-  type PrecompletionGate,
 } from "../harness/index.js";
-import type { AgentSandbox } from "../harness/sandbox.js";
-import type { ItemSummary } from "../types.js";
-import type { PipelineLogger } from "../telemetry/index.js";
 import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events.js";
 import { captureGitFilesSnapshot, diffGitFilesSnapshots } from "../session/git-files-snapshot.js";
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
@@ -31,85 +25,21 @@ import { writeFlightData } from "../reporting/index.js";
 import {
   validateNodeContract,
   summarizeMissing,
-  type NodeContractGateParams,
 } from "../contracts/node-contract-gate.js";
 import { buildContractRecoveryPrompt } from "../contracts/node-contract-prompt.js";
+import type {
+  CopilotSessionParams,
+  CopilotSessionResult,
+} from "../contracts/copilot-session.js";
+export type { CopilotSessionParams, CopilotSessionResult } from "../contracts/copilot-session.js";
+
 
 // ---------------------------------------------------------------------------
-// Public types
+// Public types — see ../contracts/copilot-session.ts
 // ---------------------------------------------------------------------------
 
-export interface CopilotSessionParams {
-  slug: string;
-  itemKey: string;
-  appRoot: string;
-  repoRoot: string;
-  model: string;
-  systemMessage: string;
-  taskPrompt: string;
-  timeout: number;
-  tools: unknown[];
-  mcpServers?: Record<string, unknown>;
-  sandbox: AgentSandbox;
-  harnessLimits: ResolvedHarnessLimits;
-  /** Cognitive circuit breaker thresholds (soft warn + hard kill). */
-  toolLimits: { soft: number; hard: number };
-  /** Telemetry collector — mutated in place by wire* helpers. */
-  telemetry: ItemSummary;
-  pipelineSummaries: ReadonlyArray<ItemSummary>;
-  /** Fatal SDK error patterns — a match causes `fatalError: true`. */
-  fatalPatterns: readonly string[];
-  writeThreshold?: number;
-  preTimeoutPercent?: number;
-  runtimeTokenBudget?: number;
-  logger: PipelineLogger;
-  /** Validation context for `report_outcome.next_failure_hint`. Resolved
-   *  per-invocation by the copilot-agent handler. When absent, an agent
-   *  that supplies the hint will be rejected by the tool — we'd rather
-   *  fail loud than silently accept an unvalidated hint. */
-  nextFailureHintValidation?: NextFailureHintValidation;
-  /**
-   * Optional in-session node-contract gate. When supplied, the runner
-   * validates the node's declared output contract after `sendAndWait`
-   * resolves and nudges the SAME session up to 3 times if `report_outcome`
-   * is missing or any declared `produces_artifacts` did not materialise.
-   * See `contracts/node-contract-gate.ts` for the full contract.
-   */
-  nodeContract?: NodeContractGateParams;
-  /**
-   * Optional pre-`report_outcome` validation gate (P1.2). When supplied,
-   * the `report_outcome` tool runs `validate()` BEFORE recording a
-   * `completed` outcome — see `harness/outcome-tool.ts`. Currently used
-   * by `spec-compiler` to make acceptance/fixture validation a synchronous
-   * tool-call gate instead of a post-completion middleware.
-   */
-  precompletionGate?: PrecompletionGate;
-  /**
-   * Optional pre-tool-call freshness gate (Phase 4). When supplied, the
-   * harness awaits `refresh(toolName)` before forwarding any tool whose
-   * name is in `tools`. The set is APM-compiled from per-MCP-server
-   * `freshness.requires_index_refresh` declarations — engine code never
-   * inspects its contents.
-   */
-  freshnessGate?: import("../harness/hooks.js").FreshnessGate;
-  /**
-   * Optional external cancellation signal (Temporal S3 Phase 5).
-   * Wired by `copilot-agent.activity.ts`; on abort the runner calls
-   * `session.disconnect()` so the in-flight `sendAndWait` rejects and
-   * the worker slot frees promptly. See port docstring for full
-   * rationale.
-   */
-  abortSignal?: AbortSignal;
-}
-
-export interface CopilotSessionResult {
-  /** Captured error message if sendAndWait rejected. */
-  sessionError?: string;
-  /** Whether the error matches a non-retryable SDK / auth pattern. */
-  fatalError: boolean;
-  /** Outcome reported by the agent via the `report_outcome` SDK tool. */
-  reportedOutcome?: import("../harness/outcome-tool.js").ReportedOutcome;
-}
+// Concrete CopilotSessionParams and CopilotSessionResult live in
+// `src/contracts/copilot-session.ts` and are re-exported above.
 
 // ---------------------------------------------------------------------------
 // Runner
@@ -232,7 +162,7 @@ export async function runCopilotSession(
   // has officially re-opened the session for more work — agent tool
   // calls are expected and must not trip the post-completion gate.
   let contractRecoveryActive = false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   session.on("tool.execution_start", (event: any) => {
     if (contractRecoveryActive) return;
     if (!telemetry.reportOutcomeTerminal) return;
@@ -415,7 +345,7 @@ export async function runCopilotSession(
 
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
 
-export class NodeCopilotSessionRunner implements CopilotSessionRunner {
+export class NodeCopilotSessionRunner implements CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult> {
   run(client: CopilotClient, params: CopilotSessionParams): Promise<CopilotSessionResult> {
     return runCopilotSession(client, params);
   }

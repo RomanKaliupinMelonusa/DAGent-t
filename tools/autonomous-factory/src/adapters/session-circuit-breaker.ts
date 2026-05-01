@@ -13,14 +13,13 @@
  */
 
 import type { CognitiveBreaker } from "../ports/cognitive-breaker.js";
+import {
+  TOOL_LIMIT_FALLBACK_SOFT,
+  TOOL_LIMIT_FALLBACK_HARD,
+} from "../harness/tool-limits.js";
 
-/**
- * Absolute last-resort fallback thresholds. Only used when apm.yml has
- * neither per-agent toolLimits nor config.defaultToolLimits. Real
- * configuration belongs in apm.yml.
- */
-export const TOOL_LIMIT_FALLBACK_SOFT = 30;
-export const TOOL_LIMIT_FALLBACK_HARD = 40;
+// Re-export for adapter consumers (worker, copilot-session-runner).
+export { TOOL_LIMIT_FALLBACK_SOFT, TOOL_LIMIT_FALLBACK_HARD };
 
 export class SessionCircuitBreaker implements CognitiveBreaker {
   private _tripped = false;

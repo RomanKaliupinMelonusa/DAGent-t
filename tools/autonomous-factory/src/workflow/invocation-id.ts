@@ -5,7 +5,7 @@
  * `(workflowId, nodeKey, attempt)` is unique per dispatch and stable
  * across replays. SHA-256 of that tuple, sliced to 26 hex chars and
  * uppercased, is a strict subset of Crockford's alphabet so the output
- * passes `isInvocationId` (`domain/invocation-id.ts`).
+ * passes `isInvocationId` (`activities/support/invocation-id.ts`).
  *
  * Extracted from `pipeline.workflow.ts` so both `batch-dispatcher.ts`
  * and `triage-driver.ts` can import without pulling the workflow body's

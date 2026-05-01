@@ -27,7 +27,7 @@ import type { NodeHandler, NodeContext, NodeResult, DagCommand } from "../contra
 import type { CompiledTriageProfile } from "../apm/index.js";
 import type { TriageRecord, TriageResult, TriageHandoff, ArtifactRefSerialized } from "../types.js";
 import { RESET_OPS } from "../types.js";
-import { newInvocationId } from "../domain/invocation-id.js";
+import { newInvocationId } from "../activities/support/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";

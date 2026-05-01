@@ -30,7 +30,8 @@
  * in Phases 2 and 4.
  */
 
-import type { ArtifactKind, ArtifactScope } from "../apm/index.js";
+import type { ArtifactKind, ArtifactScope } from "../apm/artifacts/artifact-catalog.js";
+export type { ArtifactKind, ArtifactScope };
 
 // ---------------------------------------------------------------------------
 // Address types
@@ -133,21 +134,4 @@ export interface ArtifactBus {
    * for a given slug. Does not include the `_kickoff` scope.
    */
   listForSlug(slug: string): Promise<Array<{ nodeKey: string; invocationId: string }>>;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers exported for adapters/tests
-// ---------------------------------------------------------------------------
-
-/** Scope predicate re-exported for adapter implementations. */
-export function assertScopeSupported(
-  kind: ArtifactKind,
-  scope: ArtifactScope,
-  supported: ReadonlyArray<ArtifactScope>,
-): void {
-  if (!supported.includes(scope)) {
-    throw new Error(
-      `Artifact kind '${kind}' is not supported in scope '${scope}' (supported: ${supported.join(", ")})`,
-    );
-  }
 }

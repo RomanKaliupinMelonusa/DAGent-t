@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { SessionCircuitBreaker } from "../session/session-events.js";
+import { SessionCircuitBreaker } from "../adapters/session-circuit-breaker.js";
 
 describe("SessionCircuitBreaker", () => {
   it("fires soft warning once when soft threshold reached", () => {

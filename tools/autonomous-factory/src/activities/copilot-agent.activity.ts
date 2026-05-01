@@ -95,7 +95,11 @@ import { validateFixtures, formatViolationsError } from "../lifecycle/fixture-va
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
 import type { NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { InvocationRecord, InvocationTrigger } from "../types.js";
-import type { CopilotSessionRunner, CopilotSessionParams, CopilotSessionResult } from "../ports/copilot-session-runner.js";
+import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type {
+  CopilotSessionParams,
+  CopilotSessionResult,
+} from "../contracts/copilot-session.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { ActivityDeps } from "./deps.js";
 
@@ -123,9 +127,9 @@ export const COPILOT_AGENT_CANCELLED_PREFIX = "Copilot agent cancelled by workfl
  * aborts. This composes cleanly with the per-test cancel-before-run
  * pattern used in the activity boundary tests below.
  */
-class CancellableRunner implements CopilotSessionRunner {
+class CancellableRunner implements CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult> {
   constructor(
-    private readonly inner: CopilotSessionRunner,
+    private readonly inner: CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult>,
     private readonly activitySignal: AbortSignal,
   ) {}
 
@@ -285,7 +289,7 @@ export function makeCopilotAgentActivity(
       // into every `runner.run()` call. When DI is unwired, leave the
       // slot undefined — the handler's `ctx.client` guard returns a
       // deterministic BUG error before ever reaching the runner.
-      const wrappedRunner: CopilotSessionRunner | undefined = deps.copilotSessionRunner
+      const wrappedRunner: CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult> | undefined = deps.copilotSessionRunner
         ? new CancellableRunner(deps.copilotSessionRunner, signal)
         : undefined;
 

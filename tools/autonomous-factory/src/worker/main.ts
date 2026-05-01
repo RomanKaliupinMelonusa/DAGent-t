@@ -52,7 +52,9 @@ import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { FileBaselineLoader } from "../adapters/file-baseline-loader.js";
 import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
+import { FileInvocationLogger } from "../adapters/file-invocation-logger.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
+import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
 import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -88,13 +90,37 @@ async function buildActivityDeps(): Promise<{
   const invocationFs = new FileInvocationFilesystem(resolvedAppRoot, filesystem, artifactBus);
   const triageArtifactLoader = new FileTriageArtifactLoader({ appRoot: resolvedAppRoot });
 
+  // Per-invocation factory closures — supplied so callers under
+  // `activities/support/**` can build per-invocation adapters without
+  // importing the concrete adapter classes themselves (rule #3).
+  const makeVcs: ActivityDeps["makeVcs"] = (repoRoot, logger) =>
+    new GitShellAdapter(repoRoot, logger);
+  const makeInvocationLogger: ActivityDeps["makeInvocationLogger"] = (logsDir) =>
+    new FileInvocationLogger(logsDir);
+  const makeStrictArtifactBus: ActivityDeps["makeStrictArtifactBus"] = (
+    root,
+    fs,
+    logger,
+  ) => new FileArtifactBus(root, fs, logger, { strict: true });
+
+  const baseDeps = {
+    filesystem,
+    shell,
+    artifactBus,
+    invocationFs,
+    triageArtifactLoader,
+    makeVcs,
+    makeInvocationLogger,
+    makeStrictArtifactBus,
+  };
+
   if (llmDisabled) {
     console.log(
       "[worker] WORKER_DISABLE_LLM set — skipping CopilotClient + LLM-backed DI",
     );
     return {
       client: null,
-      deps: { filesystem, shell, artifactBus, invocationFs, triageArtifactLoader },
+      deps: baseDeps,
     };
   }
 
@@ -104,7 +130,7 @@ async function buildActivityDeps(): Promise<{
     );
     return {
       client: null,
-      deps: { filesystem, shell, artifactBus, invocationFs, triageArtifactLoader },
+      deps: baseDeps,
     };
   }
   if (!isAbsolute(appRoot)) {
@@ -139,11 +165,7 @@ async function buildActivityDeps(): Promise<{
   return {
     client,
     deps: {
-      filesystem,
-      shell,
-      artifactBus,
-      invocationFs,
-      triageArtifactLoader,
+      ...baseDeps,
       triageLlm,
       baselineLoader,
       copilotClient: client,

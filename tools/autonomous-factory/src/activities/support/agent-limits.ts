@@ -21,7 +21,7 @@ import { resolveAgentSandbox } from "../../harness/sandbox.js";
 import {
   TOOL_LIMIT_FALLBACK_SOFT,
   TOOL_LIMIT_FALLBACK_HARD,
-} from "../../session/session-events.js";
+} from "../../harness/tool-limits.js";
 
 /** Code-level fallback when neither the agent nor manifest defaults declare
  *  `idleTimeoutLimit`. Two prior session.idle timeouts salvage on the third. */

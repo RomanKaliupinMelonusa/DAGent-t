@@ -42,14 +42,16 @@ import {
 import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
 import { buildTestDeps } from "./helpers/deps.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
 import type {
   CopilotSessionRunner,
+} from "../../ports/copilot-session-runner.js";
+import type {
   CopilotSessionParams,
   CopilotSessionResult,
-} from "../../ports/copilot-session-runner.js";
+} from "../../contracts/copilot-session.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 
 const ITEM_KEY = "developer";
@@ -222,7 +224,7 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
 
   it("threads the activity AbortSignal through to the CopilotSessionRunner", async () => {
     let observedAbortSignal: AbortSignal | undefined;
-    const fakeRunner: CopilotSessionRunner = {
+    const fakeRunner: CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult> = {
       async run(_client: CopilotClient, params: CopilotSessionParams): Promise<CopilotSessionResult> {
         observedAbortSignal = params.abortSignal;
         // Return a plausible "agent reported completed" outcome so the

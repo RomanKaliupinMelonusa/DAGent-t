@@ -15,11 +15,11 @@ function makeCtx(defaultToolLimits: unknown): ApmCompiledOutput {
   return {
     config: {
       ...(defaultToolLimits !== undefined ? { defaultToolLimits } : {}),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
     } as any,
     workflows: {},
     agents: {},
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
   } as any;
 }
 

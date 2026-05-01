@@ -17,7 +17,6 @@
 
 import type { NodeContext } from "../../contracts/node-context.js";
 import type { ArtifactRefSerialized } from "../../types.js";
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import {
   HandlerOutputArtifactSchema,
   validateArtifactPayload,
@@ -46,9 +45,9 @@ export async function ingestHandlerOutputEnvelope(
   // Guard ref construction — tests / edge cases may supply non-canonical
   // executionIds. Treat any failure here as "no envelope present" so the
   // ingestion channel stays strictly advisory.
+  const bus = ctx.artifactBus;
   let ref;
   try {
-    const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
     ref = bus.ref(ctx.slug, "handler-output", {
       nodeKey: ctx.itemKey,
       invocationId: ctx.executionId,
@@ -56,7 +55,6 @@ export async function ingestHandlerOutputEnvelope(
   } catch {
     return { output: {} };
   }
-  const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
   let present = false;
   try {
     present = await bus.exists(ref);

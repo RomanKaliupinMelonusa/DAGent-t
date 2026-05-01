@@ -26,7 +26,7 @@ import {
   buildSidecarEnvelope,
   getArtifactSchemaVersion,
 } from "../../apm/artifacts/artifact-catalog.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 import { synthesizeNodeReport, writeNodeReport } from "../node-report.js";
 import type { NodeContext } from "../../contracts/node-context.js";
 

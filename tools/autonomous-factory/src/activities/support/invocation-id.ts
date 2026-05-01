@@ -1,5 +1,5 @@
 /**
- * domain/invocation-id.ts — Time-sortable invocation identifiers.
+ * activities/support/invocation-id.ts — Time-sortable invocation identifiers.
  *
  * The Artifact Bus assigns one `invocationId` per dispatch. The identifier
  * must be:

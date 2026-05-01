@@ -23,11 +23,11 @@ function makeCtx(hookCmd: string | undefined): ApmCompiledOutput {
       // test ergonomic (the full ApmConfig has many unrelated required fields).
       hooks: hookCmd ? { preflightBaseline: hookCmd } : {},
       environment: {},
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
     } as any,
     workflows: {},
     agents: {},
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
   } as any;
 }
 

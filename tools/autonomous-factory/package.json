@@ -11,6 +11,7 @@
     "lint": "eslint 'src/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**'",
     "lint:fix": "eslint 'src/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**' --fix",
     "lint:test": "node scripts/lint-test.mjs",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:replay": "vitest run src/__tests__/replay/replay.test.ts",
     "test:watch": "vitest",

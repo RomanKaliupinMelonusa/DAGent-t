@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { LocalFilesystem } from "../local-filesystem.js";
 import { FileInvocationFilesystem } from "../file-invocation-filesystem.js";
 import { FileArtifactBus } from "../file-artifact-bus.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 import type { InvocationRecord } from "../../types.js";
 
 function makeRecord(overrides: Partial<InvocationRecord> = {}): InvocationRecord {

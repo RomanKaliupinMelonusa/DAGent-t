@@ -27,6 +27,10 @@ import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
 import type { InvocationFilesystem } from "../ports/invocation-filesystem.js";
 import type { InvocationLogger } from "../ports/invocation-logger.js";
 import type { CopilotSessionRunner } from "../ports/copilot-session-runner.js";
+import type {
+  CopilotSessionParams,
+  CopilotSessionResult,
+} from "./copilot-session.js";
 import type { CodeIndexer } from "../ports/code-indexer.js";
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageArtifactLoader } from "../ports/triage-artifact-loader.js";
@@ -234,7 +238,7 @@ export interface NodeContext {
    * actual `sendAndWait` lifecycle to this port. The composition root
    * wires a Node-backed adapter; tests inject a stub.
    */
-  readonly copilotSessionRunner: CopilotSessionRunner;
+  readonly copilotSessionRunner: CopilotSessionRunner<CopilotClient, CopilotSessionParams, CopilotSessionResult>;
   /**
    * Stack-agnostic semantic-graph code-index port. When present, the
    * copilot-agent handler builds a pre-tool-call freshness gate from

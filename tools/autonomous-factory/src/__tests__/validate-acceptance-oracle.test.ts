@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+ 
 // @ts-ignore — .mjs has no .d.ts companion; this is a test-only import.
 import * as oracle from "../../hooks/validate-acceptance.mjs";
 

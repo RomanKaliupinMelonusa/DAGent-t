@@ -39,20 +39,11 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
-// Per-invocation adapters constructed inline — these are scoped to a
-// single activity execution, not to the worker process, so they don't
-// belong on the `ActivityDeps` registry. Worker-singleton ports come
-// from the `deps` argument instead.
-import { GitShellAdapter } from "../../adapters/git-shell-adapter.js";
-import { FileInvocationLogger } from "../../adapters/file-invocation-logger.js";
-// `FileArtifactBus` is normally taken from the worker-scoped `deps`
-// registry. We re-import it here to construct a strict-variant on the
-// fly when `apmContext.config.strict_artifacts === true`. The default
-// (strict=false) bus is the one cached on `deps`; only the strict path
-// allocates a new instance per execution. This preserves the legacy
-// behaviour where `build-context.ts` honoured the per-app config flag,
-// without regressing the worker-singleton invariant for the common case.
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
+// Per-invocation adapters are NOT constructed here — `deps` carries
+// factory closures for the few invocation-scoped adapters
+// (`makeVcs`, `makeInvocationLogger`, `makeStrictArtifactBus`) so this
+// module stays free of direct adapter imports (rule #3). Worker-singleton
+// ports (filesystem, shell, artifact bus) come from `deps` directly.
 import { NoopPipelineLogger } from "../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
 import type { NodeContext, StatusReader, LineageWriter } from "../../contracts/node-context.js";
@@ -167,7 +158,7 @@ export async function buildNodeContext(
   const factory = getActivityLoggerFactory();
   const logger = options.logger ?? (factory ? factory() : new NoopPipelineLogger());
 
-  const vcs = new GitShellAdapter(input.repoRoot, logger);
+  const vcs = deps.makeVcs(input.repoRoot, logger);
   // Honour `apmContext.config.strict_artifacts` per invocation: when
   // strict is enabled, the worker-cached bus (default strict=false)
   // would silently auto-stamp envelopes — masking missing producer
@@ -175,7 +166,7 @@ export async function buildNodeContext(
   // common case (strict=false) reuses the worker-singleton instance.
   const strictArtifacts = apmContext.config?.strict_artifacts === true;
   const artifactBus = strictArtifacts
-    ? new FileArtifactBus(input.appRoot, filesystem, logger, { strict: true })
+    ? deps.makeStrictArtifactBus(input.appRoot, filesystem, logger)
     : deps.artifactBus;
   const invocation = deps.invocationFs;
 
@@ -188,7 +179,7 @@ export async function buildNodeContext(
     input.executionId,
   );
   await fs.mkdir(path.join(invocationDir, "logs"), { recursive: true });
-  const invocationLogger = new FileInvocationLogger(path.join(invocationDir, "logs"));
+  const invocationLogger = deps.makeInvocationLogger(path.join(invocationDir, "logs"));
 
   const triageArtifacts = deps.triageArtifactLoader;
 

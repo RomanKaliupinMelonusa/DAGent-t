@@ -31,7 +31,7 @@ import {
   validateArtifactPayload,
   validateEnvelope,
 } from "../apm/artifacts/artifact-catalog.js";
-import { isInvocationId } from "../domain/invocation-id.js";
+import { isInvocationId } from "../activities/support/invocation-id.js";
 import { WORKING_DIR } from "../paths/feature-paths.js";
 
 const KICKOFF_DIR = "_kickoff";
@@ -171,30 +171,31 @@ export class FileArtifactBus implements ArtifactBus {
     // Session A \u2014 envelope handling. Inline kinds get envelope fields stamped
     // into the body (unless strict mode, which requires the producer to
     // supply them); sidecar kinds get a `.meta.json` file co-written.
-    const def = getArtifactKind(ref.kind);
+    const kind = ref.kind;
+    const def = getArtifactKind(kind);
     const producedBy = ref.scope === "node" ? ref.nodeKey : KICKOFF_PRODUCER;
     const producedAt = new Date().toISOString();
 
     let finalContent = content;
     if (def.envelope === "inline" && !this.strict) {
-      finalContent = stampEnvelope(ref.kind, content, producedBy, producedAt);
+      finalContent = stampEnvelope(kind, content, producedBy, producedAt);
     }
 
     // Track B1 \u2014 strict schema enforcement at the producer boundary for kinds
     // that opted in (see `apm/artifact-catalog.ts`). No-op for kinds without
     // a registered schema, so prose/handler-internal kinds stay unaffected.
-    validateArtifactPayload(ref.kind, finalContent, { path: ref.path });
+    validateArtifactPayload(kind, finalContent, { path: ref.path });
 
     // Session A \u2014 envelope validation. Under strict mode, demand envelope
     // fields are present (inline body or the sidecar we're about to write).
     if (this.strict && def.envelope === "inline") {
-      validateEnvelope(ref.kind, finalContent, { path: ref.path });
+      validateEnvelope(kind, finalContent, { path: ref.path });
     }
 
     await this.fs.writeFile(ref.path, finalContent);
 
     if (def.envelope === "sidecar") {
-      const envelope = buildSidecarEnvelope(ref.kind, producedBy, producedAt);
+      const envelope = buildSidecarEnvelope(kind, producedBy, producedAt);
       const sidecar = JSON.stringify(envelope, null, 2) + "\n";
       await this.fs.writeFile(sidecarPath(ref.path), sidecar);
     }

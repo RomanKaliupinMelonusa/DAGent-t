@@ -24,7 +24,7 @@ import {
   ArtifactValidationError,
   sidecarPath,
 } from "../../apm/artifacts/artifact-catalog.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 
 function mkBus(prefix: string, opts: { strict?: boolean } = {}) {
   const appRoot = mkdtempSync(join(tmpdir(), `${prefix}-`));

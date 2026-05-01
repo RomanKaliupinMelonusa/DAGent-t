@@ -34,15 +34,17 @@ import { createActivities } from "../activities/factory.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { FileInvocationLogger } from "../adapters/file-invocation-logger.js";
+import { GitShellAdapter } from "../adapters/git-shell-adapter.js";
 import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
 import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import { _clearApmContextCacheForTests } from "../activities/support/build-context.js";
-import { newInvocationId } from "../domain/invocation-id.js";
+import { newInvocationId } from "../activities/support/invocation-id.js";
 import type { NodeActivityInput, NodeActivityResult } from "../activities/types.js";
 import type { PipelineState } from "../types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoDir = resolve(__dirname, "../../..");
+const repoDir = resolve(__dirname, "../..");
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
 const taskQueue = `dagent-it-single-${Date.now()}`;
 
@@ -232,6 +234,10 @@ describe("singleActivityWorkflow — integration parity (local-exec)", () => {
       artifactBus,
       invocationFs: new FileInvocationFilesystem(fixture.app, filesystem, artifactBus),
       triageArtifactLoader: new FileTriageArtifactLoader({ appRoot: fixture.app }),
+      makeVcs: (repoRoot, logger) => new GitShellAdapter(repoRoot, logger),
+      makeInvocationLogger: (logsDir) => new FileInvocationLogger(logsDir),
+      makeStrictArtifactBus: (root, fs, logger) =>
+        new FileArtifactBus(root, fs, logger, { strict: true }),
     });
     const referenceResult = await env.run(localExecActivity, buildInput(fixture));
 

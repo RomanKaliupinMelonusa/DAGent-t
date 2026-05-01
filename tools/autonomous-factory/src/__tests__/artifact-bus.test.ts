@@ -25,7 +25,7 @@ import {
   kindSupportsScope,
   listArtifactKinds,
 } from "../apm/artifacts/artifact-catalog.js";
-import { newInvocationId, isInvocationId } from "../domain/invocation-id.js";
+import { newInvocationId, isInvocationId } from "../activities/support/invocation-id.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 

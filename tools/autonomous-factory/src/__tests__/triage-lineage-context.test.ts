@@ -13,7 +13,7 @@ const FIXTURE_ROOT = mkdtempSync(join(tmpdir(), "phaseF-root-"));
 process.env.APP_ROOT = FIXTURE_ROOT;
 
 const { buildTriageRejectionContext } = await import("../triage/context-builder.js");
-const { newInvocationId } = await import("../domain/invocation-id.js");
+const { newInvocationId } = await import("../activities/support/invocation-id.js");
 type InvocationRecord = import("../types.js").InvocationRecord;
 
 describe("Phase F — triage lineage first-class", () => {

@@ -10,20 +10,13 @@
 import path from "node:path";
 import type { ItemSummary, McpToolLogEntry } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
-import {
-  SessionCircuitBreaker,
-  TOOL_LIMIT_FALLBACK_SOFT,
-  TOOL_LIMIT_FALLBACK_HARD,
-} from "../adapters/session-circuit-breaker.js";
 import type { CognitiveBreaker } from "../ports/cognitive-breaker.js";
 
-// Re-export for backward compatibility. New code should import from
-// adapters/session-circuit-breaker.js or ports/cognitive-breaker.js.
-export {
-  SessionCircuitBreaker,
-  TOOL_LIMIT_FALLBACK_SOFT,
-  TOOL_LIMIT_FALLBACK_HARD,
-};
+// `SessionCircuitBreaker` and `TOOL_LIMIT_FALLBACK_*` were previously
+// re-exported here for legacy callers. New code imports them directly
+// from `adapters/session-circuit-breaker.js` (or, for non-adapter
+// modules, depends on the `CognitiveBreaker` port and accepts a
+// concrete instance via dependency injection).
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -103,7 +96,7 @@ export function toolSummary(
 
 // Using `any` for the session parameter because the SDK's Session type is not exported
 // and we only use the `.on()` method for event subscription.
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 /**
  * Safely append a system prompt to a tool result without destroying existing
@@ -498,5 +491,5 @@ export function wireSessionTelemetry(session: any, p: WireSessionTelemetryParams
   );
 }
 
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 

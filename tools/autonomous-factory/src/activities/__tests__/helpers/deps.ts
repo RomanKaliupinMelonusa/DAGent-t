@@ -11,7 +11,9 @@ import { LocalFilesystem } from "../../../adapters/local-filesystem.js";
 import { NodeShellAdapter } from "../../../adapters/node-shell-adapter.js";
 import { FileArtifactBus } from "../../../adapters/file-artifact-bus.js";
 import { FileInvocationFilesystem } from "../../../adapters/file-invocation-filesystem.js";
+import { FileInvocationLogger } from "../../../adapters/file-invocation-logger.js";
 import { FileTriageArtifactLoader } from "../../../adapters/file-triage-artifact-loader.js";
+import { GitShellAdapter } from "../../../adapters/git-shell-adapter.js";
 import type { ActivityDeps } from "../../deps.js";
 
 export function buildTestDeps(
@@ -29,6 +31,10 @@ export function buildTestDeps(
     artifactBus,
     invocationFs,
     triageArtifactLoader,
+    makeVcs: (repoRoot, logger) => new GitShellAdapter(repoRoot, logger),
+    makeInvocationLogger: (logsDir) => new FileInvocationLogger(logsDir),
+    makeStrictArtifactBus: (root, fs, logger) =>
+      new FileArtifactBus(root, fs, logger, { strict: true }),
     ...overrides,
   };
 }

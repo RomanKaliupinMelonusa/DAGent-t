@@ -24,7 +24,7 @@ import {
 import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
 import { buildTestDeps } from "./helpers/deps.js";
-import { newInvocationId } from "../../domain/invocation-id.js";
+import { newInvocationId } from "../../activities/support/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
 
