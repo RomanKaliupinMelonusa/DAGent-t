@@ -1,0 +1,16 @@
+{
+  "invocationId": "inv_9A027F1191055D7C6AAAF5A773",
+  "nodeKey": "spec-compiler",
+  "cycleIndex": 1,
+  "trigger": "initial",
+  "startedAt": "2026-05-01T01:47:42.681Z",
+  "inputs": [
+    {
+      "kind": "spec",
+      "scope": "kickoff",
+      "slug": "quick-view-new",
+      "path": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/_kickoff/spec.md"
+    }
+  ],
+  "outputs": []
+}

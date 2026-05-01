@@ -1,0 +1,13 @@
+{
+  "nodeKey": "spec-compiler",
+  "invocationId": "inv_9A027F1191055D7C6AAAF5A773",
+  "trigger": "initial",
+  "artifacts": [
+    {
+      "kind": "spec",
+      "source": "kickoff",
+      "sourcePath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/_kickoff/spec.md",
+      "inputPath": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/quick-view-new/spec-compiler/inv_9A027F1191055D7C6AAAF5A773/inputs/spec.md"
+    }
+  ]
+}
