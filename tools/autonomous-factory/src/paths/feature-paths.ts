@@ -1,5 +1,11 @@
 /**
- * paths/feature-paths.ts — Pure per-feature file-path computation.
+ * paths/feature-paths.ts — Per-feature file-path computation.
+ *
+ * Path helpers (`featurePath`, `featureRelPath`, `WORKING_DIR`,
+ * `SUBPATHS`) are pure — no I/O, safe for any layer to import. The one
+ * filesystem-touching primitive is `ensureFeatureDir`, which writers
+ * call immediately before `writeFileSync(featurePath(...))` to avoid
+ * ENOENT on the first write into a fresh slug directory.
  *
  * Layout:
  *
@@ -28,12 +34,12 @@
  *         flight-data.json               // preflight result
  *       <nodeKey>/<invocationId>/<kind>.<ext>   // ArtifactBus node scope
  *
- * Pure — no I/O, no dependencies beyond `node:path`. Writers needing
- * directory creation should use `ensureFeatureDir` from
- * `adapters/feature-paths.ts`.
+ * Pure path helpers, plus `ensureFeatureDir` for writers needing
+ * directory creation.
  */
 
 import path from "node:path";
+import { mkdirSync } from "node:fs";
 
 /** Per-app pipeline working directory name. The kernel persists per-feature
  *  state, telemetry, and node invocation artifacts under
@@ -112,4 +118,15 @@ export function featurePath(
  *  absolute paths into agent context. */
 export function featureRelPath(slug: string, kind: FeatureFileKind): string {
   return WORKING_DIR + "/" + slug + "/" + SUBPATHS[kind];
+}
+
+/** Ensure the parent directory of a per-feature file exists. Writers
+ *  call this immediately before `writeFileSync(featurePath(...), ...)`
+ *  to avoid ENOENT on first write into a fresh slug directory. */
+export function ensureFeatureDir(
+  appRoot: string,
+  slug: string,
+  kind: FeatureFileKind,
+): void {
+  mkdirSync(path.dirname(featurePath(appRoot, slug, kind)), { recursive: true });
 }

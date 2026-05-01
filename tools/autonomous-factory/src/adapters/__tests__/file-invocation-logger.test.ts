@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FileInvocationLogger } from "../file-invocation-logger.js";
-import { buildSecretRedactor } from "../secret-redactor.js";
+import { buildSecretRedactor } from "../../telemetry/secret-redactor.js";
 
 describe("FileInvocationLogger", () => {
   it("appends events as JSONL with auto-timestamp", async () => {

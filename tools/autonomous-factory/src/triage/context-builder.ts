@@ -28,7 +28,7 @@ import type { PipelineState } from "../types.js";
 import { readFileSync } from "node:fs";
 import { join, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 import { getHeadSha } from "../session/dag-utils.js";
 
 // Inlined from the deleted adapters/file-state/io.ts. The triage cascade

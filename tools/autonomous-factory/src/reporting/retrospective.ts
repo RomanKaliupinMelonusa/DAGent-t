@@ -22,7 +22,7 @@ import path from "node:path";
 import type { PipelineEvent, PipelineBlob } from "../telemetry/index.js";
 import { formatDuration, formatUsd, computeStepCost, outcomeIcon, buildCostAnalysisLines } from "./index.js";
 import type { ItemSummary } from "../types.js";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // JSONL loader

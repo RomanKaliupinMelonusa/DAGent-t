@@ -27,8 +27,7 @@ tested or replaced in isolation.
 
 | File | Implements port | What it does |
 |---|---|---|
-| [git-shell-adapter.ts](git-shell-adapter.ts) | `VersionControl` | Runs `git` subprocesses via the `Shell` port. Never shells out directly; composes with `node-shell-adapter`. |
-| [git-ops.ts](git-ops.ts) | — | Higher-level helpers (`createFeatureBranch`, branch checks) consumed by `GitShellAdapter` and the `create-branch` DAG node. |
+| [git-shell-adapter.ts](git-shell-adapter.ts) | `VersionControl` | Runs `git` subprocesses via the `Shell` port. Never shells out directly; composes with `node-shell-adapter`. Includes the branch-management helpers (`createFeatureBranch`, `getCurrentBranch`, `syncBranch`, `pushWithRetry`) previously in `git-ops.ts`. |
 | [github-ci-adapter.ts](github-ci-adapter.ts) | `CiGateway` | Polls GitHub Actions runs via `gh` CLI; tracks run status per SHA. Used by the `github-ci-poll` activity. |
 | [shell-hook-executor.ts](shell-hook-executor.ts) | `HookExecutor` | Executes `.apm/hooks/*.sh` with orchestrator env + APM environment dict; captures stdout/stderr/exit. |
 | [node-shell-adapter.ts](node-shell-adapter.ts) | `Shell` | Thin wrapper over `child_process.spawn` with timeout + stderr/stdout capture. Every subprocess in the engine transits this adapter. |
@@ -36,15 +35,13 @@ tested or replaced in isolation.
 | [apm-file-compiler.ts](apm-file-compiler.ts) | `ContextCompiler` | Runs the APM compiler against a given app root. Thin wrapper around `apm/compiler.ts`. |
 | [copilot-session-runner.ts](copilot-session-runner.ts) | `CopilotSessionRunner` | Creates a Copilot SDK session, wires harness (tool logging, limits), sends prompt, waits for outcome. Owns SDK event plumbing. |
 | [copilot-triage-llm.ts](copilot-triage-llm.ts) | `TriageLlm` | Dedicated short-prompt Copilot session for failure classification. |
-| [file-triage-artifact-loader.ts](file-triage-artifact-loader.ts) | `TriageArtifactLoader` | Reads feature artifacts via [feature-paths.ts](feature-paths.ts) (kickoff `acceptance`, `_state.json` projection, per-invocation outputs/logs) and assembles the prior-cycle evidence bundle for triage. |
+| [file-triage-artifact-loader.ts](file-triage-artifact-loader.ts) | `TriageArtifactLoader` | Reads feature artifacts via [`paths/feature-paths.ts`](../paths/feature-paths.ts) (kickoff `acceptance`, `_state.json` projection, per-invocation outputs/logs) and assembles the prior-cycle evidence bundle for triage. |
 | [file-baseline-loader.ts](file-baseline-loader.ts) | `BaselineLoader` | Loads prior-pass baseline evidence used to skip nodes that are still green. |
 | [session-circuit-breaker.ts](session-circuit-breaker.ts) | `CognitiveBreaker` | In-session tool-call counter. Injects soft-limit warnings, force-disconnects at hard limit. |
-| [feature-paths.ts](feature-paths.ts) | — | Per-feature path resolver — the canonical translator from `(slug, itemKey, invocationId)` to `.dagent/<slug>/...` paths. Used by every adapter that touches feature artefacts. |
 | [file-artifact-bus.ts](file-artifact-bus.ts) | `ArtifactBus` | Resolves declared `consumes_*` / `produces_artifacts`, copies upstream outputs into the next invocation's `inputs/`, and validates that produced artefacts match the catalogue before sealing. |
 | [file-invocation-filesystem.ts](file-invocation-filesystem.ts) | `InvocationFilesystem` | Creates and reads the per-invocation `inputs/` / `outputs/` / `logs/` tree under `.dagent/<slug>/<nodeKey>/<invocationId>/`. |
 | [file-invocation-logger.ts](file-invocation-logger.ts) | `InvocationLogger` | Writes the multiplexed log sinks (`events.jsonl`, `tool-calls.jsonl`, `messages.jsonl`, `stdout.log`, `stderr.log`) for one invocation. |
 | [roam-code-indexer.ts](roam-code-indexer.ts) | `CodeIndexer` | Runs `roam-code` to (re)build the structural-intelligence index agents query through MCP. |
-| [secret-redactor.ts](secret-redactor.ts) | — | Adapter-side redactor that strips known secret shapes (PATs, OIDC tokens, az/gh/aws CLI tokens) from telemetry and logs before they hit disk. |
 | [index.ts](index.ts) | — | Barrel re-exports — instantiation happens at the worker bootstrap, not via a factory. |
 
 Pipeline state lives in Temporal event history (Postgres-backed), so there
@@ -73,8 +70,7 @@ const triageLlm = new CopilotTriageLlm({ … });
    `harness/` layers that explicitly do I/O) — anything in `workflow/`,
    `domain/`, `ports/`, `apm/`, `triage/`, or `activity-lib/` is a layering
    violation.
-2. **One adapter, one port.** Adapters may use helper modules (`git-ops.ts`)
-   but must not compose multiple ports.
+2. **One adapter, one port.** Adapters compose private helper functions in the same file rather than splitting them out as additional modules.
 3. **Adapters may depend on other adapters only via ports.**
    `GitShellAdapter` depends on `Shell`, not on `NodeShellAdapter` directly
    — this is why they compose cleanly in tests.

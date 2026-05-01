@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ItemSummary } from "../types.js";
-import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
+import { featurePath, ensureFeatureDir } from "../paths/feature-paths.js";
 import { buildEnvelope } from "../apm/artifact-catalog.js";
 
 /**

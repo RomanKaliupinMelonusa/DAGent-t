@@ -11,7 +11,7 @@
 import fs from "node:fs";
 
 import type { TriageArtifactLoader, ContractEvidenceResult, TriageEvidenceBundle } from "../ports/triage-artifact-loader.js";
-import { featurePath } from "./feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 import type { AcceptanceContract } from "../apm/acceptance-schema.js";
 import type { InvocationRecord, PipelineState, ArtifactRefSerialized } from "../types.js";
 import type { ArtifactKind } from "../apm/artifact-catalog.js";

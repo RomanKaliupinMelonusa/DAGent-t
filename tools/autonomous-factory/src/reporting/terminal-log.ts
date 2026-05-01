@@ -8,7 +8,7 @@ import { execSync } from "node:child_process";
 import type { ApmCompiledOutput } from "../apm/types.js";
 import type { ItemSummary } from "../types.js";
 import type { PreviousSummaryTotals } from "../app-types.js";
-import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
+import { featurePath, ensureFeatureDir } from "../paths/feature-paths.js";
 import { computeStepCost } from "./pricing.js";
 import { formatDuration, formatUsd, stepIcon } from "./format.js";
 import { buildCostAnalysisLines } from "./cost.js";

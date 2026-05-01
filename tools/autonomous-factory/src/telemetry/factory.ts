@@ -3,7 +3,7 @@
  */
 
 import { JsonlPipelineLogger } from "./jsonl-logger.js";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 /** Create a JSONL-backed logger for a pipeline run. */
 export function createPipelineLogger(appRoot: string, slug: string): JsonlPipelineLogger {

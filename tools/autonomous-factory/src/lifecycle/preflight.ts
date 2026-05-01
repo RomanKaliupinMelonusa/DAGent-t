@@ -13,7 +13,7 @@ import type { ApmCompiledOutput } from "../apm/types.js";
 import type { PipelineState } from "../types.js";
 import { StateError, BootstrapError } from "../errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 /**
  * Fail fast when something is already listening on port 3000.

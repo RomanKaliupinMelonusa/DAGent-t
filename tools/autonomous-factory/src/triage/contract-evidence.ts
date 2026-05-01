@@ -29,7 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractPrimaryCause } from "./playwright-report.js";
-import { featurePath } from "../adapters/feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 /** Upper bound on how much of each artifact we inline into the prompt.
  *  Keeps the total triage-prompt budget predictable. The artifacts are

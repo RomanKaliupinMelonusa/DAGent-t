@@ -19,7 +19,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { InvocationLogger } from "../ports/invocation-logger.js";
-import type { SecretRedactor } from "./secret-redactor.js";
+import type { SecretRedactor } from "../telemetry/secret-redactor.js";
 
 const EVENTS_FILE = "events.jsonl";
 const TOOL_CALLS_FILE = "tool-calls.jsonl";

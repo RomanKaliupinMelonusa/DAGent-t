@@ -1,18 +1,110 @@
 /**
- * adapters/git-shell-adapter.ts — VersionControl adapter over git-ops.ts.
+ * adapters/git-shell-adapter.ts — VersionControl adapter over git.
  *
- * Wraps synchronous git shell operations behind the async VersionControl port.
+ * Wraps synchronous git shell operations and the agent-branch.sh
+ * wrapper script behind the async VersionControl port. Branch-management
+ * helpers (`createFeatureBranch`, `getCurrentBranch`, `syncBranch`,
+ * `pushWithRetry`) are private module functions — they used to live in
+ * a separate `git-ops.ts`, but `GitShellAdapter` was their only consumer.
  */
 
 import { execSync } from "node:child_process";
+import path from "node:path";
 import type { VersionControl } from "../ports/version-control.js";
-import {
-  createFeatureBranch,
-  getCurrentBranch,
-  syncBranch,
-  pushWithRetry,
-} from "./git-ops.js";
+import { GitError } from "../errors.js";
 import type { PipelineLogger } from "../telemetry/index.js";
+
+// ---------------------------------------------------------------------------
+// Branch helpers — synchronous; git is fast enough that async wrappers
+// add no value here. `pushWithRetry` is async only because of the
+// exponential backoff sleep.
+// ---------------------------------------------------------------------------
+
+function createFeatureBranch(
+  repoRoot: string,
+  slug: string,
+  baseBranch: string,
+): void {
+  const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
+  try {
+    execSync(`bash "${branchScript}" create-feature "${slug}"`, {
+      cwd: repoRoot,
+      stdio: "inherit",
+      timeout: 30_000,
+      env: { ...process.env, BASE_BRANCH: baseBranch },
+    });
+  } catch (err) {
+    throw new GitError(
+      `Failed to create feature branch: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function getCurrentBranch(repoRoot: string): string {
+  try {
+    return execSync("git branch --show-current", {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+  } catch (err) {
+    throw new GitError(
+      `Failed to determine current branch: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/** Pull --rebase from origin. Non-fatal — swallows errors (the local
+ *  branch may be ahead of remote). */
+function syncBranch(repoRoot: string): void {
+  try {
+    const branch = getCurrentBranch(repoRoot);
+    execSync(`git pull --rebase origin "${branch}"`, {
+      cwd: repoRoot,
+      stdio: "pipe",
+      timeout: 30_000,
+    });
+  } catch {
+    /* non-fatal — may be ahead of remote */
+  }
+}
+
+async function pushWithRetry(
+  repoRoot: string,
+  baseBranch: string,
+  logger: PipelineLogger,
+  maxRetries = 3,
+): Promise<void> {
+  const branchScript = path.join(repoRoot, "tools", "autonomous-factory", "agent-branch.sh");
+  const branch = getCurrentBranch(repoRoot);
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      execSync(`bash "${branchScript}" push`, {
+        cwd: repoRoot,
+        stdio: "inherit",
+        timeout: 60_000,
+        env: { ...process.env, BASE_BRANCH: baseBranch },
+      });
+      logger.event("git.push", null, { branch, sha: null, deferred: false });
+      return;
+    } catch (pushErr) {
+      if (attempt < maxRetries) {
+        const backoff = 2_000 * Math.pow(2, attempt - 1);
+        console.warn(`  ⚠ Push attempt ${attempt}/${maxRetries} failed, retrying in ${backoff / 1000}s...`);
+        await new Promise((r) => setTimeout(r, backoff));
+      } else {
+        throw new GitError(
+          `Failed to push after ${maxRetries} attempts: ${pushErr instanceof Error ? pushErr.message : String(pushErr)}`,
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VersionControl port adapter
+// ---------------------------------------------------------------------------
 
 export class GitShellAdapter implements VersionControl {
   private readonly repoRoot: string;

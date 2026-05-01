@@ -23,7 +23,7 @@
  */
 
 import type { BaselineProfile, BaselineEntry } from "../ports/baseline-loader.js";
-import { featureRelPath } from "../adapters/feature-paths.js";
+import { featureRelPath } from "../paths/feature-paths.js";
 
 /** Cap per channel so the advisory stays compact. */
 const MAX_PATTERNS_PER_KIND = 6;

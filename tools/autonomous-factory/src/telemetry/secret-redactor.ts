@@ -1,5 +1,5 @@
 /**
- * adapters/secret-redactor.ts — Track B3 log redactor.
+ * telemetry/secret-redactor.ts — Track B3 log redactor.
  *
  * Builds a redactor function `(text: string) => string` seeded from the
  * compiled APM `config.environment` dictionary. Any env entry whose

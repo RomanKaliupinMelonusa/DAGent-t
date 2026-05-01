@@ -18,6 +18,7 @@ See [Architecture overview](../../docs/architecture.md) for how spans flow from 
 | [factory.ts](factory.ts) | JSONL logger factory — creates a logger rooted at `featurePath(slug)`. |
 | [logger-factory.ts](logger-factory.ts) | Activity logger DI slot. Module-scoped factory that activity bootstrap consults when no `PipelineLogger` is supplied. The worker installs a factory once at boot; every subsequent activity invocation gets a fresh logger. |
 | [console-render.ts](console-render.ts) | Maps `PipelineEvent` → human-readable console line. Pure rendering; the caller decides how to print. |
+| [secret-redactor.ts](secret-redactor.ts) | Builds a `(text) => text` redactor seeded from the compiled APM `config.environment` dictionary. Keys matching `/key|secret|token|password|connection|credential/i` have their values literal-replaced with `[REDACTED:KEY_NAME]` before logs hit disk. |
 
 ## Public interface
 

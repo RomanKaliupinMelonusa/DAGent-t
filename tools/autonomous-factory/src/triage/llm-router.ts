@@ -21,7 +21,7 @@ import type { PriorAttempt } from "./historian.js";
 import { parseDomainTag } from "./handoff-builder.js";
 import { matchesAnyBaselinePattern } from "./baseline-filter.js";
 import { normalizeError } from "./error-fingerprint.js";
-import { featurePath, ensureFeatureDir } from "../adapters/feature-paths.js";
+import { featurePath, ensureFeatureDir } from "../paths/feature-paths.js";
 
 // ---------------------------------------------------------------------------
 // Internal classification outcome — used by `tryClassifyOnce` to distinguish

@@ -73,31 +73,7 @@ const ADAPTERS_RULE_ALLOWLIST = [
   // TODO: refactor away — see Session 3/8.
   "src/activity-lib/handler-output-ingestion.ts",
   // TODO: refactor away — see Session 3/8.
-  "src/lifecycle/preflight.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/reporting/change-manifest.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/reporting/flight-data.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/reporting/retrospective.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/reporting/summary.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/reporting/terminal-log.ts",
-  // TODO: refactor away — see Session 3/8.
   "src/session/session-events.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/telemetry/factory.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/triage/baseline-advisory.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/triage/context-builder.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/triage/contract-evidence.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/triage/handoff-builder.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/triage/llm-router.ts",
 ];
 
 export default tseslint.config(

@@ -17,7 +17,7 @@ import fs from "node:fs";
 
 import type { BaselineLoader, BaselineProfile } from "../ports/baseline-loader.js";
 import type { FileArtifactBus } from "./file-artifact-bus.js";
-import { featurePath } from "./feature-paths.js";
+import { featurePath } from "../paths/feature-paths.js";
 
 export interface FileBaselineLoaderOptions {
   /** Absolute path to the app root (contains `.dagent/`). */
