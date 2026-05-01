@@ -7,7 +7,7 @@
  *     { format: "playwright-json", path: "..." }`, the handler reads the
  *     referenced artifact on failure and emits the parsed shape on
  *     `handlerOutput.structuredFailure`.
- *   - Future `triage/contract-classifier.ts` (Phase C.1) — deterministically
+ *   - The LLM router (Phase 4.3a) — uses these signals to deterministically
  *     maps uncaught JS errors in browser contexts to `impl-defect`.
  *
  * The parser tolerates partial / malformed reports — a corrupt file yields

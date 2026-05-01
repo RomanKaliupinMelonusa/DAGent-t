@@ -149,7 +149,7 @@ export function isOrchestratorTimeout(errorMessage: string): boolean {
  * it would emit X and either emitted nothing or emitted with a malformed
  * envelope. They are routed via the workflow's `schema-violation` route
  * (typically `$SELF` for bounded self-repair) by L0 patterns in
- * `triage/builtin-patterns.ts`.
+ * the LLM router (Phase 4.3a).
  *
  * Returns `null` when the signature is not orchestrator-contract origin.
  */

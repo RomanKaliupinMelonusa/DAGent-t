@@ -30,7 +30,6 @@ import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
 import { buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
-import type { AcceptanceContract } from "../apm/index.js";
 import { isEvidenceEmpty } from "../triage/llm-router.js";
 import { getWorkflowNode, resolveNodeBudgetPolicy } from "../session/dag-utils.js";
 import { resolveIdleTimeoutLimit } from "./support/agent-limits.js";
@@ -456,7 +455,7 @@ const triageHandlerInner: NodeHandler = {
     // Producer-side faults (missing_required_output, invalid_envelope_output)
     // are NOT short-circuited here — they are genuine output-quality
     // failures and route via the L0 `schema-violation` patterns in
-    // `triage/builtin-patterns.ts`, typically back to `$SELF` for bounded
+    // the failing node's `failureRoutes` map, typically back to `$SELF` for bounded
     // self-repair via `routeProfiles.base`.
     const contractOrigin = classifyOrchestratorContractError(errorSig);
     if (contractOrigin) {
@@ -542,16 +541,10 @@ const triageHandlerInner: NodeHandler = {
     // route deterministically. The resolved domain must exist in the
     // failing node's `failureRoutes` map — otherwise we fall through.
     //
-    // Round-2 R2: load the feature's ACCEPTANCE.yml (best-effort) and pass
-    // it to the classifier so a Playwright timeout on a contract-declared
-    // testid deterministically classifies as `frontend`. Missing/malformed
-    // contract => null, classifier falls back to its uncaught-error rule.
-    let acceptance: AcceptanceContract | null = null;
-    try {
-      acceptance = artifacts.loadAcceptance(slug);
-    } catch {
-      acceptance = null;
-    }
+    // Phase 4.3b: the L0 deterministic classifier was retired (triage is
+    // LLM-only). The acceptance load below is preserved as documentation
+    // of the contract surface; future deterministic short-circuits should
+    // re-introduce a classifier here.
     // Baseline noise filter — when `baseline-analyzer` captured a
     // pre-feature console/network/uncaught baseline for the target pages,
     // subtract those known-noise signals from the structured failure BEFORE
@@ -586,7 +579,6 @@ const triageHandlerInner: NodeHandler = {
     // single-storefront-profile shape, so we go straight to evaluateTriage
     // (with the orchestrator-contract short-circuit + evidence-empty
     // self-reset guards already enforced above).
-    void acceptance; // retained for evidence-loader call site below
     // Fetch errorLog once so the LLM router can include prior-attempt
     // classifications in its prompt (anti-misclassification context).
     // Best-effort — a failure here just means the LLM gets a slightly

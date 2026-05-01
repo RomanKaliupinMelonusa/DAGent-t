@@ -978,7 +978,7 @@ export const TriageRouteEntrySchema = z.object({
 
 /** Session B (Item 3) — declarative L0 pre-classifier pattern. Evaluated
  *  BEFORE the RAG/LLM layers on every triage call. Replaces the hard-coded
- *  rules that previously lived in `triage/contract-classifier.ts`.
+ *  rules previously consumed by the deterministic L0 classifier (now retired).
  *
  *  Three match kinds:
  *   - `raw-regex`    — run `pattern` (with optional `flags`) against the
