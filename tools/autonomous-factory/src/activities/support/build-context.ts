@@ -39,28 +39,28 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
-// Direct adapter imports — going through `../../../adapters/index.js`
-// would pull in `copilot-session-runner` (and transitively the
-// Copilot SDK), which fails to ESM-resolve under vitest. Bypassing the
-// barrel keeps the activity unit-testable without standing up the SDK.
+// Per-invocation adapters constructed inline — these are scoped to a
+// single activity execution, not to the worker process, so they don't
+// belong on the `ActivityDeps` registry. Worker-singleton ports come
+// from the `deps` argument instead.
 import { GitShellAdapter } from "../../adapters/git-shell-adapter.js";
-import { LocalFilesystem } from "../../adapters/local-filesystem.js";
-import { NodeShellAdapter } from "../../adapters/node-shell-adapter.js";
-import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
-import { FileInvocationFilesystem } from "../../adapters/file-invocation-filesystem.js";
 import { FileInvocationLogger } from "../../adapters/file-invocation-logger.js";
-import { FileTriageArtifactLoader } from "../../adapters/file-triage-artifact-loader.js";
+// `FileArtifactBus` is normally taken from the worker-scoped `deps`
+// registry. We re-import it here to construct a strict-variant on the
+// fly when `apmContext.config.strict_artifacts === true`. The default
+// (strict=false) bus is the one cached on `deps`; only the strict path
+// allocates a new instance per execution. This preserves the legacy
+// behaviour where `build-context.ts` honoured the per-app config flag,
+// without regressing the worker-singleton invariant for the common case.
+import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { NoopPipelineLogger } from "../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
 import type { NodeContext, StatusReader, LineageWriter } from "../../contracts/node-context.js";
 import type { ApmCompiledOutput } from "../../apm/types.js";
 import type { PipelineLogger } from "../../telemetry/events.js";
 
-import type { TriageLlm } from "../../ports/triage-llm.js";
-import type { BaselineLoader } from "../../ports/baseline-loader.js";
 import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js";
-import type { CodeIndexer } from "../../ports/code-indexer.js";
-import type { CopilotClient } from "@github/copilot-sdk";
+import type { ActivityDeps } from "../deps.js";
 import type { NodeActivityInput } from "../types.js";
 
 /**
@@ -127,13 +127,15 @@ async function loadApmContext(apmContextPath: string): Promise<ApmCompiledOutput
 }
 
 /**
- * Build a NodeContext from an activity input. Constructs all
- * Phase-0-required ports inline. Heavyweight ports (Copilot SDK, code
- * indexer, triage LLM) are built lazily by the activities that need
- * them — see `support/build-agent-context.ts` (Phase 5).
+ * Build a NodeContext from an activity input. Worker-singleton ports
+ * (filesystem, shell, artifact bus, invocation FS, triage artifact
+ * loader, optional LLM/baseline/copilot/code-indexer ports) are taken
+ * from the `deps` registry; per-invocation adapters
+ * (`GitShellAdapter`, `FileInvocationLogger`) are constructed inline.
  */
 export async function buildNodeContext(
   input: NodeActivityInput,
+  deps: ActivityDeps,
   options: {
     /**
      * Optional pre-built `PipelineLogger`. Defaults to a no-op logger —
@@ -146,41 +148,17 @@ export async function buildNodeContext(
     /** Heartbeat callback wired by `withHeartbeat`. */
     readonly onHeartbeat?: () => void;
     /**
-     * Optional TriageLlm port. The triage activity wires this for the
-     * RAG/LLM classification path; lower-tier activities leave it
-     * undefined (the legacy handler probes for `?.` so missing wiring
-     * degrades to the contract-only classifier rather than throwing).
-     */
-    readonly triageLlm?: TriageLlm;
-    /** Optional BaselineLoader port — only needed by triage flows that
-     *  filter test failures against a known-good baseline. */
-    readonly baselineLoader?: BaselineLoader;
-    /**
-     * Optional CopilotClient (Phase 5). Wired by `copilot-agent.activity`
-     * so the legacy handler's `ctx.client` guard passes. Lower-tier
-     * activities (local-exec, ci-poll, triage) leave this undefined and
-     * the handler short-circuits with a deterministic BUG message —
-     * which is the desired behaviour for activities that should never
-     * reach the SDK.
-     */
-    readonly client?: CopilotClient;
-    /**
-     * Optional `CopilotSessionRunner` port (Phase 5). When undefined,
-     * any handler that calls `ctx.copilotSessionRunner.run()` will
-     * throw a clear TypeError at the call site — we intentionally
-     * don't install a no-op runner here so missing wiring is loud.
+     * Optional override for `deps.copilotSessionRunner`. The
+     * copilot-agent activity wraps the production runner in a
+     * `CancellableRunner` per execution and supplies the wrapped
+     * instance here. Other activities omit it.
      */
     readonly copilotSessionRunner?: CopilotSessionRunner;
-    /** Optional `CodeIndexer` port (Phase 5). Used by the freshness
-     *  gate for nodes whose APM declares `requires_index_refresh`.
-     *  Optional because most agents don't need it; nodes that DO
-     *  declare freshness will degrade to no-op when absent. */
-    readonly codeIndexer?: CodeIndexer;
   } = {},
 ): Promise<NodeContext> {
   const apmContext = await loadApmContext(input.apmContextPath);
-  const filesystem = new LocalFilesystem();
-  const shell = new NodeShellAdapter();
+  const filesystem = deps.filesystem;
+  const shell = deps.shell;
   // Logger resolution order:
   //   1. Caller-supplied `options.logger` (tests / explicit injection).
   //   2. Worker-installed factory via `setActivityLoggerFactory`
@@ -190,11 +168,16 @@ export async function buildNodeContext(
   const logger = options.logger ?? (factory ? factory() : new NoopPipelineLogger());
 
   const vcs = new GitShellAdapter(input.repoRoot, logger);
+  // Honour `apmContext.config.strict_artifacts` per invocation: when
+  // strict is enabled, the worker-cached bus (default strict=false)
+  // would silently auto-stamp envelopes — masking missing producer
+  // metadata. Build a strict-variant on the fly in that case. The
+  // common case (strict=false) reuses the worker-singleton instance.
   const strictArtifacts = apmContext.config?.strict_artifacts === true;
-  const artifactBus = new FileArtifactBus(input.appRoot, filesystem, logger, {
-    strict: strictArtifacts,
-  });
-  const invocation = new FileInvocationFilesystem(input.appRoot, filesystem, artifactBus);
+  const artifactBus = strictArtifacts
+    ? new FileArtifactBus(input.appRoot, filesystem, logger, { strict: true })
+    : deps.artifactBus;
+  const invocation = deps.invocationFs;
 
   // Per-invocation logs directory: <appRoot>/.dagent/<slug>/<itemKey>/<execId>/logs/
   const invocationDir = path.join(
@@ -207,7 +190,7 @@ export async function buildNodeContext(
   await fs.mkdir(path.join(invocationDir, "logs"), { recursive: true });
   const invocationLogger = new FileInvocationLogger(path.join(invocationDir, "logs"));
 
-  const triageArtifacts = new FileTriageArtifactLoader({ appRoot: input.appRoot });
+  const triageArtifacts = deps.triageArtifactLoader;
 
   const onHeartbeat = options.onHeartbeat ?? (() => { /* no-op when caller doesn't wire it */ });
 
@@ -246,14 +229,15 @@ export async function buildNodeContext(
     artifactBus,
     invocation,
     invocationLogger,
-    // Phase-deferred ports — populated by activities that need them.
-    // copilot-agent.activity injects `client`, `copilotSessionRunner`,
-    // and `codeIndexer`; lower-tier activities leave them undefined.
-    client: options.client,
-    copilotSessionRunner: options.copilotSessionRunner as unknown as NodeContext["copilotSessionRunner"],
-    codeIndexer: options.codeIndexer,
-    triageLlm: options.triageLlm,
-    baselineLoader: options.baselineLoader,
+    // Heavyweight ports come from the worker-scoped registry. The
+    // copilot-agent activity may supply a wrapped runner (with the
+    // activity's AbortSignal threaded in) via `options.copilotSessionRunner`;
+    // when omitted we fall back to the unwrapped registry instance.
+    client: deps.copilotClient,
+    copilotSessionRunner: (options.copilotSessionRunner ?? deps.copilotSessionRunner) as unknown as NodeContext["copilotSessionRunner"],
+    codeIndexer: deps.codeIndexer,
+    triageLlm: deps.triageLlm,
+    baselineLoader: deps.baselineLoader,
     failingNodeKey: input.failingNodeKey,
     failingInvocationId: input.failingInvocationId,
     rawError: input.rawError,

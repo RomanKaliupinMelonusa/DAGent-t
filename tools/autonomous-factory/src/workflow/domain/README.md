@@ -1,27 +1,27 @@
-# `src/workflow/domain/` — Workflow-Scoped Pure Domain
+# `src/workflow/domain/` — Thin Barrel over `src/domain/`
 
-> Twin of `src/domain/`. Same algorithms; determinism-safe for Temporal workflow code.
+> Single-file barrel. The real source lives in [`src/domain/`](../../domain/).
 
-## Why a twin exists
+## Why this directory still exists
 
-`src/domain/` is pure but uses `node:crypto` (`error-signature.ts`) and `new Date().toISOString()` (`transitions.ts`). Both are forbidden in workflow scope by the determinism ESLint rule (see `00-spec.md` → "Determinism Constraints"). The Session 5 cutover will retire the legacy `src/domain/` once `src/` is the sole production path; until then, both copies coexist and parity is enforced by `__tests__/parity.test.ts`.
+Workflow code imports the pure-domain functions through `./domain/index.js`
+(or `../domain/index.js` from a sibling file). Keeping the barrel here lets
+the workflow layer:
 
-## Differences vs `src/domain/`
+1. **Document the determinism boundary** — only the symbols re-exported from
+   [`./index.ts`](./index.ts) are reachable from workflow scope. `progress-tracker`
+   and `invocation-id` are intentionally omitted: the former is replaced by
+   Temporal-native primitives (timeouts, signals, queries, child workflows);
+   the latter pulls in `node:crypto.randomBytes` and is consumed only by
+   activities.
+2. **Insulate workflow imports from per-file paths under `src/domain/`** —
+   refactors that re-shuffle modules in the canonical layer don't ripple
+   into workflow code.
 
-| File | Difference | Why |
-|---|---|---|
-| `error-signature.ts` | Uses `js-sha256` instead of `node:crypto.createHash`. | `node:crypto` import is banned in workflow scope. Output is byte-identical (same SHA-256 prefix). |
-| `transitions.ts` | Every reducer that emits an `errorLog` entry requires a `now: string` parameter. | `new Date()` is banned in workflow scope. Caller supplies `Workflow.now().toISOString()`. |
+## No overrides
 
-Affected reducers: `failItem`, `resetNodes`, `bypassNode`, `salvageForDraft`, `resetScripts`, `resumeAfterElevated`. `completeItem` is unchanged (no log entry).
-
-## What is NOT here (and why)
-
-- `approval-sla.ts` — replaced by `Workflow.condition()` + `Workflow.sleep()` (Session 4).
-- `progress-tracker.ts` — becomes a workflow query handler (Session 4).
-- `stall-detection.ts` — replaced by Temporal activity timeouts.
-- `dangling-invocations.ts` — replaced by Temporal heartbeat timeouts.
-
-## Public surface
-
-Identical to `src/domain/index.ts` minus the four omitted modules above and with the timestamp-injection contract noted in [./transitions.ts](./transitions.ts).
+Earlier revisions of this directory shipped workflow-safe twins of
+`error-signature.ts` (pure-JS SHA-256) and `transitions.ts` (caller-supplied
+`now: string`). Both shapes have since been promoted to canonical in
+`src/domain/`, so this barrel is now a verbatim re-export — no overrides,
+no parity tests required.

@@ -8,14 +8,16 @@
  * mutating commit SHA in the error message defeated `halt_on_identical`
  * by mutating the SHA-256 fingerprint every retry.
  *
- * Asserted twice — once against the legacy domain twin and once against
- * the workflow-scoped twin — so the parity contract enforced by
- * `parity.test.ts` keeps holding.
+ * Asserted via two import paths — the canonical `src/domain/error-signature.js`
+ * and the workflow-domain barrel — to guard against an accidental fork
+ * of the implementation. Both paths now resolve to the same module, so
+ * the cross-path equality checks are trivially true; they remain in
+ * place as a structural guard.
  */
 
 import { describe, it, expect } from "vitest";
 import { computeErrorSignature as legacySig } from "../../domain/error-signature.js";
-import { computeErrorSignature as wfSig } from "../domain/error-signature.js";
+import { computeErrorSignature as wfSig } from "../domain/index.js";
 
 describe("volatile patterns — stable signatures (P2)", () => {
   it("hashes commit-SHA-only deltas to the same signature", () => {

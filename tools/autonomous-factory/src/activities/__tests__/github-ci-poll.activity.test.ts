@@ -20,9 +20,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import {
   CI_POLL_CANCELLED_PREFIX,
-  githubCiPollActivity,
 } from "../github-ci-poll.activity.js";
+import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
+import { buildTestDeps } from "./helpers/deps.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
@@ -144,6 +145,7 @@ describe("github-ci-poll activity — Session 3 Phase 2", () => {
     fixture = await buildFixture(`echo "all green"\nexit 0\n`);
     const env = new MockActivityEnvironment();
 
+    const { githubCiPollActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(githubCiPollActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("completed");
@@ -156,6 +158,7 @@ describe("github-ci-poll activity — Session 3 Phase 2", () => {
     );
     const env = new MockActivityEnvironment();
 
+    const { githubCiPollActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(githubCiPollActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("failed");
@@ -168,6 +171,7 @@ describe("github-ci-poll activity — Session 3 Phase 2", () => {
     fixture = await buildFixture(`echo "user cancelled"\nexit 3\n`);
     const env = new MockActivityEnvironment();
 
+    const { githubCiPollActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(githubCiPollActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("failed");
@@ -187,6 +191,7 @@ describe("github-ci-poll activity — Session 3 Phase 2", () => {
     const heartbeats: unknown[] = [];
     env.on("heartbeat", (payload) => heartbeats.push(payload));
 
+    const { githubCiPollActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(githubCiPollActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("completed");

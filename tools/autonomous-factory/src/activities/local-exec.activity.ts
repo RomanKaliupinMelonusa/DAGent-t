@@ -22,7 +22,6 @@ import { buildCancellationRace } from "./support/cancellation.js";
 import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
 import { compileNodeIOContract } from "../apm/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import {
   materializeInputs as materializeInvocationInputs,
   MissingRequiredInputError,
@@ -38,6 +37,7 @@ import type { ShellExecError } from "../ports/shell.js";
 import type { NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { InvocationRecord, InvocationTrigger } from "../types.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
+import type { ActivityDeps } from "./deps.js";
 
 /** Stable prefix on `errorMessage` when the activity surfaces external
  *  cancellation as `outcome: "failed"`. The workflow body matches on
@@ -144,12 +144,15 @@ function classifyTrigger(ctx: NodeContext): InvocationTrigger {
   return "initial";
 }
 
-export async function localExecActivity(
-  input: NodeActivityInput,
-): Promise<NodeActivityResult> {
+export function makeLocalExecActivity(
+  deps: ActivityDeps,
+): (input: NodeActivityInput) => Promise<NodeActivityResult> {
+  return async function localExecActivity(
+    input: NodeActivityInput,
+  ): Promise<NodeActivityResult> {
   return withHeartbeat(
     async ({ emit, signal }) => {
-      const ctx = await buildNodeContext(input, {
+      const ctx = await buildNodeContext(input, deps, {
         onHeartbeat: () => emit({ stage: "running", itemKey: input.itemKey }),
       });
 
@@ -194,7 +197,12 @@ export async function localExecActivity(
           (node?.consumes_reroute?.length ?? 0);
         if (node && declaredInputs > 0) {
           const contract = compileNodeIOContract(liveCtx.itemKey, node);
-          const bus = new FileArtifactBus(liveCtx.appRoot, liveCtx.filesystem);
+          // `liveCtx.artifactBus` honours per-invocation `strict_artifacts`
+          // (build-context.ts swaps in a strict variant when the app config
+          // enables it). `deps.artifactBus` is the default-strict=false
+          // worker-singleton — using it here would silently bypass strict
+          // mode for materialise-inputs.
+          const bus = liveCtx.artifactBus;
           try {
             const { inputs } = await materializeInvocationInputs({
               contract,
@@ -463,4 +471,5 @@ export async function localExecActivity(
       details: () => ({ activity: "local-exec", itemKey: input.itemKey }),
     },
   );
+  };
 }

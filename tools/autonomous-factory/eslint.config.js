@@ -34,10 +34,6 @@ const DOMAIN_RULE_ALLOWLIST = [
   // activity scope (not the workflow VM), so it's deterministic-safe at
   // the call site, but the import still violates rule #1.
   "src/domain/invocation-id.ts",
-  // TODO: refactor away — see Session 3/8.
-  // Uses node:crypto for createHash. Same activity-scope rationale as
-  // invocation-id.ts.
-  "src/domain/error-signature.ts",
 ];
 
 // Rule #2 (ports as pure interfaces) — port files that import outside
@@ -60,12 +56,6 @@ const PORTS_RULE_ALLOWLIST = [
 // Seeded from `grep -rE 'from "(\.\./)+adapters/' src/` (excluding the
 // always-allowed dirs).
 const ADAPTERS_RULE_ALLOWLIST = [
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/copilot-agent.activity.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/copilot-agent-body.ts",
-  // TODO: refactor away — see Session 3/8.
-  "src/activities/local-exec.activity.ts",
   // TODO: refactor away — see Session 3/8.
   "src/activities/support/build-context.ts",
   // TODO: refactor away — see Session 3/8.

@@ -1,30 +1,48 @@
 /**
- * src/activities/index.ts — Activity registry.
+ * src/activities/index.ts — Activity registry surface.
  *
- * The worker imports the namespace export from this module and passes
- * it to `Worker.create({ activities })`. Workflows reference the same
- * `typeof activities` to type-safe `proxyActivities<typeof activities>()`.
+ * Exports `createActivities(deps)` for the worker bootstrap and tests
+ * to build a deps-bound activity namespace. Re-exports the activity
+ * function signatures as type-only ambient declarations so workflow
+ * code that imports the namespace via
+ * `import type * as activities from "../activities/index.js"` and
+ * proxies via `proxyActivities<typeof activities>()` keeps resolving
+ * without modification (workflow is forbidden to value-import this
+ * module — only `import type` is permitted by the workflow ESLint
+ * rule).
  *
- * Activity naming: flat, camelCased (Decision per Session 3 plan
- * "Further Considerations #3"). Example workflow usage:
+ * Activity naming: flat, camelCased. Example workflow usage:
  *
  *     const { localExecActivity } = proxyActivities<typeof activities>(
  *       { startToCloseTimeout: '20m', heartbeatTimeout: '60s',
  *         retry: { maximumAttempts: 1 } });
  */
 
-export { sayHello } from "./hello.activity.js";
-export { localExecActivity } from "./local-exec.activity.js";
-export { githubCiPollActivity, CI_POLL_CANCELLED_PREFIX } from "./github-ci-poll.activity.js";
-export {
-  triageActivity,
-  TRIAGE_CANCELLED_PREFIX,
-  setTriageDependencies,
-} from "./triage.activity.js";
-export {
-  copilotAgentActivity,
-  COPILOT_AGENT_CANCELLED_PREFIX,
-  setCopilotAgentDependencies,
-} from "./copilot-agent.activity.js";
-export { archiveActivity } from "./archive.activity.js";
+import type { Activities } from "./factory.js";
+
+export { createActivities } from "./factory.js";
+export type { Activities } from "./factory.js";
+export type { ActivityDeps } from "./deps.js";
+
+// ---------------------------------------------------------------------------
+// Type-only namespace shape — preserved so workflow code's
+// `proxyActivities<typeof activities>()` resolves identically. These
+// are ambient declarations (`export declare const`) and have no JS
+// runtime emit; the runtime activity instances come from
+// `createActivities(deps)`.
+// ---------------------------------------------------------------------------
+
+export declare const sayHello: Activities["sayHello"];
+export declare const localExecActivity: Activities["localExecActivity"];
+export declare const githubCiPollActivity: Activities["githubCiPollActivity"];
+export declare const triageActivity: Activities["triageActivity"];
+export declare const copilotAgentActivity: Activities["copilotAgentActivity"];
+export declare const archiveActivity: Activities["archiveActivity"];
+
+// Stable cancellation prefixes — runtime constants, used by both the
+// workflow body (string match against `errorMessage`) and tests.
+export { CI_POLL_CANCELLED_PREFIX } from "./github-ci-poll.activity.js";
+export { TRIAGE_CANCELLED_PREFIX } from "./triage.activity.js";
+export { COPILOT_AGENT_CANCELLED_PREFIX } from "./copilot-agent.activity.js";
+
 export type { NodeActivityInput, NodeActivityResult } from "./types.js";

@@ -26,7 +26,7 @@ import { describe, it, expect } from "vitest";
 import { DagState } from "../dag-state.js";
 import { applyTriageCommand } from "../pipeline.workflow.js";
 import { resolveTriageDispatch } from "../triage-cascade.js";
-import type { CompiledNode } from "../domain/init-state.js";
+import type { CompiledNode } from "../domain/index.js";
 import type { RoutableWorkflow } from "../../domain/failure-routing.js";
 import type { NodeActivityResult } from "../../activities/types.js";
 import type { DagCommand } from "../../dag-commands.js";

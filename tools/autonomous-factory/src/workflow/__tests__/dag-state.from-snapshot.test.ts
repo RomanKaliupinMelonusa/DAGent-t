@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { DagState } from "../dag-state.js";
-import type { CompiledNode } from "../domain/init-state.js";
+import type { CompiledNode } from "../domain/index.js";
 
 const NODES: Record<string, CompiledNode> = {
   a: { agent: "alpha", type: "code", category: "dev", depends_on: [] },

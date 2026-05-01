@@ -1,9 +1,18 @@
 /**
  * domain/transitions.ts — Pure state transition reducers.
  *
- * Each function takes the current pipeline state and returns a new state
+ * Each reducer takes the current pipeline state and returns a new state
  * with the transition applied. No I/O, no file locking, no side effects.
  * The persistence layer (adapter) handles file I/O and locking.
+ *
+ * Determinism contract: every reducer that emits an `errorLog` entry
+ * **requires** the caller to pass `now: string` (an ISO-8601 timestamp).
+ * The `Date` global is forbidden in Temporal workflow scope by the
+ * determinism ESLint rule, so the workflow body sources `now` from
+ * `Workflow.now().toISOString()`; non-workflow callers (activities,
+ * tests, the legacy loop) pass `new Date().toISOString()` or a fixed
+ * string. The `signatureFn` injection point lets handlers override the
+ * default fingerprinter when they can produce a structurally-stable hash.
  */
 
 import { getDownstream, cascadeBarriers } from "./dag-graph.js";
@@ -61,10 +70,9 @@ export interface TransitionState {
   /** Phase 5 — producer-key → consumer-keys for which the consumer
    *  declares a `consumes_artifacts` edge with `required: false`.
    *  Inverse of `requiredArtifactProducers`. Read by `salvageForDraft`
-   *  to prune the demotion cascade: when the only path from the failed
-   *  producer to a downstream consumer runs through an optional edge,
-   *  the consumer is left at its current status. Optional for backward
-   *  compatibility with legacy state files. */
+   *  to prune the demotion cascade so advisory consumers are not
+   *  cascade-demoted when only an optional edge connects them to the
+   *  failed producer. Optional for backward compatibility. */
   optionalArtifactConsumers?: Record<string, string[]>;
   [key: string]: unknown; // allow pass-through of other fields
 }
@@ -156,11 +164,16 @@ export interface FailItemOptions {
  * Record a failure for a pipeline item.
  * Returns the updated state, the cumulative fail count, and whether the
  * maximum failure budget is exhausted.
+ *
+ * `now` is a required ISO-8601 timestamp stamped on the new `errorLog`
+ * entry. Callers in workflow scope source it from `Workflow.now()`; tests
+ * pass a fixed string for byte-stable parity with the legacy reducer.
  */
 export function failItem(
   state: TransitionState,
   itemKey: string,
   message: string,
+  now: string,
   maxFailuresOrOptions: number | FailItemOptions = 10,
   signatureFn: (msg: string) => string = computeErrorSignature,
 ): FailResult {
@@ -191,7 +204,7 @@ export function failItem(
   // volatile-pattern regex path for handlers that can produce a better hash.
   const effectiveSignature = opts.overrideSignature ?? newSignature;
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey,
     message: message || "Unknown failure",
     errorSignature: effectiveSignature,
@@ -259,11 +272,15 @@ export interface ResetResult {
  * Reset a seed node + all transitive downstream dependents to pending.
  * Barrier nodes in the cascade are included automatically.
  * Dormant nodes stay dormant unless they are the explicit seed.
+ *
+ * `now` is a required ISO-8601 timestamp stamped on the new `errorLog`
+ * entry — see module docstring for the determinism rationale.
  */
 export function resetNodes(
   state: TransitionState,
   seedKey: string,
   reason: string,
+  now: string,
   maxCycles: number = 5,
   logKey: string = "reset-nodes",
   signatureFn: (msg: string) => string = computeErrorSignature,
@@ -308,7 +325,7 @@ export function resetNodes(
   });
 
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey: logKey,
     message: `Reset cycle ${cycleCount + 1}/${maxCycles}: ${reason}. Reset items: ${[...keysToReset].join(", ")}`,
     errorSignature: reason ? signatureFn(reason) : null,
@@ -352,6 +369,7 @@ export function bypassNode(
   nodeKey: string,
   routeTarget: string,
   reason: string,
+  now: string,
   signatureFn: (msg: string) => string = computeErrorSignature,
 ): BypassResult {
   const item = state.items.find((i) => i.key === nodeKey);
@@ -388,7 +406,7 @@ export function bypassNode(
   );
 
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey: "bypass-for-reroute",
     message: `Bypass cycle ${cycleIndex}: ${nodeKey} → na to unlock reroute target ${routeTarget}. ${reason}`,
     errorSignature: reason ? signatureFn(reason) : null,
@@ -439,19 +457,16 @@ export interface SalvageResult {
 export function salvageForDraft(
   state: TransitionState,
   failedItemKey: string,
+  now: string,
 ): SalvageResult {
   // Idempotency guard
   if (state.errorLog.some((e) => e.itemKey === "salvage-draft")) {
     return { state, skippedKeys: [], demotedKeys: [], sparedKeys: [] };
   }
 
-  // Cascade walk — the failing producer's downstream is collected by
-  // BFS over the dependents graph, but edges declared `required: false`
-  // (via `optionalArtifactConsumers`) are pruned: an advisory consumer
-  // is NOT cascaded into the demotion candidate set when its only path
-  // from the failed producer runs through an optional declaration. When
-  // `optionalArtifactConsumers` is empty/undefined this BFS reduces to
-  // `getDownstream` and behavior matches legacy salvage.
+  // Cascade walk — prune u→v edges where v declares the artifact from
+  // u as `required: false`. Mirrors `domain/transitions.ts`. When the
+  // optional map is empty, this BFS reduces to `getDownstream`.
   const optionalConsumersMap = state.optionalArtifactConsumers ?? {};
   const reverseDeps: Record<string, string[]> = {};
   for (const [key, deps] of Object.entries(state.dependencies)) {
@@ -467,9 +482,6 @@ export function salvageForDraft(
     const optionalChildren = new Set(optionalConsumersMap[u] ?? []);
     for (const v of reverseDeps[u] ?? []) {
       if (downstreamSet.has(v)) continue;
-      // Prune u→v when v declares the artifact edge from u as optional.
-      // v may still get demoted later via a required path from a
-      // different producer, but not via this advisory edge.
       if (optionalChildren.has(v)) continue;
       downstreamSet.add(v);
       walkQueue.push(v);
@@ -567,7 +579,7 @@ export function salvageForDraft(
     ? ` (spared by required-artifact contract: ${sparedKeys.join(", ")})`
     : "";
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey: "salvage-draft",
     message: `Graceful degradation: ${failedItemKey} triggered salvage, skipped ${skippedKeys.join(", ")} for Draft PR.${demotionSuffix}${sparedSuffix}`,
   };
@@ -612,6 +624,7 @@ export interface ResetScriptsResult {
 export function resetScripts(
   state: TransitionState,
   category: string,
+  now: string,
   maxCycles: number = 10,
 ): ResetScriptsResult {
   const logKey = `reset-scripts:${category}`;
@@ -637,7 +650,7 @@ export function resetScripts(
   });
 
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey: logKey,
     message: `Script re-push cycle for category "${category}" (cycle ${cycleCount + 1}/${maxCycles}). Reset items: ${[...resetKeys].join(", ")}`,
   };
@@ -671,6 +684,7 @@ export interface ResumeElevatedResult {
  */
 export function resumeAfterElevated(
   state: TransitionState,
+  now: string,
   maxCycles: number = 5,
 ): ResumeElevatedResult {
   const logKey = "resume-elevated";
@@ -704,7 +718,7 @@ export function resumeAfterElevated(
   });
 
   const newEntry: ErrorLogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     itemKey: logKey,
     message: `Elevated apply resume cycle ${cycleCount + 1}/${maxCycles}. Reset ${resetCount} items to pending for standard CI re-verification.`,
   };

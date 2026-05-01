@@ -15,11 +15,11 @@
  *      fires — the activity surfaces `outcome: "error"` with the
  *      stable BUG message. Proves the no-DI default is loud, not
  *      silent.
- *   2. With `setCopilotAgentDependencies({ client })` set, the BUG
- *      guard is bypassed — handler progresses past the early return
- *      and fails for a *different* reason (missing apm fields). The
- *      change in error message is the observable evidence that the
- *      DI setter wired the client into the NodeContext.
+ *   2. With `copilotClient` set on `ActivityDeps`, the BUG guard is
+ *      bypassed — handler progresses past the early return and fails
+ *      for a *different* reason (missing apm fields). The change in
+ *      error message is the observable evidence that the deps wired
+ *      the client into the NodeContext.
  *   3. Cancelling the activity context BEFORE run resolves with
  *      `outcome: "failed"` and `COPILOT_AGENT_CANCELLED_PREFIX`. This
  *      exercises the prefix race — defense layer (1) of the S3-R2
@@ -37,11 +37,11 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
 import {
-  copilotAgentActivity,
-  setCopilotAgentDependencies,
   COPILOT_AGENT_CANCELLED_PREFIX,
 } from "../copilot-agent.activity.js";
+import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
+import { buildTestDeps } from "./helpers/deps.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
@@ -151,11 +151,9 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
 
   beforeEach(() => {
     _clearApmContextCacheForTests();
-    setCopilotAgentDependencies({});
   });
 
   afterEach(async () => {
-    setCopilotAgentDependencies({});
     if (fixture) {
       await fs.rm(fixture.tmp, { recursive: true, force: true });
       fixture = null;
@@ -166,6 +164,7 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
     fixture = await buildFixture();
     const env = new MockActivityEnvironment();
 
+    const { copilotAgentActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(copilotAgentActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("error");
@@ -174,10 +173,12 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
     );
   });
 
-  it("setCopilotAgentDependencies wires the client past the guard", async () => {
-    setCopilotAgentDependencies({ client: fakeClient });
+  it("createActivities wires copilotClient from deps past the guard", async () => {
     fixture = await buildFixture();
     const env = new MockActivityEnvironment();
+    const { copilotAgentActivity } = createActivities(
+      buildTestDeps(fixture.appRoot, { copilotClient: fakeClient }),
+    );
 
     // The BUG guard is bypassed once `client` is wired — the handler
     // then progresses and trips on a *different* error (missing agent
@@ -210,6 +211,7 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
     // activity body starts, so the prefix-race resolves immediately.
     env.cancel("test-pre-cancel");
 
+    const { copilotAgentActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(copilotAgentActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("failed");
@@ -237,12 +239,14 @@ describe("copilot-agent activity — Session 3 Phase 5", () => {
       },
     };
 
-    setCopilotAgentDependencies({
-      client: fakeClient,
-      copilotSessionRunner: fakeRunner,
-    });
     fixture = await buildFixture();
     const env = new MockActivityEnvironment();
+    const { copilotAgentActivity } = createActivities(
+      buildTestDeps(fixture.appRoot, {
+        copilotClient: fakeClient,
+        copilotSessionRunner: fakeRunner,
+      }),
+    );
 
     // We don't expect this to actually call the runner — `getAgentConfig`
     // will throw on the empty `agents` map first. But if it ever DOES

@@ -32,7 +32,7 @@ import {
   resolveFailureTarget,
   resolveFailureRoutes,
   type RoutableWorkflow,
-} from "../domain/failure-routing.js";
+} from "./domain/index.js";
 import type { ItemSummary } from "../types.js";
 import type { NodeActivityResult } from "../activities/types.js";
 

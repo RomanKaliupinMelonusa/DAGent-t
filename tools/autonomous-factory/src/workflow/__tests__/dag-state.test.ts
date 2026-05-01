@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from "vitest";
 import { DagState } from "../dag-state.js";
-import type { TransitionState, TransitionItem } from "../domain/transitions.js";
+import type { TransitionState, TransitionItem } from "../domain/index.js";
 
 const NOW = "2026-04-29T00:00:00.000Z";
 

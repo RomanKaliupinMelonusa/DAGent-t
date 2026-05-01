@@ -35,7 +35,6 @@ import type { ArtifactKind } from "../apm/artifact-catalog.js";
 import type { NodeContractGateParams } from "../contracts/node-contract-gate.js";
 import type { PrecompletionGate } from "../harness/index.js";
 import type { FreshnessGate } from "../harness/hooks.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { featurePath } from "../paths/feature-paths.js";
 import { validateSpecCompilerOutput } from "../lifecycle/spec-compiler-validator.js";
 import { SPEC_COMPILER_KEY } from "./support/acceptance-integrity.js";
@@ -100,7 +99,7 @@ function getTimeout(ctx: NodeContext): number {
  */
 function buildPrecompletionGate(ctx: NodeContext): PrecompletionGate | undefined {
   if (ctx.itemKey !== SPEC_COMPILER_KEY) return undefined;
-  const bus = new FileArtifactBus(ctx.appRoot, ctx.filesystem);
+  const bus = ctx.artifactBus;
   const nodeAcceptancePath = bus.nodePath(
     ctx.slug,
     ctx.itemKey,

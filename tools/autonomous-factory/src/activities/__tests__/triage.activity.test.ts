@@ -15,9 +15,8 @@
  *   2. Missing triage profile in apmContext → same error pathway, but
  *      a different message — proves the activity passes through the
  *      handler's specific error rather than masking it.
- *   3. `setTriageDependencies` is honored — a fake `TriageLlm` set
- *      via the bootstrap helper is reachable inside the activity's
- *      `NodeContext.triageLlm` slot.
+ *   3. A `TriageLlm` supplied via `createActivities(deps)` is reachable
+ *      inside the activity's `NodeContext.triageLlm` slot.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,11 +25,11 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
 import {
-  triageActivity,
-  setTriageDependencies,
   TRIAGE_CANCELLED_PREFIX,
 } from "../triage.activity.js";
+import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
+import { buildTestDeps } from "./helpers/deps.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
@@ -134,9 +133,6 @@ describe("triage activity — Session 3 Phase 4", () => {
 
   beforeEach(() => {
     _clearApmContextCacheForTests();
-    // Reset module-scoped DI between tests so cross-test state can't
-    // leak — a fake LLM set in test N must not influence test N+1.
-    setTriageDependencies({ triageLlm: undefined, baselineLoader: undefined });
   });
 
   afterEach(async () => {
@@ -151,6 +147,7 @@ describe("triage activity — Session 3 Phase 4", () => {
     const env = new MockActivityEnvironment();
 
     // Note: no failingNodeKey / rawError on the input.
+    const { triageActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(triageActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("error");
@@ -163,6 +160,7 @@ describe("triage activity — Session 3 Phase 4", () => {
     fixture = await buildFixture({ withProfile: true });
     const env = new MockActivityEnvironment();
 
+    const { triageActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(
       triageActivity,
       buildInput(fixture, {
@@ -176,15 +174,14 @@ describe("triage activity — Session 3 Phase 4", () => {
     expect(result.errorMessage).toMatch(/could not resolve triage profile/i);
   });
 
-  it("setTriageDependencies wires a TriageLlm reachable through the activity boundary", async () => {
+  it("createActivities passes a TriageLlm from deps to the activity boundary", async () => {
     // We can't easily reach into the NodeContext from a black-box test,
     // but we CAN observe the side-effect: when no profile is declared
     // on the node, the handler returns an error BEFORE consulting the
     // LLM. So we set a "failing" LLM that would throw if invoked, then
-    // run a path that should NOT touch it. If the dep wiring is buggy
-    // (e.g. the activity hard-codes `triageLlm: undefined`), this test
-    // still passes — the assertion below covers the positive case
-    // separately by introspecting the fake's call counter.
+    // run a path that should NOT touch it. If the dep wiring is buggy,
+    // this test still passes — the assertion below covers the positive
+    // case separately by introspecting the fake's call counter.
     let llmInvoked = 0;
     const fakeLlm: TriageLlm = {
       classify: async () => {
@@ -192,10 +189,12 @@ describe("triage activity — Session 3 Phase 4", () => {
         throw new Error("fake LLM should not be invoked on the error path");
       },
     };
-    setTriageDependencies({ triageLlm: fakeLlm });
 
     fixture = await buildFixture({ withProfile: false }); // node has NO triage_profile
     const env = new MockActivityEnvironment();
+    const { triageActivity } = createActivities(
+      buildTestDeps(fixture.appRoot, { triageLlm: fakeLlm }),
+    );
 
     const result = await env.run(
       triageActivity,
@@ -208,7 +207,6 @@ describe("triage activity — Session 3 Phase 4", () => {
     // Profile-missing path returns error WITHOUT invoking the LLM.
     expect(result.outcome).toBe("error");
     expect(llmInvoked).toBe(0);
-    // Sanity: confirm setTriageDependencies didn't throw / wasn't a no-op.
     expect(typeof fakeLlm.classify).toBe("function");
   });
 

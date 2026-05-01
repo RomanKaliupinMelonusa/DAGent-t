@@ -42,10 +42,11 @@
  *   - `ctx.copilotSessionRunner` — port (`NodeCopilotSessionRunner`)
  *   - `ctx.codeIndexer`          — optional, for freshness gate
  *
- * Temporal's activity proxy doesn't thread per-call options, so we
- * use module-scoped DI (mirrors `setTriageDependencies` from Phase 4).
- * Production wiring lives in the worker bootstrap (Session 6 task);
- * tests inject via `setCopilotAgentDependencies`.
+ * Temporal's activity proxy doesn't thread per-call options, so the
+ * worker constructs an `ActivityDeps` registry once at boot and binds
+ * every activity (this one included) as a closure via
+ * `createActivities(deps)`. Tests follow the same pattern; see
+ * `__tests__/helpers/deps.ts` for the test-side builder.
  *
  * What this activity does NOT do
  * ------------------------------
@@ -70,7 +71,6 @@ import { buildCancellationRace } from "./support/cancellation.js";
 import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
 import { compileNodeIOContract } from "../apm/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
-import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import {
   materializeInputs as materializeInvocationInputs,
   MissingRequiredInputError,
@@ -96,35 +96,14 @@ import type { NodeActivityInput, NodeActivityResult } from "./types.js";
 import type { NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { InvocationRecord, InvocationTrigger } from "../types.js";
 import type { CopilotSessionRunner, CopilotSessionParams, CopilotSessionResult } from "../ports/copilot-session-runner.js";
-import type { CodeIndexer } from "../ports/code-indexer.js";
 import type { CopilotClient } from "@github/copilot-sdk";
+import type { ActivityDeps } from "./deps.js";
 
 /** Marker prefix for cancelled-by-workflow results. Stable across
  *  releases — the workflow body matches on this to distinguish
  *  external cancellation from agent-reported failures. Don't rename
  *  without bumping the workflow body's version (Session 4). */
 export const COPILOT_AGENT_CANCELLED_PREFIX = "Copilot agent cancelled by workflow";
-
-// ---------------------------------------------------------------------------
-// Module-scoped DI (see file header for rationale).
-// ---------------------------------------------------------------------------
-
-let injectedClient: CopilotClient | undefined;
-let injectedRunner: CopilotSessionRunner | undefined;
-let injectedCodeIndexer: CodeIndexer | undefined;
-
-/** Worker-bootstrap helper. Call once from `src/worker/main.ts`
- *  after constructing the production adapters. Tests use this to inject
- *  fakes in `beforeEach`. Pass `undefined` to clear the slot. */
-export function setCopilotAgentDependencies(deps: {
-  readonly client?: CopilotClient;
-  readonly copilotSessionRunner?: CopilotSessionRunner;
-  readonly codeIndexer?: CodeIndexer;
-}): void {
-  injectedClient = deps.client;
-  injectedRunner = deps.copilotSessionRunner;
-  injectedCodeIndexer = deps.codeIndexer;
-}
 
 // ---------------------------------------------------------------------------
 // Cancellable runner wrapper
@@ -294,23 +273,24 @@ function readRecordedAcceptanceHash(ctx: NodeContext): { hash: string; path: str
  * middleware-composition layer between the activity boundary and the
  * unit of work.
  */
-export async function copilotAgentActivity(
-  input: NodeActivityInput,
-): Promise<NodeActivityResult> {
+export function makeCopilotAgentActivity(
+  deps: ActivityDeps,
+): (input: NodeActivityInput) => Promise<NodeActivityResult> {
+  return async function copilotAgentActivity(
+    input: NodeActivityInput,
+  ): Promise<NodeActivityResult> {
   return withHeartbeat<NodeActivityResult>(
     async ({ emit, signal }) => {
       // Wrap the production runner so the activity's signal threads
       // into every `runner.run()` call. When DI is unwired, leave the
       // slot undefined — the handler's `ctx.client` guard returns a
       // deterministic BUG error before ever reaching the runner.
-      const wrappedRunner: CopilotSessionRunner | undefined = injectedRunner
-        ? new CancellableRunner(injectedRunner, signal)
+      const wrappedRunner: CopilotSessionRunner | undefined = deps.copilotSessionRunner
+        ? new CancellableRunner(deps.copilotSessionRunner, signal)
         : undefined;
 
-      const ctx = await buildNodeContext(input, {
-        client: injectedClient,
+      const ctx = await buildNodeContext(input, deps, {
         copilotSessionRunner: wrappedRunner,
-        codeIndexer: injectedCodeIndexer,
         onHeartbeat: () => emit({ stage: "agent-running", itemKey: input.itemKey }),
       });
 
@@ -423,7 +403,9 @@ export async function copilotAgentActivity(
           (node?.consumes_reroute?.length ?? 0);
         if (node && declaredInputs > 0) {
           const contract = compileNodeIOContract(liveCtx.itemKey, node);
-          const bus = new FileArtifactBus(liveCtx.appRoot, liveCtx.filesystem);
+          // Use the context bus so per-invocation `strict_artifacts`
+          // (resolved in build-context) is honoured.
+          const bus = liveCtx.artifactBus;
           try {
             const { inputs } = await materializeInvocationInputs({
               contract,
@@ -548,7 +530,7 @@ export async function copilotAgentActivity(
 
         // ── Acceptance-integrity post-record (spec-compiler only) ─────
         if (liveCtx.itemKey === SPEC_COMPILER_KEY && result.outcome === "completed") {
-          const bus = new FileArtifactBus(liveCtx.appRoot, liveCtx.filesystem);
+          const bus = liveCtx.artifactBus;
           const nodeAcceptancePath = bus.nodePath(
             liveCtx.slug,
             liveCtx.itemKey,
@@ -651,4 +633,5 @@ export async function copilotAgentActivity(
     // during deep tool-call chains.
     { intervalMs: 30_000 },
   );
+  };
 }

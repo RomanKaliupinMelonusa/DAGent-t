@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { DagState } from "../dag-state.js";
 import { applyTriageCommand } from "../pipeline.workflow.js";
-import type { TransitionState, TransitionItem } from "../domain/transitions.js";
+import type { TransitionState, TransitionItem } from "../domain/index.js";
 import type { DagCommand } from "../../dag-commands.js";
 
 const NOW = "2026-04-30T00:00:00.000Z";

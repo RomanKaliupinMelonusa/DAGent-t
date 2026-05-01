@@ -30,7 +30,12 @@ import { dirname, resolve, join } from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import { MockActivityEnvironment } from "@temporalio/testing";
-import { localExecActivity } from "../activities/local-exec.activity.js";
+import { createActivities } from "../activities/factory.js";
+import { LocalFilesystem } from "../adapters/local-filesystem.js";
+import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
+import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
+import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
+import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
 import { _clearApmContextCacheForTests } from "../activities/support/build-context.js";
 import { newInvocationId } from "../domain/invocation-id.js";
 import type { NodeActivityInput, NodeActivityResult } from "../activities/types.js";
@@ -219,6 +224,15 @@ describe("singleActivityWorkflow — integration parity (local-exec)", () => {
 
     // Reference run — direct activity invocation under the mock harness.
     const env = new MockActivityEnvironment();
+    const filesystem = new LocalFilesystem();
+    const artifactBus = new FileArtifactBus(fixture.app, filesystem);
+    const { localExecActivity } = createActivities({
+      filesystem,
+      shell: new NodeShellAdapter(),
+      artifactBus,
+      invocationFs: new FileInvocationFilesystem(fixture.app, filesystem, artifactBus),
+      triageArtifactLoader: new FileTriageArtifactLoader({ appRoot: fixture.app }),
+    });
     const referenceResult = await env.run(localExecActivity, buildInput(fixture));
 
     // End-to-end run — through the workflow via the dispatch CLI.

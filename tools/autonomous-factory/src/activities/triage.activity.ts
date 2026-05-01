@@ -57,39 +57,12 @@ import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
 import type { NodeResult } from "../contracts/node-context.js";
-import type { TriageLlm } from "../ports/triage-llm.js";
-import type { BaselineLoader } from "../ports/baseline-loader.js";
+import type { ActivityDeps } from "./deps.js";
 
 /** Marker prefix for `outcome: "failed"` results produced by Temporal-
  *  level cancellation (vs. classifier-failed). Stable across releases —
  *  the workflow body matches on this to short-circuit retry loops. */
 export const TRIAGE_CANCELLED_PREFIX = "Triage cancelled by workflow";
-
-/**
- * Optional dependency-injection slots. Assigning here scopes
- * customisation to the worker process — production wiring lives in the
- * worker's main entrypoint (`src/worker/main.ts`), test
- * injection happens via `setTriageDependencies` in the test bed.
- *
- * We expose these as module-scoped getters/setters rather than passing
- * them per-activity-call because Temporal's activity proxy doesn't
- * thread arbitrary options through — activities receive their input
- * arg only. A `Worker.create({ activities })` registration takes the
- * already-bound function reference; ambient ports are the
- * canonical workaround.
- */
-let triageLlm: TriageLlm | undefined;
-let baselineLoader: BaselineLoader | undefined;
-
-/** Worker-bootstrap helper. Call from `main.ts` after constructing the
- *  port adapters. Tests use this to inject fakes. */
-export function setTriageDependencies(deps: {
-  readonly triageLlm?: TriageLlm;
-  readonly baselineLoader?: BaselineLoader;
-}): void {
-  triageLlm = deps.triageLlm;
-  baselineLoader = deps.baselineLoader;
-}
 
 function toActivityResult(result: NodeResult): NodeActivityResult {
   // Triage produces `commands` and `handlerOutput`; pass them through
@@ -115,14 +88,15 @@ function toActivityResult(result: NodeResult): NodeActivityResult {
  * emits routing commands. Workflow body (Session 4) applies the
  * commands to `DagState`; this activity is purely advisory.
  */
-export async function triageActivity(
-  input: NodeActivityInput,
-): Promise<NodeActivityResult> {
+export function makeTriageActivity(
+  deps: ActivityDeps,
+): (input: NodeActivityInput) => Promise<NodeActivityResult> {
+  return async function triageActivity(
+    input: NodeActivityInput,
+  ): Promise<NodeActivityResult> {
   return withHeartbeat<NodeActivityResult>(
     async ({ emit, signal }) => {
-      const ctx = await buildNodeContext(input, {
-        triageLlm,
-        baselineLoader,
+      const ctx = await buildNodeContext(input, deps, {
         onHeartbeat: () =>
           emit({ stage: "classifying", itemKey: input.itemKey }),
       });
@@ -149,4 +123,5 @@ export async function triageActivity(
     },
     { intervalMs: 30_000 },
   );
+  };
 }

@@ -19,20 +19,21 @@
  *                             (useful for CI activity-smoke tests against
  *                             local-exec / github-ci-poll only).
  *
- * Activity dependency injection (Group D — Session 4)
- * ----------------------------------------------------
- * Module-scoped DI is the documented escape hatch for plumbing
- * heavyweight ports into Temporal activities — `Worker.create({ activities })`
- * takes already-bound function references with no per-call options
- * channel. Setters are called ONCE at boot, before `worker.run()`.
+ * Activity dependency injection (per-worker `ActivityDeps` registry)
+ * ------------------------------------------------------------------
+ * The worker constructs ONE `ActivityDeps` registry at boot, then
+ * calls `createActivities(deps)` to bind every activity as a closure
+ * over the registry. The bound namespace is passed to
+ * `Worker.create({ activities })`. Tests follow the same pattern with
+ * a test-built `ActivityDeps`.
  *
- *   - `setTriageDependencies({ triageLlm, baselineLoader })`
- *       → unlocks the LLM classifier path in `triageActivity` and
- *         loads `_BASELINE.json` for the noise-filter pass.
- *   - `setCopilotAgentDependencies({ client, copilotSessionRunner, codeIndexer })`
- *       → unlocks the SDK path in `copilotAgentActivity`. Without it
- *         the activity returns the deterministic BUG message
- *         (intentional safety net — see the activity's docstring).
+ *   - `triageLlm` + `baselineLoader` unlock the LLM classifier path
+ *     in `triageActivity` and load `_BASELINE.json` for the noise
+ *     filter pass. Without them the activity runs in contract-only
+ *     mode (deterministic).
+ *   - `copilotClient` + `copilotSessionRunner` unlock the SDK path in
+ *     `copilotAgentActivity`. Without them the activity returns the
+ *     deterministic BUG message (intentional safety net).
  *
  * Worker lifecycle owns the `CopilotClient` connection. We start it
  * once at boot and tear it down on SIGTERM/SIGINT — the SDK's stdio
@@ -43,17 +44,16 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, isAbsolute } from "node:path";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import type { CopilotClient } from "@github/copilot-sdk";
-import * as activities from "../activities/index.js";
 import { bootstrapOtel } from "../telemetry/otel.js";
 import { setActivityLoggerFactory } from "../telemetry/logger-factory.js";
 import { OtelPipelineLogger } from "../telemetry/otel-pipeline-logger.js";
-import {
-  setTriageDependencies,
-  setCopilotAgentDependencies,
-} from "../activities/index.js";
+import { createActivities, type ActivityDeps } from "../activities/index.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
 import { FileBaselineLoader } from "../adapters/file-baseline-loader.js";
+import { FileInvocationFilesystem } from "../adapters/file-invocation-filesystem.js";
+import { FileTriageArtifactLoader } from "../adapters/file-triage-artifact-loader.js";
+import { NodeShellAdapter } from "../adapters/node-shell-adapter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,25 +67,45 @@ const llmDisabled =
   process.env.WORKER_DISABLE_LLM === "true";
 
 /**
- * Wire production adapters into the activity DI slots. Returns the
- * started `CopilotClient` (when LLM mode is enabled) so the caller can
- * tear it down on shutdown.
+ * Build the per-worker `ActivityDeps` registry. Always populates the
+ * required infra ports (filesystem, shell, artifact bus, invocation
+ * FS, triage artifact loader). Optionally populates the heavyweight
+ * LLM-backed ports — guarded by `WORKER_DISABLE_LLM` and `APP_ROOT`
+ * the same way the legacy setter wiring did. Returns the deps object
+ * alongside the started `CopilotClient` so the caller can tear it
+ * down on shutdown.
  */
-async function wireActivityDependencies(): Promise<CopilotClient | null> {
+async function buildActivityDeps(): Promise<{
+  deps: ActivityDeps;
+  client: CopilotClient | null;
+}> {
+  // Required infra ports — worker-singletons. Constructed unconditionally
+  // because every activity (including the no-LLM ones) needs them.
+  const resolvedAppRoot = appRoot ?? process.cwd();
+  const filesystem = new LocalFilesystem();
+  const shell = new NodeShellAdapter();
+  const artifactBus = new FileArtifactBus(resolvedAppRoot, filesystem);
+  const invocationFs = new FileInvocationFilesystem(resolvedAppRoot, filesystem, artifactBus);
+  const triageArtifactLoader = new FileTriageArtifactLoader({ appRoot: resolvedAppRoot });
+
   if (llmDisabled) {
     console.log(
       "[worker] WORKER_DISABLE_LLM set — skipping CopilotClient + LLM-backed DI",
     );
-    return null;
+    return {
+      client: null,
+      deps: { filesystem, shell, artifactBus, invocationFs, triageArtifactLoader },
+    };
   }
 
-  // Validate APP_ROOT *before* paying the CopilotClient startup cost
-  // (which can take seconds and spawns a child process).
   if (!appRoot) {
     console.warn(
       "[worker] APP_ROOT not set — triageActivity will run in contract-only mode and copilotAgentActivity will return the deterministic BUG message. Set APP_ROOT to the app directory to enable production DI.",
     );
-    return null;
+    return {
+      client: null,
+      deps: { filesystem, shell, artifactBus, invocationFs, triageArtifactLoader },
+    };
   }
   if (!isAbsolute(appRoot)) {
     throw new Error(
@@ -106,25 +126,30 @@ async function wireActivityDependencies(): Promise<CopilotClient | null> {
   const client = new CopilotClient();
   await client.start();
 
-  // Triage: LLM classifier + baseline noise loader. The artifact bus
-  // is constructed without a logger (worker scope is process-wide; per-
-  // feature loggers attach inside the activity via `buildNodeContext`).
-  const filesystem = new LocalFilesystem();
-  const artifactBus = new FileArtifactBus(appRoot, filesystem);
   const triageLlm = new CopilotTriageLlm(client);
   const baselineLoader = new FileBaselineLoader({ appRoot, bus: artifactBus });
-  setTriageDependencies({ triageLlm, baselineLoader });
-
-  // Copilot-agent: production runner. `codeIndexer` is optional and
-  // requires a roam-code subprocess; defer to a dedicated env-gated
-  // wiring (out of Group D scope — see Group J for indexer adoption).
+  // `codeIndexer` is optional and requires a roam-code subprocess;
+  // defer to a dedicated env-gated wiring (out of scope — see Group J
+  // for indexer adoption).
   const copilotSessionRunner = new NodeCopilotSessionRunner();
-  setCopilotAgentDependencies({ client, copilotSessionRunner });
 
   console.log(
     `[worker] DI wired: triageLlm + baselineLoader + copilotSessionRunner (appRoot=${appRoot})`,
   );
-  return client;
+  return {
+    client,
+    deps: {
+      filesystem,
+      shell,
+      artifactBus,
+      invocationFs,
+      triageArtifactLoader,
+      triageLlm,
+      baselineLoader,
+      copilotClient: client,
+      copilotSessionRunner,
+    },
+  };
 }
 
 async function stopClientQuiet(client: CopilotClient | null): Promise<void> {
@@ -137,7 +162,8 @@ async function stopClientQuiet(client: CopilotClient | null): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const client = await wireActivityDependencies();
+  const { deps, client } = await buildActivityDeps();
+  const activities = createActivities(deps);
 
   // OpenTelemetry / Tempo bootstrap (Group F, decision D-S4-1).
   // No-op when OTLP_ENDPOINT is unset, so local dev keeps working.

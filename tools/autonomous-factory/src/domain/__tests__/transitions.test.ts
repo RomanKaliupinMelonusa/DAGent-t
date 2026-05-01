@@ -17,6 +17,11 @@ import {
   type TransitionItem,
 } from "../transitions.js";
 
+// Fixed ISO-8601 timestamp threaded through every reducer call. The
+// reducers require a caller-supplied `now` (workflow-determinism
+// contract). A constant keeps assertions byte-stable.
+const NOW = "2026-04-29T00:00:00.000Z";
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -69,7 +74,7 @@ describe("completeItem", () => {
 describe("failItem", () => {
   it("marks item as failed and appends error log", () => {
     const state = makeState([makeItem("A")]);
-    const result = failItem(state, "A", "Something broke");
+    const result = failItem(state, "A", "Something broke", NOW);
     assert.equal(result.state.items.find((i) => i.key === "A")?.status, "failed");
     assert.equal(result.failCount, 1);
     assert.equal(result.halted, false);
@@ -85,14 +90,14 @@ describe("failItem", () => {
         message: `fail ${i}`,
       })),
     });
-    const result = failItem(state, "A", "fail 10");
+    const result = failItem(state, "A", "fail 10", NOW);
     assert.equal(result.failCount, 10);
     assert.equal(result.halted, true);
   });
 
   it("computes error signature", () => {
     const state = makeState([makeItem("A")]);
-    const result = failItem(state, "A", "Error at /foo/bar:123");
+    const result = failItem(state, "A", "Error at /foo/bar:123", NOW);
     assert.ok(result.state.errorLog[0].errorSignature);
     assert.equal(result.state.errorLog[0].errorSignature!.length, 16);
   });
@@ -115,6 +120,7 @@ describe("failItem", () => {
       state,
       "A",
       "whatever",
+      NOW,
       { haltOnIdentical: true },
       () => priorSig,
     );
@@ -135,6 +141,7 @@ describe("failItem", () => {
       state,
       "A",
       "new",
+      NOW,
       { haltOnIdentical: true },
       () => "bbbbbbbbbbbbbbbb",
     );
@@ -143,7 +150,7 @@ describe("failItem", () => {
 
   it("accepts legacy numeric maxFailures argument", () => {
     const state = makeState([makeItem("A")]);
-    const result = failItem(state, "A", "x", 3);
+    const result = failItem(state, "A", "x", NOW, 3);
     assert.equal(result.halted, false);
   });
 
@@ -163,6 +170,7 @@ describe("failItem", () => {
       state,
       "A",
       "m3",
+      NOW,
       { haltOnIdenticalThreshold: 3 },
       () => sig,
     );
@@ -184,6 +192,7 @@ describe("failItem", () => {
       state,
       "A",
       "m3",
+      NOW,
       {
         haltOnIdenticalThreshold: 3,
         haltOnIdenticalExcludedKeys: ["A"],
@@ -205,6 +214,7 @@ describe("failItem", () => {
       state,
       "A",
       "m2",
+      NOW,
       { haltOnIdenticalThreshold: 3 },
       () => sig,
     );
@@ -221,7 +231,7 @@ describe("resetNodes", () => {
   it("resets seed + downstream to pending", () => {
     const items = [makeItem("A", "done"), makeItem("B", "done"), makeItem("C", "done"), makeItem("D", "done")];
     const state = makeState(items);
-    const result = resetNodes(state, "A", "redevelopment");
+    const result = resetNodes(state, "A", "redevelopment", NOW);
     assert.equal(result.halted, false);
     assert.equal(result.cycleCount, 1);
     // All downstream of A: A, B, C, D
@@ -238,7 +248,7 @@ describe("resetNodes", () => {
         message: "cycle",
       })),
     });
-    const result = resetNodes(state, "A", "reason", 5);
+    const result = resetNodes(state, "A", "reason", NOW, 5);
     assert.equal(result.halted, true);
     assert.equal(result.cycleCount, 5);
     assert.deepEqual(result.resetKeys, []);
@@ -247,21 +257,21 @@ describe("resetNodes", () => {
   it("leaves dormant nodes dormant (except seed)", () => {
     const items = [makeItem("A"), makeItem("B", "dormant"), makeItem("C", "done"), makeItem("D", "done")];
     const state = makeState(items);
-    const result = resetNodes(state, "A", "reason");
+    const result = resetNodes(state, "A", "reason", NOW);
     assert.equal(result.state.items.find((i) => i.key === "B")?.status, "dormant");
   });
 
   it("activates dormant node when it is the seed", () => {
     const items = [makeItem("A", "done"), makeItem("B", "dormant")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const result = resetNodes(state, "B", "triage activation");
+    const result = resetNodes(state, "B", "triage activation", NOW);
     assert.equal(result.state.items.find((i) => i.key === "B")?.status, "pending");
   });
 
   it("leaves na items unchanged", () => {
     const items = [makeItem("A", "na"), makeItem("B", "done")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const result = resetNodes(state, "A", "reason");
+    const result = resetNodes(state, "A", "reason", NOW);
     assert.equal(result.state.items.find((i) => i.key === "A")?.status, "na");
   });
 });
@@ -274,7 +284,7 @@ describe("salvageForDraft", () => {
   it("marks failed item + downstream as na", () => {
     const items = [makeItem("A", "done"), makeItem("B", "done"), makeItem("C", "pending"), makeItem("D", "pending")];
     const state = makeState(items);
-    const result = salvageForDraft(state, "C");
+    const result = salvageForDraft(state, "C", NOW);
     assert.equal(result.state.items.find((i) => i.key === "C")?.status, "na");
     assert.equal(result.state.items.find((i) => i.key === "D")?.status, "na");
     assert.ok(result.skippedKeys.includes("C"));
@@ -284,15 +294,15 @@ describe("salvageForDraft", () => {
   it("is idempotent — second call returns empty skippedKeys", () => {
     const items = [makeItem("A", "done"), makeItem("B", "pending")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const first = salvageForDraft(state, "B");
-    const second = salvageForDraft(first.state, "B");
+    const first = salvageForDraft(state, "B", NOW);
+    const second = salvageForDraft(first.state, "B", NOW);
     assert.deepEqual(second.skippedKeys, []);
   });
 
   it("preserves done items", () => {
     const items = [makeItem("A", "done"), makeItem("B", "done"), makeItem("C", "pending"), makeItem("D", "pending")];
     const state = makeState(items);
-    const result = salvageForDraft(state, "C");
+    const result = salvageForDraft(state, "C", NOW);
     assert.equal(result.state.items.find((i) => i.key === "A")?.status, "done");
     assert.equal(result.state.items.find((i) => i.key === "B")?.status, "done");
   });
@@ -306,7 +316,7 @@ describe("salvageForDraft", () => {
       salvageSurvivors: ["D"],
       nodeCategories: { A: "dev", B: "dev", C: "test", D: "finalize" },
     });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     assert.equal(result.state.items.find((i) => i.key === "D")?.status, "pending");
   });
 
@@ -320,7 +330,7 @@ describe("salvageForDraft", () => {
       salvageSurvivors: ["D"],
       dependencies: { A: [], B: ["A"], C: ["B"], D: ["C"] },
     });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     const d = result.state.items.find((i) => i.key === "D")!;
     assert.equal(d.status, "na", "deploy survivor with all-N/A deps must be demoted");
     assert.equal(d.salvaged, true, "demoted node must carry sticky salvaged flag");
@@ -341,7 +351,7 @@ describe("salvageForDraft", () => {
       salvageSurvivors: ["D"],
       dependencies: { A: [], B: ["A"], C: ["A"], D: ["B", "C"] },
     });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     const d = result.state.items.find((i) => i.key === "D")!;
     assert.equal(d.status, "pending", "deploy survivor with a non-N/A dep must stay pending");
     assert.deepEqual(result.demotedKeys, []);
@@ -363,7 +373,7 @@ describe("salvageForDraft", () => {
       nodeCategories: { A: "dev", B: "dev", D: "deploy", E: "deploy" },
       nodeTypes: { A: "agent", B: "agent", D: "script", E: "script" },
     });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     assert.equal(result.state.items.find((i) => i.key === "D")?.status, "na");
     assert.equal(result.state.items.find((i) => i.key === "E")?.status, "na");
     assert.deepEqual(result.demotedKeys.sort(), ["D", "E"]);
@@ -379,7 +389,7 @@ describe("salvageForDraft", () => {
       nodeCategories: { A: "dev", B: "dev", X: "finalize" },
       nodeTypes: { A: "agent", B: "agent", X: "agent" },
     });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     assert.equal(result.state.items.find((i) => i.key === "X")?.status, "pending");
     assert.deepEqual(result.demotedKeys, []);
   });
@@ -387,7 +397,7 @@ describe("salvageForDraft", () => {
   it("marks salvaged items with sticky salvaged flag", () => {
     const items = [makeItem("A", "done"), makeItem("B", "pending"), makeItem("C", "pending")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"], C: ["B"] } });
-    const result = salvageForDraft(state, "B");
+    const result = salvageForDraft(state, "B", NOW);
     const b = result.state.items.find((i) => i.key === "B")!;
     const c = result.state.items.find((i) => i.key === "C")!;
     assert.equal(b.status, "na");
@@ -410,7 +420,7 @@ describe("salvageForDraft", () => {
       nodeTypes: { A: "agent", B: "agent", C: "agent" },
       requiredArtifactProducers: { C: ["A"] },
     });
-    const result = salvageForDraft(state, "A");
+    const result = salvageForDraft(state, "A", NOW);
     const a = result.state.items.find((i) => i.key === "A")!;
     const c = result.state.items.find((i) => i.key === "C")!;
     assert.equal(a.status, "failed", "spared producer must retain its existing status");
@@ -438,7 +448,7 @@ describe("salvageForDraft", () => {
       // here by leaving `requiredArtifactProducers` empty.
       requiredArtifactProducers: {},
     });
-    const result = salvageForDraft(state, "A");
+    const result = salvageForDraft(state, "A", NOW);
     const a = result.state.items.find((i) => i.key === "A")!;
     assert.equal(a.status, "na", "optional consumer must not block demotion");
     assert.equal(a.salvaged, true);
@@ -458,7 +468,7 @@ describe("resetNodes + sticky salvage", () => {
       { ...makeItem("B", "na"), salvaged: true },
     ];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const result = resetNodes(state, "B", "late triage reroute");
+    const result = resetNodes(state, "B", "late triage reroute", NOW);
     assert.equal(result.rejectedReason, "salvaged");
     assert.equal(result.halted, false);
     assert.deepEqual(result.resetKeys, []);
@@ -471,7 +481,7 @@ describe("resetNodes + sticky salvage", () => {
   it("still resets non-salvaged items normally", () => {
     const items = [makeItem("A", "done"), makeItem("B", "done")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const result = resetNodes(state, "A", "normal reroute");
+    const result = resetNodes(state, "A", "normal reroute", NOW);
     assert.equal(result.rejectedReason, undefined);
     assert.equal(result.halted, false);
     assert.ok(result.resetKeys.includes("A"));
@@ -486,7 +496,7 @@ describe("bypassNode", () => {
   it("flips a failed item to na and stamps bypassedFor", () => {
     const items = [makeItem("A", "failed"), makeItem("B", "pending")];
     const state = makeState(items);
-    const result = bypassNode(state, "A", "B", "code-defect");
+    const result = bypassNode(state, "A", "B", "code-defect", NOW);
     assert.equal(result.applied, true);
     assert.equal(result.rejectedReason, undefined);
     const a = result.state.items.find((i) => i.key === "A")!;
@@ -499,8 +509,8 @@ describe("bypassNode", () => {
   it("is idempotent for same routeTarget", () => {
     const items = [makeItem("A", "failed")];
     const state = makeState(items);
-    const r1 = bypassNode(state, "A", "B", "first");
-    const r2 = bypassNode(r1.state, "A", "B", "second");
+    const r1 = bypassNode(state, "A", "B", "first", NOW);
+    const r2 = bypassNode(r1.state, "A", "B", "second", NOW);
     assert.equal(r2.applied, false);
     assert.equal(r2.state, r1.state);
   });
@@ -510,7 +520,7 @@ describe("bypassNode", () => {
       { ...makeItem("A", "failed"), salvaged: true },
     ];
     const state = makeState(items);
-    const result = bypassNode(state, "A", "B", "after-salvage");
+    const result = bypassNode(state, "A", "B", "after-salvage", NOW);
     assert.equal(result.applied, false);
     assert.equal(result.rejectedReason, "salvaged");
   });
@@ -518,22 +528,22 @@ describe("bypassNode", () => {
   it("rejects non-failed items as wrong-status", () => {
     const items = [makeItem("A", "pending")];
     const state = makeState(items);
-    const result = bypassNode(state, "A", "B", "premature");
+    const result = bypassNode(state, "A", "B", "premature", NOW);
     assert.equal(result.applied, false);
     assert.equal(result.rejectedReason, "wrong-status");
   });
 
   it("returns unknown-item for missing key", () => {
     const state = makeState([makeItem("A", "failed")]);
-    const result = bypassNode(state, "Z", "B", "missing");
+    const result = bypassNode(state, "Z", "B", "missing", NOW);
     assert.equal(result.applied, false);
     assert.equal(result.rejectedReason, "unknown-item");
   });
 
   it("increments cycleIndex across multiple bypasses", () => {
     let state = makeState([makeItem("A", "failed"), makeItem("B", "failed")]);
-    state = bypassNode(state, "A", "X", "first").state;
-    state = bypassNode(state, "B", "Y", "second").state;
+    state = bypassNode(state, "A", "X", "first", NOW).state;
+    state = bypassNode(state, "B", "Y", "second", NOW).state;
     const a = state.items.find((i) => i.key === "A")!;
     const b = state.items.find((i) => i.key === "B")!;
     assert.equal(a.bypassedFor?.cycleIndex, 1);
@@ -549,9 +559,9 @@ describe("resetNodes (bypass interaction)", () => {
   it("re-pendings a bypassed na item and clears bypassedFor", () => {
     // Setup: A was failed, then bypassed to unlock route target X.
     let state = makeState([makeItem("A", "failed"), makeItem("B", "pending")]);
-    state = bypassNode(state, "A", "X", "domain").state;
+    state = bypassNode(state, "A", "X", "domain", NOW).state;
     // Now reset A (the auto-revalidate path).
-    const result = resetNodes(state, "A", "reset-after-fix", 3, "reset-after-fix");
+    const result = resetNodes(state, "A", "reset-after-fix", NOW, 3, "reset-after-fix");
     const a = result.state.items.find((i) => i.key === "A")!;
     assert.equal(a.status, "pending");
     assert.equal(a.bypassedFor, undefined);
@@ -561,7 +571,7 @@ describe("resetNodes (bypass interaction)", () => {
   it("leaves true-na (non-bypassed) items as na", () => {
     const items = [makeItem("A", "na"), makeItem("B", "done")];
     const state = makeState(items, { dependencies: { A: [], B: ["A"] } });
-    const result = resetNodes(state, "A", "structural-na");
+    const result = resetNodes(state, "A", "structural-na", NOW);
     const a = result.state.items.find((i) => i.key === "A")!;
     assert.equal(a.status, "na");
   });
@@ -573,7 +583,7 @@ describe("resetNodes (bypass interaction)", () => {
     // the matching `errorLog` entries; the `na` status is documented as
     // "bypassed" by the renderer (see pipeline-state.ts).
     let state = makeState([makeItem("A", "failed"), makeItem("B", "pending")]);
-    state = bypassNode(state, "A", "X", "domain").state;
+    state = bypassNode(state, "A", "X", "domain", NOW).state;
     // Burn the 3-cycle budget by appending fake reset-after-fix log entries.
     for (let i = 0; i < 3; i++) {
       state = {
@@ -584,7 +594,7 @@ describe("resetNodes (bypass interaction)", () => {
         ],
       };
     }
-    const result = resetNodes(state, "A", "exhaust", 3, "reset-after-fix");
+    const result = resetNodes(state, "A", "exhaust", NOW, 3, "reset-after-fix");
     assert.equal(result.halted, true);
     // Marker preserved on halt — state pointer unchanged.
     const a = result.state.items.find((i) => i.key === "A")!;

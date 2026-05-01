@@ -111,7 +111,7 @@ import type {
   NodeActivityResult,
 } from "../activities/types.js";
 import type { PipelineState, PipelineItem } from "../types.js";
-import type { RoutableWorkflow } from "../domain/failure-routing.js";
+import type { RoutableWorkflow } from "./domain/index.js";
 import type { DagCommand } from "../dag-commands.js";
 
 // ---------------------------------------------------------------------------

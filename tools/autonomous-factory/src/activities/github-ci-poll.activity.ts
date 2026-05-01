@@ -36,16 +36,20 @@ import { postCiArtifactToPr } from "../session/ci-artifact-poster.js";
 import { featurePath } from "../paths/feature-paths.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import type { NodeActivityInput, NodeActivityResult } from "./types.js";
+import type { ActivityDeps } from "./deps.js";
 
 /** Marker errorMessage emitted when the activity is cancelled mid-poll. */
 export const CI_POLL_CANCELLED_PREFIX = "CI poll cancelled by workflow";
 
-export async function githubCiPollActivity(
-  input: NodeActivityInput,
-): Promise<NodeActivityResult> {
+export function makeGithubCiPollActivity(
+  deps: ActivityDeps,
+): (input: NodeActivityInput) => Promise<NodeActivityResult> {
+  return async function githubCiPollActivity(
+    input: NodeActivityInput,
+  ): Promise<NodeActivityResult> {
   return withHeartbeat<NodeActivityResult>(
     async ({ emit, signal }) => {
-      const ctx = await buildNodeContext(input, {
+      const ctx = await buildNodeContext(input, deps, {
         onHeartbeat: () => emit({ stage: "polling", itemKey: input.itemKey }),
       });
 
@@ -193,4 +197,5 @@ export async function githubCiPollActivity(
     },
     { intervalMs: 30_000 },
   );
+  };
 }

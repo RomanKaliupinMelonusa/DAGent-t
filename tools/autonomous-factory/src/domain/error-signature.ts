@@ -1,19 +1,29 @@
 /**
  * domain/error-signature.ts — Stable error fingerprinting.
  *
- * Produces a deterministic hash from raw error messages by stripping volatile
- * tokens (timestamps, PIDs, ports, hex hashes, paths). Enables cross-cycle
- * identity tracking: two errors with the same root cause produce the same hash.
+ * Produces a deterministic 16-hex-char hash from raw error messages by
+ * stripping volatile tokens (timestamps, PIDs, ports, hex hashes, paths)
+ * and SHA-256 hashing the normalised remainder. Enables cross-cycle
+ * identity tracking: two errors with the same root cause produce the
+ * same hash.
  *
- * Volatile-token patterns live in `./volatile-patterns.ts` — the single source
- * of truth consumed by this module AND by `triage/error-fingerprint.ts`.
- * Framework-specific patterns can be injected via the optional
- * `additionalPatterns` parameter (supplied from APM config).
+ * Implementation uses the pure-JS `js-sha256` package rather than
+ * `node:crypto` so this module is safe to import inside Temporal
+ * workflow scope (the determinism ESLint rule bans `node:crypto`).
+ * Output is byte-identical to a `createHash("sha256")` digest sliced
+ * to 16 hex chars, so persisted `errorSignature` values produced by
+ * earlier kernels remain compatible.
+ *
+ * Volatile-token patterns live in `./volatile-patterns.ts` — the single
+ * source of truth consumed by this module AND by
+ * `triage/error-fingerprint.ts`. Framework-specific patterns can be
+ * injected via the optional `additionalPatterns` parameter (supplied
+ * from APM config).
  *
  * Pure function — zero I/O, zero side effects.
  */
 
-import { createHash } from "node:crypto";
+import { sha256 } from "js-sha256";
 import {
   DEFAULT_VOLATILE_PATTERNS,
   type VolatilePattern,
@@ -39,5 +49,5 @@ export function computeErrorSignature(
     }
   }
   normalized = normalized.replace(/\s+/g, " ").trim();
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+  return sha256(normalized).slice(0, 16);
 }

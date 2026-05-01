@@ -25,13 +25,9 @@ import {
   schedule,
   type ScheduleResult,
   type ScheduleOptions,
-} from "./domain/scheduling.js";
-import {
   buildInitialState,
   type CompiledNode,
   type InitialState,
-} from "./domain/init-state.js";
-import {
   completeItem,
   failItem,
   resetNodes,
@@ -48,8 +44,8 @@ import {
   type ResumeElevatedResult,
   type SalvageResult,
   type BypassResult,
-} from "./domain/transitions.js";
-import { checkCycleBudget } from "./domain/cycle-counter.js";
+  checkCycleBudget,
+} from "./domain/index.js";
 import type {
   ArtifactRefSerialized,
   InvocationRecord,

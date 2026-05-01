@@ -1,39 +1,42 @@
 /**
- * temporal/workflow/domain/index.ts — Barrel export for workflow-scoped
- * pure domain functions.
+ * workflow/domain/index.ts — Thin barrel re-exporting the workflow-safe
+ * subset of `src/domain/`.
  *
- * Twin of `src/domain/index.ts`. Functions in this barrel are determinism-
- * safe for use inside Temporal workflow code: no I/O, no Date, no crypto,
- * no random, no env reads. Time and signature dependencies are injected
- * by the caller (see ./transitions.ts module docstring).
+ * The pure-domain modules under `src/domain/` are the single source of
+ * truth. Every reducer that emits a log entry already takes a caller-
+ * supplied `now: string`, and `error-signature.ts` uses the pure-JS
+ * `js-sha256` package — both choices land workflow-safety in the
+ * canonical layer. This barrel exists to:
  *
- * Modules omitted on purpose:
- *   - error-signature: kept; uses pure-JS sha256.
- *   - transitions: kept; reducers require `now: string`.
- *   - approval-sla, progress-tracker, stall-detection, dangling-invocations:
- *     replaced by Temporal-native primitives (timeouts, signals, queries).
- *     Land in Session 4.
+ *   1. Document the boundary — only the named exports below are
+ *      reachable from workflow scope. Modules omitted on purpose:
+ *        - progress-tracker / snapshot-progress / evaluateHardening:
+ *          replaced by Temporal-native primitives (timeouts, signals,
+ *          queries, child workflows).
+ *        - invocation-id (newInvocationId): uses node:crypto.randomBytes
+ *          and is consumed only by activities.
+ *
+ *   2. Keep the existing in-workflow import path
+ *      (`./domain/<name>.js` / `../domain/<name>.js`) stable when
+ *      consumers switch to the barrel — see `src/workflow/dag-state.ts`,
+ *      `src/workflow/pipeline.workflow.ts`, `src/workflow/triage-cascade.ts`.
+ *
+ * No overrides — every symbol below is a verbatim re-export from
+ * `../../domain/index.js`.
  */
 
-export { computeErrorSignature } from "./error-signature.js";
-
 export {
+  computeErrorSignature,
   DEFAULT_VOLATILE_PATTERNS,
   compileVolatilePatterns,
   mergeVolatilePatterns,
   type VolatilePattern,
   type ConfiguredVolatilePattern,
-} from "./volatile-patterns.js";
-
-export {
   getDownstream,
   getUpstream,
   cascadeBarriers,
   topologicalSort,
   type DependencyGraph,
-} from "./dag-graph.js";
-
-export {
   schedule,
   isProducerCycleReady,
   type SchedulableItem,
@@ -42,9 +45,6 @@ export {
   type ConsumesEdge,
   type ProducerCycleSummary,
   type GateDiagnosis,
-} from "./scheduling.js";
-
-export {
   completeItem,
   failItem,
   resetNodes,
@@ -65,41 +65,23 @@ export {
   type ResumeElevatedResult,
   type SalvageResult,
   type BypassResult,
-} from "./transitions.js";
-
-export {
   buildInitialState,
   type CompiledNode,
   type InitInputs,
   type InitialState,
   type SeedItem,
-} from "./init-state.js";
-
-export {
   computeDormantKeys,
   type PrunableNode,
-} from "./pruning.js";
-
-export {
   checkCycleBudget,
   countErrorSignature,
   type CycleCheck,
-} from "./cycle-counter.js";
-
-export {
   resolveFailureTarget,
   resolveFailureRoutes,
   type RoutableNode,
   type RoutableWorkflow,
-} from "./failure-routing.js";
-
-export {
   interpretBatch,
   type BatchOutcome,
   type BatchSignals,
-} from "./batch-interpreter.js";
-
-export {
   isFatalSdkError,
   DEFAULT_FATAL_SDK_PATTERNS,
-} from "./error-classification.js";
+} from "../../domain/index.js";

@@ -27,8 +27,9 @@ import { MockActivityEnvironment } from "@temporalio/testing";
 import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
-import { localExecActivity } from "../local-exec.activity.js";
+import { createActivities } from "../factory.js";
 import { _clearApmContextCacheForTests } from "../support/build-context.js";
+import { buildTestDeps } from "./helpers/deps.js";
 import type { NodeActivityInput } from "../types.js";
 import type { PipelineState } from "../../types.js";
 
@@ -141,6 +142,7 @@ describe("localExecActivity — Session 3 Phase 1", () => {
     const heartbeats: unknown[] = [];
     env.on("heartbeat", (d) => heartbeats.push(d));
 
+    const { localExecActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(localExecActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("completed");
@@ -154,6 +156,7 @@ describe("localExecActivity — Session 3 Phase 1", () => {
     fixture = await buildFixture("false");
     const env = new MockActivityEnvironment();
 
+    const { localExecActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(localExecActivity, buildInput(fixture));
 
     expect(result.outcome).toBe("failed");
@@ -166,6 +169,7 @@ describe("localExecActivity — Session 3 Phase 1", () => {
     // in `toActivityResult` is a load-bearing contract for D-S3-3.
     fixture = await buildFixture("echo ok");
     const env = new MockActivityEnvironment();
+    const { localExecActivity } = createActivities(buildTestDeps(fixture.appRoot));
     const result = await env.run(localExecActivity, buildInput(fixture));
     expect(result.signal).not.toBe("approval-pending");
   });

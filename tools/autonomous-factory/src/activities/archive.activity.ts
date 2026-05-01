@@ -26,6 +26,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Context } from "@temporalio/activity";
+import type { ActivityDeps } from "./deps.js";
 
 export interface ArchiveActivityInput {
   readonly slug: string;
@@ -40,26 +41,37 @@ export interface ArchiveActivityResult {
 }
 
 /**
- * Write an `_ARCHIVED.json` sentinel into the feature's `.dagent`
- * directory. Idempotent: re-archival overwrites the marker.
+ * Factory for the archive activity. Takes (and ignores) the
+ * `ActivityDeps` registry to match the createActivities-shaped wiring
+ * used by every other activity. The body uses `node:fs` directly
+ * because this is a one-off marker write; folding the I/O through
+ * `deps.filesystem` would gain nothing.
+ *
+ * Returns an activity that writes an `_ARCHIVED.json` sentinel into the
+ * feature's `.dagent` directory. Idempotent: re-archival overwrites the
+ * marker.
  */
-export async function archiveActivity(
-  input: ArchiveActivityInput,
-): Promise<ArchiveActivityResult> {
-  Context.current().heartbeat({ phase: "archive-start", slug: input.slug });
+export function makeArchiveActivity(
+  _deps: ActivityDeps,
+): (input: ArchiveActivityInput) => Promise<ArchiveActivityResult> {
+  return async function archiveActivity(
+    input: ArchiveActivityInput,
+  ): Promise<ArchiveActivityResult> {
+    Context.current().heartbeat({ phase: "archive-start", slug: input.slug });
 
-  const dagentDir = path.join(input.appRoot, ".dagent", input.slug);
-  await fs.mkdir(dagentDir, { recursive: true });
-  const markerPath = path.join(dagentDir, "_ARCHIVED.json");
-  const archivedAt = new Date().toISOString();
-  const marker = {
-    slug: input.slug,
-    baseBranch: input.baseBranch,
-    archivedAt,
-    archivedBy: "temporal-pipeline-workflow",
+    const dagentDir = path.join(input.appRoot, ".dagent", input.slug);
+    await fs.mkdir(dagentDir, { recursive: true });
+    const markerPath = path.join(dagentDir, "_ARCHIVED.json");
+    const archivedAt = new Date().toISOString();
+    const marker = {
+      slug: input.slug,
+      baseBranch: input.baseBranch,
+      archivedAt,
+      archivedBy: "temporal-pipeline-workflow",
+    };
+    await fs.writeFile(markerPath, JSON.stringify(marker, null, 2) + "\n", "utf8");
+
+    Context.current().heartbeat({ phase: "archive-complete", slug: input.slug });
+    return { archivedAt, markerPath };
   };
-  await fs.writeFile(markerPath, JSON.stringify(marker, null, 2) + "\n", "utf8");
-
-  Context.current().heartbeat({ phase: "archive-complete", slug: input.slug });
-  return { archivedAt, markerPath };
 }
