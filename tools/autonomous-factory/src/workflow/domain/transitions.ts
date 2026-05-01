@@ -67,6 +67,13 @@ export interface TransitionState {
    *  its current status (eligible for normal retry) instead of being marked
    *  N/A. Optional for backward compatibility with legacy state files. */
   requiredArtifactProducers?: Record<string, string[]>;
+  /** Phase 5 — producer-key → consumer-keys for which the consumer
+   *  declares a `consumes_artifacts` edge with `required: false`.
+   *  Inverse of `requiredArtifactProducers`. Read by `salvageForDraft`
+   *  to prune the demotion cascade so advisory consumers are not
+   *  cascade-demoted when only an optional edge connects them to the
+   *  failed producer. Optional for backward compatibility. */
+  optionalArtifactConsumers?: Record<string, string[]>;
   [key: string]: unknown; // allow pass-through of other fields
 }
 
@@ -458,7 +465,30 @@ export function salvageForDraft(
     return { state, skippedKeys: [], demotedKeys: [], sparedKeys: [] };
   }
 
-  const skipKeys = new Set(getDownstream(state.dependencies, [failedItemKey]));
+  // Cascade walk — prune u→v edges where v declares the artifact from
+  // u as `required: false`. Mirrors `domain/transitions.ts`. When the
+  // optional map is empty, this BFS reduces to `getDownstream`.
+  const optionalConsumersMap = state.optionalArtifactConsumers ?? {};
+  const reverseDeps: Record<string, string[]> = {};
+  for (const [key, deps] of Object.entries(state.dependencies)) {
+    for (const dep of deps) {
+      if (!reverseDeps[dep]) reverseDeps[dep] = [];
+      reverseDeps[dep].push(key);
+    }
+  }
+  const downstreamSet = new Set<string>([failedItemKey]);
+  const walkQueue: string[] = [failedItemKey];
+  while (walkQueue.length > 0) {
+    const u = walkQueue.shift()!;
+    const optionalChildren = new Set(optionalConsumersMap[u] ?? []);
+    for (const v of reverseDeps[u] ?? []) {
+      if (downstreamSet.has(v)) continue;
+      if (optionalChildren.has(v)) continue;
+      downstreamSet.add(v);
+      walkQueue.push(v);
+    }
+  }
+  const skipKeys = downstreamSet;
   const forcePendingKeys = new Set(
     state.salvageSurvivors.length > 0
       ? state.salvageSurvivors

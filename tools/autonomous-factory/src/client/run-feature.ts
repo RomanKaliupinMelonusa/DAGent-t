@@ -36,6 +36,7 @@
 import path from "node:path";
 import { Client, Connection } from "@temporalio/client";
 import { bootstrapOtel } from "../telemetry/otel.js";
+import { flushFeatureBranch } from "../lifecycle/flush-branch.js";
 import type { pipelineWorkflow, PipelineInput, PipelineNodeSpec, PipelineResult } from "../workflow/index.js";
 import { parseCli } from "../entry/cli.js";
 import { bootstrap } from "../entry/bootstrap.js";
@@ -137,6 +138,56 @@ async function main(): Promise<void> {
     `[agent:run:temporal] starting pipelineWorkflow workflowId=${workflowId} taskQueue=${taskQueue}`,
   );
 
+  // Minimal logger satisfying `flushFeatureBranch`'s telemetry contract
+  // (no OTel span emission — flushes happen post-result so the OTel SDK
+  // is already shutting down).
+  const flushLogger = {
+    event(category: string, _key: string | null, data?: unknown) {
+      console.log(`[agent:run:temporal] ${category}`, data ?? "");
+    },
+    warn(message: string) {
+      console.warn(`[agent:run:temporal] ${message}`);
+    },
+    info(message: string) {
+      console.log(`[agent:run:temporal] ${message}`);
+    },
+  };
+
+  // Idempotency guard so the SIGINT handler and the `finally` block do
+  // not double-flush. First caller wins; subsequent invocations no-op.
+  let flushed = false;
+  const runFlush = async (finalStatusTag: string): Promise<void> => {
+    if (flushed) return;
+    flushed = true;
+    try {
+      await flushFeatureBranch({
+        slug,
+        appRoot,
+        repoRoot: config.repoRoot,
+        baseBranch,
+        logger: flushLogger,
+        finalStatus: finalStatusTag,
+      });
+    } catch (err) {
+      console.warn(
+        `[agent:run:temporal] flushFeatureBranch threw (swallowed):`,
+        err,
+      );
+    }
+  };
+
+  // SIGINT / SIGTERM — flush before exit so a Ctrl-C operator does not
+  // leave commits stranded locally. `process.exit(130)` is the conventional
+  // SIGINT exit code.
+  const installSignal = (sig: NodeJS.Signals) => {
+    process.once(sig, () => {
+      console.log(`[agent:run:temporal] received ${sig} — flushing branch before exit`);
+      void runFlush("interrupted").finally(() => process.exit(130));
+    });
+  };
+  installSignal("SIGINT");
+  installSignal("SIGTERM");
+
   const handle = await tClient.workflow.start<typeof pipelineWorkflow>(
     "pipelineWorkflow",
     {
@@ -160,15 +211,33 @@ async function main(): Promise<void> {
   );
 
   console.log(`[agent:run:temporal] handle.workflowId=${handle.workflowId}`);
-  const result: PipelineResult = await handle.result();
-  console.log(
-    `[agent:run:temporal] result: status=${result.status} reason=${result.reason} batches=${result.batchNumber}`,
-  );
+  let result: PipelineResult | undefined;
+  let crashed = false;
+  try {
+    result = await handle.result();
+    console.log(
+      `[agent:run:temporal] result: status=${result.status} reason=${result.reason} batches=${result.batchNumber}`,
+    );
+  } catch (err) {
+    crashed = true;
+    console.error(`[agent:run:temporal] handle.result() threw:`, err);
+    throw err;
+  } finally {
+    const finalStatusTag = crashed
+      ? "crashed"
+      : result?.status ?? "unknown";
+    await runFlush(finalStatusTag);
+    await connection.close();
+    await otel.shutdown();
+  }
 
-  await connection.close();
-  await otel.shutdown();
-
-  if (result.status === "halted" || result.status === "blocked" || result.status === "approval-rejected") {
+  if (
+    result &&
+    (result.status === "halted"
+      || result.status === "blocked"
+      || result.status === "approval-rejected"
+      || result.status === "failed")
+  ) {
     process.exitCode = 1;
   }
 }

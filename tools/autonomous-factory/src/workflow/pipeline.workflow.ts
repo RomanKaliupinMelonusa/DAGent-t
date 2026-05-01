@@ -235,7 +235,8 @@ export type PipelineFinalStatus =
   | "halted"
   | "blocked"
   | "cancelled"
-  | "approval-rejected";
+  | "approval-rejected"
+  | "failed";
 
 export interface PipelineResult {
   readonly status: PipelineFinalStatus;
@@ -807,6 +808,39 @@ export async function pipelineWorkflow(input: PipelineInput): Promise<PipelineRe
       if (ready.kind === "complete") {
         finalStatus = "complete";
         finalReason = "all-items-terminal";
+        // Salvage post-condition (Phase 5) — a run that demoted nodes via
+        // `salvageForDraft` AND never produced any `done` dev-category
+        // node is not actually a successful pipeline; the salvage path
+        // ran around a wedge instead of through dev work. Reclassify
+        // such runs as `failed` so the operator surface (and the flush
+        // wrapper) can react appropriately. Wrapped with `patched()` so
+        // in-flight history that already terminated as `complete` does
+        // NOT replay into a different terminal status.
+        //
+        // Detection: look at items carrying the sticky `salvaged: true`
+        // flag — both the regular salvage skip (failed item + downstream
+        // cascade) and the deploy-orphan demotion sweep set this flag.
+        // `naBySalvage` alone is too narrow (it tracks deploy-orphans
+        // only) and would miss the dev cascade case this guard exists
+        // to catch.
+        if (patched("salvage-postcondition")) {
+          const snap = dag.snapshot();
+          const salvagedKeys = snap.state.items
+            .filter((i) => i.salvaged === true)
+            .map((i) => i.key);
+          if (salvagedKeys.length > 0) {
+            const cats = snap.state.nodeCategories;
+            const devDone = snap.state.items.filter(
+              (i) => cats[i.key] === "dev" && i.status === "done",
+            );
+            if (devDone.length === 0) {
+              finalStatus = "failed";
+              finalReason =
+                `salvage-without-dev: ${salvagedKeys.length} node(s) demoted via salvage ` +
+                `and zero dev-category nodes completed (salvaged=${salvagedKeys.join(",")})`;
+            }
+          }
+        }
         break;
       }
       if (ready.kind === "blocked") {

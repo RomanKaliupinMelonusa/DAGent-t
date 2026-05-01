@@ -34,6 +34,9 @@ export interface FlushBranchOpts {
   repoRoot: string;
   baseBranch: string;
   logger: Pick<Telemetry, "event" | "warn" | "info">;
+  /** Final pipeline status — embedded in the auto-commit message when the
+   *  flush stages a dirty tree. Optional; defaults to "unknown". */
+  finalStatus?: string;
 }
 
 /** Run a git command sync, returning trimmed stdout or `null` on any failure. */
@@ -50,7 +53,7 @@ function gitCapture(repoRoot: string, args: string[]): string | null {
 }
 
 export async function flushFeatureBranch(opts: FlushBranchOpts): Promise<void> {
-  const { slug, repoRoot, baseBranch, logger } = opts;
+  const { slug, appRoot, repoRoot, baseBranch, logger, finalStatus } = opts;
   const expectedBranch = `feature/${slug}`;
 
   // 1. Are we even in a git repo? (`git rev-parse --is-inside-work-tree`
@@ -62,6 +65,10 @@ export async function flushFeatureBranch(opts: FlushBranchOpts): Promise<void> {
   }
 
   // 2. On the right branch?
+  //    Hard safety gate: never stage / commit / push when we are not on
+  //    the expected feature branch. Protects `main`, `develop`, and any
+  //    other base branch from accidental flush commits if preflight
+  //    failed before `create-branch` ran.
   const currentBranch = gitCapture(repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (currentBranch !== expectedBranch) {
     logger.event("pipeline.flush.push", null, {
@@ -72,9 +79,57 @@ export async function flushFeatureBranch(opts: FlushBranchOpts): Promise<void> {
     return;
   }
 
+  // 2b. Stage + commit any dirty working tree before counting commits ahead.
+  //     `agent-branch.sh push` only ships committed work, so a stranded
+  //     uncommitted change would never reach origin without this step.
+  //     `git status --porcelain` lists both staged and unstaged paths;
+  //     a non-empty result means we have something to commit.
+  const statusBefore = gitCapture(repoRoot, ["status", "--porcelain"]);
+  if (statusBefore && statusBefore.length > 0) {
+    const fileCount = statusBefore.split(/\r?\n/).filter((l) => l.length > 0).length;
+    const commitScript = resolve(repoRoot, "tools", "autonomous-factory", "agent-commit.sh");
+    const statusTag = finalStatus ?? "unknown";
+    const message = `chore(pipeline): flush stranded changes for ${slug} [${statusTag}]`;
+    try {
+      execFileSync("bash", [commitScript, "all", message], {
+        cwd: repoRoot,
+        env: { ...process.env, APP_ROOT: appRoot },
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      logger.event("pipeline.flush.commit", null, {
+        status: "committed",
+        branch: currentBranch,
+        files_changed: fileCount,
+        final_status: statusTag,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        `flushFeatureBranch: commit of dirty tree failed for ${currentBranch}: ${errorMessage}`,
+      );
+      logger.event("pipeline.flush.commit", null, {
+        status: "failed",
+        branch: currentBranch,
+        files_changed: fileCount,
+        final_status: statusTag,
+        error: errorMessage,
+      });
+      // continue to push — any prior commits ahead of origin still need to ship
+    }
+  } else {
+    logger.event("pipeline.flush.commit", null, {
+      status: "skipped",
+      branch: currentBranch,
+      files_changed: 0,
+      ...(finalStatus ? { final_status: finalStatus } : {}),
+    });
+  }
+
   // 3. Any commits ahead of the base branch? agent-branch.sh push refuses
   //    to push when AHEAD=0; skip cleanly so re-runs of an up-to-date
-  //    branch are no-ops.
+  //    branch are no-ops. Recompute AFTER the optional commit above so
+  //    a freshly-staged change is included in the count.
   const aheadStr = gitCapture(repoRoot, ["rev-list", `${baseBranch}..HEAD`, "--count"]);
   const ahead = aheadStr !== null ? Number.parseInt(aheadStr, 10) : NaN;
   if (!Number.isFinite(ahead) || ahead <= 0) {

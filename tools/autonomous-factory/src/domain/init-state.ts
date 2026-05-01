@@ -80,6 +80,11 @@ export interface InitialState {
    *  `salvageForDraft` to scope demotion. Omitted/empty when no node
    *  declares any required consumer edges. */
   requiredArtifactProducers: Record<string, string[]>;
+  /** Producer-key → consumer-keys for which the consumer declares a
+   *  `consumes_artifacts` edge with `required: false`. Read by
+   *  `salvageForDraft` so a failing producer's advisory consumers are
+   *  NOT cascade-demoted. Inverse of the required-producers map. */
+  optionalArtifactConsumers: Record<string, string[]>;
 }
 
 /**
@@ -103,6 +108,7 @@ export function buildInitialState(inputs: InitInputs): InitialState {
   const salvageImmune: string[] = [];
   const dormantByActivation: string[] = [];
   const requiredArtifactProducers: Record<string, string[]> = {};
+  const optionalArtifactConsumers: Record<string, string[]> = {};
 
   for (const key of topoOrder) {
     const node = nodes[key]!;
@@ -118,7 +124,15 @@ export function buildInitialState(inputs: InitInputs): InitialState {
       const producers: string[] = [];
       for (const edge of consumes) {
         const required = edge.required ?? true;
-        if (required) producers.push(edge.from);
+        if (required) {
+          producers.push(edge.from);
+        } else {
+          // Track the inverse mapping so salvage can spare advisory
+          // downstream consumers when this producer fails.
+          const list = optionalArtifactConsumers[edge.from] ?? [];
+          if (!list.includes(key)) list.push(key);
+          optionalArtifactConsumers[edge.from] = list;
+        }
       }
       if (producers.length > 0) requiredArtifactProducers[key] = producers;
     }
@@ -166,5 +180,6 @@ export function buildInitialState(inputs: InitInputs): InitialState {
     salvageSurvivors,
     salvageImmune,
     requiredArtifactProducers,
+    optionalArtifactConsumers,
   };
 }

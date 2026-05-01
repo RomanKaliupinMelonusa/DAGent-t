@@ -299,6 +299,12 @@ export interface PipelineState {
    *  scheduler can spare producers feeding surviving consumers. Optional
    *  for backward compatibility with legacy state files. */
   requiredArtifactProducers?: Record<string, string[]>;
+  /** Producer-key → consumer-keys map for `consumes_artifacts` edges with
+   *  `required: false`. Inverse of `requiredArtifactProducers`. Persisted
+   *  at init from workflows.yml so `salvageForDraft` can prune the
+   *  demotion cascade through advisory edges. Optional for backward
+   *  compatibility with legacy state files. */
+  optionalArtifactConsumers?: Record<string, string[]>;
   /** Persisted execution log — one record per handler invocation, survives restarts. */
   executionLog?: ExecutionRecord[];
   /** Per-item reroute/retry counters keyed by `${itemKey}` or `${itemKey}:${subkind}`.
@@ -384,7 +390,7 @@ export interface TriageRecord {
   error_signature: string;
 
   /** Pre-guard result (set by triage handler, not evaluateTriage). */
-  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted" | "blocked_repeat";
+  guard_result: "passed" | "timeout_bypass" | "unfixable_halt" | "death_spiral" | "retry_dedup" | "session_idle_exhausted" | "blocked_repeat" | "evidence_empty_self_reset";
   guard_detail?: string;
 
   /** RAG layer matches (up to 3, ranked by specificity). */

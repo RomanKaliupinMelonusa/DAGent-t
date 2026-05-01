@@ -32,6 +32,13 @@ const REAL_BRANCH_SCRIPT = resolve(
   "..",
   "agent-branch.sh",
 );
+const REAL_COMMIT_SCRIPT = resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "agent-commit.sh",
+);
 
 interface RecordedEvent { category: string; data: Record<string, unknown> }
 interface RecordingLogger {
@@ -81,11 +88,17 @@ function setupRepo(opts: { withBranch: boolean; withCommit: boolean; withRemote:
   git(repoRoot, ["add", "README.md"]);
   git(repoRoot, ["commit", "-q", "-m", "init"]);
 
-  // Drop the real agent-branch.sh into the expected path so flushFeatureBranch
-  // can shell out to it.
+  // Drop the real agent-branch.sh + agent-commit.sh into the expected
+  // path so flushFeatureBranch can shell out to them. Commit them onto
+  // `main` so the working tree is clean before any feature branch is
+  // checked out — otherwise the new dirty-tree commit step would treat
+  // the wrappers themselves as stranded changes.
   const toolsDir = join(repoRoot, "tools", "autonomous-factory");
   mkdirSync(toolsDir, { recursive: true });
   cpSync(REAL_BRANCH_SCRIPT, join(toolsDir, "agent-branch.sh"));
+  cpSync(REAL_COMMIT_SCRIPT, join(toolsDir, "agent-commit.sh"));
+  git(repoRoot, ["add", "tools"]);
+  git(repoRoot, ["commit", "-q", "-m", "tools"]);
 
   let remoteRoot: string | null = null;
   if (opts.withRemote === "bare") {
@@ -124,9 +137,9 @@ describe("flushFeatureBranch", () => {
     await flushFeatureBranch({
       slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger,
     });
-    assert.equal(logger.events.length, 1);
-    assert.equal(logger.events[0].category, "pipeline.flush.push");
-    assert.equal(logger.events[0].data.skipped, "no-commits-ahead");
+    const pushEvent = logger.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(pushEvent, "expected pipeline.flush.push event");
+    assert.equal(pushEvent.data.skipped, "no-commits-ahead");
     assert.equal(logger.warnings.length, 0);
   });
 
@@ -161,8 +174,8 @@ describe("flushFeatureBranch", () => {
     await flushFeatureBranch({
       slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger,
     });
-    const event = logger.events[0];
-    assert.equal(event.category, "pipeline.flush.push");
+    const event = logger.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(event, "expected pipeline.flush.push event");
     assert.equal(event.data.status, "failed");
     assert.equal(event.data.branch, "feature/foo");
     assert.equal(event.data.ahead, 1);
@@ -180,7 +193,8 @@ describe("flushFeatureBranch", () => {
     await flushFeatureBranch({
       slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger,
     });
-    const event = logger.events[0];
+    const event = logger.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(event, "expected pipeline.flush.push event");
     assert.equal(event.data.status, "pushed", JSON.stringify(event.data));
     assert.equal(event.data.branch, "feature/foo");
     assert.equal(event.data.ahead, 1);
@@ -201,7 +215,9 @@ describe("flushFeatureBranch", () => {
     await flushFeatureBranch({
       slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger: logger1,
     });
-    assert.equal(logger1.events[0].data.status, "pushed");
+    const push1 = logger1.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(push1);
+    assert.equal(push1.data.status, "pushed");
 
     // After the push, the branch tracks origin so `main..HEAD` is still 1
     // ahead — but `agent-branch.sh push` will succeed as a no-op (already
@@ -212,11 +228,70 @@ describe("flushFeatureBranch", () => {
       slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger: logger2,
     });
     assert.equal(logger2.warnings.length, 0, "second flush must not warn");
-    assert.equal(logger2.events.length, 1);
-    const status = logger2.events[0].data.status;
+    const push2 = logger2.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(push2, "expected pipeline.flush.push event");
     assert.ok(
-      status === "pushed" || logger2.events[0].data.skipped === "no-commits-ahead",
-      `unexpected idempotent outcome: ${JSON.stringify(logger2.events[0].data)}`,
+      push2.data.status === "pushed" || push2.data.skipped === "no-commits-ahead",
+      `unexpected idempotent outcome: ${JSON.stringify(push2.data)}`,
     );
+  });
+
+  it("commits dirty tree before push and surfaces files_changed in telemetry", async () => {
+    const { repoRoot, remoteRoot } = setupRepo({
+      withBranch: true, withCommit: true, withRemote: "bare",
+    });
+    track(repoRoot);
+    assert.ok(remoteRoot);
+    // Stage stranded changes — both an untracked file and a modified one.
+    writeFileSync(join(repoRoot, "stranded.txt"), "leftover\n");
+    writeFileSync(join(repoRoot, "feature.txt"), "modified\n");
+    const headBefore = git(repoRoot, ["rev-parse", "HEAD"]);
+    const logger = makeLogger();
+    await flushFeatureBranch({
+      slug: "foo",
+      appRoot: repoRoot,
+      repoRoot,
+      baseBranch: "main",
+      logger,
+      finalStatus: "complete",
+    });
+    const commitEvent = logger.events.find((e) => e.category === "pipeline.flush.commit");
+    assert.ok(commitEvent, "expected pipeline.flush.commit event");
+    assert.equal(commitEvent.data.status, "committed");
+    assert.ok(
+      typeof commitEvent.data.files_changed === "number" && (commitEvent.data.files_changed as number) >= 2,
+      `files_changed should reflect dirty tree, got ${JSON.stringify(commitEvent.data)}`,
+    );
+    assert.equal(commitEvent.data.final_status, "complete");
+    // A new commit must have landed on top of the original.
+    const headAfter = git(repoRoot, ["rev-parse", "HEAD"]);
+    assert.notEqual(headAfter, headBefore, "expected an additional commit on top");
+    // Working tree must now be clean.
+    const status = git(repoRoot, ["status", "--porcelain"]);
+    assert.equal(status, "", `working tree must be clean after flush, got: ${status}`);
+    // Push must still happen for the new commit.
+    const pushEvent = logger.events.find((e) => e.category === "pipeline.flush.push");
+    assert.ok(pushEvent, "expected pipeline.flush.push event");
+    assert.equal(pushEvent.data.status, "pushed");
+  });
+
+  it("does NOT commit dirty tree when on the wrong branch", async () => {
+    // Stay on main + dirty tree → flush must abort at the wrong-branch
+    // gate without ever staging or committing on the base branch.
+    const { repoRoot } = setupRepo({ withBranch: false, withCommit: false, withRemote: "none" });
+    track(repoRoot);
+    writeFileSync(join(repoRoot, "leakage.txt"), "must-not-commit\n");
+    const headBefore = git(repoRoot, ["rev-parse", "HEAD"]);
+    const logger = makeLogger();
+    await flushFeatureBranch({
+      slug: "foo", appRoot: repoRoot, repoRoot, baseBranch: "main", logger,
+    });
+    // The wrong-branch event must be the only event — no commit, no push.
+    assert.ok(
+      logger.events.every((e) => e.category === "pipeline.flush.push" && e.data.skipped === "wrong-branch"),
+      `expected only wrong-branch skip events, got: ${JSON.stringify(logger.events)}`,
+    );
+    const headAfter = git(repoRoot, ["rev-parse", "HEAD"]);
+    assert.equal(headAfter, headBefore, "no commit must land on the base branch");
   });
 });

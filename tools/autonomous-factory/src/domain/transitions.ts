@@ -58,6 +58,14 @@ export interface TransitionState {
    *  its current status (eligible for normal retry) instead of being marked
    *  N/A. Optional for backward compatibility with legacy state files. */
   requiredArtifactProducers?: Record<string, string[]>;
+  /** Phase 5 — producer-key → consumer-keys for which the consumer
+   *  declares a `consumes_artifacts` edge with `required: false`.
+   *  Inverse of `requiredArtifactProducers`. Read by `salvageForDraft`
+   *  to prune the demotion cascade: when the only path from the failed
+   *  producer to a downstream consumer runs through an optional edge,
+   *  the consumer is left at its current status. Optional for backward
+   *  compatibility with legacy state files. */
+  optionalArtifactConsumers?: Record<string, string[]>;
   [key: string]: unknown; // allow pass-through of other fields
 }
 
@@ -437,7 +445,37 @@ export function salvageForDraft(
     return { state, skippedKeys: [], demotedKeys: [], sparedKeys: [] };
   }
 
-  const skipKeys = new Set(getDownstream(state.dependencies, [failedItemKey]));
+  // Cascade walk — the failing producer's downstream is collected by
+  // BFS over the dependents graph, but edges declared `required: false`
+  // (via `optionalArtifactConsumers`) are pruned: an advisory consumer
+  // is NOT cascaded into the demotion candidate set when its only path
+  // from the failed producer runs through an optional declaration. When
+  // `optionalArtifactConsumers` is empty/undefined this BFS reduces to
+  // `getDownstream` and behavior matches legacy salvage.
+  const optionalConsumersMap = state.optionalArtifactConsumers ?? {};
+  const reverseDeps: Record<string, string[]> = {};
+  for (const [key, deps] of Object.entries(state.dependencies)) {
+    for (const dep of deps) {
+      if (!reverseDeps[dep]) reverseDeps[dep] = [];
+      reverseDeps[dep].push(key);
+    }
+  }
+  const downstreamSet = new Set<string>([failedItemKey]);
+  const walkQueue: string[] = [failedItemKey];
+  while (walkQueue.length > 0) {
+    const u = walkQueue.shift()!;
+    const optionalChildren = new Set(optionalConsumersMap[u] ?? []);
+    for (const v of reverseDeps[u] ?? []) {
+      if (downstreamSet.has(v)) continue;
+      // Prune u→v when v declares the artifact edge from u as optional.
+      // v may still get demoted later via a required path from a
+      // different producer, but not via this advisory edge.
+      if (optionalChildren.has(v)) continue;
+      downstreamSet.add(v);
+      walkQueue.push(v);
+    }
+  }
+  const skipKeys = downstreamSet;
   const forcePendingKeys = new Set(
     state.salvageSurvivors.length > 0
       ? state.salvageSurvivors

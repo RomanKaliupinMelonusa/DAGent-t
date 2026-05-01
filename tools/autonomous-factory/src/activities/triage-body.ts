@@ -616,9 +616,14 @@ const triageHandlerInner: NodeHandler = {
     try {
       const pipeState = await ctx.stateReader.getStatus(slug);
       const idleTimeoutLimit = resolveIdleTimeoutLimit(ctx.apmContext, failingNodeKey);
-      const idleCount = (pipeState.errorLog ?? []).filter(
+      const priorIdleCount = (pipeState.errorLog ?? []).filter(
         (e) => e.itemKey === failingNodeKey && e.message?.includes("[session-idle-timeout]"),
       ).length;
+      // Include the current attempt's failure if its raw error carries
+      // the marker — errorLog only contains prior persisted entries, the
+      // in-flight failure is not yet recorded.
+      const currentAttemptIdle = rawError.includes("[session-idle-timeout]") ? 1 : 0;
+      const idleCount = priorIdleCount + currentAttemptIdle;
       if (idleCount >= idleTimeoutLimit) {
         const guardReason = `session.idle circuit breaker: ${idleCount}/${idleTimeoutLimit} SDK session timeouts observed for "${failingNodeKey}" — salvaging gracefully`;
         logger.event("triage.evaluate", failingNodeKey, {
@@ -838,29 +843,31 @@ const triageHandlerInner: NodeHandler = {
         allowedDomains,
       );
     } catch { /* non-fatal */ }
+    // A2 — when an agent-side wedge marker appears AND no post-baseline
+    // browser signals/failed tests are available, do NOT inherit the prior
+    // cycle's verdict from RAG/LLM. Route as `$SELF` so the failing node
+    // retries against the existing reroute-cycle budget (maxRerouteCycles).
+    // When that budget exhausts, the standard graceful-degradation path
+    // kicks in. The `evidence_empty_self_reset` guard tag flows onto the
+    // triage record so retrospective tooling can distinguish this branch.
+    const evidenceEmpty = isEvidenceEmpty(rawError, filteredStructuredFailure);
+    if (evidenceEmpty) {
+      logger.event("triage.evaluate", failingNodeKey, {
+        source: "evidence-empty",
+        domain: "$SELF",
+        reason:
+          "agent-side wedge marker; zero browser signals after baseline subtraction — self-reset",
+      });
+    }
     let triageResult: TriageResult =
-      isEvidenceEmpty(rawError, filteredStructuredFailure)
-        ? (() => {
-            // A2 — agent-side wedge marker AND zero post-baseline browser
-            // signals/failed tests. Skip the LLM entirely; the prior cycle's
-            // verdict must NOT be inherited as evidence. Route as `infra`
-            // so the failing node retries instead of cascading a bogus
-            // domain. If `infra` is not declared in the failing node's
-            // `failureRoutes`, the existing null-route branch below
-            // degrades to graceful blocked.
-            logger.event("triage.evaluate", failingNodeKey, {
-              source: "evidence-empty",
-              domain: "infra",
-              reason: "agent-side wedge marker; zero browser signals after baseline subtraction",
-            });
-            return {
-              domain: "infra",
-              reason:
-                "evidence-empty agent-side failure; route to retry not domain inheritance",
-              source: "fallback",
-              rag_matches: [],
-            } satisfies TriageResult;
-          })()
+      evidenceEmpty
+        ? ({
+            domain: "$SELF",
+            reason:
+              "evidence-empty agent-side failure; routing self-reset for bounded retry instead of domain inheritance",
+            source: "fallback",
+            rag_matches: [],
+          } satisfies TriageResult)
       : preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
         ? preLlmVerdict
         : await evaluateTriage(
@@ -1113,10 +1120,13 @@ const triageHandlerInner: NodeHandler = {
       ).length;
     } catch { /* best effort — defaults to 0 */ }
 
+    const finalGuardResult: TriageRecord["guard_result"] = evidenceEmpty
+      ? "evidence_empty_self_reset"
+      : "passed";
     const record: TriageRecord = {
       failing_item: failingNodeKey,
       error_signature: errorSig,
-      guard_result: "passed",
+      guard_result: finalGuardResult,
       rag_matches: triageResult.rag_matches ?? [],
       rag_selected: triageResult.source === "rag" ? (triageResult.rag_matches?.[0]?.snippet ?? null) : null,
       llm_invoked: triageResult.source === "llm",
@@ -1163,7 +1173,7 @@ const triageHandlerInner: NodeHandler = {
         ...(routedToInvocationId
           ? { routedTo: { nodeKey: routeToKey, invocationId: routedToInvocationId } }
           : {}),
-        guardResult: "passed",
+        guardResult: finalGuardResult,
       } satisfies TriageHandlerOutput,
     };
   },
