@@ -1,5 +1,5 @@
 /**
- * session/telemetry.ts — Item finalization, telemetry merging, and report flushing.
+ * session/telemetry.ts — Item finalization helpers.
  *
  * Contains the `finishItem()` consolidation helper that standardizes how every
  * dispatch step terminates an item and produces a `SessionOutcome`.
@@ -12,16 +12,14 @@ import type {
   SessionOutcome,
   TriageActivation,
 } from "../app-types.js";
-import { writeFlightData } from "../reporting/index.js";
 
 // ---------------------------------------------------------------------------
 // Report flushing
 // ---------------------------------------------------------------------------
 
-/** Flush flight data after each item completes. */
-export function flushReports(config: PipelineRunConfig, state: PipelineRunState): void {
-  const { appRoot, slug } = config;
-  writeFlightData(appRoot, slug, state.pipelineSummaries);
+/** Flush flight data after each item completes. No-op since reporting subsystem was removed. */
+export function flushReports(_config: PipelineRunConfig, _state: PipelineRunState): void {
+  // intentionally empty
 }
 
 // ---------------------------------------------------------------------------

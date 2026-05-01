@@ -21,7 +21,6 @@ import { TOOL_CATEGORIES, wireSessionTelemetry } from "../session/session-events
 import { captureGitFilesSnapshot, diffGitFilesSnapshots } from "../session/git-files-snapshot.js";
 import { SessionCircuitBreaker } from "./session-circuit-breaker.js";
 import { isFatalSdkError } from "../domain/error-classification.js";
-import { writeFlightData } from "../reporting/index.js";
 import {
   validateNodeContract,
   summarizeMissing,
@@ -49,7 +48,7 @@ export async function runCopilotSession(
   client: CopilotClient,
   params: CopilotSessionParams,
 ): Promise<CopilotSessionResult> {
-  const { telemetry, itemKey, logger, appRoot, slug, pipelineSummaries } = params;
+  const { telemetry, itemKey, logger } = params;
 
   let session: Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -85,7 +84,7 @@ export async function runCopilotSession(
         params.precompletionGate,
       ),
     ],
-    hooks: buildSessionHooks(params.repoRoot, params.sandbox, appRoot, (toolName) => {
+    hooks: buildSessionHooks(params.repoRoot, params.sandbox, params.appRoot, (toolName) => {
       const category = TOOL_CATEGORIES[toolName] ?? toolName;
       breaker.recordCall(category, telemetry.toolCounts);
     }, params.harnessLimits, params.freshnessGate),
@@ -119,16 +118,11 @@ export async function runCopilotSession(
     }
   }
 
-  // Heartbeat: snapshot _FLIGHT.json while the session is live so the
-  // watcher (or Live UI) can render progress without waiting for finish.
+  // Heartbeat: no-op since reporting subsystem was removed (Phase 4.4).
   let isSessionActive = true;
-  let lastHeartbeat = 0;
   const triggerHeartbeat = () => {
     if (!isSessionActive) return;
-    if (Date.now() - lastHeartbeat < 1500) return;
-    lastHeartbeat = Date.now();
-    const liveSummaries = [...pipelineSummaries, { ...telemetry, outcome: "in-progress" as const }];
-    writeFlightData(appRoot, slug, liveSummaries, true);
+    // intentionally empty
   };
 
   wireSessionTelemetry(session, {

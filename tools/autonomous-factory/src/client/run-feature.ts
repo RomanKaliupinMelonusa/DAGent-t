@@ -35,7 +35,6 @@
 
 import path from "node:path";
 import { Client, Connection } from "@temporalio/client";
-import { bootstrapOtel } from "../telemetry/otel.js";
 import type { pipelineWorkflow, PipelineInput, PipelineNodeSpec, PipelineResult } from "../workflow/index.js";
 import { parseCli } from "../entry/cli.js";
 import { bootstrap } from "../entry/bootstrap.js";
@@ -124,12 +123,10 @@ async function main(): Promise<void> {
     startedMs: Date.now(),
   };
 
-  const otel = bootstrapOtel("dagent-client");
   const connection = await Connection.connect({ address });
   const tClient = new Client({
     connection,
     namespace,
-    ...(otel.plugin ? { plugins: [otel.plugin] } : {}),
   });
 
   const workflowId = deterministicWorkflowId(slug, workflowName);
@@ -174,7 +171,6 @@ async function main(): Promise<void> {
   } finally {
     void crashed;
     await connection.close();
-    await otel.shutdown();
   }
 
   if (

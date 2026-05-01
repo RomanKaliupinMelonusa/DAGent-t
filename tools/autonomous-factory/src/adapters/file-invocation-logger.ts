@@ -19,7 +19,6 @@ import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { InvocationLogger } from "../ports/invocation-logger.js";
-import type { SecretRedactor } from "../telemetry/secret-redactor.js";
 
 const EVENTS_FILE = "events.jsonl";
 const TOOL_CALLS_FILE = "tool-calls.jsonl";
@@ -33,7 +32,6 @@ export class FileInvocationLogger implements InvocationLogger {
 
   constructor(
     private readonly logsDir: string,
-    private readonly redactor?: SecretRedactor,
   ) {}
 
   async event(record: Record<string, unknown>): Promise<void> {
@@ -73,8 +71,7 @@ export class FileInvocationLogger implements InvocationLogger {
     try {
       await this.ensureDir();
       const raw = JSON.stringify(record) + "\n";
-      const line = this.redactor ? this.redactor(raw) : raw;
-      await appendFile(path.join(this.logsDir, filename), line, "utf8");
+      await appendFile(path.join(this.logsDir, filename), raw, "utf8");
     } catch (err) {
       this.lastError = err instanceof Error ? err : new Error(String(err));
     }
@@ -83,16 +80,7 @@ export class FileInvocationLogger implements InvocationLogger {
   private async appendRaw(filename: string, chunk: string | Buffer): Promise<void> {
     try {
       await this.ensureDir();
-      // Redaction is a string operation. When a redactor is configured
-      // we decode Buffer chunks as utf8 (our stdout/stderr streams are
-      // always text). When no redactor is configured we keep the raw
-      // byte path to preserve Buffer fidelity.
-      if (this.redactor) {
-        const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-        await appendFile(path.join(this.logsDir, filename), this.redactor(text), "utf8");
-      } else {
-        await appendFile(path.join(this.logsDir, filename), chunk);
-      }
+      await appendFile(path.join(this.logsDir, filename), chunk);
     } catch (err) {
       this.lastError = err instanceof Error ? err : new Error(String(err));
     }

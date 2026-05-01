@@ -35,7 +35,6 @@
 
 import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import path from "node:path";
-import { bootstrapOtel } from "../telemetry/otel.js";
 import { parseAdminArgs } from "./admin-parse.js";
 import {
   cancelPipelineSignal,
@@ -144,18 +143,15 @@ async function withClient<T>(
 ): Promise<T> {
   const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
   const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
-  const otel = bootstrapOtel("dagent-admin");
   const connection = await Connection.connect({ address });
   try {
     const client = new Client({
       connection,
       namespace,
-      ...(otel.plugin ? { plugins: [otel.plugin] } : {}),
     });
     return await fn(client);
   } finally {
     await connection.close();
-    await otel.shutdown();
   }
 }
 

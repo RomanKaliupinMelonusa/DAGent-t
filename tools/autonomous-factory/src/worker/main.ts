@@ -44,9 +44,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, isAbsolute } from "node:path";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import type { CopilotClient } from "@github/copilot-sdk";
-import { bootstrapOtel } from "../telemetry/otel.js";
-import { setActivityLoggerFactory } from "../telemetry/logger-factory.js";
-import { OtelPipelineLogger } from "../telemetry/otel-pipeline-logger.js";
 import { createActivities, type ActivityDeps } from "../activities/index.js";
 import { LocalFilesystem } from "../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../adapters/file-artifact-bus.js";
@@ -187,21 +184,6 @@ async function main(): Promise<void> {
   const { deps, client } = await buildActivityDeps();
   const activities = createActivities(deps);
 
-  // OpenTelemetry / Tempo bootstrap (Group F, decision D-S4-1).
-  // No-op when OTLP_ENDPOINT is unset, so local dev keeps working.
-  const otel = bootstrapOtel("dagent-worker");
-  if (otel.plugin) {
-    console.log(
-      `[worker] otel enabled endpoint=${process.env.OTLP_ENDPOINT}`,
-    );
-    // Session 5 P5 — wire the OTel-emitting PipelineLogger so every
-    // existing `ctx.logger.event(...)` call inside an activity becomes
-    // a span event on the activity span the OpenTelemetryPlugin opens.
-    // Factory returns a fresh logger per activity execution so the
-    // per-itemKey attempt counter doesn't leak across executions.
-    setActivityLoggerFactory(() => new OtelPipelineLogger("dagent-worker"));
-  }
-
   const connection = await NativeConnection.connect({ address });
 
   const worker = await Worker.create({
@@ -225,7 +207,6 @@ async function main(): Promise<void> {
     // the canonical escape hatch (see the SDK error message itself).
     bundlerOptions: { ignoreModules: ["crypto", "buffer"] },
     activities,
-    ...(otel.plugin ? { plugins: [otel.plugin] } : {}),
   });
 
   console.log(
@@ -233,20 +214,17 @@ async function main(): Promise<void> {
   );
 
   // Cooperative shutdown — Temporal's `Worker.shutdown()` drains
-  // in-flight activities; afterwards we tear down the SDK client and
-  // flush OTel spans.
+  // in-flight activities; afterwards we tear down the SDK client.
   const shutdown = async (sig: string): Promise<void> => {
     console.log(`[worker] received ${sig} — shutting down`);
     worker.shutdown();
     await stopClientQuiet(client);
-    await otel.shutdown();
   };
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
   process.once("SIGINT", () => void shutdown("SIGINT"));
 
   await worker.run();
   await stopClientQuiet(client);
-  await otel.shutdown();
 }
 
 main().catch((err) => {

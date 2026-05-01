@@ -21,7 +21,6 @@
 
 import { getAgentConfig, buildTaskPrompt } from "../apm/runtime/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
-import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
 import { isOrchestratorTimeout } from "../triage/index.js";
 import { formatBaselineAdvisory } from "../triage/baseline-advisory.js";
@@ -293,16 +292,6 @@ const copilotAgentHandler: NodeHandler = {
           stale: currentBaseSha !== undefined && baseline?.base_sha !== undefined && baseline.base_sha !== currentBaseSha,
         });
       }
-    }
-
-    if (node?.generates_change_manifest) {
-      await writeChangeManifest(
-        slug,
-        appRoot,
-        repoRoot,
-        pipelineSummaries as ItemSummary[],
-        (s) => ctx.stateReader.getStatus(s),
-      );
     }
 
     // ── 4. Run the SDK session via adapter ──────────────────────────────────

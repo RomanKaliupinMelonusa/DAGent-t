@@ -26,8 +26,6 @@ import {
   runPreflightBaseline,
   type PreflightCheckResult,
 } from "../lifecycle/preflight.js";
-import { loadPreviousSummary, setModelPricing } from "../reporting/index.js";
-import type { PreviousSummaryTotals } from "../reporting/index.js";
 import { createPipelineLogger } from "../telemetry/index.js";
 import { RoamCodeIndexer } from "../adapters/roam-code-indexer.js";
 import type { CodeIndexer } from "../ports/code-indexer.js";
@@ -39,8 +37,6 @@ import type { CodeIndexer } from "../ports/code-indexer.js";
 export interface BootstrapResult {
   /** Immutable pipeline run config. */
   config: PipelineRunConfig;
-  /** Telemetry from a prior session (parsed once, merged into totals). */
-  baseTelemetry: PreviousSummaryTotals | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,10 +121,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
     console.log("  ✔ APM context loaded — all agent budgets within limits\n");
 
     checkToolLimitsHygiene(apmContext);
-
-    if (apmContext.config?.model_pricing) {
-      setModelPricing(apmContext.config.model_pricing);
-    }
   } catch (err) {
     if (err instanceof ApmBudgetExceededError) {
       throw new BootstrapError(
@@ -197,15 +189,6 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
   // State seeding has moved to the Temporal workflow itself. The legacy
   // `_STATE.json` seed/resume path was removed in the T1 cutover.
 
-  // --- Boot-time telemetry ---
-  const baseTelemetry = loadPreviousSummary(appRoot, slug);
-  if (baseTelemetry) {
-    console.log(
-      `  📊 Prior session detected: ${baseTelemetry.steps} steps, ` +
-      `${baseTelemetry.tokens.toLocaleString()} tokens, $${baseTelemetry.costUsd.toFixed(4)} cost — will merge into totals.`,
-    );
-  }
-
   // Propagation of `appRoot` and `POLL_MAX_RETRIES` to `process.env` was
   // performed at the top of `bootstrap()` so every preflight step and
   // every dynamically-imported adapter sees the chosen app from the
@@ -223,6 +206,5 @@ export async function bootstrap(cli: CliArgs): Promise<BootstrapResult> {
       codeIndexer,
       logger,
     },
-    baseTelemetry,
   };
 }

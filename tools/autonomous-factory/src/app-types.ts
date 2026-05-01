@@ -62,12 +62,6 @@ export interface PipelineRunState {
   /** Track git commit SHA before each dev step for reliable change detection */
   preStepRefs: Record<string, string>;
   /**
-   * Telemetry from a prior session's _SUMMARY.md, parsed once at boot time.
-   * Guarantees monotonic metric accumulation across sessions — every flush
-   * simply adds baseTelemetry to the current session's totals.
-   */
-  baseTelemetry: PreviousSummaryTotals | null;
-  /**
    * Accumulated handler output from all preceding items in this pipeline run.
    * Keyed by item key. The kernel propagates the full bag into handlerData
    * so downstream handlers can access output from any upstream handler.
@@ -86,20 +80,6 @@ export interface HandlerOutputBag {
   headAfterAttempt?: string;
   /** Extensible: handlers may emit arbitrary keys. */
   [key: string]: unknown;
-}
-
-/**
- * Totals from a previous pipeline run, loaded from _SUMMARY-DATA.json.
- * Used for monotonic metric accumulation across restarts.
- */
-export interface PreviousSummaryTotals {
-  steps: number;
-  completed: number;
-  failed: number;
-  durationMs: number;
-  filesChanged: number;
-  tokens: number;
-  costUsd: number;
 }
 
 // ---------------------------------------------------------------------------
