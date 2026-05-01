@@ -8,8 +8,8 @@
   },
   "scripts": {
     "postinstall": "node ../../scripts/postinstall-ajv-shim.mjs && node ../../scripts/postinstall-vscode-jsonrpc-shim.mjs",
-    "lint": "eslint 'src/{workflow,activities,worker,client,test-stubs}/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**'",
-    "lint:fix": "eslint 'src/{workflow,activities,worker,client,test-stubs}/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**' --fix",
+    "lint": "eslint 'src/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**'",
+    "lint:fix": "eslint 'src/**/*.ts' --ignore-pattern 'src/workflow/**/__fixtures__/**' --fix",
     "lint:test": "node scripts/lint-test.mjs",
     "test": "vitest run",
     "test:replay": "vitest run src/__tests__/replay/replay.test.ts",
