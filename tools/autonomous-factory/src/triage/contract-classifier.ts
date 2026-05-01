@@ -21,8 +21,8 @@
 
 import type { TriageResult } from "../types.js";
 import type { StructuredFailure } from "./playwright-report.js";
-import type { AcceptanceContract } from "../apm/acceptance-schema.js";
-import type { CompiledTriageProfile, TriagePattern } from "../apm/types.js";
+import type { AcceptanceContract } from "../apm/index.js";
+import type { CompiledTriageProfile, TriagePattern } from "../apm/index.js";
 import { evaluateJsonPathPredicate } from "./jsonpath-predicate.js";
 
 export interface ProfilePatternContext {

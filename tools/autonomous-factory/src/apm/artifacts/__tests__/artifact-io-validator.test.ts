@@ -14,7 +14,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ApmWorkflowSchema, ApmCompileError, type ApmWorkflow } from "../types.js";
+import { ApmWorkflowSchema, ApmCompileError, type ApmWorkflow } from "../../manifest/types.js";
 import { validateArtifactIO } from "../artifact-io-validator.js";
 
 // Minimal node body fields that the workflow schema requires. Everything

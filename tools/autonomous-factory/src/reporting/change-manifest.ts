@@ -7,7 +7,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { ItemSummary } from "../types.js";
 import { featurePath, ensureFeatureDir } from "../paths/feature-paths.js";
-import { buildEnvelope } from "../apm/artifact-catalog.js";
+import { buildEnvelope } from "../apm/artifacts/artifact-catalog.js";
 
 /**
  * Write the change manifest JSON for the docs-expert agent.

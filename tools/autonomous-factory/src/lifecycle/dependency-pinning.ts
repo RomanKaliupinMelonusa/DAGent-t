@@ -26,7 +26,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { ApmConfig } from "../apm/types.js";
+import type { ApmConfig } from "../apm/index.js";
 import { BootstrapError } from "../errors.js";
 
 // ---------------------------------------------------------------------------

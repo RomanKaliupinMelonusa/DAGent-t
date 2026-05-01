@@ -22,7 +22,7 @@ import {
   getArtifactKind,
   NodeReportArtifactSchema,
   validateArtifactPayload,
-} from "../../apm/artifact-catalog.js";
+} from "../../apm/artifacts/artifact-catalog.js";
 import { LocalFilesystem } from "../../adapters/local-filesystem.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { newInvocationId } from "../../domain/invocation-id.js";

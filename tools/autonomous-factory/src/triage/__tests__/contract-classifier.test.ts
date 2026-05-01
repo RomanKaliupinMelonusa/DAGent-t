@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 
 import { evaluateProfilePatterns } from "../contract-classifier.js";
 import { BUILTIN_TRIAGE_PATTERNS } from "../builtin-patterns.js";
-import type { CompiledTriageProfile } from "../../apm/types.js";
+import type { CompiledTriageProfile } from "../../apm/index.js";
 import type { StructuredFailure } from "../playwright-report.js";
 
 const BASE: StructuredFailure = {

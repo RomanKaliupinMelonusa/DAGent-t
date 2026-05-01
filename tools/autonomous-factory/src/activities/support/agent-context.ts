@@ -4,10 +4,10 @@
  */
 
 import type { NodeContext } from "../../contracts/node-context.js";
-import type { AgentContext } from "../../apm/agents.js";
+import type { AgentContext } from "../../apm/index.js";
 import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
 import type { InvocationRecord, PipelineState } from "../../types.js";
-import type { ApmWorkflow } from "../../apm/types.js";
+import type { ApmWorkflow } from "../../apm/index.js";
 import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { featurePath } from "../../paths/feature-paths.js";
 

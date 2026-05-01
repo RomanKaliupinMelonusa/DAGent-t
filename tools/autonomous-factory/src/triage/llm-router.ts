@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import type { TriageLlm } from "../ports/triage-llm.js";
-import type { TriageSignature } from "../apm/types.js";
+import type { TriageSignature } from "../apm/index.js";
 import type { BaselineProfile, BaselineEntry } from "../ports/baseline-loader.js";
 import type { PriorAttempt } from "./historian.js";
 import { parseDomainTag } from "./handoff-builder.js";

@@ -12,10 +12,10 @@ import fs from "node:fs";
 
 import type { TriageArtifactLoader, ContractEvidenceResult, TriageEvidenceBundle } from "../ports/triage-artifact-loader.js";
 import { featurePath } from "../paths/feature-paths.js";
-import type { AcceptanceContract } from "../apm/acceptance-schema.js";
+import type { AcceptanceContract } from "../apm/index.js";
 import type { InvocationRecord, PipelineState, ArtifactRefSerialized } from "../types.js";
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
-import { loadAcceptanceContract } from "../apm/acceptance-schema.js";
+import type { ArtifactKind } from "../apm/index.js";
+import { loadAcceptanceContract } from "../apm/manifest/acceptance-schema.js";
 import { prependContractEvidence } from "../triage/contract-evidence.js";
 import {
   buildTriageRejectionContext,

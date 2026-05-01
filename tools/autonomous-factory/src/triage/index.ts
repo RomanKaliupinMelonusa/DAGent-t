@@ -13,7 +13,7 @@
 
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageResult } from "../types.js";
-import type { CompiledTriageProfile } from "../apm/types.js";
+import type { CompiledTriageProfile } from "../apm/index.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { retrieveTopMatches } from "./retriever.js";

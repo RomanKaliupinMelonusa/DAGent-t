@@ -19,7 +19,7 @@ import {
   computeApiDrift,
   satisfiesRange,
 } from "../dependency-pinning.js";
-import type { ApmConfig } from "../../apm/types.js";
+import type { ApmConfig } from "../../apm/index.js";
 import { BootstrapError } from "../../errors.js";
 
 function tmpApp(): string {

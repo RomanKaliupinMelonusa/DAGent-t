@@ -5,7 +5,7 @@ import {
   formatViolationsError,
   KNOWN_ASSERT_KINDS,
 } from "../fixture-validator.js";
-import { AcceptanceContractSchema } from "../../apm/acceptance-schema.js";
+import { AcceptanceContractSchema } from "../../apm/manifest/acceptance-schema.js";
 import type { BaselineProfile } from "../../ports/baseline-loader.js";
 
 const baseFixture = {

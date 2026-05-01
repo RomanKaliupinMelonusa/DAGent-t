@@ -11,9 +11,9 @@
  * dispatch time.
  */
 
-import type { ApmWorkflowNode } from "./types.js";
-import type { ArtifactKind } from "./artifact-catalog.js";
-import { isArtifactKind } from "./artifact-catalog.js";
+import type { ApmWorkflowNode } from "../manifest/types.js";
+import type { ArtifactKind } from "../artifacts/artifact-catalog.js";
+import { isArtifactKind } from "../artifacts/artifact-catalog.js";
 import {
   makeNodeIOContract,
   type NodeIOContract,
@@ -21,7 +21,7 @@ import {
   type UpstreamConsumes,
   type RerouteConsumes,
   type NodeProduces,
-} from "../contracts/node-io-contract.js";
+} from "../../contracts/node-io-contract.js";
 
 /**
  * Compile a node's YAML I/O declarations into a `NodeIOContract`. All kinds

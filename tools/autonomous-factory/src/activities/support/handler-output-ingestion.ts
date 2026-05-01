@@ -21,7 +21,7 @@ import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import {
   HandlerOutputArtifactSchema,
   validateArtifactPayload,
-} from "../../apm/artifact-catalog.js";
+} from "../../apm/artifacts/artifact-catalog.js";
 
 /** Reserved keys owned by the `local-exec` activity. Scripts must not
  *  shadow these via the envelope; anything the envelope places under one

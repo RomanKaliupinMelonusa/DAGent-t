@@ -14,7 +14,7 @@
  * for nodes not gated by this validator.
  */
 
-import { loadAcceptanceContract, AcceptanceParseError } from "../apm/acceptance-schema.js";
+import { loadAcceptanceContract, AcceptanceParseError } from "../apm/manifest/acceptance-schema.js";
 import { validateFixtures, formatViolationsError } from "./fixture-validator.js";
 import type { BaselineProfile } from "../ports/baseline-loader.js";
 

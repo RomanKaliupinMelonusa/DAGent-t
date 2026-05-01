@@ -21,7 +21,7 @@
  * `applyOp` for exact semantics.
  */
 
-import type { TriagePattern } from "../apm/types.js";
+import type { TriagePattern } from "../apm/index.js";
 
 /** `json-path`-arm pattern, narrowed from the union for this module. */
 export type JsonPathPredicate = Extract<TriagePattern, { match_kind: "json-path" }>;

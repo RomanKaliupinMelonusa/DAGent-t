@@ -21,7 +21,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { getAgentConfig, type AgentContext } from "../agents.js";
-import type { ApmCompiledOutput } from "../types.js";
+import type { ApmCompiledOutput } from "../../manifest/types.js";
 
 const APP_ROOT = "/repo/apps/sample-app";
 const REPO_ROOT = "/repo";

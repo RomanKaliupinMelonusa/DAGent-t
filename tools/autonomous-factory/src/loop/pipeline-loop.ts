@@ -28,7 +28,7 @@ import type { NodeHandler, NodeContext } from "../handlers/types.js";
 import type { NodeMiddleware } from "../handlers/middleware.js";
 import { resolveMiddlewareChain } from "../handlers/middlewares/registry.js";
 import type { AvailableItem } from "../app-types.js";
-import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/index.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { VersionControl } from "../ports/version-control.js";

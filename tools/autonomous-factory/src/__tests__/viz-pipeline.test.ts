@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { renderMermaid, renderDot } from "../viz/render.js";
-import type { ApmWorkflow } from "../apm/types.js";
+import type { ApmWorkflow } from "../apm/index.js";
 
 /**
  * Build a hand-rolled workflow fixture. We skip `ApmWorkflowSchema.parse` so

@@ -10,9 +10,9 @@
  * adapters, filesystem modules, or concrete implementations.
  */
 
-import type { AcceptanceContract } from "../apm/acceptance-schema.js";
+import type { AcceptanceContract } from "../apm/index.js";
 import type { InvocationRecord, ArtifactRefSerialized } from "../types.js";
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { ArtifactKind } from "../apm/index.js";
 
 export interface ContractEvidenceResult {
   /** Raw error trace with the oracle evidence block prepended. */

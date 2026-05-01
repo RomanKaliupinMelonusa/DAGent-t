@@ -24,7 +24,7 @@ import type {
   AcceptanceContract,
   TestFixture,
   FixtureAssert,
-} from "../apm/acceptance-schema.js";
+} from "../apm/index.js";
 import type { BaselineProfile, BaselineEntry } from "../ports/baseline-loader.js";
 
 // ---------------------------------------------------------------------------

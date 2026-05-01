@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { compileNodeIOContract } from "../compile-node-io-contract.js";
-import type { ApmWorkflowNode } from "../types.js";
+import type { ApmWorkflowNode } from "../../manifest/types.js";
 
 // Minimal factory for the fields we care about; tests cast through unknown
 // to avoid duplicating the huge Zod-inferred schema.

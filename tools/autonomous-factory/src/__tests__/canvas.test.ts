@@ -10,8 +10,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { compileApm } from "../apm/compiler.js";
-import { ApmCanvasSchema, fromCanvas, toCanvas } from "../apm/canvas.js";
+import { compileApm } from "../apm/compile/compiler.js";
+import { ApmCanvasSchema, fromCanvas, toCanvas } from "../apm/manifest/canvas.js";
 
 const APP_ROOT = path.resolve(import.meta.dirname, "../../../../apps/sample-app");
 

@@ -16,7 +16,7 @@
  *     workflow-scope patterns.
  */
 
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import { compileVolatilePatterns, type VolatilePattern } from "../domain/index.js";
 
 export interface ResolvedVolatilePatterns {

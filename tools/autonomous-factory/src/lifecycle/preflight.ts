@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execSync } from "node:child_process";
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import type { PipelineState } from "../types.js";
 import { StateError, BootstrapError } from "../errors.js";
 import { executeHook, buildHookEnv } from "./hooks.js";

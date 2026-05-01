@@ -8,7 +8,7 @@
  * decide which `E2E_*` / `READY_*` env vars to inject for a given itemKey.
  */
 
-import type { ApmConfig } from "../../apm/types.js";
+import type { ApmConfig } from "../../apm/index.js";
 
 /**
  * Node keys that share `apps/<app>/.apm/hooks/e2e-runner-{pre,post}.sh` and

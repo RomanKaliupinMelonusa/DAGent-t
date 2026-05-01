@@ -36,7 +36,7 @@ import {
   listArtifactKinds,
   validateArtifactPayload,
   type ArtifactKindDef,
-} from "../../apm/artifact-catalog.js";
+} from "../../apm/artifacts/artifact-catalog.js";
 
 const HANDLER_OUTPUT_FILENAME = "handler-output.json";
 const SIDECAR_SUFFIX = ".meta.json";

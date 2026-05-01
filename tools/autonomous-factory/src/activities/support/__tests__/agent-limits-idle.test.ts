@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveIdleTimeoutLimit, IDLE_TIMEOUT_LIMIT_FALLBACK } from "../agent-limits.js";
-import type { ApmCompiledOutput } from "../../../apm/types.js";
+import type { ApmCompiledOutput } from "../../../apm/index.js";
 
 function makeCtx(partial: {
   defaultLimit?: number;

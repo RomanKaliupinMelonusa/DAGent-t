@@ -56,7 +56,7 @@ import { FileArtifactBus } from "../../adapters/file-artifact-bus.js";
 import { NoopPipelineLogger } from "../../telemetry/noop-logger.js";
 import { getActivityLoggerFactory } from "../../telemetry/logger-factory.js";
 import type { NodeContext, StatusReader, LineageWriter } from "../../contracts/node-context.js";
-import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { ApmCompiledOutput } from "../../apm/index.js";
 import type { PipelineLogger } from "../../telemetry/events.js";
 
 import type { CopilotSessionRunner } from "../../ports/copilot-session-runner.js";

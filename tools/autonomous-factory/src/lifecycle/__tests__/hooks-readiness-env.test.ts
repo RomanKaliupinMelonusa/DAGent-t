@@ -14,7 +14,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildE2eReadinessEnv } from "../../activities/support/e2e-readiness-env.js";
-import type { ApmConfig } from "../../apm/types.js";
+import type { ApmConfig } from "../../apm/index.js";
 
 const FULL: ApmConfig = {
   e2e: {

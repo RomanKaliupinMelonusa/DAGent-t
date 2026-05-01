@@ -12,7 +12,7 @@
  */
 
 import path from "node:path";
-import { compileApm } from "../src/apm/compiler.js";
+import { compileApm } from "../src/apm/compile/compiler.js";
 import { renderMermaid, renderDot } from "../src/viz/render.js";
 
 interface Args {

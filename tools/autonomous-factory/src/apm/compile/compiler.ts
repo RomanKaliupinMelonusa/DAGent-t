@@ -27,14 +27,14 @@ import {
   type ApmWorkflow,
   type TriageSignature,
   type CompiledTriageProfile,
-} from "./types.js";
+} from "../manifest/types.js";
 import {
   resolveCapabilityProfile,
   renderPreferencesMarkdown,
 } from "./capability-profiles.js";
-import { validateArtifactIO } from "./artifact-io-validator.js";
+import { validateArtifactIO } from "../artifacts/artifact-io-validator.js";
 import { lintAssembledInstructions, formatViolations } from "./instruction-lint.js";
-import { BUILTIN_TRIAGE_PATTERNS } from "../triage/builtin-patterns.js";
+import { BUILTIN_TRIAGE_PATTERNS } from "../../triage/builtin-patterns.js";
 
 // ---------------------------------------------------------------------------
 // Plugin discovery — record app-local plugin paths in compiled output

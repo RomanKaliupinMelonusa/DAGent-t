@@ -17,7 +17,7 @@
 
 import { z } from "zod";
 import yaml from "js-yaml";
-import { AcceptanceContractSchema } from "./acceptance-schema.js";
+import { AcceptanceContractSchema } from "../manifest/acceptance-schema.js";
 
 // ---------------------------------------------------------------------------
 // Types

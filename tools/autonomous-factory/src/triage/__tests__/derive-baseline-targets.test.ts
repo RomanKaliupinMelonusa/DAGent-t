@@ -11,7 +11,7 @@ import {
   deriveBaselineTargets,
   formatDerivedTargetsMarkdown,
 } from "../derive-baseline-targets.js";
-import type { AcceptanceContract } from "../../apm/acceptance-schema.js";
+import type { AcceptanceContract } from "../../apm/index.js";
 
 function contract(
   flows: AcceptanceContract["required_flows"],

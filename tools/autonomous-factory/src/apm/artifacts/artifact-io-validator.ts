@@ -22,8 +22,8 @@
  * same failure mode it uses for schema / token-budget problems.
  */
 
-import type { ApmWorkflow, ApmWorkflowNode } from "./types.js";
-import { ApmCompileError } from "./types.js";
+import type { ApmWorkflow, ApmWorkflowNode } from "../manifest/types.js";
+import { ApmCompileError } from "../manifest/types.js";
 import {
   getArtifactPolicy,
   getArtifactSchemaVersion,

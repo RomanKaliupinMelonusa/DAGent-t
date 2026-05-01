@@ -52,9 +52,9 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Pure domain functions (DAG math, transitions, scheduling) | `tools/autonomous-factory/src/domain/` |
 | Ports (interfaces) | `tools/autonomous-factory/src/ports/` |
 | Adapters (I/O implementations) | `tools/autonomous-factory/src/adapters/` |
-| APM compiler & context loader | `tools/autonomous-factory/src/apm/compiler.ts` · `src/apm/context-loader.ts` |
+| APM compiler & context loader | `tools/autonomous-factory/src/apm/compile/compiler.ts` · `src/apm/compile/context-loader.ts` |
 | Failure triage & routing | `tools/autonomous-factory/src/triage/` · `src/activities/triage.activity.ts` |
-| Agent prompt factory | `tools/autonomous-factory/src/apm/agents.ts` |
+| Agent prompt factory | `tools/autonomous-factory/src/apm/runtime/agents.ts` |
 | Tool call harness & circuit breaker | `tools/autonomous-factory/src/harness/` |
 | Pre-flight checks | `tools/autonomous-factory/src/lifecycle/preflight.ts` |
 | Lifecycle hooks execution | `tools/autonomous-factory/src/lifecycle/hooks.ts` |

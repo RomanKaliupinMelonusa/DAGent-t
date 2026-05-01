@@ -21,7 +21,7 @@ import type {
   NodeArtifactRef,
 } from "../ports/artifact-bus.js";
 import type { FeatureFilesystem } from "../ports/feature-filesystem.js";
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { ArtifactKind } from "../apm/index.js";
 import type { PipelineLogger } from "../telemetry/events.js";
 import {
   buildSidecarEnvelope,
@@ -30,7 +30,7 @@ import {
   stampEnvelope,
   validateArtifactPayload,
   validateEnvelope,
-} from "../apm/artifact-catalog.js";
+} from "../apm/artifacts/artifact-catalog.js";
 import { isInvocationId } from "../domain/invocation-id.js";
 import { WORKING_DIR } from "../paths/feature-paths.js";
 

@@ -3,7 +3,7 @@
  * and terminal log outputs.
  */
 
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import type { ItemSummary } from "../types.js";
 import { computeStepCost } from "./pricing.js";
 import { formatUsd } from "./format.js";

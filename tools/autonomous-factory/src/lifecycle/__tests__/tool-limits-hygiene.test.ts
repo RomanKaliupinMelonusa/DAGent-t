@@ -9,7 +9,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { checkToolLimitsHygiene } from "../preflight.js";
-import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { ApmCompiledOutput } from "../../apm/index.js";
 
 function makeCtx(defaultToolLimits: unknown): ApmCompiledOutput {
   return {

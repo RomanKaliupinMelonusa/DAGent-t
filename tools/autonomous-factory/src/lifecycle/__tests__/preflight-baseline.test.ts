@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { runPreflightBaseline } from "../preflight.js";
-import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { ApmCompiledOutput } from "../../apm/index.js";
 
 function makeCtx(hookCmd: string | undefined): ApmCompiledOutput {
   return {

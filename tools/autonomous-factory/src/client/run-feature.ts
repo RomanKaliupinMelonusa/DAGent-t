@@ -40,7 +40,7 @@ import { flushFeatureBranch } from "../lifecycle/flush-branch.js";
 import type { pipelineWorkflow, PipelineInput, PipelineNodeSpec, PipelineResult } from "../workflow/index.js";
 import { parseCli } from "../entry/cli.js";
 import { bootstrap } from "../entry/bootstrap.js";
-import type { ApmWorkflowNode } from "../apm/types.js";
+import type { ApmWorkflowNode } from "../apm/index.js";
 
 const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
 const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? "dagent-pipeline";

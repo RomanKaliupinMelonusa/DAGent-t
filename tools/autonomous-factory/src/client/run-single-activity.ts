@@ -44,7 +44,7 @@ import type {
 } from "../workflow/single-activity.workflow.js";
 import type { NodeActivityInput } from "../activities/types.js";
 import type { PipelineState } from "../types.js";
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import { newInvocationId } from "../domain/invocation-id.js";
 
 const VALID_HANDLERS: ReadonlySet<SingleActivityHandlerKind> = new Set([

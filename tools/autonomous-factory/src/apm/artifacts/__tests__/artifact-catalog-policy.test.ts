@@ -25,7 +25,7 @@ import {
   type ArtifactKind,
   type ArtifactKindDef,
 } from "../artifact-catalog.js";
-import { ApmWorkflowSchema, type ApmWorkflow } from "../types.js";
+import { ApmWorkflowSchema, type ApmWorkflow } from "../../manifest/types.js";
 import { validateArtifactIO } from "../artifact-io-validator.js";
 
 // ---------------------------------------------------------------------------

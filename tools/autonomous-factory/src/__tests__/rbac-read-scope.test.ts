@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkRbac } from "../harness/rbac.js";
 import { resolveAgentSandbox } from "../harness/sandbox.js";
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 
 const REPO_ROOT = "/workspaces/DAGent-t";
 const APP_ROOT = "/workspaces/DAGent-t/apps/commerce-storefront";

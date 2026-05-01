@@ -19,7 +19,7 @@ import type { BaselineProfile } from "../ports/baseline-loader.js";
 import { extractPriorAttempts } from "./historian.js";
 import { toHandoffEvidence, toBrowserSignals, toFailedTests } from "./handoff-evidence.js";
 import { featureRelPath } from "../paths/feature-paths.js";
-import { getArtifactSchemaVersion } from "../apm/artifact-catalog.js";
+import { getArtifactSchemaVersion } from "../apm/artifacts/artifact-catalog.js";
 import { RESET_OPS, REDEVELOPMENT_RESET_OPS } from "../types.js";
 
 // ---------------------------------------------------------------------------

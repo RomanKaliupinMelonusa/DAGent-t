@@ -14,7 +14,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveNodeBudgetPolicy, resolveCircuitBreaker } from "../session/dag-utils.js";
 import type { ResolvedCircuitBreaker, NodeBudgetPolicy } from "../app-types.js";
-import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — minimal APM context fixtures

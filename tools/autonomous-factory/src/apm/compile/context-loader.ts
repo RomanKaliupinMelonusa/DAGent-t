@@ -17,7 +17,7 @@ import {
   ApmCompiledOutputSchema,
   ApmCompileError,
   type ApmCompiledOutput,
-} from "./types.js";
+} from "../manifest/types.js";
 import { compileApm, getApmSourceMtime } from "./compiler.js";
 
 // ---------------------------------------------------------------------------

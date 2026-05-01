@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 
-import { HandlerOutputArtifactSchema } from "../apm/artifact-catalog.js";
+import { HandlerOutputArtifactSchema } from "../apm/artifacts/artifact-catalog.js";
 
 const HOOK_PATH = resolve(
   import.meta.dirname,

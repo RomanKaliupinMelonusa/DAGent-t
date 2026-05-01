@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import {
   ApmConfigSchema,
   ApmNodeCatalogEntrySchema,
-} from "../apm/types.js";
+} from "../apm/manifest/types.js";
 
 const minimalConfigBase = {
   defaultToolLimits: { soft: 60, hard: 80 },

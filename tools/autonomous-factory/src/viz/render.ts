@@ -6,7 +6,7 @@
  * argv + compileApm + stdout.
  */
 
-import type { ApmWorkflow, ApmWorkflowNode } from "../apm/types.js";
+import type { ApmWorkflow, ApmWorkflowNode } from "../apm/index.js";
 
 // ---------------------------------------------------------------------------
 // Node styling

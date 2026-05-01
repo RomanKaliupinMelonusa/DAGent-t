@@ -15,7 +15,7 @@
  */
 
 import type { NodeIOContract, KickoffConsumes, UpstreamConsumes, RerouteConsumes } from "../../contracts/node-io-contract.js";
-import type { ArtifactKind } from "../../apm/artifact-catalog.js";
+import type { ArtifactKind } from "../../apm/index.js";
 import type { ArtifactBus, ArtifactRef } from "../../ports/artifact-bus.js";
 import type { InvocationFilesystem } from "../../ports/invocation-filesystem.js";
 import type { FeatureFilesystem } from "../../ports/feature-filesystem.js";
@@ -25,7 +25,7 @@ import type {
   ArtifactRefSerialized,
   InvocationTrigger,
 } from "../../types.js";
-import { getArtifactKind, stampEnvelope, validateArtifactPayload, validateEnvelope } from "../../apm/artifact-catalog.js";
+import { getArtifactKind, stampEnvelope, validateArtifactPayload, validateEnvelope } from "../../apm/artifacts/artifact-catalog.js";
 
 export class MissingRequiredInputError extends Error {
   constructor(

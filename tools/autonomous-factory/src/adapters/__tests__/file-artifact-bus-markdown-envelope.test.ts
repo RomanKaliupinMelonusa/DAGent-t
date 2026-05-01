@@ -14,7 +14,7 @@ import { join } from "node:path";
 
 import { FileArtifactBus } from "../file-artifact-bus.js";
 import { LocalFilesystem } from "../local-filesystem.js";
-import { ArtifactValidationError } from "../../apm/artifact-catalog.js";
+import { ArtifactValidationError } from "../../apm/artifacts/artifact-catalog.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 
 const VALID_ENVELOPE = [

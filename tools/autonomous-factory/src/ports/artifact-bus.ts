@@ -30,7 +30,7 @@
  * in Phases 2 and 4.
  */
 
-import type { ArtifactKind, ArtifactScope } from "../apm/artifact-catalog.js";
+import type { ArtifactKind, ArtifactScope } from "../apm/index.js";
 
 // ---------------------------------------------------------------------------
 // Address types

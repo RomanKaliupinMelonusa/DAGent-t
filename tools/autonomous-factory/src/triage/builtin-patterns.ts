@@ -12,7 +12,7 @@
  * to RAG/LLM exactly as before.
  */
 
-import type { TriagePattern } from "../apm/types.js";
+import type { TriagePattern } from "../apm/index.js";
 
 export const BUILTIN_TRIAGE_PATTERNS: readonly TriagePattern[] = [
   // Uncaught browser exception — always an impl defect; re-running the

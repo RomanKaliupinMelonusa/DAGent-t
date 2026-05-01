@@ -20,7 +20,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Handlebars from "handlebars";
 import { getAgentConfig, type AgentContext } from "../agents.js";
-import type { ApmCompiledOutput } from "../types.js";
+import type { ApmCompiledOutput } from "../../manifest/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures

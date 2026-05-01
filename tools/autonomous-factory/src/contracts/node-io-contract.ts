@@ -11,7 +11,7 @@
  * order to know what files to read and what files it must write.
  */
 
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { ArtifactKind } from "../apm/index.js";
 
 // ---------------------------------------------------------------------------
 // Consumes — three flavors

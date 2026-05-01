@@ -12,7 +12,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { ApmCompiledOutput } from "../../apm/index.js";
 import type { PipelineState } from "../../types.js";
 import type { SkipResult } from "../../contracts/node-context.js";
 import { getAutoSkipBaseRef, getGitChangedFiles, getDirectoryPrefixes, getGitDeletions, hasDeletedFiles } from "../../lifecycle/auto-skip.js";

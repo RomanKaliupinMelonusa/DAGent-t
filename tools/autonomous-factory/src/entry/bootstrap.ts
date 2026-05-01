@@ -9,10 +9,10 @@
 import path from "node:path";
 import type { CliArgs } from "./cli.js";
 import type { PipelineRunConfig } from "../app-types.js";
-import type { ApmCompiledOutput } from "../apm/types.js";
-import { ApmCompileError, ApmBudgetExceededError } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
+import { ApmCompileError, ApmBudgetExceededError } from "../apm/manifest/types.js";
 import { BootstrapError } from "../errors.js";
-import { loadApmContext } from "../apm/context-loader.js";
+import { loadApmContext } from "../apm/compile/context-loader.js";
 import { runResolveEnvironment } from "../lifecycle/hooks.js";
 import {
   checkJunkFiles,

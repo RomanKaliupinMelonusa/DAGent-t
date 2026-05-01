@@ -27,7 +27,7 @@ import {
   sidecarPath,
   stampSidecarEnvelope,
   validateEnvelope,
-} from "../apm/artifact-catalog.js";
+} from "../apm/artifacts/artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Public types

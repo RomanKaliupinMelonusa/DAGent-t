@@ -20,7 +20,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileApm } from "../src/apm/compiler.js";
+import { compileApm } from "../src/apm/compile/compiler.js";
 import { compileVolatilePatterns, DEFAULT_VOLATILE_PATTERNS } from "../src/domain/index.js";
 
 // Resolves a workflow node's handler reference (built-in key or

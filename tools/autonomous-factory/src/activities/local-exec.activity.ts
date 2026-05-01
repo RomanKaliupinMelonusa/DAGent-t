@@ -20,13 +20,13 @@ import { withHeartbeat } from "./support/heartbeat.js";
 import { buildNodeContext } from "./support/build-context.js";
 import { buildCancellationRace } from "./support/cancellation.js";
 import { evaluateAutoSkip } from "./support/auto-skip-evaluator.js";
-import { compileNodeIOContract } from "../apm/compile-node-io-contract.js";
+import { compileNodeIOContract } from "../apm/compile/compile-node-io-contract.js";
 import { getWorkflowNode } from "../session/dag-utils.js";
 import {
   materializeInputs as materializeInvocationInputs,
   MissingRequiredInputError,
 } from "./support/invocation-builder.js";
-import { ArtifactValidationError } from "../apm/artifact-catalog.js";
+import { ArtifactValidationError } from "../apm/artifacts/artifact-catalog.js";
 import { executeHook } from "../lifecycle/hooks.js";
 import { sanitizeOutput } from "./support/result-processor-regex.js";
 import { ingestHandlerOutputEnvelope } from "./support/handler-output-ingestion.js";

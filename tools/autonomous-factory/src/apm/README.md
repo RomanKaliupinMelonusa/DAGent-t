@@ -16,18 +16,18 @@ This layer is the reason the engine is stack-agnostic. All cloud/framework-speci
 
 | File | Purpose |
 |---|---|
-| [compiler.ts](compiler.ts) | `compileApm(appRoot)` — the main compile function. Parses `apm.yml`, resolves instructions, validates with Zod, enforces token budgets, returns `ApmCompiledOutput`. |
-| [context-loader.ts](context-loader.ts) | `loadApmContext(appRoot)` — loads cached `context.json`; re-compiles on mtime staleness; defense-in-depth schema + budget re-validation. Used at bootstrap. |
-| [agents.ts](agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + declared `inputs/` block + re-invocation lineage block when triage rerouted). |
-| [types.ts](types.ts) | Zod schemas + types: `ApmManifestSchema`, `ApmWorkflowSchema`, `ApmCompiledOutputSchema`, `CompiledTriageProfile`, `ApmMcpFileSchema`, `ApmSkillFrontmatterSchema`, `TriagePackSchema`. Errors: `ApmCompileError`, `ApmBudgetExceededError`. |
-| [acceptance-schema.ts](acceptance-schema.ts) | Schema for the acceptance block in `apm.yml`. |
-| [canvas.ts](canvas.ts) | DAG visualization export helpers consumed by `scripts/export-canvas.ts`. |
-| [capability-profiles.ts](capability-profiles.ts) | Resolves and renders capability profiles (grouped instruction preferences). |
-| [local-path-validator.ts](local-path-validator.ts) | Path security: resolves user-provided paths against `appRoot`/`repoRoot`, rejects directory traversal. Used by every place the engine resolves a path declared in `apm.yml` (custom triage classifiers, capability profiles). |
-| [artifact-catalog.ts](artifact-catalog.ts) | Declared artefact-kind registry. Every `kind` referenced in `consumes_*` / `produces_artifacts` must be catalogued here with its file extension, schema, and reserved keys (e.g. `spec`, `change-manifest`, `triage-handoff`, `handler-output`). |
-| [artifact-io-validator.ts](artifact-io-validator.ts) | Compile-time validator that every node's `consumes_*` / `produces_artifacts` references a known kind, and that producers exist for every consumed artefact in the workflow DAG. |
-| [compile-node-io-contract.ts](compile-node-io-contract.ts) | Compiles each node's I/O contract from `workflows.yml` into a typed structure consumed by the dispatcher and the contract gate. |
-| [instruction-lint.ts](instruction-lint.ts) | Lints instruction `.md` fragments for stale slugs, banned literals (e.g. `{{featureSlug}}_*` paths), and deprecated patterns. Reported by `pipeline:lint`. |
+| [compile/compiler.ts](compile/compiler.ts) | `compileApm(appRoot)` — the main compile function. Parses `apm.yml`, resolves instructions, validates with Zod, enforces token budgets, returns `ApmCompiledOutput`. |
+| [compile/context-loader.ts](compile/context-loader.ts) | `loadApmContext(appRoot)` — loads cached `context.json`; re-compiles on mtime staleness; defense-in-depth schema + budget re-validation. Used at bootstrap. |
+| [runtime/agents.ts](runtime/agents.ts) | `getAgentConfig(key, ctx, compiled)` + `buildTaskPrompt(...)` — the prompt factory. Assembles system message (identity + environment + rules + workflow + completion) and task prompt (base + declared `inputs/` block + re-invocation lineage block when triage rerouted). |
+| [manifest/types.ts](manifest/types.ts) | Zod schemas + types: `ApmManifestSchema`, `ApmWorkflowSchema`, `ApmCompiledOutputSchema`, `CompiledTriageProfile`, `ApmMcpFileSchema`, `ApmSkillFrontmatterSchema`, `TriagePackSchema`. Errors: `ApmCompileError`, `ApmBudgetExceededError`. |
+| [manifest/acceptance-schema.ts](manifest/acceptance-schema.ts) | Schema for the acceptance block in `apm.yml`. |
+| [manifest/canvas.ts](manifest/canvas.ts) | DAG visualization export helpers consumed by `scripts/export-canvas.ts`. |
+| [compile/capability-profiles.ts](compile/capability-profiles.ts) | Resolves and renders capability profiles (grouped instruction preferences). |
+| [security/local-path-validator.ts](security/local-path-validator.ts) | Path security: resolves user-provided paths against `appRoot`/`repoRoot`, rejects directory traversal. Used by every place the engine resolves a path declared in `apm.yml` (custom triage classifiers, capability profiles). |
+| [artifacts/artifact-catalog.ts](artifacts/artifact-catalog.ts) | Declared artefact-kind registry. Every `kind` referenced in `consumes_*` / `produces_artifacts` must be catalogued here with its file extension, schema, and reserved keys (e.g. `spec`, `change-manifest`, `triage-handoff`, `handler-output`). |
+| [artifacts/artifact-io-validator.ts](artifacts/artifact-io-validator.ts) | Compile-time validator that every node's `consumes_*` / `produces_artifacts` references a known kind, and that producers exist for every consumed artefact in the workflow DAG. |
+| [compile/compile-node-io-contract.ts](compile/compile-node-io-contract.ts) | Compiles each node's I/O contract from `workflows.yml` into a typed structure consumed by the dispatcher and the contract gate. |
+| [compile/instruction-lint.ts](compile/instruction-lint.ts) | Lints instruction `.md` fragments for stale slugs, banned literals (e.g. `{{featureSlug}}_*` paths), and deprecated patterns. Reported by `pipeline:lint`. |
 | [index.ts](index.ts) | Barrel: `compileApm`, `loadApmContext`, `getAgentConfig`, `buildTaskPrompt`, all types. |
 
 ## Public interface
@@ -67,12 +67,12 @@ The compiled `context.json` cache lives under `<appRoot>/.apm/.compiled/context.
 
 1. Declare in `.apm/apm.yml` under `agents:` with `instructions`, `model`, `mcp_servers`, `timeout`, `budget`, `toolLimits`.
 2. Add a corresponding node in `.apm/workflows.yml` with `agent: security-reviewer`.
-3. If a new rule pattern is needed (e.g. per-agent environment whitelist), extend the Zod schema in [types.ts](types.ts) and `compiler.ts`.
+3. If a new rule pattern is needed (e.g. per-agent environment whitelist), extend the Zod schema in [manifest/types.ts](manifest/types.ts) and `compile/compiler.ts`.
 
 **Add a new capability profile** (e.g. `playwright-heavy`):
 
 1. Add the profile block in `apm.yml`.
-2. [capability-profiles.ts](capability-profiles.ts) renders profile preferences into the rule block.
+2. [compile/capability-profiles.ts](compile/capability-profiles.ts) renders profile preferences into the rule block.
 
 ## Gotchas
 

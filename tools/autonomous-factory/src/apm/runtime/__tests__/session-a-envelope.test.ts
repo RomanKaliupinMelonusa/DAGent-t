@@ -28,7 +28,7 @@ import {
   stampEnvelope,
   validateArtifactPayload,
   validateEnvelope,
-} from "../artifact-catalog.js";
+} from "../../artifacts/artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // catalog annotation

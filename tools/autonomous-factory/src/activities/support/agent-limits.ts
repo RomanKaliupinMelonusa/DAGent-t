@@ -9,7 +9,7 @@
 import type { NodeContext } from "../../contracts/node-context.js";
 import type { AgentSandbox } from "../../harness/sandbox.js";
 import type { ResolvedHarnessLimits } from "../../harness/index.js";
-import type { ApmCompiledOutput } from "../../apm/types.js";
+import type { ApmCompiledOutput } from "../../apm/index.js";
 import {
   DEFAULT_FILE_READ_LINE_LIMIT,
   DEFAULT_MAX_FILE_SIZE,

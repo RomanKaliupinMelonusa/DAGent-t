@@ -19,7 +19,7 @@
  * state-module imports are permitted in this file.
  */
 
-import { getAgentConfig, buildTaskPrompt } from "../apm/agents.js";
+import { getAgentConfig, buildTaskPrompt } from "../apm/runtime/agents.js";
 import { extractDiagnosticTrace } from "../types.js";
 import { writeChangeManifest } from "../reporting/index.js";
 import { DEFAULT_FATAL_SDK_PATTERNS } from "../domain/error-classification.js";
@@ -31,7 +31,7 @@ import { resolveAgentLimits } from "./support/agent-limits.js";
 import { enrichPostSessionTelemetry } from "./support/agent-post-session.js";
 import type { NodeHandler, NodeContext, NodeResult } from "../contracts/node-context.js";
 import type { ItemSummary } from "../types.js";
-import type { ArtifactKind } from "../apm/artifact-catalog.js";
+import type { ArtifactKind } from "../apm/index.js";
 import type { NodeContractGateParams } from "../contracts/node-contract-gate.js";
 import type { PrecompletionGate } from "../harness/index.js";
 import type { FreshnessGate } from "../harness/hooks.js";

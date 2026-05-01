@@ -23,7 +23,7 @@ import { LocalFilesystem } from "../local-filesystem.js";
 import {
   ArtifactValidationError,
   sidecarPath,
-} from "../../apm/artifact-catalog.js";
+} from "../../apm/artifacts/artifact-catalog.js";
 import { newInvocationId } from "../../domain/invocation-id.js";
 
 function mkBus(prefix: string, opts: { strict?: boolean } = {}) {

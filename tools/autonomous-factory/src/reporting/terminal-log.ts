@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import type { ItemSummary } from "../types.js";
 import type { PreviousSummaryTotals } from "../app-types.js";
 import { featurePath, ensureFeatureDir } from "../paths/feature-paths.js";

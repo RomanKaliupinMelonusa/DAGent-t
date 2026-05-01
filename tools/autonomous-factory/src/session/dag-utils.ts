@@ -6,7 +6,7 @@
  */
 
 import { execSync } from "node:child_process";
-import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "../apm/index.js";
 import type { NodeBudgetPolicy, ResolvedCircuitBreaker } from "../app-types.js";
 
 // ---------------------------------------------------------------------------

@@ -11,10 +11,10 @@
  * Template content lives in `.apm/agents/` and is injected via `systemPromptTemplate`.
  */
 
-import type { ApmCompiledOutput, ApmMcpConfig, ApmWorkflowNode } from "./types.js";
-import type { PipelineState, InvocationRecord } from "../types.js";
-import type { ArtifactBus } from "../ports/artifact-bus.js";
-import { isArtifactKind, type ArtifactKind } from "./artifact-catalog.js";
+import type { ApmCompiledOutput, ApmMcpConfig, ApmWorkflowNode } from "../manifest/types.js";
+import type { PipelineState, InvocationRecord } from "../../types.js";
+import type { ArtifactBus } from "../../ports/artifact-bus.js";
+import { isArtifactKind, type ArtifactKind } from "../artifacts/artifact-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -34,7 +34,7 @@
  *     function assumes a validated `AcceptanceContract`.
  */
 
-import type { AcceptanceContract, FlowStep } from "../apm/acceptance-schema.js";
+import type { AcceptanceContract, FlowStep } from "../apm/index.js";
 
 export type BaselineTargetKind = "page" | "modal";
 

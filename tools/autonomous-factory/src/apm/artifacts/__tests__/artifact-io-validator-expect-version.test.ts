@@ -12,7 +12,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { ApmWorkflowSchema, type ApmWorkflow } from "../types.js";
+import { ApmWorkflowSchema, type ApmWorkflow } from "../../manifest/types.js";
 import { validateArtifactIO } from "../artifact-io-validator.js";
 import { getArtifactSchemaVersion } from "../artifact-catalog.js";
 

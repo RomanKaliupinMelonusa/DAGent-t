@@ -8,7 +8,7 @@
  * Rule: Zero executable code. Pure type definitions only.
  */
 
-import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm/types.js";
+import type { ApmCompiledOutput, ApmWorkflowNode } from "./apm/index.js";
 import type { NextAction, ItemSummary } from "./types.js";
 import type { PipelineLogger } from "./telemetry/index.js";
 import type { CodeIndexer } from "./ports/code-indexer.js";

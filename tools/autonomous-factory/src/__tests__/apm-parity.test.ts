@@ -12,9 +12,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { compileApm } from "../apm/compiler.js";
-import { loadApmContext } from "../apm/context-loader.js";
-import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm/types.js";
+import { compileApm } from "../apm/compile/compiler.js";
+import { loadApmContext } from "../apm/compile/context-loader.js";
+import { ApmCompiledOutputSchema, type ApmCompiledOutput } from "../apm/manifest/types.js";
 import Handlebars from "handlebars";
 import yaml from "js-yaml";
 

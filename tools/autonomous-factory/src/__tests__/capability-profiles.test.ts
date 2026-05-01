@@ -7,8 +7,8 @@ import {
   flattenProfile,
   resolveCapabilityProfile,
   renderPreferencesMarkdown,
-} from "../apm/capability-profiles.js";
-import type { ApmCapabilityProfile } from "../apm/types.js";
+} from "../apm/compile/capability-profiles.js";
+import type { ApmCapabilityProfile } from "../apm/index.js";
 
 describe("flattenProfile", () => {
   it("returns profile unchanged when no extends", () => {

@@ -11,8 +11,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { compileApm } from "../src/apm/compiler.js";
-import { toCanvas } from "../src/apm/canvas.js";
+import { compileApm } from "../src/apm/compile/compiler.js";
+import { toCanvas } from "../src/apm/manifest/canvas.js";
 
 interface Args {
   readonly appRoot: string;

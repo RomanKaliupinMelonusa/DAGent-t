@@ -13,7 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateAutoSkip } from "../auto-skip-evaluator.js";
-import type { ApmCompiledOutput } from "../../../apm/types.js";
+import type { ApmCompiledOutput } from "../../../apm/index.js";
 import type { PipelineState } from "../../../types.js";
 
 // ---------------------------------------------------------------------------

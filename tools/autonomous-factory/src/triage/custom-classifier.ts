@@ -8,9 +8,9 @@
 
 import type { TriageLlm } from "../ports/triage-llm.js";
 import type { TriageResult } from "../types.js";
-import type { CompiledTriageProfile } from "../apm/types.js";
+import type { CompiledTriageProfile } from "../apm/index.js";
 import type { PipelineLogger } from "../telemetry/index.js";
-import { resolveLocalPluginPath } from "../apm/local-path-validator.js";
+import { resolveLocalPluginPath } from "../apm/security/local-path-validator.js";
 
 /** Context forwarded to a custom classifier in addition to the trace/profile. */
 export interface CustomClassifierContext {

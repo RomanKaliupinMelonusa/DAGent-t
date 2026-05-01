@@ -17,7 +17,7 @@
  * Custom handlers: local .ts files resolved via dynamic import (sandboxed to repo)
  */
 
-import type { ApmCompiledOutput } from "../apm/types.js";
+import type { ApmCompiledOutput } from "../apm/index.js";
 import type { PipelineState, ItemSummary, ArtifactRefSerialized, InvocationRecord } from "../types.js";
 import type { PipelineLogger } from "../telemetry/index.js";
 import type { CopilotClient } from "@github/copilot-sdk";

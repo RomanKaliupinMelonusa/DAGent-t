@@ -21,7 +21,7 @@ import type {
   ApmCapabilityProfile,
   ApmAgentSecurity,
   ApmAgentTools,
-} from "./types.js";
+} from "../manifest/types.js";
 
 export interface ResolvedCapability {
   /** Translated into the runtime `security` block (allowedWritePaths + blockedCommandRegexes). */

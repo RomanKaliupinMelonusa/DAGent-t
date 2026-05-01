@@ -17,10 +17,10 @@ import type {
 } from "../types.js";
 import type { NodeContext } from "../contracts/node-context.js";
 import type { ArtifactBus } from "../ports/artifact-bus.js";
-import type { NodeReport } from "../apm/artifact-catalog.js";
-import { buildEnvelope } from "../apm/artifact-catalog.js";
+import type { NodeReport } from "../apm/index.js";
+import { buildEnvelope } from "../apm/artifacts/artifact-catalog.js";
 
-export type { NodeReport } from "../apm/artifact-catalog.js";
+export type { NodeReport } from "../apm/index.js";
 
 export interface SynthesizeNodeReportArgs {
   readonly nodeKey: string;

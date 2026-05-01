@@ -15,7 +15,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { compileApm } from "../../apm/compiler.js";
+import { compileApm } from "../../apm/compile/compiler.js";
 import { buildInitialState, type CompiledNode } from "../init-state.js";
 
 const STOREFRONT_APP_ROOT = resolve(
