@@ -31,7 +31,6 @@ import { newInvocationId } from "../activities/support/invocation-id.js";
 import { evaluateTriage } from "../triage/index.js";
 import { computeErrorSignature } from "../triage/error-fingerprint.js";
 import { classifyOrchestratorContractError } from "../triage/index.js";
-import { evaluateProfilePatterns } from "../triage/contract-classifier.js";
 import { buildTriageHandoff, formatDomainTag, buildLoopAdvisory, detectSameTestLoop } from "../triage/handoff-builder.js";
 import { extractPriorAttempts } from "../triage/historian.js";
 import type { AcceptanceContract } from "../apm/index.js";
@@ -814,17 +813,12 @@ const triageHandlerInner: NodeHandler = {
         }
       } catch { /* non-fatal — fall through with original payload */ }
     }
-    // Session B (Item 3) — profile-driven L0 pre-classifier. Built-in
-    // patterns (browser-uncaught, contract-testid-timeout,
-    // spec-schema-violation) are prepended by the APM compiler unless the
-    // profile sets `builtin_patterns: false`. Additional patterns declared
-    // on the profile in apm.yml run in order after the built-ins.
-    const preLlmVerdict = evaluateProfilePatterns(profile, {
-      structuredFailure: filteredStructuredFailure,
-      rawError,
-      acceptance,
-    });
-    const failureRoutesForContract = ctx.failureRoutes ?? {};
+    // Phase 4.3b: declarative L0 pre-classifier patterns retired. Triage
+    // is LLM-only — the profile.patterns array is always empty under the
+    // single-storefront-profile shape, so we go straight to evaluateTriage
+    // (with the orchestrator-contract short-circuit + evidence-empty
+    // self-reset guards already enforced above).
+    void acceptance; // retained for evidence-loader call site below
     // Fetch errorLog once so the LLM router can include prior-attempt
     // classifications in its prompt (anti-misclassification context).
     // Best-effort — a failure here just means the LLM gets a slightly
@@ -869,8 +863,6 @@ const triageHandlerInner: NodeHandler = {
             source: "fallback",
             rag_matches: [],
           } satisfies TriageResult)
-      : preLlmVerdict && (preLlmVerdict.domain in failureRoutesForContract)
-        ? preLlmVerdict
         : await evaluateTriage(
             enrichedError, profile, triageLlm, slug, ctx.appRoot, logger,
             undefined, baseline, errorLogForRouter, failingNodeKey,
