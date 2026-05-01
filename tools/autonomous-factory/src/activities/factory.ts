@@ -16,6 +16,7 @@
 
 import { makeCopilotAgentActivity } from "./copilot-agent.activity.js";
 import { makeLocalExecActivity } from "./local-exec.activity.js";
+import { makeHaltAndFlushActivity } from "./halt-and-flush.activity.js";
 import { makeSayHello } from "./hello.activity.js";
 import { makeTriageActivity } from "./triage.activity.js";
 import type { ActivityDeps } from "./deps.js";
@@ -31,6 +32,7 @@ export function createActivities(deps: ActivityDeps) {
     localExecActivity: makeLocalExecActivity(deps),
     triageActivity: makeTriageActivity(deps),
     copilotAgentActivity: makeCopilotAgentActivity(deps),
+    haltAndFlushActivity: makeHaltAndFlushActivity(deps),
   };
 }
 

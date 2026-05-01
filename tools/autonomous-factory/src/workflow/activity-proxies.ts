@@ -36,3 +36,9 @@ export const { copilotAgentActivity } = proxyActivities<typeof activities>({
   heartbeatTimeout: "90 seconds",
   retry: { maximumAttempts: 1 },
 });
+
+export const { haltAndFlushActivity } = proxyActivities<typeof activities>({
+  startToCloseTimeout: "5 minutes",
+  heartbeatTimeout: "60 seconds",
+  retry: { maximumAttempts: 1 },
+});

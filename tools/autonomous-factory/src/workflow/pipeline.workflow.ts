@@ -19,6 +19,7 @@ import { installHandlers, projectState } from "./signal-wiring.js";
 import { dispatchBatch } from "./batch-dispatcher.js";
 import { maybeContinueAsNew } from "./continue-as-new-controller.js";
 import { runTriageCascade } from "./triage-driver.js";
+import { haltAndFlushActivity } from "./activity-proxies.js";
 import type { RoutableWorkflow } from "./domain/index.js";
 import type {
   PipelineInput,
@@ -208,6 +209,27 @@ export async function pipelineWorkflow(
         : new CancelledFailure(finalReason);
     }
     throw err;
+  }
+
+  // Phase 3 — unconditional halt-and-flush. Any non-complete terminal
+  // state captures pending feature-branch state to remote so an
+  // operator can land on a halted run without inspecting the worker
+  // filesystem. Best-effort; failures must not mask the terminal
+  // status. Wrapped under `patched()` so existing histories that
+  // terminated without this step continue to replay deterministically.
+  if (
+    patched("phase3-halt-and-flush") &&
+    finalStatus !== "complete"
+  ) {
+    try {
+      await haltAndFlushActivity({
+        slug: input.slug,
+        appRoot: input.appRoot,
+        reason: `${finalStatus}:${finalReason}`,
+      });
+    } catch {
+      // Swallow — terminal status is the operator's source of truth.
+    }
   }
 
   return {

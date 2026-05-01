@@ -36,6 +36,7 @@ export declare const sayHello: Activities["sayHello"];
 export declare const localExecActivity: Activities["localExecActivity"];
 export declare const triageActivity: Activities["triageActivity"];
 export declare const copilotAgentActivity: Activities["copilotAgentActivity"];
+export declare const haltAndFlushActivity: Activities["haltAndFlushActivity"];
 
 // Stable cancellation prefixes — runtime constants, used by both the
 // workflow body (string match against `errorMessage`) and tests.
