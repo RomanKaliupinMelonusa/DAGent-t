@@ -18,7 +18,7 @@
     "pipeline:viz": "npx tsx tools/autonomous-factory/scripts/viz-pipeline.ts",
     "apm:canvas": "npx tsx tools/autonomous-factory/scripts/export-canvas.ts",
     "build:instructions": "node tools/autonomous-factory/build-instructions.mjs",
-    "retro": "cd tools/autonomous-factory && npx tsx src/reporting/retrospective.ts"
+    "lint:docs": "node scripts/check-doc-links.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -40,8 +40,7 @@ isolation.
 | `src/triage/` | Failure classifier (declarative L0 → RAG → LLM) and structured handoff builder. | [README](src/triage/README.md) |
 | `src/lifecycle/` | Preflight checks, lifecycle hooks, auto-skip, branch flush, state-commit mutex. | [README](src/lifecycle/README.md) |
 | `src/harness/` | Agent SDK session safety: tool RBAC, tool-call limits, shell guards, `report_outcome` tool. | [README](src/harness/README.md) |
-| `src/reporting/` | Pipeline executive surfaces: `_TRANS.md` projection, summaries, cost, retrospectives. | [README](src/reporting/README.md) |
-| `src/telemetry/` | `PipelineLogger` interface, JSONL/noop/multiplex/OTel implementations, OTel bootstrap. | [README](src/telemetry/README.md) |
+| `src/telemetry/` | `PipelineLogger` interface, JSONL + console rendering helpers. | [README](src/telemetry/README.md) |
 | `src/session/` | Activity-side session helpers (git snapshots, SDK event wiring, transient retry, CI artefact poster). | [README](src/session/README.md) |
 | `src/entry/` | Composition root for client-side entry points (bootstrap, CLI parser, supervisor). | [README](src/entry/README.md) |
 
@@ -124,18 +123,46 @@ For detached runs that need to survive editor reloads, use
 6. **Git operations use the wrapper scripts.** [`agent-commit.sh`](agent-commit.sh)
    for commits, [`agent-branch.sh`](agent-branch.sh) for branching. No
    raw `git add/commit/push` in agent prompts or activities.
+7. **Update layer READMEs whenever a layer's file inventory changes.**
+   Each `src/<layer>/README.md` follows the
+   [README template](docs/README-TEMPLATE.md). When you add, rename, or
+   remove a file in a layer, update its README's file table in the
+   same PR.
+8. **Add an ADR for any decision that changes a hard rule.** Anything
+   that alters determinism rules, the port shape, the state taxonomy,
+   or the workflow versioning policy needs a numbered ADR under
+   [`docs/adr/`](docs/adr/). Use [ADR 0001](docs/adr/0001-temporal.md)
+   as the structural reference.
 
 ## Subject deep-dives
 
 - [`docs/architecture.md`](docs/architecture.md) — canonical topology, state
   taxonomy, activities catalog, admin verbs, versioning policy.
+- [`docs/01-self-healing.md`](docs/01-self-healing.md) — triage cascade,
+  cycle budgets, identical-error circuit breaker.
 - [`docs/02-roam-code.md`](docs/02-roam-code.md) — structural code
   intelligence (the MCP semantic graph agents use).
-- [`docs/03-apm-context.md`](docs/03-apm-context.md) — APM manifest schema
-  and rule assembly.
+- [`docs/03-apm-context.md`](docs/03-apm-context.md) — APM manifest schema,
+  compilation, runtime prompt assembly.
+- [`docs/04-state-machine.md`](docs/04-state-machine.md) — `DagState`,
+  transitions, signals/queries/updates, versioning.
+- [`docs/05-agents.md`](docs/05-agents.md) — persona model, harness,
+  cognitive circuit breaker, adding a new agent.
+- [`docs/07-mental-model.md`](docs/07-mental-model.md) — mapping to a
+  traditional software team; why DAG > LLM-driver-loop; why Temporal.
 - [`docs/adr/0001-temporal.md`](docs/adr/0001-temporal.md) — Temporal
   migration decision, mapping from the predecessor kernel/loop model, and
   workflow-determinism rules.
+- [`docs/adr/0002-state-in-temporal-history.md`](docs/adr/0002-state-in-temporal-history.md)
+  — pipeline state authority moved to Temporal event history.
+- [`docs/adr/0003-retire-reporting-layer.md`](docs/adr/0003-retire-reporting-layer.md)
+  — retiring `src/reporting/` after the state-of-truth migration.
+- [`docs/adr/0004-telemetry-jsonl-only.md`](docs/adr/0004-telemetry-jsonl-only.md)
+  — lean JSONL + console telemetry; OTel deferred to the Temporal SDK.
+- [`docs/adr/0005-scaffolding-as-dag-nodes.md`](docs/adr/0005-scaffolding-as-dag-nodes.md)
+  — branch creation and spec staging as DAG nodes.
+- [`docs/README-TEMPLATE.md`](docs/README-TEMPLATE.md) — layer README
+  template every `src/<layer>/README.md` should follow.
 
 ## Reference
 

@@ -461,18 +461,12 @@ config:
       - { pattern: 'test-results/[^\s)"''`]+',                    replacement: "<TEST_RESULT>" }
       - { pattern: 'attachment #\d+',                             replacement: "attachment #<N>" }
       - { pattern: '\d+ did not run',                             replacement: "<PW_NOTRUN>" }
-      # publish-pr / agent-commit.sh — the rotating "N commit(s) ahead of
-      # <upstream>" counter and the "branch '...' set up to track '...'"
-      # line both drift between cycles even when the underlying root cause
-      # is identical. Without these, halt_on_identical never fires for
-      # repeated publish-pr no-op-dev failures.
-      - { pattern: '\d+\s+commit\(s\)\s+ahead\s+of\s+\S+',        replacement: "<COMMITS_AHEAD>" }
-      - { pattern: "branch\\s+'[^']+'\\s+set up to track\\s+'[^']+'", replacement: "<BRANCH_TRACKING>" }
-      # Defensive: collapse the entire `agent-branch.sh push` success
-      # preamble. Even with <COMMITS_AHEAD> + <BRANCH_TRACKING> in place,
-      # future drift in the `Pushed <branch> to origin` prefix would
-      # otherwise yield distinct signatures across cycles.
-      - { pattern: '✔\s+Pushed\s+\S+\s+to\s+origin', replacement: '<PUSH_OK>' }
+      # NOTE: `<COMMITS_AHEAD>`, `<BRANCH_TRACKING>`, and `<PUSH_OK>`
+      # patterns previously lived here to mask rotating tokens emitted
+      # by `agent-branch.sh push`. Removed Apr 2026 — the source script
+      # now uses `git push --quiet` and a stable success line, so the
+      # fingerprint is stable without runtime stripping. See
+      # tools/autonomous-factory/agent-branch.sh.
   # Session A (Item 8) — require every inline artifact written through the
   # bus to ship the {schemaVersion, producedBy, producedAt} envelope. Engine
   # producers (node-report, triage-handoff) emit it natively; agent-written

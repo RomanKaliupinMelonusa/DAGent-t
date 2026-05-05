@@ -59,7 +59,6 @@ Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to P
 | Lifecycle hooks execution | `tools/autonomous-factory/src/lifecycle/hooks.ts` |
 | Git-based auto-skip | `tools/autonomous-factory/src/lifecycle/auto-skip.ts` |
 | Feature archiving | `tools/autonomous-factory/src/lifecycle/archive.ts` |
-| Pipeline reporting | `tools/autonomous-factory/src/reporting/` |
 | Telemetry (JSONL + console) | `tools/autonomous-factory/src/telemetry/` |
 | Worker layer README | `tools/autonomous-factory/src/worker/README.md` |
 | Workflow layer README | `tools/autonomous-factory/src/workflow/README.md` |

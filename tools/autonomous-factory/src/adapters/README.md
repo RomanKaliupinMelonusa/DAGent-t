@@ -45,9 +45,10 @@ tested or replaced in isolation.
 | [index.ts](index.ts) | — | Barrel re-exports — instantiation happens at the worker bootstrap, not via a factory. |
 
 Pipeline state lives in Temporal event history (Postgres-backed), so there
-is no `StateStore` adapter or `_STATE.json` writer here. The on-disk
-`_TRANS.md` projection is rendered on demand from a workflow query — see
-[`src/reporting/render-trans.ts`](../reporting/README.md).
+is no `StateStore` adapter or `_STATE.json` writer here. Operators read the
+current state of a run via the `dagent-admin status|progress|summary`
+verbs, which call workflow queries declared in
+[`src/workflow/queries.ts`](../workflow/queries.ts).
 
 ## Public interface
 
@@ -66,10 +67,10 @@ const triageLlm = new CopilotTriageLlm({ … });
 
 1. **I/O is confined here.** Grep for `node:fs` / `node:child_process` /
    `@github/copilot-sdk` outside `adapters/` (plus the `worker/`,
-   `client/`, `lifecycle/`, `reporting/`, `session/`, `telemetry/`,
-   `harness/` layers that explicitly do I/O) — anything in `workflow/`,
-   `domain/`, `ports/`, `apm/`, `triage/`, or `activities/support/` is a layering
-   violation.
+   `client/`, `lifecycle/`, `session/`, `telemetry/`, `harness/`,
+   `activities/` layers that explicitly do I/O) — anything in
+   `workflow/`, `domain/`, `ports/`, `apm/`, `triage/`, or
+   `activities/support/` is a layering violation.
 2. **One adapter, one port.** Adapters compose private helper functions in the same file rather than splitting them out as additional modules.
 3. **Adapters may depend on other adapters only via ports.**
    `GitShellAdapter` depends on `Shell`, not on `NodeShellAdapter` directly

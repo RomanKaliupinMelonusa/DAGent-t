@@ -1,6 +1,6 @@
 # Temporal — Local Cluster
 
-Docker-compose stack for running a full Temporal cluster (server + UI + Postgres) locally and in CI. Used by the Temporal migration (see [../../tools/autonomous-factory/docs/temporal-migration/](../../tools/autonomous-factory/docs/temporal-migration/)).
+Docker-compose stack for running a full Temporal cluster (server + UI + Postgres) locally and in CI. Used by the Temporal-based orchestrator (see [ADR 0001](../../tools/autonomous-factory/docs/adr/0001-temporal.md)).
 
 ## Two run modes
 
@@ -49,7 +49,7 @@ docker buildx imagetools inspect temporalio/auto-setup:1.24.2 --raw | jq -r '.ma
 ## What is intentionally not here
 
 - **Elasticsearch / advanced visibility**: not needed for current parity tests.
-- **TLS / mTLS**: dev cluster only. Production topology lands in [01-topology-decision.md](../../tools/autonomous-factory/docs/temporal-migration/01-topology-decision.md).
+- **TLS / mTLS**: dev cluster only. Production topology is captured in [ADR 0001 — Temporal](../../tools/autonomous-factory/docs/adr/0001-temporal.md).
 - **Multi-namespace seeding**: the orchestrator uses the `default` namespace until a multi-tenant story is decided.
 
 ## Workspace dep-resolution gotcha (read once)

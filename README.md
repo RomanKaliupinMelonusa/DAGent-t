@@ -1,136 +1,148 @@
 # DAGent — Deterministic Agentic Coding Pipeline
 
-> Note: this README has stale content; see [tools/autonomous-factory/docs/architecture.md](tools/autonomous-factory/docs/architecture.md) for current reality. Full rewrite tracked separately.
-
 Write a spec. Get a tested Pull Request.
 
-DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents hand off through a dependency-aware state machine with self-healing recovery, real browser testing, and CI/CD integration — zero human interaction between spec and code review.
+DAGent is a headless, DAG-scheduled AI coding pipeline. Specialist agents
+hand off through a Temporal workflow with self-healing recovery, real
+browser testing, and CI/CD integration — zero human interaction between
+spec and final code review.
 
-> The engine is cloud- and framework-agnostic; each app declares its own stack in a manifest. This repo ships the engine plus two reference apps:
-> - **[apps/commerce-storefront/](apps/commerce-storefront/)** — Salesforce B2C Commerce Cloud **PWA Kit** storefront (headless React + SCAPI, deployed to Managed Runtime). **The primary, actively-developed target — all recent engine changes land here first.** Runs the `storefront` workflow: blind-to-impl SDET, machine-checkable acceptance contract, pre-feature noise baseline, local Playwright E2E before deploy, SaaS Managed Runtime (no infra wave).
-> - **[apps/sample-app/](apps/sample-app/)** — Azure reference app (Functions + Static Web Apps + APIM + Terraform). Demonstrates infra-and-app two-wave pipelines with elevated-approval ChatOps. **⚠️ Not yet fully migrated to the current engine architecture and APM configuration conventions — its pipeline may not run end-to-end. Use the storefront app as the working reference; sample-app is kept for the two-wave / elevated-approval patterns it demonstrates.**
+The engine is cloud- and framework-agnostic; each app declares its own
+stack, agents, and DAG in an APM manifest. This repo ships the engine
+plus one reference app:
+
+- **[apps/commerce-storefront/](apps/commerce-storefront/)** — Salesforce
+  B2C Commerce Cloud **PWA Kit** storefront (headless React + SCAPI,
+  deployed to Managed Runtime). Runs the `storefront` workflow:
+  spec-compiler emits a machine-checkable acceptance contract, a noise
+  baseline is captured before any code change, dev/debug agents share a
+  roam-code semantic graph, blind-to-impl Playwright authoring, and a QA
+  adversary tries to falsify the contract before opening a Draft PR.
 
 ---
 
 ## What it does
 
-- **Takes a feature spec** (passed to `agent:run --spec-file <path>`) and delivers a Pull Request.
-- **A roster of specialist agents per app** — schema, backend, frontend/storefront, unit tests, E2E author, QA adversary, infra, docs, triage — runs concurrently when their dependencies allow it. The storefront pipeline adds a spec-compiler that emits a machine-checkable `ACCEPTANCE.yml`, a baseline-analyzer for noise filtering, and a blind-to-impl test author that cannot read feature source.
-- **Self-heals production failures** — when live integration or browser tests fail, the pipeline classifies the error, resets the responsible agents, and feeds them the exact failure evidence.
-- **Human-in-the-loop only when necessary** — infra requiring elevated privileges pauses for a PR-comment approval (`/dagent apply-elevated`).
-- **Deterministic safety rails** — every git operation goes through a wrapper, every pipeline state transition goes through a single kernel, tool-call limits and retry budgets are hard constraints the LLM cannot override.
+- **Takes a feature spec** and delivers a Draft Pull Request.
+- **Runs specialist agents in a DAG** — spec-compiler, baseline-analyzer,
+  dev, debug, unit-test, e2e-author, e2e-runner, qa-adversary, publish-pr
+  — in parallel where dependencies allow.
+- **Self-heals failures** — when a node fails, an LLM triage classifier
+  routes the failure (test-code / code-defect / test-data) and resets
+  the responsible upstream node. Bounded by hard cycle budgets.
+- **Deterministic safety rails** — every git operation goes through a
+  wrapper, every state transition is owned by a Temporal workflow,
+  tool-call limits and retry budgets are constraints the LLM cannot
+  override.
 
-## Key features
+## How it works in 30 seconds
 
-| Feature | What it means in practice |
-|---|---|
-| **DAG-scheduled parallel execution** | Independent agents (backend + frontend) run concurrently; dependent stages wait. Each app defines its own workflow DAG (sample-app: `full-stack`, `backend`; storefront: `storefront`). |
-| **APM manifest per app** | Each agent receives only the rules its role needs, assembled from modular `.md` fragments, with enforced per-agent token budgets and per-agent write-path sandboxes. |
-| **Structural code intelligence** | Pre-indexed semantic graph via [roam-code](https://github.com/Cranot/roam-code) — tree-sitter, 27 languages, 102 MCP tools. Agents query the graph instead of text-searching. |
-| **Live browser testing** | Playwright scenarios run against the live app — headless Chromium against the deployed Azure sample-app, or against the local dev server for the storefront (with a QA adversary pass that attempts to falsify acceptance criteria). |
-| **Blind-to-impl test authoring** | In the storefront pipeline, the E2E author and QA adversary can read the spec and acceptance contract but are denied reads of feature source — preventing tests from being reverse-engineered to match a buggy implementation. |
-| **Self-healing redevelopment** | Up to 5 redevelopment cycles per feature, bounded by hard circuit breakers on identical errors and cognitive tool-call limits. |
-| **CI/CD as a first-class stage** | Deploy workflows are deterministic shell steps (no LLM), polled for completion, with targeted auto-repair on failure. |
-| **Execution audit trail** | Every run produces `_SUMMARY.md` (metrics), `_TERMINAL-LOG.md` (full trace), `_PLAYWRIGHT-LOG.md` (browser actions), `_CHANGES.json` (structured change manifest). |
-| **ChatOps control plane** | `/dagent apply-elevated`, `/dagent hold`, `/dagent resume` — human control via PR comments when automation needs a hand. |
+```
++-------------------+        gRPC :7233        +-----------------------+
+|   dagent-admin    |  <---------------------> |    Temporal Cluster   |
+|  (start | status  |                          |  frontend / history / |
+|   cancel | resume)|                          |   matching (Postgres) |
++-------------------+                          +-----------+-----------+
+                                                           ^
+                                                  task     | activity
+                                                  queue    | results +
+                                                           | heartbeats
+                                               +-----------+----------+
+                                               |    dagent-worker     |
+                                               | (workflow + activities)
+                                               +-----------+----------+
+                                                           |
+                                            shell / git / gh / Copilot SDK
+                                                           v
+                                                local FS + GitHub + LLMs
+```
+
+The Temporal workflow under
+[`tools/autonomous-factory/src/workflow/`](tools/autonomous-factory/src/workflow/)
+owns pipeline state. Activities under
+[`src/activities/`](tools/autonomous-factory/src/activities/) do all the
+side-effecting work (LLM sessions, shell, CI polling, triage). Operators
+interact only through the `dagent-admin` client.
+
+For the full topology and state taxonomy see
+[architecture.md](tools/autonomous-factory/docs/architecture.md).
 
 ## Quick start
 
-### 1. Open in DevContainer
+1. **Open in a DevContainer** (required) — provides Node 22, Python 3.11,
+   GitHub CLI, Playwright + Chromium, and the roam-code toolchain
+   pre-configured.
+2. **Authenticate:** `gh auth login`.
+3. **Start a Temporal dev server** in one terminal:
+   ```bash
+   npm run temporal:dev --workspace=orchestrator
+   ```
+4. **Start the worker** in another:
+   ```bash
+   npm run worker --workspace=orchestrator
+   ```
+5. **Run a feature pipeline:**
+   ```bash
+   npm run agent:run --workspace=orchestrator -- \
+     --app apps/commerce-storefront \
+     --workflow storefront \
+     --spec-file /path/to/your-spec.md \
+     <feature-slug>
+   ```
 
-A DevContainer is **required** — it provides Node 22, Python 3.11, Azure CLI, GitHub CLI, Playwright + Chromium, and roam-code pre-configured.
+The `create-branch` and `stage-spec` nodes at the head of the DAG are
+idempotent — re-running the same command resumes an interrupted pipeline.
 
-- **VS Code:** clone → `Ctrl+Shift+P` → *Dev Containers: Reopen in Container*
-- **GitHub Codespaces:** Code → Codespaces → Create codespace on main
-
-### 2. Configure CI/CD
-
-The pipeline deploys and runs live tests — so each target app needs its credentials wired up first.
-
-- **storefront (PWA Kit):** requires Salesforce B2C Commerce credentials and Managed Runtime API keys. See [apps/commerce-storefront/README.md](apps/commerce-storefront/README.md) and the deploy workflow at [.github/workflows/deploy-storefront.yml](.github/workflows/deploy-storefront.yml).
-- **sample-app (Azure):** requires Azure OIDC federated credentials and GitHub Secrets. Full bootstrap in [.github/AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md#bootstrap-sequence-first-time-setup) — run it manually or hand it to a coding agent.
-
-### 3. Run the pipeline
-
-Pick a target app. The commands below show both; substitute the app path you want to drive.
+Operate a running pipeline with the admin CLI:
 
 ```bash
-# Authenticate (inside DevContainer)
-gh auth login
-
-# For the Azure sample-app only:
-az login --scope https://graph.microsoft.com/.default   # Graph scope required by azuread Terraform provider
-az account set --subscription "<your-subscription-id>"
-
-# Write your spec anywhere — it'll be staged into `_kickoff/spec.md` by the pipeline.
-$EDITOR /tmp/my-feature-spec.md
-
-# ---- storefront (PWA Kit) ----
-npm run agent:run -- \
-  --app apps/commerce-storefront \
-  --workflow storefront \
-  --spec-file /tmp/my-feature-spec.md \
-  my-feature
-
-# ---- sample-app (Azure) ----
-npm run agent:run -- \
-  --app apps/sample-app \
-  --workflow full-stack \
-  --spec-file /tmp/my-feature-spec.md \
-  my-feature
-
-# Review the PR when the pipeline completes
+npm run admin --workspace=orchestrator -- status   <slug>
+npm run admin --workspace=orchestrator -- progress <slug>
+npm run admin --workspace=orchestrator -- cancel   <slug> --reason "<text>"
 ```
 
-One command per feature. Branch creation and spec staging are the first two DAG nodes (`create-branch`, `stage-spec`); `_STATE.json` is seeded in-process when absent. Resuming an interrupted run is the same command — both scaffolding nodes are idempotent.
-
-### Use with your own project
-
-1. Copy an existing app folder that matches your stack — [apps/commerce-storefront/](apps/commerce-storefront/) for a PWA Kit / Managed-Runtime target, or [apps/sample-app/](apps/sample-app/) for an Azure full-stack target.
-2. Edit `.apm/apm.yml` — URLs, resource names, agent instructions, deploy targets, per-agent write-path sandboxes.
-3. Customise instruction fragments under `.apm/instructions/` and the workflow DAG under `.apm/workflows.yml`.
-4. Point CI workflows at your app path.
-5. `npm run agent:run -- --app apps/your-app --workflow <name> --spec-file /path/to/spec.md my-feature`.
-
-For a fundamentally different stack (AWS, GCP, on-prem), swap the lifecycle hooks in `.apm/hooks/*.sh` and the identity files in `.apm/instructions/`. Engine source requires zero changes — see [tools/autonomous-factory/README.md — Evolution Notes](tools/autonomous-factory/README.md#evolution-notes).
-
-## Reference apps — what each demonstrates
-
-**storefront (PWA Kit)** — [apps/commerce-storefront/](apps/commerce-storefront/)
-- Salesforce B2C Commerce Cloud PWA Kit on the Retail React App base template, using [Template Extensibility](https://developer.salesforce.com/docs/commerce/pwa-kit-managed-runtime/guide/template-extensibility.html) overrides under `overrides/app/`.
-- SCAPI-backed, 17-locale translations, SSR worker, deployed to Salesforce Managed Runtime.
-- Pipeline highlights: `spec-compiler` → `ACCEPTANCE.yml` contract, `baseline-analyzer` for pre-feature noise capture, `storefront-dev` / `storefront-debug` (roam-code + Playwright reproduction), `e2e-author` + `qa-adversary` in blind-to-impl mode, local dev server E2E before Managed Runtime push.
-- Uses Salesforce B2C Commerce authentication; see its own [README](apps/commerce-storefront/README.md).
-
-**sample-app (Azure)** — [apps/sample-app/](apps/sample-app/)
-- Azure Functions backend, Static Web Apps frontend, APIM facade, Terraform-provisioned infrastructure (azurerm + azapi + azuread).
-- Pipeline highlights: two-wave infra-then-app execution, elevated-privilege approval via PR ChatOps (`/dagent apply-elevated`), live-UI agent tests against deployed endpoints.
-- Dual-mode auth: `demo` credentials (`demo` / `demopass`) for unauthenticated pipelines, `entra` mode for Azure AD SSO. Toggle via `AUTH_MODE` / `NEXT_PUBLIC_AUTH_MODE`. See [apps/sample-app/infra/README.md](apps/sample-app/infra/README.md).
+Full operational runbook (CI/CD secrets, ChatOps, environment setup):
+[.github/AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md).
 
 ## Documentation
 
 | If you want to… | Start here |
 |---|---|
-| **Use the pipeline** | This README + [.github/AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md) (operational runbook) |
-| **Understand the architecture** | [tools/autonomous-factory/README.md](tools/autonomous-factory/README.md) — layers, paradigm, scaling, tech debt |
-| **Contribute to the engine** | Layer-level READMEs under [tools/autonomous-factory/src/](tools/autonomous-factory/src/) — one per folder |
-| **Read about the design decisions** | [narrative/](narrative/) — essays on the patterns and trade-offs |
-| **Extend an agent** | [tools/autonomous-factory/src/apm/README.md](tools/autonomous-factory/src/apm/README.md) + [docs/05-agents.md](tools/autonomous-factory/docs/05-agents.md) |
-| **Understand self-healing** | [tools/autonomous-factory/docs/01-watchdog.md](tools/autonomous-factory/docs/01-watchdog.md) + [docs/04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) |
-| **Map to traditional SDLC** | [tools/autonomous-factory/docs/07-mental-model.md](tools/autonomous-factory/docs/07-mental-model.md) |
+| **Use the pipeline** | [.github/AGENTIC-WORKFLOW.md](.github/AGENTIC-WORKFLOW.md) — operational runbook |
+| **Understand the architecture** | [tools/autonomous-factory/docs/architecture.md](tools/autonomous-factory/docs/architecture.md) — topology, state taxonomy, admin verbs, versioning |
+| **Get the mental model** | [docs/07-mental-model.md](tools/autonomous-factory/docs/07-mental-model.md) — mapping the pipeline to a software team |
+| **Understand state** | [docs/04-state-machine.md](tools/autonomous-factory/docs/04-state-machine.md) — `DagState`, transitions, signals/queries/updates |
+| **Understand self-healing** | [docs/01-self-healing.md](tools/autonomous-factory/docs/01-self-healing.md) — triage cascade + cycle budgets |
+| **Understand agents** | [docs/05-agents.md](tools/autonomous-factory/docs/05-agents.md) — persona model + harness + circuit breaker |
+| **Understand APM context** | [docs/03-apm-context.md](tools/autonomous-factory/docs/03-apm-context.md) — manifest, compilation, loading |
+| **Read the engine layer map** | [tools/autonomous-factory/README.md](tools/autonomous-factory/README.md) — layered tour |
+| **Contribute to the engine** | Layer-level READMEs under [tools/autonomous-factory/src/](tools/autonomous-factory/src/) |
+| **Understand the Temporal decision** | [ADR 0001](tools/autonomous-factory/docs/adr/0001-temporal.md) |
+| **Read the design rationale** | [narrative/](narrative/) — design essays |
+| **Extend an agent** | [APM context](tools/autonomous-factory/src/apm/README.md) + [apps/commerce-storefront/.apm/](apps/commerce-storefront/.apm/) |
+
+## Use with your own project
+
+1. Copy [apps/commerce-storefront/](apps/commerce-storefront/) as a starting
+   skeleton.
+2. Edit `.apm/apm.yml` — agents, instruction includes, MCP servers, token
+   budgets.
+3. Edit `.apm/workflows.yml` — DAG nodes, dependencies, on-failure
+   triage routes.
+4. Customise instruction fragments under `.apm/instructions/` and lifecycle
+   hooks under `.apm/hooks/`.
+5. Point CI workflows at your app path. Engine source requires zero
+   changes.
 
 ## Tech stack
 
-**Engine:** TypeScript · `@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod · Node 22 · GitHub Actions · Playwright · [roam-code](https://github.com/Cranot/roam-code)
+**Engine:** TypeScript · Temporal OSS (`@temporalio/*`) ·
+`@github/copilot-sdk` · `@anthropic-ai/sdk` · Zod · Node 22 · Vitest ·
+Playwright · [roam-code](https://github.com/Cranot/roam-code)
 
-**commerce-storefront:** Salesforce B2C Commerce Cloud PWA Kit · Retail React App · SCAPI · Managed Runtime
-
-**sample-app:** Azure Functions · Azure Static Web Apps · APIM · Terraform (azurerm + azapi + azuread)
+**commerce-storefront:** Salesforce B2C Commerce Cloud PWA Kit · Retail
+React App · SCAPI · Managed Runtime
 
 ## License & status
 
 Open source. Active development. Issues and pull requests welcome.
-
----
-
-*Looking for the old ARCHITECTURE.md / HOW-IT-WORKS.md / PIPELINE-UPDATES.md? The technical content lives in [tools/autonomous-factory/README.md](tools/autonomous-factory/README.md) and the layer-level READMEs. The narrative posts (design rationale, post-mortems) moved to [narrative/](narrative/).*

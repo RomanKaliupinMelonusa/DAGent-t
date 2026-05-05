@@ -34,6 +34,10 @@ storefront:
           test-data: "$SELF"
 
     # ── Pre-feature baseline ──────────────────────────────────────────
+    # Advisory artifact only — every downstream consumer reads it as
+    # `required: false`. A baseline-analyzer failure must NOT trigger
+    # triage / reroute (was a misconfiguration). Omitting `on_failure`
+    # makes the node fail-soft per the kernel's no-implicit-opt-in rule.
     baseline-analyzer:
       depends_on: [spec-compiler]
       consumes_kickoff: [spec]
@@ -42,8 +46,6 @@ storefront:
       produces_artifacts: [baseline]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
-      on_failure:
-        triage: triage-storefront
 
     # ── Development ───────────────────────────────────────────────────
     storefront-dev:
@@ -98,11 +100,16 @@ storefront:
         - { from: spec-compiler, kind: acceptance }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
+      # `code-defect` routes to storefront-debug to match e2e-runner /
+      # qa-adversary. Resource isolation: only the debug agent owns the
+      # Playwright MCP, so any runtime defect surfaced (even by a unit
+      # test) belongs on the debug path. `test-code` stays on dev — a
+      # bad assertion is an author-side fix the dev agent rewrites.
       on_failure:
         triage: triage-storefront
         routes:
           test-code: storefront-dev
-          code-defect: storefront-dev
+          code-defect: storefront-debug
 
     # ── Validation (Author / Runner) ──────────────────────────────────
     e2e-author:

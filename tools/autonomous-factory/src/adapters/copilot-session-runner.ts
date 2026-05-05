@@ -156,7 +156,7 @@ export async function runCopilotSession(
   // has officially re-opened the session for more work — agent tool
   // calls are expected and must not trip the post-completion gate.
   let contractRecoveryActive = false;
-   
+
   session.on("tool.execution_start", (event: any) => {
     if (contractRecoveryActive) return;
     if (!telemetry.reportOutcomeTerminal) return;

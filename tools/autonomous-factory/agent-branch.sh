@@ -90,16 +90,25 @@ case "$COMMAND" in
       exit 1
     fi
 
-    if ! git push -u origin "$CURRENT"; then
+    # `--quiet` suppresses the "branch '...' set up to track '...'" line
+    # (printed to stderr by `git push -u`) without hiding actual push errors.
+    # Combined with the stable success line below, this keeps the
+    # error-signature fingerprinter free of rotating tokens that would
+    # otherwise defeat halt_on_identical for repeated push failures.
+    if ! git push --quiet -u origin "$CURRENT"; then
       echo "⚠️  Push failed, retrying with --force-with-lease (branch may have been reverted)..."
       sleep 2
-      if ! git push --force-with-lease -u origin "$CURRENT"; then
+      if ! git push --quiet --force-with-lease -u origin "$CURRENT"; then
         echo "ERROR: Cannot push branch '${CURRENT}'. Check network/auth." >&2
         exit 1
       fi
     fi
 
-    echo "✔ Pushed ${CURRENT} to origin (${AHEAD} commit(s) ahead of ${BASE})"
+    # Stable, fingerprint-friendly success line. The rotating "${AHEAD}
+    # commit(s) ahead of ${BASE}" suffix used to live here and required
+    # three separate volatile_patterns entries in apm.yml to keep the
+    # fingerprint stable across cycles. Removed at the source instead.
+    echo "✔ Pushed ${CURRENT} to origin"
     ;;
 
   cleanup)

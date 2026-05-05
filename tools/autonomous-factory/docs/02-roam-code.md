@@ -2,7 +2,7 @@
 
 > The AST engine that makes autonomous code mutation safe, fast, and governable.
 > roam-code v11.2 · [github.com/Cranot/roam-code](https://github.com/Cranot/roam-code) · Installed via `tools/autonomous-factory/setup-roam.sh`
-> Hub: [AGENTIC-WORKFLOW.md](../../.github/AGENTIC-WORKFLOW.md)
+> Hub: [AGENTIC-WORKFLOW.md](../../../.github/AGENTIC-WORKFLOW.md)
 
 ---
 
@@ -261,7 +261,7 @@ sequenceDiagram
 
 ## Index Freshness Model
 
-The pipeline treats the semantic graph as a **freshness-managed cache**, not a once-per-run snapshot. Three triggers refresh it; all of them route through one stack-agnostic [`CodeIndexer`](../src/ports/code-indexer.js) port whose only roam-specific implementation is [`RoamCodeIndexer`](../src/adapters/roam-code-indexer.js):
+The pipeline treats the semantic graph as a **freshness-managed cache**, not a once-per-run snapshot. Three triggers refresh it; all of them route through one stack-agnostic [`CodeIndexer`](../src/ports/code-indexer.ts) port whose only roam-specific implementation is [`RoamCodeIndexer`](../src/adapters/roam-code-indexer.ts):
 
 | Trigger | When | Who emits | Telemetry `trigger` |
 |---|---|---|---|
@@ -430,4 +430,4 @@ Current config: `tools: ["*"]` (full preset — all 102 tools exposed). Roam sup
 
 ---
 
-*← [01 Watchdog](01-watchdog.md)*
+*← [Architecture overview](architecture.md)*
