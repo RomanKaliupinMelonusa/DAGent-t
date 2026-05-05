@@ -56,7 +56,7 @@ cd {{appRoot}} && npx jest --verbose --coverage
    c. Test: component renders without errors, correct data displayed, user interactions work.
 4. Run the full test suite: `cd {{appRoot}} && npx jest --verbose`
 5. All tests must pass with zero failures before committing.
-6. Commit: `bash tools/autonomous-factory/agent-commit.sh all "test(storefront): <description>"`
+6. Commit: `bash demo/scripts/agent-commit.sh all "test(storefront): <description>"`
 
 ## Mocking Pattern
 

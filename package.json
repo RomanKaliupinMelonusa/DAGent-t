@@ -1,24 +1,16 @@
 {
-  "name": "agentic-pipeline-platform",
-  "version": "0.1.0",
+  "name": "dagent-demo",
+  "version": "0.0.1",
   "private": true,
-  "description": "Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to PR",
+  "description": "DAGent demo branch — single-file agentic pipeline. DO NOT MERGE.",
   "workspaces": [
-    "tools/*"
+    "demo"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall-ajv-shim.mjs && node scripts/postinstall-vscode-jsonrpc-shim.mjs",
-    "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
-    "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
-    "agent:run": "npm run agent:run --workspace=orchestrator --",
-    "worker": "npm run worker --workspace=orchestrator",
-    "admin": "npm run admin --workspace=orchestrator --",
-    "arch:check": "node tools/autonomous-factory/scripts/arch-check.mjs",
-    "pipeline:lint": "npx tsx tools/autonomous-factory/scripts/lint-pipeline.ts",
-    "pipeline:viz": "npx tsx tools/autonomous-factory/scripts/viz-pipeline.ts",
-    "apm:canvas": "npx tsx tools/autonomous-factory/scripts/export-canvas.ts",
-    "build:instructions": "node tools/autonomous-factory/build-instructions.mjs",
-    "lint:docs": "node scripts/check-doc-links.mjs"
+    "demo": "npm run demo --workspace=@dagent/demo --",
+    "build:prompts": "npm run build:prompts --workspace=@dagent/demo",
+    "agent:commit": "bash demo/scripts/agent-commit.sh",
+    "agent:branch": "bash demo/scripts/agent-branch.sh"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -27,14 +19,6 @@
     "@playwright/test": "^1.58.2"
   },
   "overrides": {
-    "fast-xml-parser": ">=5.5.6",
-    "ajv-keywords": {
-      "ajv": "^8.17.0"
-    },
-    "eslint": {
-      "@eslint/eslintrc": {
-        "ajv": "6.14.0"
-      }
-    }
+    "fast-xml-parser": ">=5.5.6"
   }
 }

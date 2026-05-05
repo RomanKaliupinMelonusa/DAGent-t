@@ -116,7 +116,7 @@ Your scope is:
 8. **MANDATORY — Security & Performance Audit:** Call `roam_check_rules {{appRoot}}` on all modified files.
    - **SEC** / **PERF** / **COR** violations are **BLOCKING**.
    - **ARCH** violations are advisory.
-9. Commit: `bash tools/autonomous-factory/agent-commit.sh all "feat(storefront): <description>"`
+9. Commit: `bash demo/scripts/agent-commit.sh all "feat(storefront): <description>"`
 
 ## Dev-server validation is NOT your job
 

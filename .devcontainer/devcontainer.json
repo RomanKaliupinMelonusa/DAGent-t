@@ -25,7 +25,7 @@
     }
   },
 
-  "postCreateCommand": "sudo chown -R node:node /home/node/.azure && npm install && cd tools/autonomous-factory && npm install && cd ../.. && npx --yes playwright install --with-deps chromium && bash tools/autonomous-factory/setup-roam.sh && az extension add --name application-insights --yes 2>/dev/null && curl -sSf https://temporal.download/cli.sh | sh",
+  "postCreateCommand": "sudo chown -R node:node /home/node/.azure && npm install && npx --yes playwright install --with-deps chromium && bash demo/scripts/setup-roam.sh",
 
   "postStartCommand": "git config --global core.hooksPath tools/autonomous-factory/hooks",
 

@@ -77,7 +77,7 @@ You do **NOT** modify application source code — only test files.
    grep -rn 'networkidle\|waitForTimeout\| or ' e2e/{{featureSlug}}.spec.ts
    ```
    If this returns results, fix them before proceeding. In addition, for every testid whose `required_dom` entry declares `cardinality: many`, every `getByTestId('<that-id>')` call in the spec file MUST be followed by `.first()` or `.nth(`. A plain `getByTestId('<multi-instance-id>')` without a qualifier WILL trip Playwright strict-mode at runtime and is a commit-blocker.
-6. **Commit:** `bash tools/autonomous-factory/agent-commit.sh all "test(e2e): <description>"`
+6. **Commit:** `bash demo/scripts/agent-commit.sh all "test(e2e): <description>"`
 
 ## Browser Diagnostics (MANDATORY)
 

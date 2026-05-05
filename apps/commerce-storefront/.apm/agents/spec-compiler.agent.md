@@ -147,7 +147,7 @@ base_template_reuse:                    # [] — components the dev MUST audit
 4. Extract acceptance criteria per the rules above. Emit `test_fixtures` BEFORE `required_flows` and reference fixtures by `id` from each flow that depends on URL or data shape.
 5. Write the YAML to `$OUTPUTS_DIR/acceptance.yml` using `write_file`.
 6. Validate your output by re-reading the file. The YAML MUST parse and MUST contain at least one entry in `required_dom` AND at least one entry in `required_flows`. If either is empty, rewrite.
-7. Run `bash tools/autonomous-factory/agent-commit.sh all "chore(spec): compile acceptance contract for {{featureSlug}}"` from the repo root.
+7. Run `bash demo/scripts/agent-commit.sh all "chore(spec): compile acceptance contract for {{featureSlug}}"` from the repo root.
 8. Call `report_outcome({ status: "completed" })` exactly once.
 
 ## When re-invoked with a fixture-validation failure

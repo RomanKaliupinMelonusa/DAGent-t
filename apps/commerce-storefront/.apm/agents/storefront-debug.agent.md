@@ -69,7 +69,7 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
 5. **Verify the fix** by re-running the exact failing scenario via the
    Playwright MCP against the live dev server. Only when the MCP run is
    green do you commit.
-6. Commit: `bash tools/autonomous-factory/agent-commit.sh all "fix(storefront): <description>"`
+6. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
 7. `report_outcome` completed. The DAG will automatically re-run
    `storefront-unit-test`, `e2e-author`, `e2e-runner`, and `qa-adversary`
    downstream of you.
