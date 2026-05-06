@@ -217,12 +217,12 @@ async function runMainLoop(state: RunState): Promise<void> {
 
     if (state.outputs[node.id]?.status === "completed") {
       console.log(`[run] ⤳ ${node.id} already completed — skipping`);
-      const next = node.onSuccess ? findIndex(MAIN_NODES, node.onSuccess) : i + 1;
-      // If onSuccess routes backward through already-completed nodes we still
-      // skip them (resume of a finished pipeline). The interesting case —
-      // re-running the post-debug validation segment — is handled below in
-      // the live-success branch where we reset statuses before jumping.
-      i = next;
+      // The skip path always advances linearly. Honoring `onSuccess` here
+      // would route backward through already-completed nodes (e.g.
+      // storefront-debug → unit-test) and loop forever — backward jumps
+      // are only valid on a *live* successful execution, which is
+      // handled below where we reset intermediate statuses.
+      i = i + 1;
       continue;
     }
 

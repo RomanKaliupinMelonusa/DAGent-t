@@ -2,11 +2,18 @@
  * nodes.ts — The 6-node literal that defines the demo pipeline.
  *
  * Linear order: dev → unit-test → e2e-author → e2e-runner → storefront-debug.
+ *
  * Failure routing:
- *   - e2e-runner.onFailure       → storefront-debug
- *   - storefront-debug.onSuccess → unit-test          (faster recovery loop)
- *   - storefront-debug.onFailure → unit-test          (one more retry through tests)
- * Finalizer: pr-creation (alwaysRun=true) — runs in the `finally` block.
+ *   - dev                 → in-place retries (2), then terminal halt → PR
+ *   - unit-test           → in-place retries (1), then terminal halt → PR
+ *   - e2e-author          → in-place retries (1), then terminal halt → PR
+ *   - e2e-runner          → no retries; onFailure = storefront-debug
+ *   - storefront-debug    → in-place retries (2); onSuccess = unit-test
+ *                            (replays unit-test → e2e-author → e2e-runner);
+ *                           on exhaustion, terminal halt → PR
+ *
+ * Finalizer: pr-creation (alwaysRun=true) — runs in the `finally` block,
+ * including on terminal halt. Opens a Draft PR with the run history.
  */
 
 import type { NodeDef } from "./types.ts";
@@ -29,7 +36,10 @@ export const MAIN_NODES: readonly NodeDef[] = [
       "^overrides/",
     ],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
-    maxRetries: 1,
+    // Retry a couple of times in-place; if dev still can't produce a build,
+    // there is no recovery node — main loop terminates and the finalizer
+    // opens a halted PR with the failure context.
+    maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
   },
   {
@@ -75,9 +85,12 @@ export const MAIN_NODES: readonly NodeDef[] = [
       "^overrides/",
     ],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
+    // On success, replay unit-test → e2e-author → e2e-runner to validate
+    // the fix. On exhaustion of in-place retries, fall through with no
+    // onFailure: the main loop terminates and pr-creation opens a
+    // halted PR with the full debug history.
     onSuccess: "unit-test",
-    onFailure: "unit-test",
-    maxRetries: 1,
+    maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
   },
 ];
