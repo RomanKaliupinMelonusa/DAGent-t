@@ -42,9 +42,35 @@
 #   2  invariant violation (missing spec.md, plan.md, or unresolved e2e contract)
 
 set -euo pipefail
+shopt -s nullglob
 
 err() { printf '[stage-spec] ERROR: %s\n' "$*" >&2; }
 log() { printf '[stage-spec] %s\n' "$*" >&2; }
+
+# JSON-escape a string for safe embedding in manifest.json. Handles
+# backslash, double-quote, and control characters; everything else is
+# emitted verbatim. Filenames with quotes/backslashes are unusual but
+# would otherwise corrupt the manifest (which the kernel parses).
+json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+# Strip a literal directory prefix without bash glob-pattern semantics
+# (so `[`, `?`, `*` in SPEC_FOLDER paths don't mis-fire).
+strip_prefix() {
+  local prefix=$1 path=$2
+  if [[ "$path" == "$prefix"* ]]; then
+    printf '%s' "${path:${#prefix}}"
+  else
+    printf '%s' "$path"
+  fi
+}
 
 REPO_ROOT="${REPO_ROOT:-$(pwd)}"
 
@@ -89,7 +115,9 @@ stage_file() {
   local kind="$1" src="$2" dest_basename="$3"
   local dest="$KICKOFF_DIR/$dest_basename"
   cp -f "$src" "$dest"
-  manifest_entries+=("{\"kind\":\"$kind\",\"path\":\"$dest_basename\",\"source\":\"${src#$SPEC_FOLDER/}\"}")
+  local rel
+  rel="$(strip_prefix "$SPEC_FOLDER/" "$src")"
+  manifest_entries+=("{\"kind\":\"$(json_escape "$kind")\",\"path\":\"$(json_escape "$dest_basename")\",\"source\":\"$(json_escape "$rel")\"}")
 }
 
 # ── Required scalar kinds ────────────────────────────────────────────
@@ -142,7 +170,7 @@ resolve_e2e_contract() {
 E2E_CONTRACT_SRC=""
 if E2E_CONTRACT_SRC="$(resolve_e2e_contract)"; then
   stage_file "e2e-contract" "$E2E_CONTRACT_SRC" "e2e-contract.md"
-  log "e2e-contract resolved: ${E2E_CONTRACT_SRC#$SPEC_FOLDER/}"
+  log "e2e-contract resolved: $(strip_prefix "$SPEC_FOLDER/" "$E2E_CONTRACT_SRC")"
 else
   err "no e2e contract found (looked under contracts/, top-level)"
   exit 2
@@ -161,7 +189,7 @@ if [[ -d "$SPEC_FOLDER/contracts" ]]; then
     # Lowercase the destination filename only.
     dest_base="$(echo "$base" | tr '[:upper:]' '[:lower:]')"
     cp -f "$src" "$KICKOFF_DIR/contracts/$dest_base"
-    manifest_entries+=("{\"kind\":\"contracts\",\"path\":\"contracts/$dest_base\",\"source\":\"contracts/$base\"}")
+    manifest_entries+=("{\"kind\":\"contracts\",\"path\":\"contracts/$(json_escape "$dest_base")\",\"source\":\"contracts/$(json_escape "$base")\"}")
     module_contract_count=$((module_contract_count + 1))
   done
 fi
@@ -176,7 +204,7 @@ if [[ -d "$SPEC_FOLDER/checklists" ]]; then
     [[ -f "$src" ]] || continue
     base="$(basename "$src")"
     cp -f "$src" "$KICKOFF_DIR/checklists/$base"
-    manifest_entries+=("{\"kind\":\"checklists\",\"path\":\"checklists/$base\",\"source\":\"checklists/$base\"}")
+    manifest_entries+=("{\"kind\":\"checklists\",\"path\":\"checklists/$(json_escape "$base")\",\"source\":\"checklists/$(json_escape "$base")\"}")
   done
 
   # clarifications symlink: prefer requirements.md, else first *.md.
@@ -190,15 +218,16 @@ if [[ -d "$SPEC_FOLDER/checklists" ]]; then
   fi
   if [[ -n "$clarif_src" ]]; then
     cp -f "$clarif_src" "$KICKOFF_DIR/clarifications.md"
-    manifest_entries+=("{\"kind\":\"clarifications\",\"path\":\"clarifications.md\",\"source\":\"${clarif_src#$SPEC_FOLDER/}\"}")
+    clarif_rel="$(strip_prefix "$SPEC_FOLDER/" "$clarif_src")"
+    manifest_entries+=("{\"kind\":\"clarifications\",\"path\":\"clarifications.md\",\"source\":\"$(json_escape "$clarif_rel")\"}")
   fi
 fi
 
 # ── Manifest ─────────────────────────────────────────────────────────
 {
   printf '{\n'
-  printf '  "specFolder": "%s",\n' "$SPEC_FOLDER"
-  printf '  "kickoffDir": "%s",\n' "$KICKOFF_DIR"
+  printf '  "specFolder": "%s",\n' "$(json_escape "$SPEC_FOLDER")"
+  printf '  "kickoffDir": "%s",\n' "$(json_escape "$KICKOFF_DIR")"
   printf '  "stagedAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '  "entries": [\n'
   total="${#manifest_entries[@]}"

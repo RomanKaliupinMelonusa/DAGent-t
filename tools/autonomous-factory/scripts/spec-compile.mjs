@@ -73,7 +73,29 @@ function extractRequiredDom(e2eContract) {
     noteGap("required_dom", "e2e-contract.md not staged");
     return [];
   }
-  const lines = e2eContract.split("\n");
+  // Anchor scan to the "Required testids ..." section so the projector
+  // does not accidentally pick up the "Reused testids" table that may
+  // appear earlier in §2 (binding pre-existing base-component testids
+  // into required_dom[] would instruct dev to re-add them — the prop-
+  // spread footgun called out in data-testid-contract.md).
+  const fullLines = e2eContract.split("\n");
+  let scanFromIdx = 0;
+  const requiredHeadingRe = /^#{1,6}\s+.*\brequired\b.*\btestid/i;
+  for (let i = 0; i < fullLines.length; i++) {
+    if (requiredHeadingRe.test(fullLines[i])) {
+      scanFromIdx = i + 1;
+      break;
+    }
+  }
+  // Stop scanning at the next heading (so we don't bleed into a later
+  // "Reused testids" subsection).
+  let scanToIdx = fullLines.length;
+  if (scanFromIdx > 0) {
+    for (let i = scanFromIdx; i < fullLines.length; i++) {
+      if (/^#{1,6}\s+/.test(fullLines[i])) { scanToIdx = i; break; }
+    }
+  }
+  const lines = fullLines.slice(scanFromIdx, scanToIdx);
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -170,8 +192,15 @@ function extractRequiredFlows(e2eContract) {
   }
   if (flows.length === 0) {
     noteGap("required_flows", "no `### Flow ...:` headers found in §3");
-  } else {
-    noteGap("required_flows.steps", `${flows.length} flow(s) extracted by name only — steps DSL deferred to repair`);
+  }
+  // Always flag missing steps so the repair agent runs even when names
+  // were captured. The projector deliberately does NOT synthesize step
+  // DSL from BDD prose.
+  if (flows.some((f) => f.steps.length === 0)) {
+    noteGap(
+      "required_flows",
+      `${flows.length} flow(s) extracted by name only — steps DSL must be filled by repair`,
+    );
   }
   return flows;
 }
@@ -185,20 +214,31 @@ function extractBaseTemplateReuse(research) {
     noteGap("base_template_reuse", "research.md not staged");
     return [];
   }
-  // Heuristic: scan each "**Decision**: ..." paragraph for an
-  // inline-code symbol followed by a parenthesized package path.
-  // Pattern shape from R-001:
-  //   Reuse the base PWA Kit `ProductView` component (`@salesforce/retail-react-app/.../product-view`)
+  // Heuristic: scan each "**Decision**: ..." paragraph for an inline-code
+  // symbol — either a bare identifier or a function-call shape — that is
+  // followed by a parenthesized package path.
+  // Patterns we accept inside a Decision block:
+  //   `Symbol`           (`@scope/pkg/...`)   -> bare identifier
+  //   `useFoo(args)`     (`@scope/pkg/...`)   -> hook/function call
+  //   `useFoo(...).bar`  (`@scope/pkg/...`)   -> chained access
+  // The package path is captured up to the first slash after the scope.
   const out = [];
+  let decisionBlockCount = 0;
   const decisionRe = /\*\*Decision\*\*:\s*([^\n]+(?:\n(?!\s*-\s*\*\*).+)*)/g;
   let dm;
   while ((dm = decisionRe.exec(research)) !== null) {
+    decisionBlockCount += 1;
     const block = dm[1];
-    const re = /`([A-Za-z][\w]+)`(?:\s+component)?\s*\(\s*`(@[^`]+)`/g;
+    // Capture symbol head (identifier) and optional call/chain tail. We
+    // intentionally do not enforce trailing ` (` to allow either bare
+    // identifiers or function-call shapes in the same scan.
+    const re = /`([A-Za-z_][\w]*)((?:\([^`]*\))?(?:\.[A-Za-z_][\w]*(?:\([^`]*\))?)*)`(?:\s+component)?\s*\(\s*`(@[^`]+)`/g;
     let m;
     while ((m = re.exec(block)) !== null) {
-      const symbol = m[1];
-      const pkg = m[2].split("/").slice(0, 2).join("/");
+      const head = m[1];
+      const tail = m[2] ?? "";
+      const symbol = `${head}${tail}`;
+      const pkg = m[3].split("/").slice(0, 2).join("/");
       out.push({
         symbol,
         package: pkg,
@@ -206,17 +246,26 @@ function extractBaseTemplateReuse(research) {
       });
     }
   }
-  if (out.length === 0) {
-    noteGap("base_template_reuse", "no `**Decision**: Reuse ... \\`Symbol\\` (\\`@pkg/...\\`)` patterns matched");
-  }
   // de-dup by symbol+package
   const seen = new Set();
-  return out.filter((e) => {
+  const unique = out.filter((e) => {
     const k = `${e.package}::${e.symbol}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
+  if (unique.length === 0) {
+    noteGap("base_template_reuse", "no `**Decision**: ... \\`Symbol\\` (\\`@pkg/...\\`)` patterns matched");
+  } else if (unique.length < decisionBlockCount) {
+    // Honesty: we don't know that every decision block declares reuse,
+    // but if matches < blocks the repair agent should review the gap so
+    // we never silently under-specify reuse posture.
+    noteGap(
+      "base_template_reuse",
+      `matched ${unique.length} of ${decisionBlockCount} decision block(s) — repair must verify completeness`,
+    );
+  }
+  return unique;
 }
 
 function trimSentence(s) {
@@ -247,7 +296,13 @@ function extractTestFixtures(e2eContract) {
   } catch {
     url = m[1];
   }
-  noteGap("test_fixtures.asserts", "fixture asserts (http_status, swatch counts, etc.) require runtime probe — deferred to repair");
+  // Fixtures genuinely require runtime probing (asserts, base SHA) —
+  // the deterministic projector cannot synthesize them. Emit the stub
+  // and unconditionally flag the gap so the repair agent enriches it.
+  noteGap(
+    "test_fixtures",
+    "single stub fixture emitted with placeholder base_sha and no asserts — repair must enrich",
+  );
   return [{
     id: "default-plp",
     url,
@@ -262,13 +317,18 @@ function extractTestFixtures(e2eContract) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse `clarifications.md` (a spec-kit checklists/requirements.md file)
- * for question/answer pairs. Tolerant of two common shapes:
- *   - `Q: ... A: ...` (single line each)
- *   - `**Q:** ...\n**A:** ...` (markdown bold blocks)
+ * Parse `clarifications.md` for design context the downstream agents
+ * can use as a sidecar. Two shapes are supported:
  *
- * Returns `[{ question, answer, line }]`. Empty array if no clarifications
- * file or no parseable pairs.
+ *   1. Q/A pairs — `Q: ... A: ...` or `**Q:** ...\n**A:** ...`. This is
+ *      the shape spec-kit's `/speckit.clarify` command emits.
+ *   2. Checklist items — `- [x] item` / `- [ ] item`. This is the shape
+ *      spec-kit's `checklists/requirements.md` actually ships, where
+ *      each line is a quality assertion the spec author has confirmed
+ *      (`[x]`) or left open (`[ ]`).
+ *
+ * Returns `[{ kind, ... }]` so consumers can tell the two shapes apart.
+ * Empty array if no parseable entries.
  */
 function extractClarifications(clarif) {
   if (!clarif) return [];
@@ -276,16 +336,30 @@ function extractClarifications(clarif) {
   const lines = clarif.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Shape 1: Q/A.
     const qm = line.match(/^\s*(?:\*\*)?Q(?:\*\*)?[:\s]+(.+?)$/i);
-    if (!qm) continue;
-    // Look ahead up to 5 lines for the matching A.
-    let answer = "";
-    for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-      const am = lines[j].match(/^\s*(?:\*\*)?A(?:\*\*)?[:\s]+(.+?)$/i);
-      if (am) { answer = am[1].trim(); break; }
+    if (qm) {
+      let answer = "";
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        const am = lines[j].match(/^\s*(?:\*\*)?A(?:\*\*)?[:\s]+(.+?)$/i);
+        if (am) { answer = am[1].trim(); break; }
+      }
+      if (answer) {
+        out.push({ kind: "qa", question: qm[1].trim(), answer, line: i + 1 });
+      }
+      continue;
     }
-    if (answer) {
-      out.push({ question: qm[1].trim(), answer, line: i + 1 });
+
+    // Shape 2: checklist item.
+    const cm = line.match(/^\s*-\s*\[([ xX])\]\s+(.+?)\s*$/);
+    if (cm) {
+      out.push({
+        kind: "checklist",
+        checked: cm[1].toLowerCase() === "x",
+        item: cm[2].trim(),
+        line: i + 1,
+      });
     }
   }
   return out;
