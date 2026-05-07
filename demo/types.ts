@@ -75,8 +75,18 @@ export interface RunState {
   readonly app: string; // app root (e.g. apps/commerce-storefront)
   readonly baseBranch: string;
   readonly featureBranch: string;
-  readonly specPath: string;
-  readonly e2eGuidePath: string;
+  /**
+   * Absolute path to the spec-kit feature folder
+   * (e.g. apps/commerce-storefront/specs/001-plp-quick-view).
+   * Required on the first run; persisted in state.json for resume.
+   */
+  readonly specFolderPath: string;
+  /**
+   * Absolute path to the staged `_kickoff/` directory produced by
+   * stage-spec.sh. Populated during branch setup; agents read inputs
+   * from here.
+   */
+  readonly kickoffDir: string;
   /** ISO timestamp. */
   readonly startedAt: string;
   /** Total cross-node failure-routing jumps consumed. */
@@ -92,8 +102,7 @@ export interface RunState {
 export interface RunOptions {
   readonly slug: string;
   readonly app: string;
-  readonly specPath?: string;
-  readonly e2eGuidePath?: string;
+  readonly specFolderPath?: string;
   readonly baseBranch: string;
   readonly resume: boolean;
 }

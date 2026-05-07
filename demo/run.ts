@@ -8,8 +8,7 @@
  * CLI:
  *   --slug <name>            (required)
  *   --app <path>             (required, e.g. apps/commerce-storefront)
- *   --spec <path>            (required on first run)
- *   --e2e-guide <path>       (required on first run)
+ *   --spec-folder <path>     (required on first run — spec-kit feature folder)
  *   --base-branch <branch>   (default: main)
  *   --resume                 (reload state.json and skip completed nodes)
  */
@@ -44,8 +43,7 @@ interface CliArgs {
   slug: string;
   /** Required on first run; optional on --resume (falls back to state.json). */
   app?: string;
-  spec?: string;
-  e2eGuide?: string;
+  specFolder?: string;
   baseBranch: string;
   resume: boolean;
 }
@@ -58,8 +56,7 @@ function parseCli(argv: readonly string[]): CliArgs {
     switch (a) {
       case "--slug":          args.slug = next(); break;
       case "--app":           args.app = next(); break;
-      case "--spec":          args.spec = next(); break;
-      case "--e2e-guide":     args.e2eGuide = next(); break;
+      case "--spec-folder":   args.specFolder = next(); break;
       case "--base-branch":   args.baseBranch = next(); break;
       case "--resume":        args.resume = true; break;
       case "--help":
@@ -81,7 +78,7 @@ function parseCli(argv: readonly string[]): CliArgs {
 function printUsage(): void {
   console.error(
     "Usage: npm run demo -- --slug <name> --app <path> " +
-    "[--spec <path>] [--e2e-guide <path>] [--base-branch <branch>] [--resume]",
+    "[--spec-folder <path>] [--base-branch <branch>] [--resume]",
   );
 }
 
@@ -98,21 +95,28 @@ function initState(args: CliArgs): RunState {
   if (!args.app) {
     throw new Error("Missing --app (no prior state.json found to resume from).");
   }
-  if (!args.spec || !args.e2eGuide) {
-    throw new Error("First run requires --spec and --e2e-guide.");
+  if (!args.specFolder) {
+    throw new Error("First run requires --spec-folder (path to a spec-kit feature folder).");
   }
-  const specPath = path.resolve(REPO_ROOT, args.spec);
-  const e2eGuidePath = path.resolve(REPO_ROOT, args.e2eGuide);
-  if (!fs.existsSync(specPath))      throw new Error(`Spec not found: ${specPath}`);
-  if (!fs.existsSync(e2eGuidePath))  throw new Error(`E2E guide not found: ${e2eGuidePath}`);
+  const specFolderPath = path.resolve(REPO_ROOT, args.specFolder);
+  if (!fs.existsSync(specFolderPath) || !fs.statSync(specFolderPath).isDirectory()) {
+    throw new Error(`Spec folder not found or not a directory: ${specFolderPath}`);
+  }
+  for (const required of ["spec.md", "plan.md"]) {
+    if (!fs.existsSync(path.join(specFolderPath, required))) {
+      throw new Error(`Spec folder missing required file '${required}': ${specFolderPath}`);
+    }
+  }
   const featureBranch = `feature/${args.slug}`;
+  const appRoot = path.resolve(REPO_ROOT, args.app);
+  const kickoffDir = path.join(appRoot, ".dagent", args.slug, "_kickoff");
   return {
     slug: args.slug,
     app: args.app,
     baseBranch: args.baseBranch,
     featureBranch,
-    specPath,
-    e2eGuidePath,
+    specFolderPath,
+    kickoffDir,
     startedAt: new Date().toISOString(),
     jumps: 0,
     outputs: {},
@@ -123,6 +127,31 @@ function initState(args: CliArgs): RunState {
 // ---------------------------------------------------------------------------
 // Branch setup — shells out to the existing repo wrapper.
 // ---------------------------------------------------------------------------
+
+/**
+ * Materialize the spec-kit folder into the per-feature `_kickoff/` dir
+ * by shelling out to `tools/autonomous-factory/hooks/stage-spec.sh`.
+ * Idempotent — re-running on resume is safe (cp -f).
+ */
+function stageSpec(state: RunState): void {
+  const script = path.join(REPO_ROOT, "tools", "autonomous-factory", "hooks", "stage-spec.sh");
+  if (!fs.existsSync(script)) {
+    throw new Error(`stage-spec script not found: ${script}`);
+  }
+  console.log(`[run] staging spec-kit folder → ${path.relative(REPO_ROOT, state.kickoffDir)}`);
+  execSync(`bash ${script}`, {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      REPO_ROOT,
+      SPEC_FOLDER: state.specFolderPath,
+      KICKOFF_DIR: state.kickoffDir,
+      APP_ROOT: path.resolve(REPO_ROOT, state.app),
+      SLUG: state.slug,
+    },
+    stdio: "inherit",
+  });
+}
 
 function ensureFeatureBranch(state: RunState): void {
   const wrapper = path.join(REPO_ROOT, "demo", "scripts", "agent-branch.sh");
@@ -334,6 +363,11 @@ async function main(): Promise<void> {
 
   if (!args.resume) {
     ensureFeatureBranch(state);
+    stageSpec(state);
+  } else {
+    // Re-stage on resume too — cheap, idempotent, and protects against
+    // edits to the spec-kit folder between runs.
+    stageSpec(state);
   }
 
   let exitCode = 0;

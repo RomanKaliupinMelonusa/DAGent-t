@@ -13,17 +13,19 @@ description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless Reac
 tokenBudget: 20000
 
 agents:
-  spec-compiler:
-    # Narrow-scope agent: reads SPEC.md, writes ACCEPTANCE.yml. No impl access.
-    # Low token budget — this is an extraction job, not a coding job.
+  spec-compile-repair:
+    # Phase C cutover: narrow LLM repair node. The deterministic
+    # `spec-compile` script projects acceptance.yml from the spec-kit
+    # folder; this agent only runs when `gaps.json` is non-empty (or
+    # when triage reroutes a `test-data` failure for fixture repair).
+    # Reads spec-kit kickoff inputs + the partial acceptance.yml and
+    # writes ONLY the gap fields. Low token budget — narrow job.
     instructions: [always, storefront/spec-compilation.md]
-    promptFile: spec-compiler.agent.md
+    promptFile: spec-compile-repair.agent.md
     mcp: []
     skills: []
     toolLimits: { soft: 30, hard: 45 }
     security:
-      # Write ACCEPTANCE.yml only. `.dagent/` is the shared pipeline
-      # scratch dir; the spec-compiler must not touch feature code.
       allowedWritePaths: ["(^|/).dagent/.*_ACCEPTANCE\\.yml$"]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
     tools:
@@ -244,14 +246,33 @@ nodes:
     script_type: local-exec
     command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh"
 
-  spec-compiler:
-    type: agent
+  spec-compile:
+    # Phase C: deterministic projector. Reads the staged spec-kit folder
+    # under `${KICKOFF_DIR}` and emits `acceptance.yml` + `gaps.json` to
+    # `${OUTPUTS_DIR}`. Exit 0 if gaps.json is empty; exit 2 if non-empty
+    # (orchestrator triggers spec-compile-repair via the auto-skip-unless
+    # mechanism on that agent node).
+    type: script
     category: dev
-    agent: "@spec-compiler"
-    timeout_minutes: 10
-    # Pipeline scope — this is a pre-feature artifact, not feature code.
+    timeout_minutes: 5
+    script_type: local-exec
+    command: "node ${REPO_ROOT}/tools/autonomous-factory/scripts/spec-compile.mjs"
+    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/spec-compile-post.sh"
     commit_scope: pipeline
     diff_attribution_dirs: []
+
+  spec-compile-repair:
+    type: agent
+    category: dev
+    agent: "@spec-compile-repair"
+    timeout_minutes: 10
+    auto_skip_unless_gaps: true
+    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/spec-compile-post.sh"
+    commit_scope: pipeline
+    diff_attribution_dirs: []
+    circuit_breaker:
+      max_item_failures: 2
+      halt_on_identical: true
 
   baseline-analyzer:
     # Pre-feature page baseline. Runs a live browser against the target

@@ -28,6 +28,8 @@ reproduction and verification against the local dev server at
 
 - Feature: {{featureSlug}}
 - Spec: `{{specPath}}`
+- Plan: `{{planPath}}` (architectural decisions are already made — execute against them)
+- Module contracts directory: `{{contractsDir}}` (binding per-component testid + behavior contracts)
 - Acceptance contract: `{{acceptancePath}}` — **immutable** for the duration of this run
 - Repo root: `{{repoRoot}}`
 - App root: `{{appRoot}}`

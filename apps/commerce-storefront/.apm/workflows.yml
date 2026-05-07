@@ -21,10 +21,26 @@ storefront:
     stage-spec:
       depends_on: [create-branch]
 
-    # ── Acceptance contract compilation ───────────────────────────────
-    spec-compiler:
+    # ── Acceptance contract compilation (deterministic projector) ────
+    # Phase C cutover: spec-compiler split into a deterministic script
+    # (`spec-compile`) that reads the spec-kit folder and projects the
+    # acceptance contract, plus a narrow LLM repair node
+    # (`spec-compile-repair`) that auto-skips when gaps.json is empty.
+    spec-compile:
       depends_on: [stage-spec]
-      consumes_kickoff: [spec]
+      consumes_kickoff: [spec, plan, research, contracts, e2e-contract, clarifications]
+      produces_artifacts: [acceptance, gaps]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-data: spec-compile-repair
+
+    spec-compile-repair:
+      depends_on: [spec-compile]
+      consumes_kickoff: [spec, plan, research, contracts, e2e-contract, clarifications]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: spec-compile, kind: gaps, required: false }
       produces_artifacts: [acceptance]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
@@ -39,20 +55,20 @@ storefront:
     # triage / reroute (was a misconfiguration). Omitting `on_failure`
     # makes the node fail-soft per the kernel's no-implicit-opt-in rule.
     baseline-analyzer:
-      depends_on: [spec-compiler]
+      depends_on: [spec-compile-repair]
       consumes_kickoff: [spec]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
       produces_artifacts: [baseline]
       consumes_reroute:
         - { kind: triage-handoff, required: true }
 
     # ── Development ───────────────────────────────────────────────────
     storefront-dev:
-      depends_on: [spec-compiler, baseline-analyzer]
-      consumes_kickoff: [spec]
+      depends_on: [spec-compile-repair, baseline-analyzer]
+      consumes_kickoff: [spec, plan, research, data-model, contracts]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: baseline-analyzer, kind: baseline, required: false }
       produces_artifacts: [implementation-status]
       consumes_reroute:
@@ -62,27 +78,27 @@ storefront:
         routes:
           code-defect: "$SELF"
           test-code: "$SELF"
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     # ── Dev-server smoke gate ─────────────────────────────────────────
     storefront-dev-smoke:
       depends_on: [storefront-dev]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: storefront-dev, kind: implementation-status, required: false }
       produces_artifacts: [smoke-report]
       on_failure:
         triage: triage-storefront
         routes:
           code-defect: storefront-debug
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     # ── Runtime-defect debugger (reroute-only) ────────────────────────
     storefront-debug:
       depends_on: [storefront-dev-smoke]
-      consumes_kickoff: [spec]
+      consumes_kickoff: [spec, plan, contracts]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: baseline-analyzer, kind: baseline, required: false }
       produces_artifacts: [debug-notes]
       consumes_reroute:
@@ -92,12 +108,13 @@ storefront:
         routes:
           code-defect: "$SELF"
           test-code: e2e-author
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     storefront-unit-test:
       depends_on: [storefront-debug]
+      consumes_kickoff: [unit-tests, contracts]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
       # `code-defect` routes to storefront-debug to match e2e-runner /
@@ -114,8 +131,9 @@ storefront:
     # ── Validation (Author / Runner) ──────────────────────────────────
     e2e-author:
       depends_on: [storefront-unit-test]
+      consumes_kickoff: [e2e-contract]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: baseline-analyzer, kind: baseline, required: false }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
@@ -123,25 +141,25 @@ storefront:
         triage: triage-storefront
         routes:
           test-code: "$SELF"
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     e2e-runner:
       depends_on: [e2e-author]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
       produces_artifacts: [playwright-report]
       on_failure:
         triage: triage-storefront
         routes:
           test-code: e2e-author
           code-defect: storefront-debug
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     # ── Adversarial QA pass ───────────────────────────────────────────
     qa-adversary:
       depends_on: [e2e-runner]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: e2e-runner, kind: playwright-report, required: false }
         - { from: storefront-dev, kind: implementation-status, required: false }
         - { from: baseline-analyzer, kind: baseline, required: false }
@@ -153,14 +171,14 @@ storefront:
         routes:
           test-code: "$SELF"
           code-defect: storefront-debug
-          test-data: spec-compiler
+          test-data: spec-compile-repair
 
     # ── Open Draft PR (terminal) ──────────────────────────────────────
     # Always opens as Draft. Human reviewer flips to Ready.
     publish-pr:
       depends_on: [storefront-unit-test, e2e-runner, qa-adversary]
       consumes_artifacts:
-        - { from: spec-compiler, kind: acceptance }
+        - { from: spec-compile-repair, kind: acceptance }
         - { from: qa-adversary, kind: qa-report, required: false }
       consumes_reroute:
         - { kind: triage-handoff, required: true }
@@ -189,4 +207,4 @@ storefront:
         code-defect:
           description: "Defect in the storefront application code surfaced by the failing node — rendering crash, hydration mismatch, runtime exception, hook misuse, missing null guard. Route to the live-browser debugger (storefront-debug)."
         test-data:
-          description: "The acceptance contract's test fixture is misconfigured for the running storefront — URL 404s under the active locale/site config, the chosen product violates a runtime assertion declared on the fixture (swatch count, in-stock, product type), or http_status:200 contradicts a baseline failure. Route to spec-compiler so it picks a different fixture (different product / category / locale)."
+          description: "The acceptance contract's test fixture is misconfigured for the running storefront — URL 404s under the active locale/site config, the chosen product violates a runtime assertion declared on the fixture (swatch count, in-stock, product type), or http_status:200 contradicts a baseline failure. Route to spec-compile-repair so it can patch the fixture (different product / category / locale)."
