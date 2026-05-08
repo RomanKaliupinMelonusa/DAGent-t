@@ -25,6 +25,7 @@ import {
   type OutcomeCollector,
 } from "./harness.ts";
 import type { NodeDef, RunState } from "./types.ts";
+import { createLiveLogger } from "./live-logger.ts";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min — same as `Promise.race` cap.
 const MODEL = process.env.DAGENT_MODEL ?? "claude-opus-4.6";
@@ -223,6 +224,9 @@ export async function runAgentNode(
   const logLine = (kind: string, payload: unknown) =>
     logStream.write(`[${new Date().toISOString()}] ${kind} ${JSON.stringify(payload)}\n`);
 
+  // Live terminal output
+  const live = createLiveLogger(node.id, attempt);
+
   logLine("attempt.start", { node: node.id, attempt, model: MODEL });
 
   const session = await client.createSession({
@@ -236,6 +240,7 @@ export async function runAgentNode(
         const denial = checkRbac(input.toolName, input.toolArgs, sandbox);
         if (denial) {
           logLine("tool.denied", { tool: input.toolName, reason: denial });
+          live.toolDenied(input.toolName, denial);
           return {
             permissionDecision: "deny" as const,
             permissionDecisionReason: denial,
@@ -249,13 +254,19 @@ export async function runAgentNode(
     ...(mcpServers ? { mcpServers } : {}),
   });
 
-  // Stream high-signal events into the log.
-  session.on("tool.execution_start", (e: any) =>
-    logLine("tool.start", { tool: e?.data?.toolName, args: e?.data?.toolArgs }));
-  session.on("tool.execution_complete", (e: any) =>
-    logLine("tool.complete", { tool: e?.data?.toolName, result: String(e?.data?.result ?? "").slice(0, 200) }));
-  session.on("session.error" as any, (e: any) =>
-    logLine("session.error", { message: String(e?.data?.message ?? e) }));
+  // Stream high-signal events into the log + live terminal.
+  session.on("tool.execution_start", (e: any) => {
+    logLine("tool.start", { tool: e?.data?.toolName, args: e?.data?.toolArgs });
+    live.toolStart(e?.data?.toolName, e?.data?.toolArgs);
+  });
+  session.on("tool.execution_complete", (e: any) => {
+    logLine("tool.complete", { tool: e?.data?.toolName, result: String(e?.data?.result ?? "").slice(0, 200) });
+    live.toolComplete(e?.data?.toolName, String(e?.data?.result ?? "").slice(0, 120));
+  });
+  session.on("session.error" as any, (e: any) => {
+    logLine("session.error", { message: String(e?.data?.message ?? e) });
+    live.error(String(e?.data?.message ?? e));
+  });
 
   let result: AgentRunResult = {
     ok: false,
@@ -284,6 +295,7 @@ export async function runAgentNode(
   } finally {
     await session.disconnect().catch(() => {});
     logLine("attempt.end", { ok: result.ok, error: result.errorMessage });
+    live.done(result.ok, result.errorMessage);
     logStream.end();
   }
   return result;
