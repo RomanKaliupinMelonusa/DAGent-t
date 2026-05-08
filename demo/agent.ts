@@ -27,7 +27,7 @@ import {
 import type { NodeDef, RunState } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min — same as `Promise.race` cap.
-const MODEL = process.env.DAGENT_MODEL ?? "claude-sonnet-4-5";
+const MODEL = process.env.DAGENT_MODEL ?? "claude-opus-4.6";
 
 export interface AgentRunResult {
   ok: boolean;
