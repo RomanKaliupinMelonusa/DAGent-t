@@ -77,8 +77,15 @@ Your sandbox DENIES reads of `{{appRoot}}/overrides/`, `{{appRoot}}/config/` (fe
 
 1. Read `{{acceptancePath}}`. Each `required_dom` entry names a `testid` that MUST be asserted visible (or with text, per its flags). Each `required_flow` is a scripted user journey — translate its `steps[]` into Playwright test code verbatim, preserving the step order.
 2. Read `{{specPath}}` for narrative context only — the contract is the target.
+3. Read `{{e2eContractPath}}` for cross-reference. If the e2e-contract names
+   a testid the acceptance contract omits, treat it as the acceptance
+   contract is **incomplete** and call
+   `report_outcome({ status: "failed", message: "Acceptance contract drift: e2e-contract names <testid> not in required_dom" })`
+   so triage routes to `spec-compile-repair` (`test-data`). Do NOT silently
+   author against the e2e-contract — the single-author rule for
+   `acceptance.yml` is what keeps the SDET / dev / spec authors aligned.
 3. Read existing tests in `{{appRoot}}/e2e/` to avoid duplication and match style.
-4. Attempts to `read_file` / `view` any path under `overrides/**`, `config/**`, or `app/**` will be rejected with a security policy error. Do not waste tool calls exploring these. If you truly cannot author a test from the contract alone, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what's missing>" })` so the spec-compiler can be re-run.
+4. Attempts to `read_file` / `view` any path under `overrides/**`, `config/**`, or `app/**` will be rejected with a security policy error. Do not waste tool calls exploring these. If you truly cannot author a test from the contract alone, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what's missing>" })` so `spec-compile-repair` can be re-run.
 
 ## Scope
 
