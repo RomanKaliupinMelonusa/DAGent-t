@@ -362,7 +362,9 @@ async function main(): Promise<void> {
   saveState(state);
 
   if (!args.resume) {
-    ensureFeatureBranch(state);
+    // Branch creation is owned by spec-kit (/speckit.git.feature).
+    // The pipeline assumes it starts on the correct feature/<slug> branch.
+    // ensureFeatureBranch(state);
     stageSpec(state);
   } else {
     // Re-stage on resume too — cheap, idempotent, and protects against
