@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "storefront-dev",
+  "producedAt": "2026-05-08T19:05:00.000Z",
+  "flows": [
+    {
+      "flowId": "open-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "variation-switching",
+      "status": "live"
+    },
+    {
+      "flowId": "add-to-bag",
+      "status": "live"
+    },
+    {
+      "flowId": "close-modal",
+      "status": "live"
+    },
+    {
+      "flowId": "no-pickup-ui",
+      "status": "live"
+    },
+    {
+      "flowId": "disabled-state",
+      "status": "live"
+    },
+    {
+      "flowId": "view-full-details",
+      "status": "live"
+    },
+    {
+      "flowId": "tile-click-regression",
+      "status": "live"
+    },
+    {
+      "flowId": "set-bundle-exclusion",
+      "status": "live"
+    },
+    {
+      "flowId": "error-fallback",
+      "status": "live"
+    }
+  ]
+}
