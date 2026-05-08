@@ -227,16 +227,14 @@ agents:
 # ═══════════════════════════════════════════════════════════════════════
 nodes:
   # ── Scaffolding ────────────────────────────────────────────────────
-  # Pipeline-specific side-effects the kernel must not own. `create-branch`
-  # materializes the feature branch; `stage-spec` copies the user-supplied
-  # spec-kit folder into `_kickoff/` so downstream agents consume it via
-  # their declared `consumes_kickoff` inputs.
-  create-branch:
-    type: script
-    category: scaffold
-    timeout_minutes: 2
-    script_type: local-exec
-    command: "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}"
+  # Branch creation is now owned by spec-kit (/speckit.git.feature).
+  # The pipeline assumes it starts on the correct feature/<slug> branch.
+  # create-branch:
+  #   type: script
+  #   category: scaffold
+  #   timeout_minutes: 2
+  #   script_type: local-exec
+  #   command: "bash ${REPO_ROOT}/tools/autonomous-factory/agent-branch.sh create-feature ${featureSlug}"
 
   stage-spec:
     type: script

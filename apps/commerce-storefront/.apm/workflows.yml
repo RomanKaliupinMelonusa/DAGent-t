@@ -15,11 +15,13 @@ storefront:
 
   nodes:
     # ── Wave 0: Scaffolding ───────────────────────────────────────────
-    create-branch:
-      depends_on: []
+    # create-branch:
+    #   depends_on: []
+    #   NOTE: Branch creation is now owned by spec-kit (/speckit.git.feature).
+    #   The pipeline assumes it is already on the correct feature branch.
 
     stage-spec:
-      depends_on: [create-branch]
+      depends_on: []
 
     # ── Acceptance contract compilation ─────────────────────────────
     # Single LLM producer: reads the staged spec-kit folder and
