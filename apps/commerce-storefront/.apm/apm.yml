@@ -13,18 +13,17 @@ description: "Salesforce B2C Commerce Cloud PWA Kit storefront — headless Reac
 tokenBudget: 20000
 
 agents:
-  spec-compile-repair:
-    # Phase C cutover: narrow LLM repair node. The deterministic
-    # `spec-compile` script projects acceptance.yml from the spec-kit
-    # folder; this agent only runs when `gaps.json` is non-empty (or
-    # when triage reroutes a `test-data` failure for fixture repair).
-    # Reads spec-kit kickoff inputs + the partial acceptance.yml and
-    # writes ONLY the gap fields. Low token budget — narrow job.
+  spec-compile:
+    # Sole producer of acceptance.yml from a staged spec-kit folder.
+    # On first invocation: reads kickoff inputs and writes the full
+    # contract from scratch. On triage `test-data` reroute: patches
+    # the failing fixture only. No deterministic projector — the LLM
+    # owns the full extraction. Post-hook validates the output schema.
     instructions: [always, storefront/spec-compilation.md]
-    promptFile: spec-compile-repair.agent.md
+    promptFile: spec-compile.agent.md
     mcp: []
     skills: []
-    toolLimits: { soft: 30, hard: 45 }
+    toolLimits: { soft: 50, hard: 70 }
     security:
       allowedWritePaths: ["(^|/).dagent/.*_ACCEPTANCE\\.yml$"]
       blockedCommandRegexes: ["(^|\\s)(az|aws|terraform|npm\\s+start|npx\\s+playwright)($|\\s)"]
@@ -230,8 +229,8 @@ nodes:
   # ── Scaffolding ────────────────────────────────────────────────────
   # Pipeline-specific side-effects the kernel must not own. `create-branch`
   # materializes the feature branch; `stage-spec` copies the user-supplied
-  # spec (SPEC_FILE) into `_kickoff/spec.md` so spec-compiler / dev agents
-  # consume it via their declared `consumes_kickoff: [spec]`.
+  # spec-kit folder into `_kickoff/` so downstream agents consume it via
+  # their declared `consumes_kickoff` inputs.
   create-branch:
     type: script
     category: scaffold
@@ -247,26 +246,13 @@ nodes:
     command: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/stage-spec.sh"
 
   spec-compile:
-    # Phase C: deterministic projector. Reads the staged spec-kit folder
-    # under `${KICKOFF_DIR}` and emits `acceptance.yml` + `gaps.json` to
-    # `${OUTPUTS_DIR}`. Exit 0 if gaps.json is empty; exit 2 if non-empty
-    # (orchestrator triggers spec-compile-repair via the auto-skip-unless
-    # mechanism on that agent node).
-    type: script
-    category: dev
-    timeout_minutes: 5
-    script_type: local-exec
-    command: "node ${REPO_ROOT}/tools/autonomous-factory/scripts/spec-compile.mjs"
-    post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/spec-compile-post.sh"
-    commit_scope: pipeline
-    diff_attribution_dirs: []
-
-  spec-compile-repair:
+    # Sole LLM producer of acceptance.yml. Reads the staged spec-kit
+    # folder and produces the typed contract end-to-end. On triage
+    # `test-data` reroute, patches only the failing fixture.
     type: agent
     category: dev
-    agent: "@spec-compile-repair"
+    agent: "@spec-compile"
     timeout_minutes: 10
-    auto_skip_unless_gaps: true
     post: "bash ${REPO_ROOT}/tools/autonomous-factory/hooks/spec-compile-post.sh"
     commit_scope: pipeline
     diff_attribution_dirs: []

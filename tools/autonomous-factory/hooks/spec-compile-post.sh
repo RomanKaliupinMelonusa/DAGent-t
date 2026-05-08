@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# spec-compile-post.sh — pre-completion gate for the spec-compile band.
+# spec-compile-post.sh — pre-completion gate for the spec-compile agent.
 #
-# Runs after BOTH spec-compile (script) and spec-compile-repair (agent).
-# Delegates the real schema + cross-reference checks to the zero-dep
-# Node validator at scripts/validate-acceptance.mjs so the same code
-# path runs from every orchestrator (demo, .apm, future Temporal).
+# Validates the produced acceptance.yml against the contract schema.
+# Runs after the spec-compile agent node.
 #
 # Inputs (env, provided by the orchestrator):
-#   OUTPUTS_DIR   Directory that contains the produced acceptance.yml
-#                 (and gaps.json if the script producer ran).
+#   OUTPUTS_DIR   Directory that contains the produced acceptance.yml.
 #
-# Exit codes (typed — match historical LLM spec-compiler gate codes
-# so triage routing keeps working):
+# Exit codes (typed — match historical gate codes so triage routing works):
 #   0  pass
 #   3  envelope-missing  — artifact absent / empty / unparseable
 #   4  schema-violation  — one or more schema rules failed
@@ -43,13 +39,6 @@ rc=$?
 if [[ $rc -ne 0 ]]; then
   err "validate-acceptance exited with code $rc"
   exit $rc
-fi
-
-# Surface gap count for downstream visibility (advisory only).
-gaps="$OUTPUTS_DIR/gaps.json"
-if [[ -f "$gaps" ]]; then
-  count=$(grep -c '"field"' "$gaps" || true)
-  log "gaps.json present with $count gap(s) — repair node should pick them up"
 fi
 
 exit 0
