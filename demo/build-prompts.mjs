@@ -30,15 +30,15 @@ const INST = path.join(APM_ROOT, "instructions");
 const DEMO_ADDENDUM = `# Demo pipeline addendum (read first)
 
 The instruction fragments below were authored for the production agentic
-pipeline. This is the **demo pipeline** — a stripped-down 6-node linear
+pipeline. This is the **demo pipeline** — a stripped-down 7-node linear
 runner. Apply these overrides everywhere they conflict with the legacy
 fragments:
 
 - **There is no \`.dagent/<slug>/\` workspace.** Pipeline state lives in
   \`demo/.runs/<slug>/state.json\`. You do not write to \`.dagent/\`.
-- **There is no spec-compiler, baseline-analyzer, or qa-adversary node.**
-  Work directly from the spec and e2e-test-guide handed to you in the
-  task prompt. There is no compiled \`acceptance.yml\`.
+- **There is no spec-compiler or qa-adversary node.** A
+  **baseline-analyzer** node runs before \`dev\` and its output is available
+  to subsequent nodes.
 - **The only outcome tool is \`report_outcome\`.** Ignore references to
   \`report_intent\`, \`pipeline:complete\`, \`pipeline:fail\`, the kernel
   command bus, intent registries, etc. Call \`report_outcome\` exactly
@@ -62,8 +62,51 @@ fragments:
 
 `;
 
+function BASELINE_PREFACE() {
+  return `## Baseline node — demo pipeline overrides
+
+In the demo pipeline, this node runs **before** the \`dev\` node and
+captures pre-feature page errors so downstream nodes can subtract
+platform noise.
+
+### Output
+
+Do **NOT** write a file to \`$OUTPUTS_DIR\`, \`.dagent/\`, or any other
+path. Instead, call \`report_outcome\` with \`status: "completed"\` and
+\`result\` containing the full baseline JSON object (the schema is
+defined in the agent prompt below). The orchestrator injects your
+\`result\` into all downstream nodes' task prompts automatically under
+**"Outputs from prior nodes"**.
+
+### Inputs
+
+The spec is inlined in your task prompt under **## Spec**. Read it to
+determine which pages and interactions to exercise. There is **no**
+acceptance contract (\`acceptance.yml\`) and **no** pre-computed capture
+targets section in the demo pipeline — derive target URLs and modal
+interactions directly from the spec's acceptance scenarios.
+
+### Dev server
+
+A local dev server is running at \`http://localhost:3000\`. Use the
+Playwright MCP tools (\`playwright_navigate\`, \`playwright_evaluate\`,
+etc.) to navigate pages and capture console / network errors. Do NOT
+start or stop the dev server.
+
+`;
+}
+
 /** @type {Record<string, { agent?: string; fragments: string[]; preface?: string }>} */
 const COMPOSITIONS = {
+  "baseline.md": {
+    agent: "baseline-analyzer.agent.md",
+    preface: BASELINE_PREFACE,
+    fragments: [
+      "always/hard-limits.md",
+      "storefront/baseline-volatility-tagging.md",
+      "tooling/roam-tool-rules.md",
+    ],
+  },
   "dev.md": {
     agent: "storefront-dev.agent.md",
     fragments: [

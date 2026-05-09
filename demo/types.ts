@@ -6,6 +6,7 @@
  */
 
 export type NodeId =
+  | "baseline"
   | "dev"
   | "unit-test"
   | "e2e-author"

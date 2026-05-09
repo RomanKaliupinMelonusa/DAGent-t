@@ -1,9 +1,10 @@
 /**
- * nodes.ts — The 6-node literal that defines the demo pipeline.
+ * nodes.ts — The 7-node literal that defines the demo pipeline.
  *
- * Linear order: dev → unit-test → e2e-author → e2e-runner → storefront-debug.
+ * Linear order: baseline → dev → unit-test → e2e-author → e2e-runner → storefront-debug.
  *
  * Failure routing:
+ *   - baseline            → in-place retries (1); onFailure = dev (non-blocking)
  *   - dev                 → in-place retries (2), then terminal halt → PR
  *   - unit-test           → in-place retries (1), then terminal halt → PR
  *   - e2e-author          → in-place retries (1), then terminal halt → PR
@@ -23,6 +24,18 @@ const SAFE_BLOCKED_CMDS: readonly string[] = [
 ];
 
 export const MAIN_NODES: readonly NodeDef[] = [
+  {
+    id: "baseline",
+    kind: "agent",
+    promptFile: "baseline.md",
+    mcp: ["roam-code", "playwright"],
+    allowedWritePaths: ["^\\.dagent/"],
+    blockedCommandRegexes: SAFE_BLOCKED_CMDS,
+    maxRetries: 1,
+    timeoutMs: 10 * 60 * 1000,
+    // If baseline fails, skip to dev — pipeline continues without it.
+    onFailure: "dev",
+  },
   {
     id: "dev",
     kind: "agent",

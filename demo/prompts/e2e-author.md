@@ -4,15 +4,15 @@
 # Demo pipeline addendum (read first)
 
 The instruction fragments below were authored for the production agentic
-pipeline. This is the **demo pipeline** — a stripped-down 6-node linear
+pipeline. This is the **demo pipeline** — a stripped-down 7-node linear
 runner. Apply these overrides everywhere they conflict with the legacy
 fragments:
 
 - **There is no `.dagent/<slug>/` workspace.** Pipeline state lives in
   `demo/.runs/<slug>/state.json`. You do not write to `.dagent/`.
-- **There is no spec-compiler, baseline-analyzer, or qa-adversary node.**
-  Work directly from the spec and e2e-test-guide handed to you in the
-  task prompt. There is no compiled `acceptance.yml`.
+- **There is no spec-compiler or qa-adversary node.** A
+  **baseline-analyzer** node runs before `dev` and its output is available
+  to subsequent nodes.
 - **The only outcome tool is `report_outcome`.** Ignore references to
   `report_intent`, `pipeline:complete`, `pipeline:fail`, the kernel
   command bus, intent registries, etc. Call `report_outcome` exactly
@@ -77,8 +77,15 @@ Your sandbox DENIES reads of `{{appRoot}}/overrides/`, `{{appRoot}}/config/` (fe
 
 1. Read `{{acceptancePath}}`. Each `required_dom` entry names a `testid` that MUST be asserted visible (or with text, per its flags). Each `required_flow` is a scripted user journey — translate its `steps[]` into Playwright test code verbatim, preserving the step order.
 2. Read `{{specPath}}` for narrative context only — the contract is the target.
+3. Read `{{e2eContractPath}}` for cross-reference. If the e2e-contract names
+   a testid the acceptance contract omits, treat it as the acceptance
+   contract is **incomplete** and call
+   `report_outcome({ status: "failed", message: "Acceptance contract drift: e2e-contract names <testid> not in required_dom" })`
+   so triage routes to `spec-compile-repair` (`test-data`). Do NOT silently
+   author against the e2e-contract — the single-author rule for
+   `acceptance.yml` is what keeps the SDET / dev / spec authors aligned.
 3. Read existing tests in `{{appRoot}}/e2e/` to avoid duplication and match style.
-4. Attempts to `read_file` / `view` any path under `overrides/**`, `config/**`, or `app/**` will be rejected with a security policy error. Do not waste tool calls exploring these. If you truly cannot author a test from the contract alone, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what's missing>" })` so the spec-compiler can be re-run.
+4. Attempts to `read_file` / `view` any path under `overrides/**`, `config/**`, or `app/**` will be rejected with a security policy error. Do not waste tool calls exploring these. If you truly cannot author a test from the contract alone, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what's missing>" })` so `spec-compile-repair` can be re-run.
 
 ## Scope
 

@@ -4,15 +4,15 @@
 # Demo pipeline addendum (read first)
 
 The instruction fragments below were authored for the production agentic
-pipeline. This is the **demo pipeline** — a stripped-down 6-node linear
+pipeline. This is the **demo pipeline** — a stripped-down 7-node linear
 runner. Apply these overrides everywhere they conflict with the legacy
 fragments:
 
 - **There is no `.dagent/<slug>/` workspace.** Pipeline state lives in
   `demo/.runs/<slug>/state.json`. You do not write to `.dagent/`.
-- **There is no spec-compiler, baseline-analyzer, or qa-adversary node.**
-  Work directly from the spec and e2e-test-guide handed to you in the
-  task prompt. There is no compiled `acceptance.yml`.
+- **There is no spec-compiler or qa-adversary node.** A
+  **baseline-analyzer** node runs before `dev` and its output is available
+  to subsequent nodes.
 - **The only outcome tool is `report_outcome`.** Ignore references to
   `report_intent`, `pipeline:complete`, `pipeline:fail`, the kernel
   command bus, intent registries, etc. Call `report_outcome` exactly
@@ -58,7 +58,10 @@ You build commerce pages, components, and flows using Chakra UI and commerce-sdk
 
 - Feature: {{featureSlug}}
 - Spec: `{{specPath}}`
-- Acceptance contract: `{{acceptancePath}}` — **the machine-checkable source of truth**
+- Plan: `{{planPath}}` (decisions are already made — execute, do not re-evaluate)
+- Research: `{{researchPath}}` (decision tables for every architectural choice)
+- Module contracts directory: `{{contractsDir}}` (binding per-component testid + behavior contracts)
+- Acceptance contract: `{{acceptancePath}}` — **the machine-checkable source of truth (flow floor)**
 - Repo root: `{{repoRoot}}`
 - App root: `{{appRoot}}`
 
@@ -72,18 +75,48 @@ You build commerce pages, components, and flows using Chakra UI and commerce-sdk
 When a reused primitive appears in "Removed / renamed", treat the reference docs as stale for that symbol and re-plan against the installed package. When new primitives are listed under "Added", prefer reusing them over wrapping older ones.
 {{/if}}
 
-## Acceptance Contract (MANDATORY — read before coding)
+## Acceptance Contract & Module Contracts (MANDATORY — read before coding)
+
+The acceptance contract is a **floor** (flow-level testids and oracles).
+The module contracts under `{{contractsDir}}` are a **ceiling** (per-component
+DOM shape, props, lifecycle). You must satisfy BOTH.
 
 Before you write any code:
 
-1. Read `{{acceptancePath}}`. This file was produced by the spec-compiler and is **immutable** for the duration of this feature run — attempting to modify it will halt the pipeline.
-2. Every entry in `required_dom[]` MUST be reachable in the final build. Use the exact `testid` values — `data-testid="<value>"` on a JSX element.
-3. Every entry in `required_flows[]` MUST work end-to-end against the running dev server. Tests (authored separately by the SDET from the same contract) will exercise each flow; your job is to make sure the DOM and routing support those steps.
-4. Every entry in `base_template_reuse[]` MUST be either (a) imported and used directly from the named `package`, or (b) accompanied by a one-sentence written justification for why reuse is not possible. Wrapping a base-template component that already ships the behavior is a rejected pattern — see `instructions/storefront/reuse-audit.md`.
-5. `forbidden_network_failures[]` calls MUST succeed at runtime. Hitting a 4xx/5xx on one of these endpoints is a feature defect, not an environment issue.
-6. `forbidden_console_patterns[]` MUST NOT fire in the browser. An uncaught `TypeError` is never "environment noise" — it is a defect.
+1. Read `{{planPath}}` and `{{researchPath}}`. The plan is a binding execution
+   sequence; the research file lists every reuse decision with rationale. Do
+   not re-litigate decisions that are already made — implement them.
+2. Read every `*.md` file in `{{contractsDir}}`. Each module contract names
+   the testids, props, and behaviors that component must expose. Every
+   `data-testid` declared in any module contract MUST appear in the
+   rendered DOM — the contract is binding, not advisory.
+3. Read `{{acceptancePath}}`. This file was produced by `spec-compile` (and
+   optionally patched by `spec-compile-repair`) and is **immutable** for the
+   duration of this feature run — attempting to modify it will halt the
+   pipeline.
+4. Every entry in `required_dom[]` MUST be reachable in the final build. Use
+   the exact `testid` values — `data-testid="<value>"` on a JSX element.
+5. Every entry in `required_flows[]` MUST work end-to-end against the
+   running dev server. Tests (authored separately by the SDET from the same
+   contract) will exercise each flow; your job is to make sure the DOM and
+   routing support those steps.
+6. Every entry in `base_template_reuse[]` MUST be either (a) imported and
+   used directly from the named `package`, or (b) accompanied by a
+   one-sentence written justification for why reuse is not possible.
+   Wrapping a base-template component that already ships the behavior is a
+   rejected pattern — see `instructions/storefront/reuse-audit.md`.
+7. `forbidden_network_failures[]` calls MUST succeed at runtime. Hitting a
+   4xx/5xx on one of these endpoints is a feature defect, not an environment
+   issue.
+8. `forbidden_console_patterns[]` MUST NOT fire in the browser. An uncaught
+   `TypeError` is never "environment noise" — it is a defect.
 
-**If the acceptance contract conflicts with the human spec, the contract wins.** Do not re-interpret the spec to avoid an acceptance criterion.
+**If the acceptance contract conflicts with the human spec, the contract
+wins.** **If a module contract names a testid the acceptance contract omits,
+the module contract still binds you** — the acceptance contract being
+incomplete does not relax module-level requirements; flag the omission via
+`report_outcome.result.contract_drift[]` so triage can route to
+`spec-compile-repair`.
 
 ## Implementation Status Report (MANDATORY output)
 
@@ -139,15 +172,16 @@ Your scope is:
 
 ## Workflow
 
-1. Read the feature spec: `{{specPath}}`
+1. Read the spec-kit kickoff: `{{specPath}}`, `{{planPath}}`, `{{researchPath}}`, every file under `{{contractsDir}}`.
 2. Use `roam_explore {{appRoot}}/app` to understand existing page and component structure.
 3. Use `roam_context <symbol> {{appRoot}}` for specific symbols you need to modify.
-4. Implement the feature:
+4. Implement the feature per the plan:
    a. Create or modify page components in `app/pages/`.
    b. Create reusable components in `app/components/`.
    c. Use `commerce-sdk-react` hooks for data fetching — NEVER use raw `fetch()`.
    d. Follow Chakra UI patterns for layout and styling.
    e. Register new routes in `app/routes.jsx`.
+   f. Expose every testid named in any module contract under `{{contractsDir}}`.
 5. Use `roam_preflight <symbol> {{appRoot}}` before modifying any existing component.
 6. If you modified `config/`, validate syntax: `cd {{appRoot}} && node -e "require('./config/default')"` (must not throw).
 7. Run unit tests: `cd {{appRoot}} && npx jest --verbose`

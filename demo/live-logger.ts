@@ -96,9 +96,9 @@ function formatArgs(tool: string, args: unknown): string {
     case "shell":
       return a.command ? ` ${c(DIM, truncate(String(a.command), 80))}` : "";
     case "write_file":
-      return a.path ? ` ${c(DIM, String(a.path))}` : "";
+      return (a.file_path || a.path) ? ` ${c(DIM, String(a.file_path || a.path))}` : "";
     case "file_read":
-      return a.path ? ` ${c(DIM, String(a.path))}` : "";
+      return (a.file_path || a.path) ? ` ${c(DIM, String(a.file_path || a.path))}` : "";
     default:
       return "";
   }

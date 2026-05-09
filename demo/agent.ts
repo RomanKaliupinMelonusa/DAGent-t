@@ -55,6 +55,9 @@ interface KickoffFile {
 const CONTRACTS_DIR = "contracts";
 
 const KICKOFF_PER_NODE: Record<string, readonly KickoffFile[]> = {
+  baseline: [
+    { heading: "Spec",                relPath: "spec.md" },
+  ],
   dev: [
     { heading: "Spec",                relPath: "spec.md" },
     { heading: "Plan",                relPath: "plan.md" },
@@ -73,12 +76,14 @@ const KICKOFF_PER_NODE: Record<string, readonly KickoffFile[]> = {
     { heading: "Spec",                relPath: "spec.md" },
     { heading: "E2E contract",        relPath: "e2e-contract.md" },
     { heading: "E2E task list",       relPath: "e2e-tasks.md" },
+    { heading: "Baseline (pre-feature noise)", relPath: "baseline.json" },
   ],
   "storefront-debug": [
     { heading: "Spec",                relPath: "spec.md" },
     { heading: "Plan",                relPath: "plan.md" },
     { heading: "Research",            relPath: "research.md" },
     { heading: "E2E contract",        relPath: "e2e-contract.md" },
+    { heading: "Baseline (pre-feature noise)", relPath: "baseline.json" },
   ],
   "pr-creation": [
     { heading: "Spec",                relPath: "spec.md" },
@@ -188,6 +193,15 @@ function resolveMcpServers(
       env: { APP_ROOT: appRoot },
     } as MCPServerConfig;
   }
+  if (node.mcp.includes("playwright")) {
+    servers["playwright"] = {
+      type: "local",
+      command: "npx",
+      args: ["@playwright/mcp@latest"],
+      tools: ["*"],
+      env: { BASE_URL: "http://localhost:3000" },
+    } as MCPServerConfig;
+  }
   return servers;
 }
 
@@ -254,14 +268,24 @@ export async function runAgentNode(
     ...(mcpServers ? { mcpServers } : {}),
   });
 
+  // Track tool names by callId so we can correlate completion events.
+  const toolCallNames = new Map<string, string>();
+
   // Stream high-signal events into the log + live terminal.
   session.on("tool.execution_start", (e: any) => {
-    logLine("tool.start", { tool: e?.data?.toolName, args: e?.data?.toolArgs });
-    live.toolStart(e?.data?.toolName, e?.data?.toolArgs);
+    const toolName = e?.data?.toolName;
+    const toolCallId = e?.data?.toolCallId;
+    if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName);
+    logLine("tool.start", { tool: toolName, args: e?.data?.arguments });
+    live.toolStart(toolName, e?.data?.arguments);
   });
   session.on("tool.execution_complete", (e: any) => {
-    logLine("tool.complete", { tool: e?.data?.toolName, result: String(e?.data?.result ?? "").slice(0, 200) });
-    live.toolComplete(e?.data?.toolName, String(e?.data?.result ?? "").slice(0, 120));
+    const toolCallId = e?.data?.toolCallId;
+    const toolName = toolCallNames.get(toolCallId) ?? "(unknown)";
+    const resultText = e?.data?.result?.content ?? "";
+    logLine("tool.complete", { tool: toolName, result: resultText.slice(0, 200) });
+    live.toolComplete(toolName, resultText.slice(0, 120));
+    if (toolCallId) toolCallNames.delete(toolCallId);
   });
   session.on("session.error" as any, (e: any) => {
     logLine("session.error", { message: String(e?.data?.message ?? e) });
