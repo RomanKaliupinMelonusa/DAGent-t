@@ -5,7 +5,7 @@
  * Implements a slim addToCart handler (no pickup/ship-to-store).
  * Renders a "View Full Details" link to the PDP.
  */
-import React from 'react'
+import React, {useRef, useEffect} from 'react'
 import {useIntl} from 'react-intl'
 import {Box, Text} from '@chakra-ui/react'
 import {
@@ -18,15 +18,62 @@ import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
 import {useQuickView} from './context'
 import messages from './messages'
 
+const ATC_TESTID = 'quick-view-add-to-cart-btn'
+const ATC_LABELS = ['Add to Cart', 'Add Set to Cart', 'Add Bundle to Cart']
+
+/**
+ * Tags exactly ONE Add-to-Cart button rendered by ProductView with the
+ * quick-view-add-to-cart-btn testid. ProductView renders the button
+ * twice (desktop area + mobile sticky bar) — we tag only the first
+ * match to avoid Playwright strict-mode violations.
+ */
+const useTagAddToCartButton = (wrapperRef, deps) => {
+    useEffect(() => {
+        const node = wrapperRef.current
+        if (!node) return
+
+        const tagButton = () => {
+            const productView = node.querySelector('[data-testid="product-view"]')
+            if (!productView) return
+
+            // Clear any previous tags first (handles re-renders cleanly)
+            const stale = productView.querySelectorAll(`[data-testid="${ATC_TESTID}"]`)
+            stale.forEach((el) => el.removeAttribute('data-testid'))
+
+            // Find all non-swatch buttons and tag only the first cart button
+            const buttons = productView.querySelectorAll('button:not([role="radio"])')
+            for (const btn of buttons) {
+                const text = (btn.textContent || '').trim()
+                if (ATC_LABELS.some((label) => text.includes(label))) {
+                    btn.setAttribute('data-testid', ATC_TESTID)
+                    return // tag only the first instance
+                }
+            }
+        }
+
+        // Initial tagging
+        tagButton()
+
+        // Observe for re-renders (variation changes, loading states)
+        const observer = new MutationObserver(tagButton)
+        observer.observe(node, {childList: true, subtree: true})
+        return () => observer.disconnect()
+    }, deps) // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 const QuickViewModalBody = () => {
     const intl = useIntl()
     const {openProduct, closeQuickView} = useQuickView()
+    const wrapperRef = useRef(null)
 
     // Fetch full product detail — only runs when the modal is mounted (gated by shell)
     const {product, isFetching} = useProductViewModal(openProduct)
 
     // Basket mutation helper — handles create-or-add logic
     const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
+
+    // Tag the Add to Cart button with the contract testid
+    useTagAddToCartButton(wrapperRef, [product, isFetching])
 
     /**
      * Slim addToCart handler for Quick View.
@@ -60,7 +107,7 @@ const QuickViewModalBody = () => {
     const pdpUrl = productId ? productUrlBuilder({id: productId}) : '#'
 
     return (
-        <Box>
+        <Box ref={wrapperRef}>
             {/* Heading anchors aria-labelledby on the modal shell */}
             <Text
                 id="quick-view-modal-title"

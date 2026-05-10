@@ -59,7 +59,7 @@ const QuickViewModalShell = () => {
                 maxH={{lg: '90vh'}}
                 overflow="auto"
             >
-                <ModalCloseButton aria-label={undefined} />
+                <ModalCloseButton />
                 <ModalBody p={0}>
                     <ErrorBoundary FallbackComponent={ModalErrorFallback}>
                         <QuickViewModalBody />

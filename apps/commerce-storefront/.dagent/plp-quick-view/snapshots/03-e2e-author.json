@@ -1,0 +1,55 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:09:30.660Z",
+        "endedAt": "2026-05-10T22:12:15.912Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: open-quick-view-from-tile",
+        "E2E-002: switch-color-swatch-in-quick-view",
+        "E2E-003: add-to-bag-from-quick-view",
+        "E2E-004: close-quick-view-restores-focus (Escape)",
+        "E2E-004b: close-quick-view-restores-focus (close button)",
+        "E2E-004c: close-quick-view-restores-focus (overlay click)",
+        "E2E-005: no-pickup-ui-in-quick-view",
+        "E2E-006: add-to-bag-disabled-when-unavailable",
+        "E2E-007: view-full-details-link",
+        "E2E-008: tile-click-still-navigates-to-pdp"
+      ],
+      "test_count": 10,
+      "baseline_noise_patterns": 5,
+      "self_review_gates_passed": [
+        "no networkidle/waitForTimeout",
+        "no tautological titles",
+        "consoleErrors asserted in every test",
+        "dismissOverlays present",
+        "awaitHydrated present",
+        "no locale-prefixed URLs",
+        "no .or() locator fallbacks"
+      ],
+      "testids_used": [
+        "quick-view-trigger-{productId} (contract §2)",
+        "quick-view-modal (contract §2)",
+        "quick-view-modal-error (contract §2)",
+        "quick-view-add-to-cart-btn (contract §2)",
+        "quick-view-view-full-details-link (contract §2)",
+        "product-view (reused)",
+        "add-to-cart-modal (reused)",
+        "product-added (reused)",
+        "product-tile-image (reused)",
+        "pickup-select-store-msg (negative assertion)",
+        "store-stock-status-msg (negative assertion)"
+      ],
+      "notes": "The dev node output lists quick-view-add-to-cart-btn as NOT in testids_exposed (unit-test deviations confirm 'tested via mock ProductView'). Tests are authored per the contract — if the testid is missing from the DOM, E2E-003 and E2E-006 will fail and triage should route to the dev node to add the testid."
+    }
+  }
+}

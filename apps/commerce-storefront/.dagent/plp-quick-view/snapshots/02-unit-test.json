@@ -1,0 +1,69 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T21:55:27.619Z",
+        "endedAt": "2026-05-10T22:09:30.653Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "test_count": 32,
+      "test_suites": 5,
+      "all_passing": true,
+      "files_created": [
+        "overrides/app/components/quick-view-modal/context.test.jsx",
+        "overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "case_mapping": {
+        "UT-PROV-001": "pass",
+        "UT-PROV-002": "pass",
+        "UT-PROV-003": "pass",
+        "UT-TRIG-001": "pass",
+        "UT-TRIG-002": "pass",
+        "UT-TRIG-003": "pass",
+        "UT-TRIG-004": "pass",
+        "UT-TRIG-005": "pass",
+        "UT-TRIG-006": "pass",
+        "UT-SHELL-001": "pass",
+        "UT-SHELL-002": "pass",
+        "UT-SHELL-003": "pass",
+        "UT-SHELL-004": "pass",
+        "UT-SHELL-005": "pass",
+        "UT-BODY-001": "pass",
+        "UT-BODY-002": "pass",
+        "UT-BODY-003": "pass",
+        "UT-BODY-004": "pass",
+        "UT-BODY-005": "pass",
+        "UT-BODY-006": "pass",
+        "UT-BODY-007": "pass",
+        "UT-BODY-008": "pass",
+        "UT-BODY-009": "pass",
+        "UT-BODY-010": "pass",
+        "UT-BODY-011": "pass",
+        "UT-BODY-012": "pass",
+        "UT-BODY-013": "pass",
+        "UT-BODY-014": "pass",
+        "UT-BODY-015": "pass",
+        "UT-A11Y-001": "pass",
+        "UT-A11Y-002": "pass",
+        "UT-A11Y-003": "pass"
+      },
+      "skipped_cases": [],
+      "deviations": [
+        "UT-BODY-011/012: Implementation uses unified addItemToNewOrExistingBasket helper instead of separate createBasket/addItemToBasket",
+        "UT-BODY-010: AddToCartModal opened by ProductView internally (returns truthy), not by body calling onOpen directly",
+        "quick-view-add-to-cart-btn testid not in implementation - tested via mock ProductView",
+        "UT-A11Y-001: Chakra overrides aria-labelledby; test verifies heading id exists inside dialog"
+      ],
+      "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/summary.md"
+    }
+  }
+}
