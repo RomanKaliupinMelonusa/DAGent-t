@@ -21,6 +21,10 @@ import type { NodeDef } from "./types.ts";
 
 const SAFE_BLOCKED_CMDS: readonly string[] = [
   "(^|\\s)(az|aws|terraform|npm\\s+start|npm\\s+run\\s+watch)($|\\s)",
+  // Block broad process-killing commands — agents must NEVER kill arbitrary
+  // node processes; doing so takes down VS Code's remote server.
+  "\\b(pkill|killall)\\b",
+  "\\bkill\\b.*\\$\\(",
 ];
 
 export const MAIN_NODES: readonly NodeDef[] = [

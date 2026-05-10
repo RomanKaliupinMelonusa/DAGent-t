@@ -126,6 +126,16 @@ export function checkRbac(
     if (/\brm\s+-rf\s+\/(?:\s|$)/.test(cmd) || /\bgit\s+push\s+--force\b/.test(cmd)) {
       return `ERROR: Destructive command pattern blocked: ${cmd}`;
     }
+    // Block broad process-killing commands that could take down VS Code's
+    // remote server or other critical container infrastructure.
+    if (/\b(pkill|killall)\b/.test(cmd)) {
+      return `ERROR: Process-killing command blocked — use targeted 'kill <PID>' only if necessary: ${cmd}`;
+    }
+    // Block 'kill' when targeting dynamically-evaluated PID lists (pgrep,
+    // lsof, etc.) which can accidentally match VS Code processes.
+    if (/\bkill\b.*\$\(/.test(cmd)) {
+      return `ERROR: kill with process substitution blocked — too broad, may hit VS Code: ${cmd}`;
+    }
   }
 
   return null;
