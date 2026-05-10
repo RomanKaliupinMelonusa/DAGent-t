@@ -72,9 +72,23 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
    Playwright MCP against the live dev server. Only when the MCP run is
    green do you commit.
 6. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
-7. `report_outcome` completed. The DAG will automatically re-run
-   `storefront-unit-test`, `e2e-author`, `e2e-runner`, and `qa-adversary`
-   downstream of you.
+7. `report_outcome` completed with `fault_domain: "code-defect"`. The DAG
+   will automatically re-run `e2e-author`, `e2e-runner` downstream of you.
+
+## Fault Domain Classification
+
+When calling `report_outcome`, you **MUST** include `fault_domain` to enable
+correct routing:
+
+- **`"code-defect"`** — the bug is in the implementation source code
+  (`app/`, `overrides/`, `config/`, `worker/`). You have write access and
+  should fix it in-place before reporting success. Use this when reporting
+  failure only if you cannot fix it after retries.
+- **`"test-code"`** — the bug is in the E2E test file (`e2e/*.spec.ts`).
+  You do NOT have write access. Report failure immediately with a detailed
+  diagnosis — the orchestrator will route to `@e2e-author` with your
+  analysis as context. **Do not retry** when you are certain the fault is
+  in test code.
 
 ## Forbidden Actions
 
@@ -87,8 +101,27 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
   outside `{test-code, code-defect}`. The `circuit_breaker` will halt the
   loop and surface the issue for operator review.
 - **Do NOT edit files under `e2e/`.** If the Playwright spec is the actual
-  bug (bad locator, race condition, contradicts acceptance), report failure
-  with `fault_domain: test-code` so triage reroutes to `@e2e-author`.
+  bug (bad locator, race condition, contradicts acceptance), call
+  `report_outcome` with `status: "failed"`, `fault_domain: "test-code"`,
+  and a detailed `message` describing each bug found (selectors, regex
+  patterns, assertion logic). The orchestrator will route directly to
+  `@e2e-author` with your diagnosis as context — **do not retry in-place**
+  when the fault is in test code.
+  Include a structured `result` payload with evidence paths and fix
+  recommendations so the e2e-author can act on them immediately:
+  ```jsonc
+  report_outcome({
+    status: "failed",
+    fault_domain: "test-code",
+    message: "3 test-code bugs found: ...",
+    result: {
+      bugs: [
+        { file: "e2e/feature.spec.ts", line: 29, issue: "regex missing space", fix: "..." },
+        // ...
+      ]
+    }
+  })
+  ```
 - **Do NOT edit unit tests under `__tests__/`, `tests/`, `*.test.*`, or
   `*.spec.*` (non-Playwright).** The downstream `storefront-unit-test` node
   owns those. If your fix changes a component's contract such that unit

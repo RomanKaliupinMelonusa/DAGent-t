@@ -7,6 +7,7 @@
  * metadata so it doesn't waste time discovering what exists.
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import type { NodeAttempt, NodeId, RunState } from "./types.ts";
 import { logsDir } from "./state.ts";
@@ -42,6 +43,18 @@ export function buildFailureContext(
     `- Logs dir: \`${logsDir(dagentDir)}/\``,
     ``,
   ];
+
+  // Include debug-notes.md path if the debug agent wrote one.
+  const debugNotesPath = path.join(dagentDir, "debug-notes.md");
+  if (fs.existsSync(debugNotesPath)) {
+    lines.push(
+      `### Debug notes`,
+      ``,
+      `The debug agent wrote a diagnosis to \`${debugNotesPath}\`.`,
+      `Read it for the root-cause analysis and fix recommendations.`,
+      ``,
+    );
+  }
 
   // Failed node attempts
   if (attempts.length > 0) {

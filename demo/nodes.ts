@@ -77,7 +77,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     id: "e2e-author",
     kind: "agent",
     promptFile: "e2e-author.md",
-    mcp: ["roam-code"],
+    mcp: ["roam-code", "playwright"],
     allowedWritePaths: ["^e2e/.*\\.spec\\.ts$"],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
     maxRetries: 1,
@@ -95,7 +95,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     id: "storefront-debug",
     kind: "agent",
     promptFile: "storefront-debug.md",
-    mcp: ["roam-code"],
+    mcp: ["roam-code", "playwright"],
     allowedWritePaths: [
       "^app/",
       "^config/",
@@ -106,10 +106,14 @@ export const MAIN_NODES: readonly NodeDef[] = [
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
     // On success, replay e2e-author → e2e-runner to validate the fix.
     // e2e-author will consume any patch file storefront-debug wrote.
-    // On exhaustion of in-place retries, fall through with no
-    // onFailure: the main loop terminates and pr-creation opens a
-    // halted PR with the full debug history.
     onSuccess: "e2e-author",
+    // Fault-domain routing: when the debugger diagnoses a test-code fault
+    // (bad selectors, wrong assertions, etc.), skip remaining retries and
+    // jump directly to e2e-author with the diagnosis as context.
+    // For code-defect faults (or no fault_domain), in-place retries apply
+    // as usual, and on exhaustion the main loop terminates with the
+    // finalizer opening a halted PR.
+    onFailureRoutes: { "test-code": "e2e-author" },
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
   },

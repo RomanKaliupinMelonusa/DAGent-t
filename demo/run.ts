@@ -243,6 +243,24 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
     saveState(state);
 
     console.log(`[run] ✗ ${node.id} attempt ${attempt} failed: ${res.errorMessage}`);
+
+    // Fault-domain routing: when an agent reports a fault_domain that
+    // matches an onFailureRoutes entry, skip remaining in-place retries
+    // (they're provably futile — the node lacks write access to fix the
+    // identified problem domain) and immediately throw to trigger the
+    // domain-specific route in the main loop.
+    const faultDomain = "faultDomain" in res ? (res as any).faultDomain as string | undefined : undefined;
+    if (faultDomain && node.onFailureRoutes?.[faultDomain]) {
+      out.status = "failed";
+      out.result = res.result;
+      saveState(state);
+      snapshotNode(state, node.id);
+      console.log(`[run] ⚡ ${node.id} reported fault_domain='${faultDomain}' — skipping remaining retries, routing via onFailureRoutes`);
+      throw Object.assign(
+        new Error(`Node ${node.id} failed with fault_domain '${faultDomain}' (attempt ${attempt}).`),
+        { nodeId: node.id, faultDomain },
+      );
+    }
   }
 
   out.status = "failed";
@@ -313,10 +331,16 @@ async function runMainLoop(
         i = i + 1;
       }
     } catch (err) {
-      const e = err as Error & { nodeId?: NodeId };
-      if (node.onFailure && state.jumps < MAX_JUMPS) {
+      const e = err as Error & { nodeId?: NodeId; faultDomain?: string };
+
+      // Resolve the routing target: fault-domain routes take priority
+      // over the static onFailure fallback.
+      const domainTarget = e.faultDomain && node.onFailureRoutes?.[e.faultDomain];
+      const routeTarget = domainTarget ?? node.onFailure;
+
+      if (routeTarget && state.jumps < MAX_JUMPS) {
         state.jumps++;
-        const target = findIndex(MAIN_NODES, node.onFailure);
+        const target = findIndex(MAIN_NODES, routeTarget);
         // Reset target plus any completed nodes between target and current
         // node so the recovery loop actually re-executes them.
         const lo = Math.min(target, i);
@@ -333,11 +357,12 @@ async function runMainLoop(
         (state as any)._failureSource = node.id;
 
         saveState(state);
-        console.log(`[run] ↻ jumping ${node.id} → ${node.onFailure} (jump ${state.jumps}/${MAX_JUMPS})`);
+        const routeKind = domainTarget ? `fault_domain='${e.faultDomain}'` : "onFailure";
+        console.log(`[run] ↻ jumping ${node.id} → ${routeTarget} (${routeKind}, jump ${state.jumps}/${MAX_JUMPS})`);
         i = target;
         continue;
       }
-      const reason = node.onFailure
+      const reason = routeTarget
         ? `Failure routing cap reached (${MAX_JUMPS} jumps) at node '${node.id}': ${e.message}`
         : `Node '${node.id}' failed and has no onFailure route: ${e.message}`;
       throw Object.assign(new Error(reason), { nodeId: node.id });

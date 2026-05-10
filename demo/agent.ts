@@ -24,7 +24,7 @@ import {
   buildReportOutcomeTool,
   type OutcomeCollector,
 } from "./harness.ts";
-import type { NodeDef, RunState } from "./types.ts";
+import type { NodeDef, NodeId, RunState } from "./types.ts";
 import { createLiveLogger } from "./live-logger.ts";
 
 
@@ -35,6 +35,8 @@ export interface AgentRunResult {
   ok: boolean;
   result?: Record<string, unknown>;
   errorMessage?: string;
+  /** Fault classification from report_outcome (e.g. "test-code", "code-defect"). */
+  faultDomain?: string;
   logPath: string;
 }
 
@@ -163,6 +165,29 @@ function buildAgentPrompt(
       null,
       2,
     )}\n\`\`\``);
+  }
+
+  // When a node was reached via fault-domain routing, surface the failed
+  // node's structured diagnosis (errorSummary + result) so the receiving
+  // agent has actionable context beyond just log paths.
+  const failedSourceId = (state as any)._failureSource as string | undefined;
+  if (failedSourceId) {
+    const failedOut = state.outputs[failedSourceId as NodeId];
+    if (failedOut && failedOut.status === "failed") {
+      const diagParts: string[] = [
+        `## Debug diagnosis from ${failedSourceId}`,
+        ``,
+        `The **${failedSourceId}** node diagnosed the failure but could not fix it.`,
+        `Use this diagnosis to guide your fix — do not re-investigate from scratch.`,
+      ];
+      if (failedOut.errorSummary) {
+        diagParts.push(``, `### Diagnosis`, ``, failedOut.errorSummary);
+      }
+      if (failedOut.result) {
+        diagParts.push(``, `### Structured result`, ``, `\`\`\`json`, JSON.stringify(failedOut.result, null, 2), `\`\`\``);
+      }
+      sections.push(diagParts.join("\n"));
+    }
   }
 
   if (failureContext) {
@@ -315,7 +340,13 @@ export async function runAgentNode(
     if (collector.outcome?.status === "completed") {
       result = { ok: true, result: collector.outcome.result, logPath };
     } else if (collector.outcome?.status === "failed") {
-      result = { ok: false, errorMessage: collector.outcome.message, logPath };
+      result = {
+        ok: false,
+        errorMessage: collector.outcome.message,
+        faultDomain: collector.outcome.faultDomain,
+        result: collector.outcome.result,
+        logPath,
+      };
     } else {
       result = {
         ok: false,

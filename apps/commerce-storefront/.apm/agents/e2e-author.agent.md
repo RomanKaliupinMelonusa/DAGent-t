@@ -113,6 +113,37 @@ When the **Declared Inputs / Outputs** block lists a `baseline` input (kind `bas
 
 The console-error budget assertion (e2e-guidelines §17) consumes this array. See that rule for the canonical assertion shape.
 
+## Live DOM Validation (Playwright MCP)
+
+You have access to the **Playwright MCP** connected to the local dev server at
+`http://localhost:3000`. Use it to **validate selectors against the live DOM**
+before committing your test file:
+
+1. Navigate to the target page(s) listed in the spec / acceptance contract.
+2. Snapshot the relevant DOM subtree to verify the actual element types, tag names,
+   `role` attributes, and `data-testid` values.
+3. Cross-check every selector you write (especially variant swatches, buttons inside
+   tiles, and modal content) against the live DOM — **do not assume element types
+   from the spec alone.**
+
+This prevents selector mismatches (e.g. writing `button[aria-label*="size"]` when
+the actual elements are `<a>` tags inside a `[role="radiogroup"]`).
+
+## Handling Debug Diagnosis (Fault-Domain Routing)
+
+When this node is activated via **fault-domain routing** from `storefront-debug`
+(i.e., the debugger diagnosed a `test-code` fault), your task prompt will contain
+a **"Debug diagnosis from storefront-debug"** section and a **"Failure Context"**
+section with log paths.
+
+In this scenario:
+1. **Read the debug diagnosis first** — it contains the root-cause analysis with
+   specific selector bugs, regex typos, or assertion errors already identified.
+2. **Read the debug-notes.md** file if referenced — it has detailed fix recommendations.
+3. **Apply the recommended fixes** to the test file. Do not re-investigate from scratch.
+4. **Validate each fix against the live DOM** using the Playwright MCP before committing.
+5. If the diagnosis identifies multiple bugs, fix all of them in a single pass.
+
 ## Critical Rules
 
 - **DO NOT run `npx playwright test`** — you are the author, not the runner.

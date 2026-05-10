@@ -287,7 +287,7 @@ export function buildShellTool(sandbox: Sandbox): Tool<any> {
 export interface OutcomeCollector {
   outcome?:
     | { status: "completed"; result?: Record<string, unknown> }
-    | { status: "failed"; message: string };
+    | { status: "failed"; message: string; faultDomain?: string; result?: Record<string, unknown> };
 }
 
 export function buildReportOutcomeTool(collector: OutcomeCollector): Tool<any> {
@@ -300,14 +300,20 @@ export function buildReportOutcomeTool(collector: OutcomeCollector): Tool<any> {
       properties: {
         status: { type: "string", enum: ["completed", "failed"] },
         message: { type: "string", description: "Required when status=failed." },
+        fault_domain: {
+          type: "string",
+          description:
+            "Optional fault classification when status=failed (e.g. 'test-code', 'code-defect'). " +
+            "Used by the orchestrator for conditional failure routing.",
+        },
         result: {
           type: "object",
-          description: "Optional structured payload (artifact paths, summary, etc.).",
+          description: "Optional structured payload (artifact paths, summary, diagnosis, etc.).",
         },
       },
       required: ["status"],
     },
-    handler: (args: { status: string; message?: string; result?: Record<string, unknown> }) => {
+    handler: (args: { status: string; message?: string; fault_domain?: string; result?: Record<string, unknown> }) => {
       if (args.status === "completed") {
         collector.outcome = { status: "completed", result: args.result };
         return "OK: outcome recorded as completed.";
@@ -316,6 +322,8 @@ export function buildReportOutcomeTool(collector: OutcomeCollector): Tool<any> {
         collector.outcome = {
           status: "failed",
           message: args.message ?? "(no message provided)",
+          faultDomain: args.fault_domain,
+          result: args.result,
         };
         return "OK: outcome recorded as failed.";
       }

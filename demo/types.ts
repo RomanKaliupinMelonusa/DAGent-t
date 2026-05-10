@@ -40,6 +40,13 @@ export interface NodeDef {
    */
   readonly onFailure?: NodeId;
   /**
+   * Conditional failure routing keyed by `fault_domain` string reported
+   * via `report_outcome`. When a fault domain matches a key here, the
+   * orchestrator skips remaining in-place retries and jumps directly to
+   * the target node. Checked before `onFailure` (static fallback).
+   */
+  readonly onFailureRoutes?: Readonly<Record<string, NodeId>>;
+  /**
    * Node id to jump to on success. Used by storefront-debug to short-loop
    * back into unit-test after a code fix. Default is to advance linearly.
    */
