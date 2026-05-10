@@ -1,0 +1,118 @@
+{
+  "slug": "plp-quick-view",
+  "app": "apps/commerce-storefront",
+  "baseBranch": "main",
+  "featureBranch": "feature/plp-quick-view",
+  "specFolderPath": "/workspaces/DAGent-t/apps/commerce-storefront/specs/001-plp-quick-view",
+  "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
+  "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
+  "startedAt": "2026-05-10T20:24:23.161Z",
+  "jumps": 0,
+  "outputs": {
+    "baseline": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T20:24:27.283Z",
+          "endedAt": "2026-05-10T20:27:00.784Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+        }
+      ],
+      "result": {
+        "base_sha": "d139837acc24e20d03a3c2925a05a27966137ae6",
+        "captured_at": "2026-05-10T20:24:30.000Z",
+        "console_errors": [
+          {
+            "category": "framework-warning",
+            "count": 2,
+            "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "legacy-deprecation",
+            "count": 2,
+            "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "network-sandbox",
+            "count": 2,
+            "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "network-sandbox",
+            "count": 2,
+            "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "network-sandbox",
+            "count": 4,
+            "pattern": "r: 403 Forbidden",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "network-sandbox",
+            "count": 4,
+            "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          }
+        ],
+        "feature": "plp-quick-view",
+        "network_failures": [
+          {
+            "count": 2,
+            "pattern": "GET /callback - net::ERR_ABORTED",
+            "source_page": "PLP-Dresses"
+          },
+          {
+            "category": "network-sandbox",
+            "count": 2,
+            "pattern": "POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/ - net::ERR_NAME_NOT_RESOLVED",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          }
+        ],
+        "notes": "Both PLP pages (womens-clothing-dresses and newarrivals) timed out waiting for networkidle (30s) due to persistent failing DataCloud/Einstein requests that never settle, but the pages rendered successfully. All observed errors are platform noise: React framework warnings (getServerSnapshot caching, defaultProps deprecation) and sandbox network failures (DataCloud c360a.salesforce.com DNS failure, Einstein recommendations 403). No feature-specific errors present. The /callback ERR_ABORTED is the OAuth SLAS redirect being intercepted by the service worker — expected behavior in dev.",
+        "producedAt": "2026-05-10T20:24:30.000Z",
+        "producedBy": "baseline-analyzer",
+        "schemaVersion": 1,
+        "targets": [
+          {
+            "kind": "page",
+            "name": "PLP-Dresses",
+            "url": "/category/womens-clothing-dresses"
+          },
+          {
+            "kind": "page",
+            "name": "PLP-NewArrivals",
+            "url": "/category/newarrivals"
+          }
+        ],
+        "uncaught_exceptions": []
+      }
+    }
+  },
+  "history": [
+    {
+      "nodeId": "baseline",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T20:24:27.283Z",
+        "endedAt": "2026-05-10T20:27:00.784Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    }
+  ],
+  "devServerPort": 3000
+}
