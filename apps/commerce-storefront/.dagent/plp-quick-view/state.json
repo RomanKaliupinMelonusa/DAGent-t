@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-10T21:46:26.894Z",
-  "jumps": 1,
+  "jumps": 3,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -280,47 +280,48 @@
           "endedAt": "2026-05-10T22:12:15.912Z",
           "status": "completed",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T22:35:17.827Z",
+          "endedAt": "2026-05-10T22:37:50.320Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
         }
       ],
       "result": {
-        "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
-        "flows_authored": [
-          "E2E-001: open-quick-view-from-tile",
-          "E2E-002: switch-color-swatch-in-quick-view",
-          "E2E-003: add-to-bag-from-quick-view",
-          "E2E-004: close-quick-view-restores-focus (Escape)",
-          "E2E-004b: close-quick-view-restores-focus (close button)",
-          "E2E-004c: close-quick-view-restores-focus (overlay click)",
-          "E2E-005: no-pickup-ui-in-quick-view",
-          "E2E-006: add-to-bag-disabled-when-unavailable",
-          "E2E-007: view-full-details-link",
-          "E2E-008: tile-click-still-navigates-to-pdp"
+        "fixes_applied": [
+          {
+            "test": "E2E-002",
+            "bug": "modal.getByRole('radio') matched ALL radios (color+size). Clicking the second radio hit a SIZE swatch that doesn't change the gallery image.",
+            "fix": "Scoped to color radiogroup: modal.getByRole('radiogroup', { name: /color/i }).getByRole('radio')"
+          },
+          {
+            "test": "E2E-003",
+            "bug": "Flat iteration of all radios clicked the first non-disabled one — the already-selected color swatch. Size remained unselected, so ProductView blocked add-to-cart.",
+            "fix": "Added selectCompleteVariation() helper that iterates each radiogroup independently and selects first non-disabled option in each."
+          },
+          {
+            "test": "E2E-006",
+            "bug": "Asserted toBeDisabled() on ATC button, but base ProductView validates on click (shows validation message) rather than disabling the button.",
+            "fix": "Click ATC with incomplete variation, assert modal stays open and add-to-cart confirmation modal does NOT appear."
+          },
+          {
+            "test": "E2E-008",
+            "bug": "Used non-existent product-tile-image testid.",
+            "fix": "Changed to sf-product-tile-{id} testid pattern which exists in the DOM."
+          }
         ],
-        "test_count": 10,
-        "baseline_noise_patterns": 5,
-        "self_review_gates_passed": [
-          "no networkidle/waitForTimeout",
-          "no tautological titles",
-          "consoleErrors asserted in every test",
-          "dismissOverlays present",
-          "awaitHydrated present",
-          "no locale-prefixed URLs",
-          "no .or() locator fallbacks"
+        "tests_unchanged": [
+          "E2E-001",
+          "E2E-004",
+          "E2E-004b",
+          "E2E-004c",
+          "E2E-005",
+          "E2E-007"
         ],
-        "testids_used": [
-          "quick-view-trigger-{productId} (contract §2)",
-          "quick-view-modal (contract §2)",
-          "quick-view-modal-error (contract §2)",
-          "quick-view-add-to-cart-btn (contract §2)",
-          "quick-view-view-full-details-link (contract §2)",
-          "product-view (reused)",
-          "add-to-cart-modal (reused)",
-          "product-added (reused)",
-          "product-tile-image (reused)",
-          "pickup-select-store-msg (negative assertion)",
-          "store-stock-status-msg (negative assertion)"
-        ],
-        "notes": "The dev node output lists quick-view-add-to-cart-btn as NOT in testids_exposed (unit-test deviations confirm 'tested via mock ProductView'). Tests are authored per the contract — if the testid is missing from the DOM, E2E-003 and E2E-006 will fail and triage should route to the dev node to add the testid."
+        "self_review_greps": "All passed: no networkidle, no waitForTimeout, no tautological titles, dismissOverlays present, awaitHydrated present, consoleErrors asserted in all tests.",
+        "file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts"
       }
     },
     "e2e-runner": {
@@ -333,9 +334,97 @@
           "status": "failed",
           "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T22:37:50.327Z",
+          "endedAt": "2026-05-10T22:38:30.754Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
         }
       ],
       "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+    },
+    "storefront-debug": {
+      "status": "failed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T22:14:05.483Z",
+          "endedAt": "2026-05-10T22:35:17.816Z",
+          "status": "failed",
+          "errorSummary": "Fixed 2 code-defects (quick-view-add-to-cart-btn testid missing, close button aria-label removed). E2E-004b now passes. 3 remaining failures are test-code bugs:\n\nE2E-002: Test uses modal.getByRole('radio') which gets ALL radios (color+size). Clicks second radio expecting image change, but second radio is a SIZE swatch that doesn't affect the image. Fix: scope to color radiogroup.\n\nE2E-003: Test's variation selection iterates all radios and clicks first non-disabled one (already-selected color swatch). Size remains unselected. ProductView's validateAndShowError() prevents add-to-cart, modal stays open. Fix: iterate through each radiogroup separately to select complete variation.\n\nE2E-006: Test expects ATC button to be disabled before variation selection, but base ProductView validates on click (shows \"Please select all your options above\") rather than disabling the button. Fix: assert validation message appears on click instead of asserting disabled state.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T22:38:30.768Z",
+          "endedAt": "2026-05-10T23:05:26.406Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-10T23:05:26.409Z",
+          "endedAt": "2026-05-10T23:33:46.564Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-10T23:33:46.575Z",
+          "endedAt": "2026-05-10T23:59:20.983Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+        }
+      ],
+      "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+      "result": {
+        "code_fixes_applied": [
+          {
+            "file": "overrides/app/components/quick-view-modal/modal-body.jsx",
+            "issue": "Missing quick-view-add-to-cart-btn testid on Add to Cart button",
+            "fix": "Added useTagAddToCartButton hook using MutationObserver to tag first ATC button rendered by ProductView"
+          },
+          {
+            "file": "overrides/app/components/quick-view-modal/modal-shell.jsx",
+            "issue": "ModalCloseButton had aria-label={undefined} removing default Close label",
+            "fix": "Removed aria-label={undefined} to preserve Chakra default"
+          }
+        ],
+        "tests_fixed": [
+          "E2E-004b"
+        ],
+        "tests_still_failing": [
+          "E2E-002",
+          "E2E-003",
+          "E2E-006"
+        ],
+        "bugs": [
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 162,
+            "issue": "E2E-002: modal.getByRole('radio') gets both color AND size swatches. Clicking index 1 may hit a size swatch that doesn't change the gallery image.",
+            "fix": "Use modal.getByRole('radiogroup', { name: /color/i }).getByRole('radio') to scope to color swatches only"
+          },
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 196,
+            "issue": "E2E-003: Variation selection loop uses modal.getByRole('radio') and clicks first non-disabled radio (already-selected color), never selects a size. validateAndShowError() prevents addToCart from being called.",
+            "fix": "Iterate through each radiogroup separately: const radiogroups = await modal.getByRole('radiogroup').all(); for each group, click first non-disabled radio"
+          },
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 358,
+            "issue": "E2E-006: Expects ATC button to be disabled before variation selection, but base ProductView validates on click rather than disabling. Button is always enabled; validation shows 'Please select all your options above' message.",
+            "fix": "Assert validation message appears after clicking ATC without complete selection, or assert that clicking ATC does not close the modal"
+          }
+        ]
+      }
     }
   },
   "history": [
@@ -389,8 +478,73 @@
         "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
       }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:14:05.483Z",
+        "endedAt": "2026-05-10T22:35:17.816Z",
+        "status": "failed",
+        "errorSummary": "Fixed 2 code-defects (quick-view-add-to-cart-btn testid missing, close button aria-label removed). E2E-004b now passes. 3 remaining failures are test-code bugs:\n\nE2E-002: Test uses modal.getByRole('radio') which gets ALL radios (color+size). Clicks second radio expecting image change, but second radio is a SIZE swatch that doesn't affect the image. Fix: scope to color radiogroup.\n\nE2E-003: Test's variation selection iterates all radios and clicks first non-disabled one (already-selected color swatch). Size remains unselected. ProductView's validateAndShowError() prevents add-to-cart, modal stays open. Fix: iterate through each radiogroup separately to select complete variation.\n\nE2E-006: Test expects ATC button to be disabled before variation selection, but base ProductView validates on click (shows \"Please select all your options above\") rather than disabling the button. Fix: assert validation message appears on click instead of asserting disabled state.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:35:17.827Z",
+        "endedAt": "2026-05-10T22:37:50.320Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:37:50.327Z",
+        "endedAt": "2026-05-10T22:38:30.754Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:38:30.768Z",
+        "endedAt": "2026-05-10T23:05:26.406Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-10T23:05:26.409Z",
+        "endedAt": "2026-05-10T23:33:46.564Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-10T23:33:46.575Z",
+        "endedAt": "2026-05-10T23:59:20.983Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
     }
   ],
   "devServerPort": 3000,
-  "_failureSource": "e2e-runner"
+  "terminalError": "Node 'storefront-debug' failed and has no onFailure route: Node storefront-debug failed after 3 attempt(s)."
 }

@@ -1,0 +1,56 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:09:30.660Z",
+        "endedAt": "2026-05-10T22:12:15.912Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T22:35:17.827Z",
+        "endedAt": "2026-05-10T22:37:50.320Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "fixes_applied": [
+        {
+          "test": "E2E-002",
+          "bug": "modal.getByRole('radio') matched ALL radios (color+size). Clicking the second radio hit a SIZE swatch that doesn't change the gallery image.",
+          "fix": "Scoped to color radiogroup: modal.getByRole('radiogroup', { name: /color/i }).getByRole('radio')"
+        },
+        {
+          "test": "E2E-003",
+          "bug": "Flat iteration of all radios clicked the first non-disabled one — the already-selected color swatch. Size remained unselected, so ProductView blocked add-to-cart.",
+          "fix": "Added selectCompleteVariation() helper that iterates each radiogroup independently and selects first non-disabled option in each."
+        },
+        {
+          "test": "E2E-006",
+          "bug": "Asserted toBeDisabled() on ATC button, but base ProductView validates on click (shows validation message) rather than disabling the button.",
+          "fix": "Click ATC with incomplete variation, assert modal stays open and add-to-cart confirmation modal does NOT appear."
+        },
+        {
+          "test": "E2E-008",
+          "bug": "Used non-existent product-tile-image testid.",
+          "fix": "Changed to sf-product-tile-{id} testid pattern which exists in the DOM."
+        }
+      ],
+      "tests_unchanged": [
+        "E2E-001",
+        "E2E-004",
+        "E2E-004b",
+        "E2E-004c",
+        "E2E-005",
+        "E2E-007"
+      ],
+      "self_review_greps": "All passed: no networkidle, no waitForTimeout, no tautological titles, dismissOverlays present, awaitHydrated present, consoleErrors asserted in all tests.",
+      "file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts"
+    }
+  }
+}

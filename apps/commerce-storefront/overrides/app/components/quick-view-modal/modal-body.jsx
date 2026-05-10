@@ -5,7 +5,7 @@
  * Implements a slim addToCart handler (no pickup/ship-to-store).
  * Renders a "View Full Details" link to the PDP.
  */
-import React, {useRef, useEffect} from 'react'
+import React, {useRef, useEffect, useCallback} from 'react'
 import {useIntl} from 'react-intl'
 import {Box, Text} from '@chakra-ui/react'
 import {
@@ -13,6 +13,7 @@ import {
 } from '@salesforce/commerce-sdk-react'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
+import {useAddToCartModalContext} from '@salesforce/retail-react-app/app/hooks/use-add-to-cart-modal'
 import Link from '@salesforce/retail-react-app/app/components/link'
 import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
 import {useQuickView} from './context'
@@ -72,35 +73,53 @@ const QuickViewModalBody = () => {
     // Basket mutation helper — handles create-or-add logic
     const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
 
+    // Add-to-cart confirmation modal context (same provider as ProductView uses)
+    const addToCartModalCtx = useAddToCartModalContext()
+
     // Tag the Add to Cart button with the contract testid
     useTagAddToCartButton(wrapperRef, [product, isFetching])
+
+    // Close QuickView when the AddToCartModal opens — this lets the basket
+    // mutation complete its React Query cache invalidation before we unmount
+    // the helper hooks, avoiding stale refetch 400s.
+    const addToCartModalIsOpen = addToCartModalCtx.isOpen
+    useEffect(() => {
+        if (addToCartModalIsOpen) {
+            closeQuickView()
+        }
+    }, [addToCartModalIsOpen, closeQuickView])
 
     /**
      * Slim addToCart handler for Quick View.
      * No pickup/ship-to-store logic (FR-004).
      *
-     * ProductView calls: addToCart([{product, variant, quantity}])
-     * If this returns truthy, ProductView opens the AddToCartModal internally.
+     * Returns the productSelectionValues array so ProductView's internal
+     * code can open the AddToCartModal via onAddToCartModalOpen. We do NOT
+     * call closeQuickView() here — instead, an effect above watches for
+     * the AddToCartModal to open and then closes QuickView. This avoids
+     * unmounting the mutation helper's hooks mid-invalidation.
      */
-    const handleAddToCart = async (productSelectionValues = []) => {
-        const productItems = productSelectionValues.map((item) => {
-            const {variant, quantity} = item
-            const prod = variant || item.product || product
-            return {
-                productId: prod?.productId || prod?.id,
-                price: prod?.price,
-                quantity
-            }
-        })
+    const handleAddToCart = useCallback(
+        async (productSelectionValues = []) => {
+            const productItems = productSelectionValues.map((item) => {
+                const {variant, quantity} = item
+                const prod = variant || item.product || product
+                return {
+                    productId: prod?.productId || prod?.id,
+                    price: prod?.price,
+                    quantity
+                }
+            })
 
-        const result = await addItemToNewOrExistingBasket(productItems)
+            await addItemToNewOrExistingBasket(productItems)
 
-        // Close Quick View on success — ProductView will open the AddToCartModal
-        // because we return truthy data.
-        closeQuickView()
-
-        return result
-    }
+            // Return the selection values so ProductView can pass them
+            // as `itemsAdded` to AddToCartModal. ProductView opens the
+            // confirmation modal; our useEffect closes QuickView after.
+            return productSelectionValues
+        },
+        [product, addItemToNewOrExistingBasket]
+    )
 
     // Build PDP URL for the "View Full Details" link
     const productId = openProduct?.id || openProduct?.productId
