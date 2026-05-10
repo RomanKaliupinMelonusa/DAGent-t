@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  * The webServer config auto-starts the dev server before tests and shuts it
  * down after.
  */
+const storefrontPort = process.env.STOREFRONT_PORT || '3000';
+const storefrontUrl = process.env.STOREFRONT_URL || `http://localhost:${storefrontPort}`;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -28,7 +31,7 @@ export default defineConfig({
   timeout: 60_000,
 
   use: {
-    baseURL: process.env.STOREFRONT_URL || 'http://localhost:3000',
+    baseURL: storefrontUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -44,8 +47,8 @@ export default defineConfig({
   webServer: process.env.STOREFRONT_URL
     ? undefined // Skip webServer when testing against a deployed URL
     : {
-        command: 'npm start',
-        url: 'http://localhost:3000',
+        command: `npm start -- --port ${storefrontPort}`,
+        url: `http://localhost:${storefrontPort}`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000, // PWA Kit SSR startup can be slow
       },

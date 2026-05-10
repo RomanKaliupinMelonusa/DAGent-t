@@ -15,8 +15,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createConnection } from "node:net";
 
 import { runAgentNode } from "./agent.ts";
 import { runScriptNode } from "./script.ts";
@@ -352,6 +353,114 @@ function renderRecoveryBody(state: RunState): string {
 }
 
 // ---------------------------------------------------------------------------
+// Dev-server lifecycle — start before baseline, tear down in finally.
+// ---------------------------------------------------------------------------
+
+const DEV_SERVER_POLL_INTERVAL_MS = 2_000;
+const DEV_SERVER_POLL_TIMEOUT_MS = 60_000;
+
+/** Resolve the configured storefront port (env > default 3000). */
+function resolvePort(): number {
+  const envPort = process.env.STOREFRONT_PORT;
+  if (envPort) {
+    const n = Number(envPort);
+    if (Number.isFinite(n) && n > 0 && n < 65536) return n;
+  }
+  return 3000;
+}
+
+/** Kill any process occupying the target port so the baseline starts clean. */
+function killPortOccupant(port: number): void {
+  try {
+    const pids = execSync(`lsof -ti tcp:${port}`, { encoding: "utf-8" }).trim();
+    if (pids) {
+      console.log(`[run] killing existing process(es) on port ${port}: ${pids.replace(/\n/g, ", ")}`);
+      execSync(`lsof -ti tcp:${port} | xargs kill -9`, { stdio: "ignore" });
+    }
+  } catch {
+    // lsof exits non-zero when no process found — that's fine.
+  }
+}
+
+/** TCP-level readiness probe: resolves true when the port accepts a connection. */
+function tcpProbe(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ host: "127.0.0.1", port }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on("error", () => {
+      sock.destroy();
+      resolve(false);
+    });
+    sock.setTimeout(1_000, () => {
+      sock.destroy();
+      resolve(false);
+    });
+  });
+}
+
+/**
+ * Start the PWA Kit dev server in the background and wait for it to
+ * accept TCP connections. Returns the child process handle for cleanup.
+ */
+async function startDevServer(
+  appRoot: string,
+  port: number,
+): Promise<ChildProcess> {
+  killPortOccupant(port);
+
+  console.log(`[run] starting dev server on port ${port} (cwd: ${appRoot})`);
+  const child = nodeSpawn("npm", ["start", "--", "--port", String(port)], {
+    cwd: appRoot,
+    env: { ...process.env, STOREFRONT_PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+
+  // Pipe server output to the console for visibility.
+  child.stdout?.on("data", (chunk: Buffer) => {
+    process.stdout.write(`[dev-server] ${chunk}`);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    process.stderr.write(`[dev-server] ${chunk}`);
+  });
+
+  // Poll until the port is reachable.
+  const deadline = Date.now() + DEV_SERVER_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await tcpProbe(port)) {
+      console.log(`[run] dev server ready on port ${port}`);
+      return child;
+    }
+    await new Promise((r) => setTimeout(r, DEV_SERVER_POLL_INTERVAL_MS));
+  }
+
+  // Timed out — kill the child and throw.
+  child.kill("SIGKILL");
+  throw new Error(
+    `Dev server failed to accept connections on port ${port} within ${DEV_SERVER_POLL_TIMEOUT_MS / 1000}s.`,
+  );
+}
+
+/** Gracefully shut down the dev server child process. */
+async function stopDevServer(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null) return; // already exited
+  console.log("[run] stopping dev server…");
+  child.kill("SIGTERM");
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, 5_000);
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
 
@@ -372,6 +481,14 @@ async function main(): Promise<void> {
     stageSpec(state);
   }
 
+  // Start the dev server before the main loop so the baseline node
+  // (and all subsequent nodes using Playwright) have a live storefront.
+  const port = resolvePort();
+  const appRoot = path.resolve(REPO_ROOT, state.app);
+  const devServer = await startDevServer(appRoot, port);
+  state.devServerPort = port;
+  saveState(state);
+
   let exitCode = 0;
   try {
     await runMainLoop(state);
@@ -383,6 +500,7 @@ async function main(): Promise<void> {
     exitCode = 1;
   } finally {
     await runFinalizer(state);
+    await stopDevServer(devServer);
   }
   process.exit(exitCode);
 }

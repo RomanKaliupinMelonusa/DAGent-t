@@ -55,9 +55,17 @@ export function runScriptNode(
   logStream.write(`[${new Date().toISOString()}] script.start attempt=${attempt} cmd=${command}\n`);
 
   return new Promise((resolve) => {
+    const port = state.devServerPort ?? (Number(process.env.STOREFRONT_PORT) || 3000);
     const child = spawn("bash", ["-c", command], {
       cwd: appRoot,
-      env: { ...process.env, APP_ROOT: appRoot, REPO_ROOT: repoRoot, FEATURE_SLUG: state.slug },
+      env: {
+        ...process.env,
+        APP_ROOT: appRoot,
+        REPO_ROOT: repoRoot,
+        FEATURE_SLUG: state.slug,
+        STOREFRONT_PORT: String(port),
+        STOREFRONT_URL: `http://localhost:${port}`,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout?.pipe(logStream, { end: false });

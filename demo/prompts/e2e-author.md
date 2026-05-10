@@ -151,6 +151,35 @@ When the **Declared Inputs / Outputs** block lists a `baseline` input (kind `bas
 
 The console-error budget assertion (e2e-guidelines §17) consumes this array. See that rule for the canonical assertion shape.
 
+## Storefront-Debug Patch Consumption (MANDATORY when present)
+
+When **"Outputs from prior nodes"** in your task prompt contains a
+`storefront-debug` entry with a `patchFile` field, you MUST apply those
+patches to your spec file. This happens when the storefront-debug node
+diagnosed a test-code fault and wrote a structured fix.
+
+1. Read the patch file at the path given in
+   `storefront-debug.patchFile` (relative to app root) using `file_read`.
+2. The file is JSON with shape:
+   ```json
+   {
+     "targetFile": "e2e/<slug>.spec.ts",
+     "patches": [{ "find": "<exact string>", "replace": "<replacement>" }],
+     "rationale": "..."
+   }
+   ```
+3. For each entry in `patches[]`, locate the exact `find` string in your
+   spec file and replace it with the `replace` string. If the `find`
+   string is not present (e.g. you are authoring a fresh spec), incorporate
+   the `replace` content at the semantically correct location (e.g.
+   `BASELINE_NOISE_PATTERNS` near the top of the file).
+4. These patches take **priority** over mechanical baseline derivation
+   for the lines they touch. If a patch updates `BASELINE_NOISE_PATTERNS`,
+   use the patched value — do NOT overwrite it with the mechanical
+   derivation from `baseline.json`.
+5. After applying patches, proceed with all other self-review gates
+   normally.
+
 ## Critical Rules
 
 - **DO NOT run `npx playwright test`** — you are the author, not the runner.

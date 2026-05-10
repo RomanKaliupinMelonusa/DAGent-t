@@ -60,10 +60,15 @@ interactions directly from the spec's acceptance scenarios.
 
 ### Dev server
 
-A local dev server is running at `http://localhost:3000`. Use the
-Playwright MCP tools (`playwright_navigate`, `playwright_evaluate`,
-etc.) to navigate pages and capture console / network errors. Do NOT
-start or stop the dev server.
+A local dev server is running (the pipeline started it before your node).
+The port is configured via the `STOREFRONT_PORT` environment variable
+(default `3000`). Use the Playwright MCP tools (`playwright_navigate`,
+`playwright_evaluate`, etc.) to navigate pages and capture console /
+network errors. Do NOT start or stop the dev server.
+
+> **Tip:** The dev server may take 15–30 s to render the first page after
+> cold start. If you see a loading/splash page, wait a few seconds and
+> retry before concluding the page is broken.
 
 
 <!-- agents/baseline-analyzer.agent.md -->
@@ -96,7 +101,7 @@ the acceptance contract.
 - App root: `{{appRoot}}`
 - Repo root: `{{repoRoot}}`
 - Output (your ONLY write target): kind `baseline` — see Declared Outputs in the task prompt
-- A local dev server is already running at `http://localhost:3000` (the pre-hook brought it up). Do **not** start another.
+- A local dev server is already running (the pipeline pre-hook brought it up). Do **not** start another.
 
 {{{rules}}}
 

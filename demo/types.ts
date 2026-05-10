@@ -96,6 +96,8 @@ export interface RunState {
   outputs: Partial<Record<NodeId, NodeOutput>>;
   /** Linear history of every node attempt for the finalizer / debugging. */
   history: Array<{ nodeId: NodeId; attempt: NodeAttempt }>;
+  /** Port the pipeline-managed dev server is listening on. */
+  devServerPort?: number;
   /** Set when the main loop terminated abnormally (cap-5 halt or unhandled error). */
   terminalError?: string;
 }

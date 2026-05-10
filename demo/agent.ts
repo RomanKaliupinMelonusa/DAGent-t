@@ -181,6 +181,7 @@ function resolveMcpServers(
   node: NodeDef,
   repoRoot: string,
   appRoot: string,
+  state: RunState,
 ): Record<string, MCPServerConfig> | undefined {
   if (!node.mcp || node.mcp.length === 0) return undefined;
   const servers: Record<string, MCPServerConfig> = {};
@@ -194,12 +195,13 @@ function resolveMcpServers(
     } as MCPServerConfig;
   }
   if (node.mcp.includes("playwright")) {
+    const port = state.devServerPort ?? (Number(process.env.STOREFRONT_PORT) || 3000);
     servers["playwright"] = {
       type: "local",
       command: "npx",
       args: ["@playwright/mcp@latest"],
       tools: ["*"],
-      env: { BASE_URL: "http://localhost:3000" },
+      env: { BASE_URL: `http://localhost:${port}` },
     } as MCPServerConfig;
   }
   return servers;
@@ -230,7 +232,7 @@ export async function runAgentNode(
   ];
 
   const client = new CopilotClient();
-  const mcpServers = resolveMcpServers(node, repoRoot, appRoot);
+  const mcpServers = resolveMcpServers(node, repoRoot, appRoot, state);
   const timeoutMs = node.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // Append every assistant message + tool call to the per-attempt log.

@@ -4,13 +4,13 @@
  * Linear order: baseline → dev → unit-test → e2e-author → e2e-runner → storefront-debug.
  *
  * Failure routing:
- *   - baseline            → in-place retries (1); onFailure = dev (non-blocking)
+ *   - baseline            → in-place retries (2); NO onFailure (pipeline halts)
  *   - dev                 → in-place retries (2), then terminal halt → PR
  *   - unit-test           → in-place retries (1), then terminal halt → PR
  *   - e2e-author          → in-place retries (1), then terminal halt → PR
  *   - e2e-runner          → no retries; onFailure = storefront-debug
- *   - storefront-debug    → in-place retries (2); onSuccess = unit-test
- *                            (replays unit-test → e2e-author → e2e-runner);
+ *   - storefront-debug    → in-place retries (2); onSuccess = e2e-author
+ *                            (replays e2e-author → e2e-runner);
  *                           on exhaustion, terminal halt → PR
  *
  * Finalizer: pr-creation (alwaysRun=true) — runs in the `finally` block,
@@ -31,10 +31,11 @@ export const MAIN_NODES: readonly NodeDef[] = [
     mcp: ["roam-code", "playwright"],
     allowedWritePaths: ["^\\.dagent/"],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
-    maxRetries: 1,
+    // 3 total attempts — dev server may need warm-up time.
+    maxRetries: 2,
     timeoutMs: 10 * 60 * 1000,
-    // If baseline fails, skip to dev — pipeline continues without it.
-    onFailure: "dev",
+    // No onFailure — baseline is mandatory. Without it, e2e tests
+    // will always fail on platform noise, wasting all downstream compute.
   },
   {
     id: "dev",
@@ -81,7 +82,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
   {
     id: "e2e-runner",
     kind: "script",
-    command: "npx playwright test e2e/{slug}.spec.ts --reporter=line",
+    command: "npx playwright test e2e/{slug}.spec.ts --reporter=line --workers=1",
     onFailure: "storefront-debug",
     maxRetries: 0,
     timeoutMs: 10 * 60 * 1000,
@@ -96,13 +97,15 @@ export const MAIN_NODES: readonly NodeDef[] = [
       "^config/",
       "^worker/",
       "^overrides/",
+      "^\\.dagent/.*\\.patch\\.json$",
     ],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
-    // On success, replay unit-test → e2e-author → e2e-runner to validate
-    // the fix. On exhaustion of in-place retries, fall through with no
+    // On success, replay e2e-author → e2e-runner to validate the fix.
+    // e2e-author will consume any patch file storefront-debug wrote.
+    // On exhaustion of in-place retries, fall through with no
     // onFailure: the main loop terminates and pr-creation opens a
     // halted PR with the full debug history.
-    onSuccess: "unit-test",
+    onSuccess: "e2e-author",
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
   },

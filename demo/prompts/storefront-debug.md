@@ -125,8 +125,10 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
   outside `{test-code, code-defect}`. The `circuit_breaker` will halt the
   loop and surface the issue for operator review.
 - **Do NOT edit files under `e2e/`.** If the Playwright spec is the actual
-  bug (bad locator, race condition, contradicts acceptance), report failure
-  with `fault_domain: test-code` so triage reroutes to `@e2e-author`.
+  bug (bad locator, race condition, contradicts acceptance), **write a
+  structured patch file** instead (see "E2E Patch Protocol" below) and
+  report success with `result.patchFile` pointing to it. The `e2e-author`
+  node will consume the patch on its next run.
 - **Do NOT edit unit tests under `__tests__/`, `tests/`, `*.test.*`, or
   `*.spec.*` (non-Playwright).** The downstream `storefront-unit-test` node
   owns those. If your fix changes a component's contract such that unit
@@ -139,6 +141,41 @@ You are NOT `@storefront-dev`, `@e2e-author`, `@qa-adversary`, or
   failure.
 - **Do NOT run the full test suite.** Only re-run the failing scenario
   identified in the handoff.
+
+## E2E Patch Protocol (test-code faults)
+
+When your diagnosis identifies fault domain **`test-code`** and the fix
+belongs in the E2E spec (e.g. missing `BASELINE_NOISE_PATTERNS`,
+bad locator, race condition, missing `--workers=1`), you MUST NOT edit
+`e2e/` files directly. Instead:
+
+1. Write a structured patch file to
+   `.dagent/{slug}/e2e-patch.json` using `write_file`:
+
+```json
+{
+  "targetFile": "e2e/<slug>.spec.ts",
+  "patches": [
+    {
+      "find": "const BASELINE_NOISE_PATTERNS: RegExp[] = []",
+      "replace": "const BASELINE_NOISE_PATTERNS: RegExp[] = [\n  /Warning: The result of getServerSnapshot should be cached/,\n  /net::ERR_NAME_NOT_RESOLVED/\n]"
+    }
+  ],
+  "rationale": "Platform console warnings trip assertConsoleErrorBudget. These patterns are persistent baseline noise, not feature regressions."
+}
+```
+
+2. Call `report_outcome` with `status: "completed"` and include:
+   - `result.patchFile`: the path you wrote (e.g. `.dagent/plp-quick-view/e2e-patch.json`)
+   - `result.faultDomain`: `"test-code"`
+   - `result.summary`: one-sentence description of the fix
+
+The `e2e-author` node will read this patch file on its next run and
+apply the patches before running self-review gates. This avoids the
+cycle where `e2e-author` overwrites your fix by regenerating the spec.
+
+If the fault is **`code-defect`** (application code is broken), apply the
+fix directly to `app/`, `config/`, `worker/`, or `overrides/` as before.
 
 ## Structured Next-Failure Hint
 
