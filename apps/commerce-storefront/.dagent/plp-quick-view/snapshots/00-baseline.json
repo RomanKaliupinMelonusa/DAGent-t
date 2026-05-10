@@ -1,0 +1,155 @@
+{
+  "nodeId": "baseline",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T21:46:31.035Z",
+        "endedAt": "2026-05-10T21:49:01.490Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    ],
+    "result": {
+      "schemaVersion": 1,
+      "producedBy": "baseline-analyzer",
+      "producedAt": "2026-05-10T21:46:34.000Z",
+      "feature": "plp-quick-view",
+      "captured_at": "2026-05-10T21:46:34.000Z",
+      "base_sha": "65dc15fd77f09a4f00bb0ee9e06ad2bf18ec3d27",
+      "targets": [
+        {
+          "name": "PLP-Dresses",
+          "url": "/category/womens-clothing-dresses",
+          "kind": "page"
+        },
+        {
+          "name": "PLP-NewArrivals",
+          "url": "/category/newarrivals",
+          "kind": "page"
+        }
+      ],
+      "console_errors": [
+        {
+          "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+          "source_page": "PLP-Dresses",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "framework-warning"
+        },
+        {
+          "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+          "source_page": "PLP-NewArrivals",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "framework-warning"
+        },
+        {
+          "pattern": "Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.",
+          "source_page": "PLP-Dresses",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "legacy-deprecation"
+        },
+        {
+          "pattern": "Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.",
+          "source_page": "PLP-NewArrivals",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "legacy-deprecation"
+        },
+        {
+          "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+          "source_page": "PLP-Dresses",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+          "source_page": "PLP-NewArrivals",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+          "source_page": "PLP-Dresses",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+          "source_page": "PLP-NewArrivals",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "r: 403 Forbidden",
+          "source_page": "PLP-Dresses",
+          "count": 2,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "r: 403 Forbidden",
+          "source_page": "PLP-NewArrivals",
+          "count": 2,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "source_page": "PLP-Dresses",
+          "count": 2
+        },
+        {
+          "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "source_page": "PLP-NewArrivals",
+          "count": 2
+        }
+      ],
+      "network_failures": [
+        {
+          "pattern": "POST /web/events/ to c360a.salesforce.com net::ERR_NAME_NOT_RESOLVED",
+          "source_page": "PLP-Dresses",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "POST /web/events/ to c360a.salesforce.com net::ERR_NAME_NOT_RESOLVED",
+          "source_page": "PLP-NewArrivals",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-sandbox"
+        },
+        {
+          "pattern": "GET demandware.static/-/Sites-apparel-m-catalog/ net::ERR_ABORTED",
+          "source_page": "PLP-Dresses",
+          "count": 1
+        },
+        {
+          "pattern": "GET demandware.static/-/Sites-apparel-m-catalog/ net::ERR_ABORTED",
+          "source_page": "PLP-NewArrivals",
+          "count": 1
+        },
+        {
+          "pattern": "GET /callback?usid= net::ERR_ABORTED",
+          "source_page": "PLP-Dresses",
+          "count": 1
+        },
+        {
+          "pattern": "GET /callback?usid= net::ERR_ABORTED",
+          "source_page": "PLP-NewArrivals",
+          "count": 1
+        }
+      ],
+      "uncaught_exceptions": [],
+      "notes": "Both PLP pages timed out waiting for networkidle (30s) but rendered content and captured errors successfully during the timeout period. All observed console errors are pre-existing platform noise: React framework warnings (getServerSnapshot caching, defaultProps deprecation), DataCloud sandbox DNS resolution failures (c360a.salesforce.com unreachable in dev), and Einstein recommendations 403 responses (sandbox returns 403). No Quick View feature code exists yet so no feature-specific errors are expected. The 403 Forbidden errors on load resources are likely Einstein recommendation API calls which are known to fail in sandbox/dev environments."
+    }
+  }
+}
