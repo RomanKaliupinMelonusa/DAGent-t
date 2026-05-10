@@ -412,6 +412,41 @@ function renderRecoveryBody(state: RunState): string {
   return lines.join("\n");
 }
 
+/**
+ * Final commit + push of any .dagent/ artifacts left uncommitted after
+ * the pr-creation agent's session ended (e.g. state.json, snapshots
+ * written by executeNode after the agent already committed and pushed).
+ * Best-effort — failures here are logged but do not crash the run.
+ */
+function finalCommitAndPush(state: RunState): void {
+  try {
+    // Save final state snapshot so the on-disk state.json reflects the
+    // completed pr-creation node (executeNode already called saveState,
+    // but the finalizer catch-path may have written a recovery body).
+    saveState(state);
+
+    const commitScript = path.join(REPO_ROOT, "demo", "scripts", "agent-commit.sh");
+    execSync(
+      `bash ${commitScript} pipeline "chore(pipeline): final state snapshot"`,
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, APP_ROOT: path.resolve(REPO_ROOT, state.app) },
+        stdio: "pipe",
+      },
+    );
+
+    execSync(`git push -u origin ${state.featureBranch} --force-with-lease`, {
+      cwd: REPO_ROOT,
+      stdio: "pipe",
+    });
+    console.log(`[run] ✓ final commit+push completed`);
+  } catch (err) {
+    // Non-fatal: the PR is already open; these are just trailing artifacts.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[run] WARN: final commit+push failed (non-fatal): ${msg}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dev-server lifecycle — start before baseline, tear down in finally.
 // ---------------------------------------------------------------------------
@@ -609,6 +644,12 @@ async function main(): Promise<void> {
     exitCode = 1;
   } finally {
     await runFinalizer(state);
+
+    // The finalizer agent commits and pushes, but executeNode writes
+    // state.json + snapshots *after* the agent session ends. Do a final
+    // commit+push so no .dagent/ artifacts are left uncommitted.
+    finalCommitAndPush(state);
+
     await stopDevServer(devServer, port);
   }
   process.exit(exitCode);
