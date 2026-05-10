@@ -37,6 +37,31 @@ fragments:
 ---
 
 
+## Storefront debug node — demo pipeline overrides
+
+### Failure Context
+
+Your **task prompt** contains a **"## Failure Context"** section listing
+the failed node and the paths to every relevant log under the
+`.dagent/<slug>/` directory.
+
+**Start by reading the failed node's log** (`file_read`). The log
+contains the full test output or agent trace — you can parse it yourself.
+Then check the `logs/` subdirectory for any prior debug attempt logs
+so you don't repeat what was already tried.
+
+The `.dagent/<slug>/` directory also contains `state.json` (full
+pipeline state), `summary.md` (what the dev node built), and node
+snapshots. Read whatever you need.
+
+### Time Budget
+
+Spend at most 3 minutes reading logs and source files. Spend the rest
+applying and verifying fixes. If you cannot fix it, `report_outcome`
+with status=failed and a clear diagnosis so the next attempt can
+continue from your findings.
+
+
 <!-- agents/storefront-debug.agent.md -->
 ---
 description: "Storefront runtime-defect debugger — reproduces live browser failures with Playwright MCP, patches the minimum diff, and hands off to the unit-test node"

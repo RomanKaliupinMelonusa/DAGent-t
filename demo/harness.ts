@@ -33,6 +33,9 @@ const SAFE_READ_TOOLS = new Set([
 
 const SAFE_MCP_PREFIXES = ["roam_", "playwright_"];
 
+/** Tools defined via defineTool that enforce their own RBAC in-handler. */
+const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "shell", "report_outcome"]);
+
 // ---------------------------------------------------------------------------
 // Path normalization
 // ---------------------------------------------------------------------------
@@ -56,8 +59,13 @@ function toAppRelative(repoRelPath: string, appRoot: string, repoRoot: string): 
 }
 
 function extractFilePath(args: unknown): string | null {
-  const a = args as Record<string, unknown> | undefined;
+  let a: Record<string, unknown> | undefined = args as Record<string, unknown> | undefined;
   if (!a) return null;
+  // The SDK may pass toolArgs as a JSON string in the onPreToolUse hook.
+  if (typeof a === "string") {
+    try { a = JSON.parse(a as unknown as string); } catch { return null; }
+    if (!a) return null;
+  }
   const raw = a.filePath ?? a.path ?? a.file_path;
   return typeof raw === "string" ? raw : null;
 }
@@ -96,6 +104,10 @@ export function checkRbac(
   toolArgs: unknown,
   sandbox: Sandbox,
 ): string | null {
+  // Our own defineTool tools handle RBAC internally — skip the hook check
+  // to avoid arg-format mismatches between the SDK hook and our handler.
+  if (SELF_ENFORCING_TOOLS.has(toolName)) return null;
+
   const isShell = toolName === "bash" || toolName === "write_bash" || toolName === "shell";
   const isMcpSafe = SAFE_MCP_PREFIXES.some((p) => toolName.startsWith(p));
   const isWrite = !SAFE_READ_TOOLS.has(toolName) && !isShell && !isMcpSafe;

@@ -31,6 +31,7 @@ import {
   saveState,
   snapshotNode,
 } from "./state.ts";
+import { buildFailureContext } from "./briefing.ts";
 import type { NodeAttempt, NodeDef, NodeId, RunState } from "./types.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -192,14 +193,29 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
   out.status = "running";
 
   const maxAttempts = (node.maxRetries ?? 1) + 1;
+
+  // If a prior node failed and routed here, build a short failure
+  // context string that lists the relevant log paths. The agent can
+  // then file_read those logs itself — no domain-specific parsing.
+  const failedSource = (state as any)._failureSource as string | undefined;
+  delete (state as any)._failureSource;
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     ensureRunDirs(state.dagentDir);
     const logPath = path.join(logsDir(state.dagentDir), `${node.id}.${attempt}.log`);
     const startedAt = new Date().toISOString();
     console.log(`\n[run] ▶ ${node.id} (attempt ${attempt}/${maxAttempts}) — log: ${logPath}`);
 
+    // Build failure context: on first attempt use the failed source node,
+    // on retries use our own node (so the agent sees its own prior logs).
+    const failureContext = failedSource
+      ? buildFailureContext(state, failedSource as NodeId)
+      : attempt > 1
+        ? buildFailureContext(state, node.id)
+        : undefined;
+
     const res = node.kind === "agent"
-      ? await runAgentNode(node, state, attempt, REPO_ROOT, logPath)
+      ? await runAgentNode(node, state, attempt, REPO_ROOT, logPath, failureContext)
       : await runScriptNode(node, state, attempt, REPO_ROOT, logPath);
 
     const attemptRecord: NodeAttempt = {
@@ -225,6 +241,7 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
 
     out.errorSummary = res.errorMessage;
     saveState(state);
+
     console.log(`[run] ✗ ${node.id} attempt ${attempt} failed: ${res.errorMessage}`);
   }
 
@@ -310,6 +327,11 @@ async function runMainLoop(
             out.status = "pending";
           }
         }
+
+        // Stash the failed node's id so executeNode can build a
+        // failure context pointing at its logs.
+        (state as any)._failureSource = node.id;
+
         saveState(state);
         console.log(`[run] ↻ jumping ${node.id} → ${node.onFailure} (jump ${state.jumps}/${MAX_JUMPS})`);
         i = target;

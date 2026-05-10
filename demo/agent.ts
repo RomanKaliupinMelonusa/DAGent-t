@@ -27,6 +27,7 @@ import {
 import type { NodeDef, RunState } from "./types.ts";
 import { createLiveLogger } from "./live-logger.ts";
 
+
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min — same as `Promise.race` cap.
 const MODEL = process.env.DAGENT_MODEL ?? "claude-opus-4.6";
 
@@ -127,7 +128,12 @@ function inlineKickoffSections(node: NodeDef, kickoffDir: string): string[] {
  * snapshot of every prior node's output. The result is the agent's task
  * prompt.
  */
-function buildAgentPrompt(node: NodeDef, state: RunState, repoRoot: string): {
+function buildAgentPrompt(
+  node: NodeDef,
+  state: RunState,
+  repoRoot: string,
+  failureContext?: string,
+): {
   systemMessage: string;
   taskPrompt: string;
 } {
@@ -157,6 +163,10 @@ function buildAgentPrompt(node: NodeDef, state: RunState, repoRoot: string): {
       null,
       2,
     )}\n\`\`\``);
+  }
+
+  if (failureContext) {
+    sections.push(failureContext);
   }
 
   if (state.terminalError) {
@@ -213,6 +223,7 @@ export async function runAgentNode(
   attempt: number,
   repoRoot: string,
   logPath: string,
+  failureContext?: string,
 ): Promise<AgentRunResult> {
   const appRoot = path.resolve(repoRoot, state.app);
   const sandbox = buildSandbox(
@@ -222,7 +233,7 @@ export async function runAgentNode(
     node.blockedCommandRegexes,
   );
   const collector: OutcomeCollector = {};
-  const { systemMessage, taskPrompt } = buildAgentPrompt(node, state, repoRoot);
+  const { systemMessage, taskPrompt } = buildAgentPrompt(node, state, repoRoot, failureContext);
 
   const tools = [
     buildFileReadTool(sandbox),
