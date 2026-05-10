@@ -491,13 +491,29 @@ async function stopDevServer(child: ChildProcess, port: number): Promise<void> {
 
 /**
  * Verify the dev server is still alive; if not, restart it.
- * Called before nodes that need a live storefront (e2e-runner, etc.).
+ * Also cleans up orphaned browser processes from prior MCP sessions
+ * to prevent memory pressure from causing container instability.
+ * Called before every node in the main loop.
  */
 async function ensureDevServer(
   current: ChildProcess,
   appRoot: string,
   port: number,
 ): Promise<ChildProcess> {
+  // Kill any orphaned Chromium/Playwright MCP processes left by
+  // prior agent sessions. session.disconnect() should handle this,
+  // but if the session crashed, browsers may linger and accumulate
+  // memory, eventually triggering the OOM killer which can take
+  // down VS Code's remote server and cause a window reload.
+  try {
+    execSync(
+      `pkill -f '@playwright/mcp' 2>/dev/null; pkill -f 'chromium.*--headless' 2>/dev/null`,
+      { stdio: "ignore" },
+    );
+  } catch {
+    // pkill exits non-zero when no process matches — that's fine.
+  }
+
   if (await tcpProbe(port)) return current;
   console.warn(`[run] WARN: dev server on port ${port} is not responding — restarting`);
   try { current.kill("SIGKILL"); } catch { /* already dead */ }
