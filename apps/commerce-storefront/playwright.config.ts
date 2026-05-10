@@ -47,7 +47,7 @@ export default defineConfig({
   webServer: process.env.STOREFRONT_URL
     ? undefined // Skip webServer when testing against a deployed URL
     : {
-        command: `npm start -- --port ${storefrontPort}`,
+        command: `PORT=${storefrontPort} npm start`,
         url: `http://localhost:${storefrontPort}`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000, // PWA Kit SSR startup can be slow

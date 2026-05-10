@@ -411,9 +411,9 @@ async function startDevServer(
   killPortOccupant(port);
 
   console.log(`[run] starting dev server on port ${port} (cwd: ${appRoot})`);
-  const child = nodeSpawn("npm", ["start", "--", "--port", String(port)], {
+  const child = nodeSpawn("npm", ["start"], {
     cwd: appRoot,
-    env: { ...process.env, STOREFRONT_PORT: String(port) },
+    env: { ...process.env, PORT: String(port), STOREFRONT_PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   });
