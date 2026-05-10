@@ -1,0 +1,33 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T20:51:03.614Z",
+        "endedAt": "2026-05-10T21:07:04.120Z",
+        "status": "failed",
+        "errorSummary": "All 8 E2E test failures are test-code defects in e2e/plp-quick-view.spec.ts, not implementation bugs. The feature code is correct (verified manually). Three distinct test bugs: (1) BASELINE_NOISE_PATTERNS regex has typo - missing space in \"release\\.Use\" should be \"release\\. Use\" (affects 5 tests), (2) variant swatch selector uses 'button[aria-label*=\"size\"]' but swatches are <a> elements inside [role=\"radiogroup\"] (affects add-to-bag test), (3) tile-click test looks for <a> inside sf-product-tile-* but that element IS the <a> (timeout).",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-10T21:07:04.123Z",
+        "endedAt": "2026-05-10T21:11:06.894Z",
+        "status": "failed",
+        "errorSummary": "All 8 E2E test failures are test-code defects in e2e/plp-quick-view.spec.ts — no implementation code changes needed. Three bugs: (1) BASELINE_NOISE_PATTERNS[1] regex has 'release\\.Use' but actual message has 'release. Use' (missing space) — causes 7/8 tests to fail console-error budget assertion; (2) E2E-003 size swatch selector uses 'button[aria-label*=\"size\" i]' but PWA Kit renders swatches as <a> elements inside [role=\"radiogroup\"][aria-label=\"Size\"]; (3) E2E-008 does tile.locator('a').first() but data-testid=\"sf-product-tile-*\" IS the <a> element itself (Link component), so descendant search finds nothing and times out.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-10T21:11:06.896Z",
+        "endedAt": "2026-05-10T21:14:07.007Z",
+        "status": "failed",
+        "errorSummary": "All 8 E2E test failures are test-code defects in e2e/plp-quick-view.spec.ts. The implementation code (modal-body.jsx, context.jsx, trigger.jsx, etc.) is correct — it follows the identical pattern as the PDP's handleAddToCart. Three bugs in the test file need fixing by e2e-author:\n\n1. BASELINE_NOISE_PATTERNS[1] (line ~29): regex has 'release\\.Use' but actual console message has 'release. Use' (missing space in regex). This causes 6-7 tests to fail the console-error budget assertion. Fix: change to 'release\\.\\s*Use' or 'release\\. Use'.\n\n2. E2E-003 size swatch selector (line ~213): uses 'button[aria-label*=\"size\" i]' but PWA Kit renders swatches as <a> elements inside [role=\"radiogroup\"]. The wrong selector means size isn't selected, leading to API failure and modal staying open. Fix: use 'a[aria-label*=\"size\" i]' or target the radiogroup properly.\n\n3. E2E-008 tile click (line ~379-380): does tile.locator('a').first() but data-testid=\"sf-product-tile-*\" IS the <a> element itself (Link component), so descendant 'a' search finds nothing and times out. Fix: click the tile element directly.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
+    ],
+    "errorSummary": "All 8 E2E test failures are test-code defects in e2e/plp-quick-view.spec.ts. The implementation code (modal-body.jsx, context.jsx, trigger.jsx, etc.) is correct — it follows the identical pattern as the PDP's handleAddToCart. Three bugs in the test file need fixing by e2e-author:\n\n1. BASELINE_NOISE_PATTERNS[1] (line ~29): regex has 'release\\.Use' but actual console message has 'release. Use' (missing space in regex). This causes 6-7 tests to fail the console-error budget assertion. Fix: change to 'release\\.\\s*Use' or 'release\\. Use'.\n\n2. E2E-003 size swatch selector (line ~213): uses 'button[aria-label*=\"size\" i]' but PWA Kit renders swatches as <a> elements inside [role=\"radiogroup\"]. The wrong selector means size isn't selected, leading to API failure and modal staying open. Fix: use 'a[aria-label*=\"size\" i]' or target the radiogroup properly.\n\n3. E2E-008 tile click (line ~379-380): does tile.locator('a').first() but data-testid=\"sf-product-tile-*\" IS the <a> element itself (Link component), so descendant 'a' search finds nothing and times out. Fix: click the tile element directly."
+  }
+}

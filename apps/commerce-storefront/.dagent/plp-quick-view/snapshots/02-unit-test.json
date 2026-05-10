@@ -1,0 +1,70 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T20:38:22.216Z",
+        "endedAt": "2026-05-10T20:47:18.420Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "case_mapping": {
+        "UT-A11Y-001": "PASS",
+        "UT-A11Y-002": "PASS",
+        "UT-A11Y-003": "PASS",
+        "UT-BODY-001": "PASS",
+        "UT-BODY-002": "PASS",
+        "UT-BODY-003": "PASS",
+        "UT-BODY-004": "PASS",
+        "UT-BODY-005": "PASS",
+        "UT-BODY-006": "PASS",
+        "UT-BODY-007": "PASS",
+        "UT-BODY-008": "PASS",
+        "UT-BODY-009": "PASS",
+        "UT-BODY-010": "PASS",
+        "UT-BODY-011": "PASS",
+        "UT-BODY-012": "PASS",
+        "UT-BODY-013": "PASS",
+        "UT-BODY-014": "PASS",
+        "UT-BODY-015": "PASS",
+        "UT-PROV-001": "PASS",
+        "UT-PROV-002": "PASS",
+        "UT-PROV-003": "PASS",
+        "UT-SHELL-001": "PASS",
+        "UT-SHELL-002": "PASS",
+        "UT-SHELL-003": "PASS",
+        "UT-SHELL-004": "PASS",
+        "UT-SHELL-005": "PASS",
+        "UT-TRIG-001": "PASS",
+        "UT-TRIG-002": "PASS",
+        "UT-TRIG-003": "PASS",
+        "UT-TRIG-004": "PASS",
+        "UT-TRIG-005": "PASS",
+        "UT-TRIG-006": "PASS"
+      },
+      "cases_failed": 0,
+      "cases_passed": 32,
+      "cases_skipped": 0,
+      "coverage": {
+        "branches": "69.23%",
+        "functions": "92.85%",
+        "lines": "98.5%",
+        "statements": "95.77%"
+      },
+      "notes": "All 32 unit test cases from the binding plan implemented and passing. The implementation uses useShopperBasketsV2MutationHelper.addItemToNewOrExistingBasket which internally manages basket creation, so UT-BODY-011/012 test the helper is called correctly (once) rather than testing separate createBasket/addItemToBasket mutations. UT-BODY-005..008 verify product data propagation to ProductView (which owns the disabled state logic internally). No escalations needed.",
+      "test_files": [
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "test_suite_result": "PASS",
+      "total_cases": 32
+    }
+  }
+}
