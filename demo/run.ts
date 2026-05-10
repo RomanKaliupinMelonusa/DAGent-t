@@ -369,13 +369,15 @@ function resolvePort(): number {
   return 3000;
 }
 
-/** Kill any process occupying the target port so the baseline starts clean. */
+/** Kill any process LISTENING on the target port so the baseline starts clean. */
 function killPortOccupant(port: number): void {
   try {
-    const pids = execSync(`lsof -ti tcp:${port}`, { encoding: "utf-8" }).trim();
+    // -sTCP:LISTEN restricts to listeners only — avoids killing VS Code's
+    // port-forwarding or other clients connected to the port.
+    const pids = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: "utf-8" }).trim();
     if (pids) {
-      console.log(`[run] killing existing process(es) on port ${port}: ${pids.replace(/\n/g, ", ")}`);
-      execSync(`lsof -ti tcp:${port} | xargs kill -9`, { stdio: "ignore" });
+      console.log(`[run] killing listener(s) on port ${port}: ${pids.replace(/\n/g, ", ")}`);
+      execSync(`lsof -ti tcp:${port} -sTCP:LISTEN | xargs kill -9`, { stdio: "ignore" });
     }
   } catch {
     // lsof exits non-zero when no process found — that's fine.
