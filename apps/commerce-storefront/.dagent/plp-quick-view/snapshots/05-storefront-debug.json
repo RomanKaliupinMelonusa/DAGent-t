@@ -1,0 +1,33 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T18:22:20.330Z",
+        "endedAt": "2026-05-10T18:48:29.487Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-10T18:48:29.489Z",
+        "endedAt": "2026-05-10T19:13:34.334Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-10T19:13:34.339Z",
+        "endedAt": "2026-05-10T19:38:36.296Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
+    ],
+    "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
+  }
+}

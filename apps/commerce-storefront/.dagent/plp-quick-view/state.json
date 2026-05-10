@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-10T17:46:14.030Z",
-  "jumps": 0,
+  "jumps": 1,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -195,6 +195,144 @@
         ],
         "contract_drift": []
       }
+    },
+    "unit-test": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T17:59:36.026Z",
+          "endedAt": "2026-05-10T18:07:44.069Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+        }
+      ],
+      "result": {
+        "summary": "All 32 unit test cases from the binding test plan implemented and passing",
+        "test_files": [
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx"
+        ],
+        "test_count": 32,
+        "test_breakdown": {
+          "UT-PROV (provider)": 3,
+          "UT-TRIG (trigger)": 6,
+          "UT-SHELL (modal shell)": 5,
+          "UT-BODY (modal body)": 15,
+          "UT-A11Y (accessibility)": 3
+        },
+        "skipped": 0,
+        "failures": 0,
+        "escalations": [],
+        "notes": [
+          "UT-BODY-003: The real implementation uses MutationObserver to tag the cart button with data-testid='quick-view-add-to-cart-btn'. In tests, we verify the mock ProductView renders an add-to-cart button. The DOM tagging mechanism is an integration-level concern best verified by E2E tests.",
+          "UT-A11Y-003: Focus restoration is verified by confirming the trigger remains in DOM after modal close. Full Chakra Modal returnFocusOnClose behavior requires the real Chakra implementation.",
+          "Console warnings about zIndex prop on DOM elements are mock artifacts from passing Chakra props through simplified mock IconButton — not production issues."
+        ]
+      }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T18:07:44.076Z",
+          "endedAt": "2026-05-10T18:14:03.422Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+        "flows_authored": [
+          "E2E-001: opens Quick View modal from product tile",
+          "E2E-002: switches color swatch inside Quick View modal",
+          "E2E-003: adds product to bag from Quick View modal",
+          "E2E-004a: close via Escape key restores focus",
+          "E2E-004b: close via close button restores focus",
+          "E2E-004c: close via overlay click restores focus",
+          "E2E-005: does not render pickup or ship-to-store UI",
+          "E2E-006: add-to-bag button disabled when variation incomplete",
+          "E2E-007: View Full Details link navigates to PDP",
+          "E2E-008: clicking tile image navigates to PDP (regression)"
+        ],
+        "total_tests": 10,
+        "baseline_noise_patterns_derived": 5,
+        "testids_used": [
+          "quick-view-trigger-{productId}",
+          "quick-view-modal",
+          "quick-view-modal-error",
+          "quick-view-add-to-cart-btn",
+          "quick-view-view-full-details-link",
+          "product-view",
+          "add-to-cart-modal",
+          "product-added",
+          "pickup-select-store-msg",
+          "store-stock-status-msg",
+          "sf-product-tile-{productId}"
+        ],
+        "conditionally_skipped_flows": [
+          "E2E-002: skips if first tile has fewer than 2 swatches",
+          "E2E-006: skips if first tile has pre-selected valid variation"
+        ],
+        "self_review_checks_passed": [
+          "no networkidle usage",
+          "no waitForTimeout usage",
+          "no tautological test titles",
+          "consoleErrors assertions in all tests (12 occurrences)",
+          "dismissOverlays present",
+          "awaitHydrated present",
+          "no 'or' locator fallbacks"
+        ],
+        "contract_drift": []
+      }
+    },
+    "e2e-runner": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T18:14:03.427Z",
+          "endedAt": "2026-05-10T18:22:20.317Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        }
+      ],
+      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+    },
+    "storefront-debug": {
+      "status": "failed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-10T18:22:20.330Z",
+          "endedAt": "2026-05-10T18:48:29.487Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-10T18:48:29.489Z",
+          "endedAt": "2026-05-10T19:13:34.334Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-10T19:13:34.339Z",
+          "endedAt": "2026-05-10T19:38:36.296Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+        }
+      ],
+      "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
     }
   },
   "history": [
@@ -217,7 +355,72 @@
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/dev.1.log"
       }
+    },
+    {
+      "nodeId": "unit-test",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T17:59:36.026Z",
+        "endedAt": "2026-05-10T18:07:44.069Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T18:07:44.076Z",
+        "endedAt": "2026-05-10T18:14:03.422Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T18:14:03.427Z",
+        "endedAt": "2026-05-10T18:22:20.317Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-10T18:22:20.330Z",
+        "endedAt": "2026-05-10T18:48:29.487Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-10T18:48:29.489Z",
+        "endedAt": "2026-05-10T19:13:34.334Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-10T19:13:34.339Z",
+        "endedAt": "2026-05-10T19:38:36.296Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
     }
   ],
-  "devServerPort": 3000
+  "devServerPort": 3000,
+  "terminalError": "Node 'storefront-debug' failed and has no onFailure route: Node storefront-debug failed after 3 attempt(s)."
 }

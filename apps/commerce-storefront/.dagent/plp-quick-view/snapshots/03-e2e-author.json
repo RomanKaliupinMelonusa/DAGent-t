@@ -1,0 +1,59 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-10T18:07:44.076Z",
+        "endedAt": "2026-05-10T18:14:03.422Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: opens Quick View modal from product tile",
+        "E2E-002: switches color swatch inside Quick View modal",
+        "E2E-003: adds product to bag from Quick View modal",
+        "E2E-004a: close via Escape key restores focus",
+        "E2E-004b: close via close button restores focus",
+        "E2E-004c: close via overlay click restores focus",
+        "E2E-005: does not render pickup or ship-to-store UI",
+        "E2E-006: add-to-bag button disabled when variation incomplete",
+        "E2E-007: View Full Details link navigates to PDP",
+        "E2E-008: clicking tile image navigates to PDP (regression)"
+      ],
+      "total_tests": 10,
+      "baseline_noise_patterns_derived": 5,
+      "testids_used": [
+        "quick-view-trigger-{productId}",
+        "quick-view-modal",
+        "quick-view-modal-error",
+        "quick-view-add-to-cart-btn",
+        "quick-view-view-full-details-link",
+        "product-view",
+        "add-to-cart-modal",
+        "product-added",
+        "pickup-select-store-msg",
+        "store-stock-status-msg",
+        "sf-product-tile-{productId}"
+      ],
+      "conditionally_skipped_flows": [
+        "E2E-002: skips if first tile has fewer than 2 swatches",
+        "E2E-006: skips if first tile has pre-selected valid variation"
+      ],
+      "self_review_checks_passed": [
+        "no networkidle usage",
+        "no waitForTimeout usage",
+        "no tautological test titles",
+        "consoleErrors assertions in all tests (12 occurrences)",
+        "dismissOverlays present",
+        "awaitHydrated present",
+        "no 'or' locator fallbacks"
+      ],
+      "contract_drift": []
+    }
+  }
+}

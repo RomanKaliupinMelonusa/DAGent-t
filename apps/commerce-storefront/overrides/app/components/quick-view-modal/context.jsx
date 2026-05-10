@@ -4,7 +4,7 @@
  *
  * Contract: contracts/quick-view-context.md
  */
-import React, {createContext, useContext, useState, useCallback} from 'react'
+import React, {createContext, useContext, useState, useCallback, useMemo} from 'react'
 import PropTypes from 'prop-types'
 
 export const QuickViewContext = createContext(undefined)
@@ -37,12 +37,13 @@ export const QuickViewProvider = ({children}) => {
         setOpenProduct(null)
     }, [])
 
-    const value = {
-        isOpen,
-        openProduct,
-        openQuickView,
-        closeQuickView
-    }
+    // Memoize the context value to prevent cascading re-renders of all
+    // consumers when an unrelated parent re-render causes this provider
+    // to re-render with identical state.
+    const value = useMemo(
+        () => ({isOpen, openProduct, openQuickView, closeQuickView}),
+        [isOpen, openProduct, openQuickView, closeQuickView]
+    )
 
     return (
         <QuickViewContext.Provider value={value}>
