@@ -27,6 +27,7 @@ import {
   initOutput,
   loadState,
   logsDir,
+  resolveDagentDir,
   saveState,
   snapshotNode,
 } from "./state.ts";
@@ -88,10 +89,14 @@ function printUsage(): void {
 // ---------------------------------------------------------------------------
 
 function initState(args: CliArgs): RunState {
-  const existing = args.resume ? loadState(args.slug) : null;
-  if (existing) {
-    console.log(`[run] resuming '${args.slug}' from ${Object.keys(existing.outputs).length} completed nodes`);
-    return existing;
+  // On resume, try to load existing state from the app's .dagent/<slug>/ dir.
+  if (args.resume && args.app) {
+    const dagentDir = resolveDagentDir(REPO_ROOT, args.app, args.slug);
+    const existing = loadState(dagentDir);
+    if (existing) {
+      console.log(`[run] resuming '${args.slug}' from ${Object.keys(existing.outputs).length} completed nodes`);
+      return existing;
+    }
   }
   if (!args.app) {
     throw new Error("Missing --app (no prior state.json found to resume from).");
@@ -110,7 +115,8 @@ function initState(args: CliArgs): RunState {
   }
   const featureBranch = `feature/${args.slug}`;
   const appRoot = path.resolve(REPO_ROOT, args.app);
-  const kickoffDir = path.join(appRoot, ".dagent", args.slug, "_kickoff");
+  const dagentDir = resolveDagentDir(REPO_ROOT, args.app, args.slug);
+  const kickoffDir = path.join(dagentDir, "_kickoff");
   return {
     slug: args.slug,
     app: args.app,
@@ -118,6 +124,7 @@ function initState(args: CliArgs): RunState {
     featureBranch,
     specFolderPath,
     kickoffDir,
+    dagentDir,
     startedAt: new Date().toISOString(),
     jumps: 0,
     outputs: {},
@@ -186,8 +193,8 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
 
   const maxAttempts = (node.maxRetries ?? 1) + 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    ensureRunDirs(state.slug);
-    const logPath = path.join(logsDir(state.slug), `${node.id}.${attempt}.log`);
+    ensureRunDirs(state.dagentDir);
+    const logPath = path.join(logsDir(state.dagentDir), `${node.id}.${attempt}.log`);
     const startedAt = new Date().toISOString();
     console.log(`\n[run] ▶ ${node.id} (attempt ${attempt}/${maxAttempts}) — log: ${logPath}`);
 
@@ -240,10 +247,16 @@ function findIndex(nodes: readonly NodeDef[], id: NodeId): number {
   return idx;
 }
 
-async function runMainLoop(state: RunState): Promise<void> {
+async function runMainLoop(
+  state: RunState,
+  ensureDevServerHealthy: () => Promise<void>,
+): Promise<void> {
   let i = 0;
   while (i < MAIN_NODES.length) {
     const node = MAIN_NODES[i];
+
+    // Health-check the dev server before every node execution.
+    await ensureDevServerHealthy();
 
     if (state.outputs[node.id]?.status === "completed") {
       console.log(`[run] ⤳ ${node.id} already completed — skipping`);
@@ -323,7 +336,7 @@ async function runFinalizer(state: RunState): Promise<void> {
     // body so the operator can finish the PR by hand.
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[run] FINALIZER FAILED: ${msg}`);
-    const recoveryPath = path.join(REPO_ROOT, "demo", ".runs", state.slug, "pr-body.md");
+    const recoveryPath = path.join(state.dagentDir, "pr-body.md");
     fs.mkdirSync(path.dirname(recoveryPath), { recursive: true });
     fs.writeFileSync(recoveryPath, renderRecoveryBody(state));
     console.error(`[run] Wrote recovery PR body to ${recoveryPath}`);
@@ -420,13 +433,20 @@ async function startDevServer(
     detached: true,
   });
 
-  // Pipe server output to the console for visibility.
+  // Unref so the child does not keep the parent event loop alive and
+  // does not get killed when the parent exits (detached + unref).
+  child.unref();
+
+  // Pipe server output to the console for visibility, but unref the
+  // streams so they don't block parent exit.
   child.stdout?.on("data", (chunk: Buffer) => {
     process.stdout.write(`[dev-server] ${chunk}`);
   });
+  (child.stdout as any)?.unref?.();
   child.stderr?.on("data", (chunk: Buffer) => {
     process.stderr.write(`[dev-server] ${chunk}`);
   });
+  (child.stderr as any)?.unref?.();
 
   // Poll until the port is reachable.
   const deadline = Date.now() + DEV_SERVER_POLL_TIMEOUT_MS;
@@ -446,13 +466,20 @@ async function startDevServer(
 }
 
 /** Gracefully shut down the dev server child process. */
-async function stopDevServer(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return; // already exited
+async function stopDevServer(child: ChildProcess, port: number): Promise<void> {
+  if (child.exitCode !== null) {
+    // Process handle is dead but the detached tree may still be alive.
+    killPortOccupant(port);
+    return;
+  }
   console.log("[run] stopping dev server…");
   child.kill("SIGTERM");
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
+      // Belt-and-suspenders: also kill by port in case the child
+      // spawned sub-processes that didn't get the signal.
+      killPortOccupant(port);
       resolve();
     }, 5_000);
     child.on("close", () => {
@@ -462,6 +489,21 @@ async function stopDevServer(child: ChildProcess): Promise<void> {
   });
 }
 
+/**
+ * Verify the dev server is still alive; if not, restart it.
+ * Called before nodes that need a live storefront (e2e-runner, etc.).
+ */
+async function ensureDevServer(
+  current: ChildProcess,
+  appRoot: string,
+  port: number,
+): Promise<ChildProcess> {
+  if (await tcpProbe(port)) return current;
+  console.warn(`[run] WARN: dev server on port ${port} is not responding — restarting`);
+  try { current.kill("SIGKILL"); } catch { /* already dead */ }
+  return startDevServer(appRoot, port);
+}
+
 // ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
@@ -469,7 +511,7 @@ async function stopDevServer(child: ChildProcess): Promise<void> {
 async function main(): Promise<void> {
   const args = parseCli(process.argv.slice(2));
   const state = initState(args);
-  ensureRunDirs(state.slug);
+  ensureRunDirs(state.dagentDir);
   saveState(state);
 
   if (!args.resume) {
@@ -487,13 +529,15 @@ async function main(): Promise<void> {
   // (and all subsequent nodes using Playwright) have a live storefront.
   const port = resolvePort();
   const appRoot = path.resolve(REPO_ROOT, state.app);
-  const devServer = await startDevServer(appRoot, port);
+  let devServer = await startDevServer(appRoot, port);
   state.devServerPort = port;
   saveState(state);
 
   let exitCode = 0;
   try {
-    await runMainLoop(state);
+    await runMainLoop(state, async () => {
+      devServer = await ensureDevServer(devServer, appRoot, port);
+    });
     console.log(`\n[run] ✓ main loop completed successfully`);
   } catch (err) {
     state.terminalError = err instanceof Error ? err.message : String(err);
@@ -502,7 +546,7 @@ async function main(): Promise<void> {
     exitCode = 1;
   } finally {
     await runFinalizer(state);
-    await stopDevServer(devServer);
+    await stopDevServer(devServer, port);
   }
   process.exit(exitCode);
 }

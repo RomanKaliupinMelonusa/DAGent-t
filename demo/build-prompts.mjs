@@ -34,8 +34,10 @@ pipeline. This is the **demo pipeline** — a stripped-down 7-node linear
 runner. Apply these overrides everywhere they conflict with the legacy
 fragments:
 
-- **There is no \`.dagent/<slug>/\` workspace.** Pipeline state lives in
-  \`demo/.runs/<slug>/state.json\`. You do not write to \`.dagent/\`.
+- **Pipeline state lives in the app's \`.dagent/<slug>/\` directory**
+  (e.g. \`apps/commerce-storefront/.dagent/plp-quick-view/state.json\`).
+  Logs, snapshots, and the PR body also live there. The \`demo/\` folder
+  is the pipeline engine — never write run artifacts into it.
 - **There is no spec-compiler or qa-adversary node.** A
   **baseline-analyzer** node runs before \`dev\` and its output is available
   to subsequent nodes.

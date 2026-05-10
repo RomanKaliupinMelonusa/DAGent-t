@@ -88,6 +88,11 @@ export interface RunState {
    * from here.
    */
   readonly kickoffDir: string;
+  /**
+   * Absolute path to the per-feature `.dagent/<slug>/` directory inside the
+   * app root. All run state (state.json, logs/, snapshots/) lives here.
+   */
+  readonly dagentDir: string;
   /** ISO timestamp. */
   readonly startedAt: string;
   /** Total cross-node failure-routing jumps consumed. */

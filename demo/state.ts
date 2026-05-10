@@ -1,40 +1,43 @@
 /**
- * state.ts — JSON persistence of RunState. No mutation behind the scenes;
- * callers explicitly call `saveState` after every node attempt.
+ * state.ts — JSON persistence of RunState.
+ *
+ * All run artifacts (state.json, logs/, snapshots/) live under the app's
+ * `.dagent/<slug>/` directory — NOT under `demo/`. The `demo/` folder is
+ * the pipeline engine and must remain unmodified by run artifacts.
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { NodeId, NodeOutput, RunState } from "./types.ts";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RUNS_ROOT = path.resolve(__dirname, ".runs");
+// ---------------------------------------------------------------------------
+// Path helpers — all derive from RunState.dagentDir
+// ---------------------------------------------------------------------------
 
-export function runDir(slug: string): string {
-  return path.join(RUNS_ROOT, slug);
+export function logsDir(dagentDir: string): string {
+  return path.join(dagentDir, "logs");
 }
 
-export function logsDir(slug: string): string {
-  return path.join(runDir(slug), "logs");
+export function snapshotsDir(dagentDir: string): string {
+  return path.join(dagentDir, "snapshots");
 }
 
-export function snapshotsDir(slug: string): string {
-  return path.join(runDir(slug), "snapshots");
+export function statePath(dagentDir: string): string {
+  return path.join(dagentDir, "state.json");
 }
 
-export function statePath(slug: string): string {
-  return path.join(runDir(slug), "state.json");
+export function ensureRunDirs(dagentDir: string): void {
+  fs.mkdirSync(logsDir(dagentDir), { recursive: true });
+  fs.mkdirSync(snapshotsDir(dagentDir), { recursive: true });
 }
 
-export function ensureRunDirs(slug: string): void {
-  fs.mkdirSync(logsDir(slug), { recursive: true });
-  fs.mkdirSync(snapshotsDir(slug), { recursive: true });
-}
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
 
 export function saveState(state: RunState): void {
-  ensureRunDirs(state.slug);
-  fs.writeFileSync(statePath(state.slug), JSON.stringify(state, null, 2));
+  ensureRunDirs(state.dagentDir);
+  fs.writeFileSync(statePath(state.dagentDir), JSON.stringify(state, null, 2));
 }
 
 /**
@@ -42,7 +45,7 @@ export function saveState(state: RunState): void {
  * Files named `00-<nodeId>.json`, `01-<nodeId>.json`, ... in order of completion.
  */
 export function snapshotNode(state: RunState, nodeId: NodeId): void {
-  const dir = snapshotsDir(state.slug);
+  const dir = snapshotsDir(state.dagentDir);
   fs.mkdirSync(dir, { recursive: true });
   const idx = fs.readdirSync(dir).length;
   const seq = String(idx).padStart(2, "0");
@@ -53,8 +56,16 @@ export function snapshotNode(state: RunState, nodeId: NodeId): void {
   );
 }
 
-export function loadState(slug: string): RunState | null {
-  const p = statePath(slug);
+/**
+ * Resolve the dagentDir for a given app + slug pair. Used during init
+ * and resume before a full RunState exists.
+ */
+export function resolveDagentDir(repoRoot: string, app: string, slug: string): string {
+  return path.join(repoRoot, app, ".dagent", slug);
+}
+
+export function loadState(dagentDir: string): RunState | null {
+  const p = statePath(dagentDir);
   if (!fs.existsSync(p)) return null;
   return JSON.parse(fs.readFileSync(p, "utf-8")) as RunState;
 }
