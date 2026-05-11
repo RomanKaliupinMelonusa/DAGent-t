@@ -34,11 +34,6 @@ commerceAPI: {
 }
 ```
 
-### Cognitive Telemetry
-
-- When you make an architectural decision, pivot your approach, or discover a bug, you **MUST** state your intent clearly.
-- Use the `report_intent` tool or prepend `Intent: ` to your message.
-
 ## Self-Mutating Validation Hooks (MANDATORY)
 
 The pipeline validates deployments by executing bash hook scripts in `.apm/hooks/`. These scripts are **self-mutating** — when you create new routes or pages, you MUST append a lightweight validation check:

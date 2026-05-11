@@ -118,23 +118,27 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
    not re-investigate from scratch. The handoff does **not** filter
    baseline noise — read `inputs/baseline.json` separately (see
    "Pre-Feature Baseline" below) and subtract those patterns yourself.
-2. **Trace the root cause** using the e2e-runner log output, the
-   implementation source code, and roam-code. Prefer `roam_trace` and
+2. **Reproduce the failure** in a real browser via the Playwright MCP.
+   - Launch the already-running dev server at `http://localhost:3000` (the
+     node's `pre:` hook guarantees it is up).
+   - Navigate to the exact page / open the exact modal the triage handoff
+     names. Watch the browser console and network panel.
+   - Capture the smallest repro you can — a single click, a single route,
+     a single hydration pass. Record the repro steps in
+     `$OUTPUTS_DIR/debug-notes.md` (your declared `debug-notes` output —
+     MUST start with the YAML front-matter envelope, see the global
+     completion block for the canonical form).
+3. **Trace the root cause** with roam-code. Prefer `roam_trace` and
    `roam_deps` over broad `grep_search` — you need the call graph, not
-   keyword matches. Record your diagnosis in
-   `$OUTPUTS_DIR/debug-notes.md` (your declared `debug-notes` output —
-   MUST start with the YAML front-matter envelope, see the global
-   completion block for the canonical form).
-3. **Apply the minimum diff** in `app/`, `config/`, `worker/`, or
+   keyword matches.
+4. **Apply the minimum diff** in `app/`, `config/`, `worker/`, or
    `translations/`. Do not refactor, rename, or "improve" surrounding code.
-4. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
-5. `report_outcome` completed with `fault_domain: "code-defect"`. The DAG
+5. **Verify the fix** by re-running the exact failing scenario via the
+   Playwright MCP against the live dev server. Only when the MCP run is
+   green do you commit.
+6. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
+7. `report_outcome` completed with `fault_domain: "code-defect"`. The DAG
    will automatically re-run `e2e-author`, `e2e-runner` downstream of you.
-
-**Do NOT run E2E tests yourself.** Do not start the dev server, do not
-run `npx playwright test`, do not use the Playwright MCP for verification.
-The `e2e-runner` node exists specifically for test execution and will run
-automatically after your fix. Your job is diagnosis and patching only.
 
 ## Fault Domain Classification
 
@@ -237,13 +241,17 @@ If the orchestrator rejects the hint (validation error returned inline
 as the tool's response), fix the offending field and call
 `report_outcome` again — the last call wins.
 
-## Do NOT Run Tests Yourself
+## Re-running the Failing Scenario
 
-Do not run E2E tests, start the dev server, or use the Playwright MCP
-for verification. The `e2e-runner` node handles test execution and runs
-automatically after your fix via the `onSuccess → e2e-author → e2e-runner`
-routing. Focus exclusively on reading logs, diagnosing, patching, and
-calling `report_outcome`.
+Use the Playwright MCP for interactive verification. For CLI confirmation:
+
+```bash
+cd {{appRoot}} && npx playwright test e2e/{{featureSlug}}.spec.ts --workers=1 --max-failures=1
+```
+
+If the MCP run is green but the CLI run still fails, the test itself is
+probably wrong (timing, selectors). Report failure with
+`fault_domain: test-code` rather than chasing ghosts.
 
 ## SSR / Hydration Recipe
 
@@ -360,11 +368,6 @@ commerceAPI: {
   }
 }
 ```
-
-### Cognitive Telemetry
-
-- When you make an architectural decision, pivot your approach, or discover a bug, you **MUST** state your intent clearly.
-- Use the `report_intent` tool or prepend `Intent: ` to your message.
 
 ## Self-Mutating Validation Hooks (MANDATORY)
 

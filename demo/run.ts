@@ -38,6 +38,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const MAX_JUMPS = 5;
 
+/**
+ * Check whether the just-completed node left any meaningful working-tree
+ * changes (staged or unstaged) within its `allowedWritePaths`. Files
+ * under `.dagent/` are excluded — those are pipeline bookkeeping, not
+ * source changes that warrant a re-validation loop.
+ */
+function hasNodeChangedFiles(node: NodeDef, state: RunState): boolean {
+  const appRoot = path.resolve(REPO_ROOT, state.app);
+  try {
+    const raw = execSync("git status --porcelain", {
+      cwd: appRoot,
+      encoding: "utf-8",
+    }).trim();
+    if (!raw) return false;
+    const changedPaths = raw
+      .split("\n")
+      .map((line) => line.slice(3)) // strip XY + space prefix
+      .filter((p) => !p.startsWith(".dagent/"));
+    if (changedPaths.length === 0) return false;
+    if (!node.allowedWritePaths || node.allowedWritePaths.length === 0) {
+      return changedPaths.length > 0;
+    }
+    const patterns = node.allowedWritePaths.map((p) => new RegExp(p));
+    return changedPaths.some((f) => patterns.some((re) => re.test(f)));
+  } catch {
+    // If git fails, assume files changed to avoid skipping valid work.
+    return true;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -294,7 +324,12 @@ async function runMainLoop(
       await executeNode(node, state);
       if (node.onSuccess) {
         const target = findIndex(MAIN_NODES, node.onSuccess);
-        if (target < i && state.jumps < MAX_JUMPS) {
+        if (target < i && !hasNodeChangedFiles(node, state)) {
+          // No meaningful file changes — skip the backward jump to avoid
+          // a wasteful re-validation cycle.
+          console.log(`[run] ⤳ ${node.id} completed with no file changes — skipping onSuccess jump`);
+          i = i + 1;
+        } else if (target < i && state.jumps < MAX_JUMPS) {
           // Backward success jump (e.g. storefront-debug → unit-test). Re-validate
           // by clearing the segment [target, i] so it actually re-runs.
           state.jumps++;

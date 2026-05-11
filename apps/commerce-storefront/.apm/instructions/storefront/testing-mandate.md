@@ -30,6 +30,17 @@ jest.mock('@salesforce/commerce-sdk-react', () => ({
 }));
 ```
 
+### SSR & Hydration Test Patterns
+
+When testing components that use the isMounted/hydration-gating pattern:
+
+1. **Never mock `useState`** when Chakra UI components are in the render tree — Chakra's internal hooks share the same `useState` import and will break.
+2. **To test SSR output** (pre-hydration), use `ReactDOMServer.renderToString(<Component />)` wrapped in the necessary providers. Assert that hydration-gated elements are NOT in the SSR output.
+3. **To test hydrated output**, render normally with `@testing-library/react`'s `render()` — `useEffect` fires synchronously in JSDOM, so `isMounted` will be `true` after render.
+4. **Chakra Modal Escape key**: fire `Escape` on the modal overlay element (`getByRole('dialog')`), NOT on `document`. Chakra attaches the keydown listener to the modal container, not the document.
+5. **jest-dom matchers**: import `@testing-library/jest-dom` in your test setup or at the top of each test file.
+6. **Scoping `let` for Jest**: When using `let` variables toggled inside `beforeEach`, declare them at the `describe` block scope, not inside `beforeEach`. Jest hoists `jest.mock()` above imports but not above `let` declarations in the same scope.
+
 ### Playwright E2E Tests
 
 E2E tests live in `e2e/` and run against the local dev server (`http://localhost:3000`).

@@ -47,6 +47,15 @@ description: "Storefront React developer building commerce pages and components 
 You are a React developer specializing in Salesforce PWA Kit storefronts.
 You build commerce pages, components, and flows using Chakra UI and commerce-sdk-react hooks.
 
+### Critical SSR Rule (read before writing any code)
+
+**NEVER access `window`, `document`, `navigator`, `localStorage`, `sessionStorage`, or any browser-only API in component render bodies or module scope.** These objects do not exist during SSR and will crash the server.
+
+- In React components: use ONLY inside `useEffect()` callbacks or behind `typeof window !== 'undefined'` guards.
+- In utility modules: export functions that accept values as parameters instead of reading globals.
+- **Specific banned patterns in render scope:** `window.getComputedStyle()`, `document.querySelector()`, `window.location` (use `useLocation()` hook instead), `navigator.userAgent`.
+- If you need computed styles or DOM measurements, use a `useEffect` + `useRef` pattern.
+
 > **⚠ Artifact paths — READ FIRST.**
 >
 > The **task prompt** injected above this file contains a `**Declared Inputs / Outputs (from \`workflows.yml\`):**` block with the **concrete on-disk paths for this invocation**. That block is the **only** authoritative source of artifact paths.
@@ -294,11 +303,6 @@ commerceAPI: {
   }
 }
 ```
-
-### Cognitive Telemetry
-
-- When you make an architectural decision, pivot your approach, or discover a bug, you **MUST** state your intent clearly.
-- Use the `report_intent` tool or prepend `Intent: ` to your message.
 
 ## Self-Mutating Validation Hooks (MANDATORY)
 
@@ -831,6 +835,17 @@ jest.mock('@salesforce/commerce-sdk-react', () => ({
   // ... other hooks
 }));
 ```
+
+### SSR & Hydration Test Patterns
+
+When testing components that use the isMounted/hydration-gating pattern:
+
+1. **Never mock `useState`** when Chakra UI components are in the render tree — Chakra's internal hooks share the same `useState` import and will break.
+2. **To test SSR output** (pre-hydration), use `ReactDOMServer.renderToString(<Component />)` wrapped in the necessary providers. Assert that hydration-gated elements are NOT in the SSR output.
+3. **To test hydrated output**, render normally with `@testing-library/react`'s `render()` — `useEffect` fires synchronously in JSDOM, so `isMounted` will be `true` after render.
+4. **Chakra Modal Escape key**: fire `Escape` on the modal overlay element (`getByRole('dialog')`), NOT on `document`. Chakra attaches the keydown listener to the modal container, not the document.
+5. **jest-dom matchers**: import `@testing-library/jest-dom` in your test setup or at the top of each test file.
+6. **Scoping `let` for Jest**: When using `let` variables toggled inside `beforeEach`, declare them at the `describe` block scope, not inside `beforeEach`. Jest hoists `jest.mock()` above imports but not above `let` declarations in the same scope.
 
 ### Playwright E2E Tests
 
