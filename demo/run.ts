@@ -114,7 +114,14 @@ function initState(args: CliArgs): RunState {
       throw new Error(`Spec folder missing required file '${required}': ${specFolderPath}`);
     }
   }
-  const featureBranch = `feature/${args.slug}`;
+  // Read the current branch — speckit owns branch creation, the pipeline
+  // works on whatever branch is already checked out.
+  const featureBranch = execSync("git branch --show-current", {
+    cwd: REPO_ROOT, encoding: "utf-8",
+  }).trim();
+  if (!featureBranch) {
+    throw new Error("Detached HEAD — the pipeline requires a named branch (created by speckit).");
+  }
   const appRoot = path.resolve(REPO_ROOT, args.app);
   const dagentDir = resolveDagentDir(REPO_ROOT, args.app, args.slug);
   const kickoffDir = path.join(dagentDir, "_kickoff");
@@ -134,7 +141,7 @@ function initState(args: CliArgs): RunState {
 }
 
 // ---------------------------------------------------------------------------
-// Branch setup — shells out to the existing repo wrapper.
+// Spec staging
 // ---------------------------------------------------------------------------
 
 /**
@@ -158,27 +165,6 @@ function stageSpec(state: RunState): void {
       APP_ROOT: path.resolve(REPO_ROOT, state.app),
       SLUG: state.slug,
     },
-    stdio: "inherit",
-  });
-}
-
-function ensureFeatureBranch(state: RunState): void {
-  const wrapper = path.join(REPO_ROOT, "demo", "scripts", "agent-branch.sh");
-  if (!fs.existsSync(wrapper)) {
-    console.warn(`[run] WARN: ${wrapper} not present — creating branch with raw git.`);
-    try {
-      execSync(`git checkout -B ${state.featureBranch} ${state.baseBranch}`, {
-        cwd: REPO_ROOT, stdio: "inherit",
-      });
-    } catch (err) {
-      throw new Error(`Failed to create branch: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    return;
-  }
-  console.log(`[run] creating branch ${state.featureBranch} off ${state.baseBranch}`);
-  execSync(`bash ${wrapper} create-feature ${state.slug}`, {
-    cwd: REPO_ROOT,
-    env: { ...process.env, BASE_BRANCH: state.baseBranch, APP_ROOT: path.resolve(REPO_ROOT, state.app) },
     stdio: "inherit",
   });
 }
@@ -613,9 +599,6 @@ async function main(): Promise<void> {
   saveState(state);
 
   if (!args.resume) {
-    // Branch creation is owned by spec-kit (/speckit.git.feature).
-    // The pipeline assumes it starts on the correct feature/<slug> branch.
-    // ensureFeatureBranch(state);
     stageSpec(state);
   } else {
     // Re-stage on resume too — cheap, idempotent, and protects against

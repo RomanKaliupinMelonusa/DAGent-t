@@ -31,7 +31,7 @@ const SAFE_READ_TOOLS = new Set([
   "roam_syntax_check", "roam_expand_toolset",
 ]);
 
-const SAFE_MCP_PREFIXES = ["roam_", "playwright_"];
+const SAFE_MCP_PREFIXES = ["roam_", "playwright_", "playwright-"];
 
 /** Tools defined via defineTool that enforce their own RBAC in-handler. */
 const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "shell", "report_outcome"]);
