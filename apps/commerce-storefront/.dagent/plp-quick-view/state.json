@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-11T03:50:28.866Z",
-  "jumps": 0,
+  "jumps": 1,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -267,6 +267,85 @@
         "escalations": [],
         "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/snapshots/summary.md"
       }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T04:12:19.364Z",
+          "endedAt": "2026-05-11T04:17:19.185Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+        "flows_authored": [
+          "E2E-001: open-quick-view-from-tile",
+          "E2E-002: switch-color-swatch-in-quick-view",
+          "E2E-003: add-to-bag-from-quick-view",
+          "E2E-004: close-quick-view-restores-focus (3 dismiss paths: Escape, close button, overlay)",
+          "E2E-005: no-pickup-ui-in-quick-view (negative)",
+          "E2E-006: add-to-bag-disabled-when-unavailable",
+          "E2E-007: view-full-details-link",
+          "E2E-008: tile-click-still-navigates-to-pdp (regression)"
+        ],
+        "test_count": 10,
+        "baseline_noise_patterns": 5,
+        "testids_used": [
+          "quick-view-trigger-{productId}",
+          "quick-view-modal",
+          "quick-view-modal-error",
+          "quick-view-add-to-cart-btn",
+          "quick-view-view-full-details-link",
+          "product-view",
+          "add-to-cart-modal",
+          "product-added",
+          "product-tile-image"
+        ],
+        "self_review_checks": {
+          "networkidle": "PASS",
+          "waitForTimeout": "PASS",
+          "anti_tautology_titles": "PASS",
+          "consoleErrors_assertions": "PASS",
+          "dismissOverlays": "PASS",
+          "awaitHydrated": "PASS"
+        },
+        "skippable_flows": [
+          "E2E-002 (if <2 swatches)",
+          "E2E-006 (if no OOS variant discoverable)"
+        ],
+        "commit": "test(e2e): add PLP Quick View modal E2E tests (flows E2E-001 through E2E-008)"
+      }
+    },
+    "e2e-runner": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T04:17:19.207Z",
+          "endedAt": "2026-05-11T04:18:01.389Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        }
+      ],
+      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+    },
+    "storefront-debug": {
+      "status": "running",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T04:18:01.406Z",
+          "endedAt": "2026-05-11T04:43:03.296Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        }
+      ],
+      "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
     }
   },
   "history": [
@@ -298,6 +377,38 @@
         "endedAt": "2026-05-11T04:12:19.325Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:12:19.364Z",
+        "endedAt": "2026-05-11T04:17:19.185Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:17:19.207Z",
+        "endedAt": "2026-05-11T04:18:01.389Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:18:01.406Z",
+        "endedAt": "2026-05-11T04:43:03.296Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
       }
     }
   ],

@@ -1,8 +1,10 @@
 /*
  * QuickViewModalShell — gated Chakra Modal with ErrorBoundary.
  *
- * Renders `null` when the Quick View is closed so the body's commerce hooks
- * (useProductViewModal, basket mutations) never fire during SSR or while idle.
+ * Uses Chakra's `isOpen` prop to control visibility so the Modal's portal
+ * cleanup runs correctly on close. The body is gated on `isOpen && openProduct`
+ * so commerce hooks (useProductViewModal, basket mutations) never fire during
+ * SSR or while the modal is closed.
  */
 import React from 'react'
 import {useIntl} from 'react-intl'
@@ -32,11 +34,11 @@ const ErrorFallback = () => {
 const QuickViewModalShell = () => {
     const {isOpen, openProduct, closeQuickView} = useQuickView()
 
-    if (!isOpen || !openProduct) return null
+    const shouldShow = isOpen && !!openProduct
 
     return (
         <Modal
-            isOpen
+            isOpen={shouldShow}
             onClose={closeQuickView}
             size={{base: 'full', lg: '5xl'}}
             isCentered
@@ -50,7 +52,7 @@ const QuickViewModalShell = () => {
                 <ModalCloseButton />
                 <ModalBody p={{base: 4, lg: 8}}>
                     <ErrorBoundary FallbackComponent={ErrorFallback}>
-                        <QuickViewModalBody />
+                        {shouldShow && <QuickViewModalBody />}
                     </ErrorBoundary>
                 </ModalBody>
             </ModalContent>
