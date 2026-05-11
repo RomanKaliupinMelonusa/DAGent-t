@@ -1,20 +1,22 @@
 /*
- * App Shell Override — wraps the base PWA Kit App component to expose a
- * deterministic hydration signal for E2E tests.
+ * App Shell Override — wraps the base PWA Kit App component to:
+ * 1. Expose a deterministic hydration signal (`window.__APP_HYDRATED__`) for E2E tests.
+ * 2. Mount the QuickViewProvider (+ its singleton modal shell) inside the BaseApp
+ *    provider chain so the Quick View context, modal, and all commerce hooks
+ *    (useAddToCartModalContext, useCurrentBasket, etc.) are available.
  *
- * Why: Playwright specs that click SSR-rendered buttons before React has
- * attached its event handlers race with hydration and time out silently.
- * By flipping `window.__APP_HYDRATED__ = true` from a single useEffect
- * after the first client-side mount, specs can gate first interaction on
- * `awaitHydrated(page)` (see `e2e/fixtures.ts`).
+ * The QuickViewProvider wraps the route children so it sits INSIDE the commerce
+ * SDK providers (CommerceApiProvider, AddToCartModalProvider, etc.) that BaseApp
+ * provides. This ensures the modal body's hooks have access to the required context.
  *
- * The flag is set exactly once, guarded by `typeof window !== 'undefined'`
- * so SSR is unaffected. Static surface (`getProps`, `getTemplateName`,
- * `propTypes`, `displayName`) is forwarded from the base component so the
- * PWA Kit SSR runtime continues to discover route-level data fetchers.
+ * Static surface (getProps, getTemplateName, propTypes, displayName) is forwarded
+ * from the base component so the PWA Kit SSR runtime continues to discover
+ * route-level data fetchers.
  */
 import React, {useEffect} from 'react'
 import BaseApp from '@salesforce/retail-react-app/app/components/_app'
+import {QuickViewProvider} from '../quick-view-modal/context'
+import QuickViewModalShell from '../quick-view-modal/modal-shell'
 
 const App = (props) => {
     useEffect(() => {
@@ -23,7 +25,19 @@ const App = (props) => {
         }
     }, [])
 
-    return <BaseApp {...props} />
+    // Wrap the route children with QuickViewProvider so it sits inside
+    // BaseApp's AddToCartModalProvider. The modal shell is a singleton
+    // mounted alongside the children — it renders nothing when closed.
+    const {children, ...rest} = props
+
+    return (
+        <BaseApp {...rest}>
+            <QuickViewProvider>
+                {children}
+                <QuickViewModalShell />
+            </QuickViewProvider>
+        </BaseApp>
+    )
 }
 
 App.getProps = BaseApp.getProps
