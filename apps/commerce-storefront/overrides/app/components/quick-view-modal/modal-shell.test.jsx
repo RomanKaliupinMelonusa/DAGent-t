@@ -55,8 +55,8 @@ jest.mock('@salesforce/retail-react-app/app/components/shared/ui', () => {
         ModalOverlay: function MockOverlay() {
             return R.createElement('div', {'data-testid': 'modal-overlay'})
         },
-        ModalContent: function MockContent({children, 'data-testid': testId, ...rest}) {
-            return R.createElement('div', {'data-testid': testId, ...rest}, children)
+        ModalContent: function MockContent({children, 'data-testid': testId, 'aria-labelledby': ariaLabelledBy, ...rest}) {
+            return R.createElement('div', {'data-testid': testId, 'aria-labelledby': ariaLabelledBy}, children)
         },
         ModalCloseButton: function MockCloseButton() {
             return R.createElement('button', {

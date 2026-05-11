@@ -155,6 +155,20 @@
         "implementation_status_path": "apps/commerce-storefront/.dagent/plp-quick-view/implementation-status.json",
         "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/summary.md"
       }
+    },
+    "unit-test": {
+      "status": "running",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T20:41:58.113Z",
+          "endedAt": "2026-05-11T20:57:00.102Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 900000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+        }
+      ],
+      "errorSummary": "Session error: Timeout after 900000ms waiting for session.idle"
     }
   },
   "history": [
@@ -176,6 +190,17 @@
         "endedAt": "2026-05-11T20:41:58.102Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/dev.1.log"
+      }
+    },
+    {
+      "nodeId": "unit-test",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T20:41:58.113Z",
+        "endedAt": "2026-05-11T20:57:00.102Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 900000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
       }
     }
   ],
