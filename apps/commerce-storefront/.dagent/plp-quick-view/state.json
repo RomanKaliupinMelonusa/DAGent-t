@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-11T02:21:32.133Z",
-  "jumps": 0,
+  "jumps": 3,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -237,6 +237,131 @@
         ],
         "console_warnings": "React DOM warning about non-standard attributes passed to HTML elements (from mocked Chakra components) — benign, does not affect test validity."
       }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T02:41:22.809Z",
+          "endedAt": "2026-05-11T02:44:48.220Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T02:57:01.903Z",
+          "endedAt": "2026-05-11T03:00:11.612Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "fixes_applied": [
+          {
+            "bug": "Bug 1 — Incomplete BASELINE_NOISE_PATTERNS",
+            "tests_affected": [
+              "E2E-002",
+              "E2E-003"
+            ],
+            "fix": "Added 3 new patterns to BASELINE_NOISE_PATTERNS: (1) /Failed to load resource: the server responded with a status of 403 (Forbidden)/ — browser companion to the already-filtered 'r: 403 Forbidden'; (2) /Failed to load resource: the server responded with a status of 400/ — sandbox shopper-customers API 400s; (3) /r: 400 Bad Request/ — SDK error log for the same 400s."
+          },
+          {
+            "bug": "Bug 2 — Wrong selector for tile image click in E2E-008",
+            "tests_affected": [
+              "E2E-008"
+            ],
+            "fix": "Changed selector from 'a img, a picture, a' (which found nothing because sf-product-tile-{id} IS the <a> element itself) to 'img' directly inside the tile locator: firstTile.locator('img').first().click()."
+          }
+        ],
+        "passing_tests_preserved": [
+          "E2E-001",
+          "E2E-004a",
+          "E2E-004b",
+          "E2E-004c",
+          "E2E-005",
+          "E2E-006",
+          "E2E-007"
+        ],
+        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts"
+      }
+    },
+    "e2e-runner": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T02:44:48.227Z",
+          "endedAt": "2026-05-11T02:46:45.721Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T03:00:11.620Z",
+          "endedAt": "2026-05-11T03:01:00.250Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        }
+      ],
+      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+    },
+    "storefront-debug": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T02:46:45.729Z",
+          "endedAt": "2026-05-11T02:57:01.893Z",
+          "status": "failed",
+          "errorSummary": "3 test-code bugs found after fixing server crash (dev server restarted successfully — 7/10 tests now pass). The 3 remaining failures are all in e2e/plp-quick-view.spec.ts:\n\nBug 1 (E2E-002 line ~133, E2E-003 line ~133): BASELINE_NOISE_PATTERNS is missing patterns for pre-existing sandbox noise: (a) 'Failed to load resource: the server responded with a status of 403 (Forbidden)' — the browser's resource-failure message companion to the already-filtered 'r: 403 Forbidden'; (b) '400 Bad Request' errors from shopper-customers API (guest users hitting /customers/{id}/baskets and /product-lists get 400 in sandbox). Fix: add /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS.\n\nBug 2 (E2E-008 line 405-406): Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} IS on the <a> element itself (base ProductTile spreads {...rest} onto its root <Link>). Looking for 'a' inside 'a' matches nothing. Fix: use firstTile.locator('img').first().click() or firstTile.click() directly.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        }
+      ],
+      "errorSummary": "3 test-code bugs found after fixing server crash (dev server restarted successfully — 7/10 tests now pass). The 3 remaining failures are all in e2e/plp-quick-view.spec.ts:\n\nBug 1 (E2E-002 line ~133, E2E-003 line ~133): BASELINE_NOISE_PATTERNS is missing patterns for pre-existing sandbox noise: (a) 'Failed to load resource: the server responded with a status of 403 (Forbidden)' — the browser's resource-failure message companion to the already-filtered 'r: 403 Forbidden'; (b) '400 Bad Request' errors from shopper-customers API (guest users hitting /customers/{id}/baskets and /product-lists get 400 in sandbox). Fix: add /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS.\n\nBug 2 (E2E-008 line 405-406): Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} IS on the <a> element itself (base ProductTile spreads {...rest} onto its root <Link>). Looking for 'a' inside 'a' matches nothing. Fix: use firstTile.locator('img').first().click() or firstTile.click() directly.",
+      "result": {
+        "bugs": [
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 20,
+            "issue": "BASELINE_NOISE_PATTERNS missing pattern for browser 'Failed to load resource: the server responded with a status of 403 (Forbidden)' message (distinct from SDK 'r: 403 Forbidden' which is already filtered)",
+            "fix": "Add /Failed to load resource: the server responded with a status of 40[03]/ to BASELINE_NOISE_PATTERNS array"
+          },
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 20,
+            "issue": "BASELINE_NOISE_PATTERNS missing pattern for 'r: 400 Bad Request' errors from shopper-customers sandbox API (pre-existing noise for guest users)",
+            "fix": "Add /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS array"
+          },
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 405,
+            "issue": "Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} testid IS on the <a> element (base ProductTile spreads {...rest} onto root <Link>), so looking for <a> inside <a> matches nothing",
+            "fix": "Replace line 405 with: const tileImage = firstTile.locator('img').first(); — or simply use firstTile.click() since firstTile IS the <a> link"
+          }
+        ],
+        "server_fix_applied": "Restarted dev server (was crash-killed with missing build/loadable-stats.json). Server now returns 200 on PLP.",
+        "tests_passing": [
+          "E2E-001",
+          "E2E-004a",
+          "E2E-004b",
+          "E2E-004c",
+          "E2E-005",
+          "E2E-006",
+          "E2E-007"
+        ],
+        "tests_failing": [
+          "E2E-002",
+          "E2E-003",
+          "E2E-008"
+        ],
+        "tests_skipped": [
+          "E2E-002 (conditionally, when <2 swatches)"
+        ],
+        "debug_notes_path": "apps/commerce-storefront/.dagent/plp-quick-view/debug-notes.md"
+      }
     }
   },
   "history": [
@@ -269,7 +394,61 @@
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
       }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:41:22.809Z",
+        "endedAt": "2026-05-11T02:44:48.220Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:44:48.227Z",
+        "endedAt": "2026-05-11T02:46:45.721Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:46:45.729Z",
+        "endedAt": "2026-05-11T02:57:01.893Z",
+        "status": "failed",
+        "errorSummary": "3 test-code bugs found after fixing server crash (dev server restarted successfully — 7/10 tests now pass). The 3 remaining failures are all in e2e/plp-quick-view.spec.ts:\n\nBug 1 (E2E-002 line ~133, E2E-003 line ~133): BASELINE_NOISE_PATTERNS is missing patterns for pre-existing sandbox noise: (a) 'Failed to load resource: the server responded with a status of 403 (Forbidden)' — the browser's resource-failure message companion to the already-filtered 'r: 403 Forbidden'; (b) '400 Bad Request' errors from shopper-customers API (guest users hitting /customers/{id}/baskets and /product-lists get 400 in sandbox). Fix: add /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS.\n\nBug 2 (E2E-008 line 405-406): Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} IS on the <a> element itself (base ProductTile spreads {...rest} onto its root <Link>). Looking for 'a' inside 'a' matches nothing. Fix: use firstTile.locator('img').first().click() or firstTile.click() directly.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:57:01.903Z",
+        "endedAt": "2026-05-11T03:00:11.612Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T03:00:11.620Z",
+        "endedAt": "2026-05-11T03:01:00.250Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
     }
   ],
-  "devServerPort": 3000
+  "devServerPort": 3000,
+  "_failureSource": "e2e-runner"
 }

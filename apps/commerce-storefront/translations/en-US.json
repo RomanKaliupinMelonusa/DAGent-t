@@ -559,6 +559,21 @@
   "colorRefinements.label.hitCount": {
     "defaultMessage": "{colorLabel} ({colorHitCount})"
   },
+  "commerce-storefront.quickView.closeLabel": {
+    "defaultMessage": "Close quick view"
+  },
+  "commerce-storefront.quickView.errorFallback": {
+    "defaultMessage": "Unable to load product details. Please try again."
+  },
+  "commerce-storefront.quickView.triggerAriaLabelMobile": {
+    "defaultMessage": "Quick view {productName}"
+  },
+  "commerce-storefront.quickView.triggerLabel": {
+    "defaultMessage": "Quick View"
+  },
+  "commerce-storefront.quickView.viewFullDetailsLabel": {
+    "defaultMessage": "View Full Details"
+  },
   "confirmation_modal.default.action.no": {
     "defaultMessage": "No"
   },

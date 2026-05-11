@@ -1,0 +1,59 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:41:22.809Z",
+        "endedAt": "2026-05-11T02:44:48.220Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: open-quick-view-from-tile",
+        "E2E-002: switch-color-swatch-in-quick-view",
+        "E2E-003: add-to-bag-from-quick-view",
+        "E2E-004a: close-quick-view-restores-focus (Escape)",
+        "E2E-004b: close-quick-view-restores-focus (close button)",
+        "E2E-004c: close-quick-view-restores-focus (overlay click)",
+        "E2E-005: no-pickup-ui-in-quick-view (negative)",
+        "E2E-006: add-to-bag-disabled-when-unavailable",
+        "E2E-007: view-full-details-link",
+        "E2E-008: tile-click-still-navigates-to-pdp (regression)"
+      ],
+      "total_test_cases": 10,
+      "baseline_noise_patterns_count": 5,
+      "testids_used": [
+        "quick-view-trigger-{productId} (prefix match)",
+        "quick-view-modal",
+        "quick-view-modal-error",
+        "quick-view-add-to-cart-btn",
+        "quick-view-view-full-details-link",
+        "product-view",
+        "add-to-cart-modal",
+        "product-added",
+        "pickup-select-store-msg",
+        "store-stock-status-msg",
+        "sf-product-tile-{productId} (prefix match)"
+      ],
+      "self_review_checks_passed": [
+        "no networkidle usage",
+        "no waitForTimeout usage",
+        "no tautological test titles",
+        "consoleErrors asserted in every test",
+        "dismissOverlays called after page.goto",
+        "awaitHydrated called after page.goto",
+        "no 'or' locator fallbacks"
+      ],
+      "skippable_flows": [
+        "E2E-002: skipped if < 2 color swatches on first tile",
+        "E2E-003: skipped if no in-stock variation available",
+        "E2E-006: skipped if first tile is a simple product (no unselected variations)"
+      ]
+    }
+  }
+}

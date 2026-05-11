@@ -1475,6 +1475,40 @@
       "value": ")"
     }
   ],
+  "commerce-storefront.quickView.closeLabel": [
+    {
+      "type": 0,
+      "value": "Close quick view"
+    }
+  ],
+  "commerce-storefront.quickView.errorFallback": [
+    {
+      "type": 0,
+      "value": "Unable to load product details. Please try again."
+    }
+  ],
+  "commerce-storefront.quickView.triggerAriaLabelMobile": [
+    {
+      "type": 0,
+      "value": "Quick view "
+    },
+    {
+      "type": 1,
+      "value": "productName"
+    }
+  ],
+  "commerce-storefront.quickView.triggerLabel": [
+    {
+      "type": 0,
+      "value": "Quick View"
+    }
+  ],
+  "commerce-storefront.quickView.viewFullDetailsLabel": [
+    {
+      "type": 0,
+      "value": "View Full Details"
+    }
+  ],
   "confirmation_modal.default.action.no": [
     {
       "type": 0,

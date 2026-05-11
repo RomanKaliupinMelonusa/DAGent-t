@@ -1,0 +1,51 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:41:22.809Z",
+        "endedAt": "2026-05-11T02:44:48.220Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:57:01.903Z",
+        "endedAt": "2026-05-11T03:00:11.612Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "fixes_applied": [
+        {
+          "bug": "Bug 1 — Incomplete BASELINE_NOISE_PATTERNS",
+          "tests_affected": [
+            "E2E-002",
+            "E2E-003"
+          ],
+          "fix": "Added 3 new patterns to BASELINE_NOISE_PATTERNS: (1) /Failed to load resource: the server responded with a status of 403 (Forbidden)/ — browser companion to the already-filtered 'r: 403 Forbidden'; (2) /Failed to load resource: the server responded with a status of 400/ — sandbox shopper-customers API 400s; (3) /r: 400 Bad Request/ — SDK error log for the same 400s."
+        },
+        {
+          "bug": "Bug 2 — Wrong selector for tile image click in E2E-008",
+          "tests_affected": [
+            "E2E-008"
+          ],
+          "fix": "Changed selector from 'a img, a picture, a' (which found nothing because sf-product-tile-{id} IS the <a> element itself) to 'img' directly inside the tile locator: firstTile.locator('img').first().click()."
+        }
+      ],
+      "passing_tests_preserved": [
+        "E2E-001",
+        "E2E-004a",
+        "E2E-004b",
+        "E2E-004c",
+        "E2E-005",
+        "E2E-006",
+        "E2E-007"
+      ],
+      "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts"
+    }
+  }
+}

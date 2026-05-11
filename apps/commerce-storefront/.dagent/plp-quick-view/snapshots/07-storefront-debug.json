@@ -1,0 +1,58 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:46:45.729Z",
+        "endedAt": "2026-05-11T02:57:01.893Z",
+        "status": "failed",
+        "errorSummary": "3 test-code bugs found after fixing server crash (dev server restarted successfully — 7/10 tests now pass). The 3 remaining failures are all in e2e/plp-quick-view.spec.ts:\n\nBug 1 (E2E-002 line ~133, E2E-003 line ~133): BASELINE_NOISE_PATTERNS is missing patterns for pre-existing sandbox noise: (a) 'Failed to load resource: the server responded with a status of 403 (Forbidden)' — the browser's resource-failure message companion to the already-filtered 'r: 403 Forbidden'; (b) '400 Bad Request' errors from shopper-customers API (guest users hitting /customers/{id}/baskets and /product-lists get 400 in sandbox). Fix: add /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS.\n\nBug 2 (E2E-008 line 405-406): Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} IS on the <a> element itself (base ProductTile spreads {...rest} onto its root <Link>). Looking for 'a' inside 'a' matches nothing. Fix: use firstTile.locator('img').first().click() or firstTile.click() directly.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    ],
+    "errorSummary": "3 test-code bugs found after fixing server crash (dev server restarted successfully — 7/10 tests now pass). The 3 remaining failures are all in e2e/plp-quick-view.spec.ts:\n\nBug 1 (E2E-002 line ~133, E2E-003 line ~133): BASELINE_NOISE_PATTERNS is missing patterns for pre-existing sandbox noise: (a) 'Failed to load resource: the server responded with a status of 403 (Forbidden)' — the browser's resource-failure message companion to the already-filtered 'r: 403 Forbidden'; (b) '400 Bad Request' errors from shopper-customers API (guest users hitting /customers/{id}/baskets and /product-lists get 400 in sandbox). Fix: add /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS.\n\nBug 2 (E2E-008 line 405-406): Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} IS on the <a> element itself (base ProductTile spreads {...rest} onto its root <Link>). Looking for 'a' inside 'a' matches nothing. Fix: use firstTile.locator('img').first().click() or firstTile.click() directly.",
+    "result": {
+      "bugs": [
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 20,
+          "issue": "BASELINE_NOISE_PATTERNS missing pattern for browser 'Failed to load resource: the server responded with a status of 403 (Forbidden)' message (distinct from SDK 'r: 403 Forbidden' which is already filtered)",
+          "fix": "Add /Failed to load resource: the server responded with a status of 40[03]/ to BASELINE_NOISE_PATTERNS array"
+        },
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 20,
+          "issue": "BASELINE_NOISE_PATTERNS missing pattern for 'r: 400 Bad Request' errors from shopper-customers sandbox API (pre-existing noise for guest users)",
+          "fix": "Add /r: 400 Bad Request/ to BASELINE_NOISE_PATTERNS array"
+        },
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 405,
+          "issue": "Selector 'a img, a picture, a' inside '[data-testid^=\"sf-product-tile-\"]' finds nothing because sf-product-tile-{id} testid IS on the <a> element (base ProductTile spreads {...rest} onto root <Link>), so looking for <a> inside <a> matches nothing",
+          "fix": "Replace line 405 with: const tileImage = firstTile.locator('img').first(); — or simply use firstTile.click() since firstTile IS the <a> link"
+        }
+      ],
+      "server_fix_applied": "Restarted dev server (was crash-killed with missing build/loadable-stats.json). Server now returns 200 on PLP.",
+      "tests_passing": [
+        "E2E-001",
+        "E2E-004a",
+        "E2E-004b",
+        "E2E-004c",
+        "E2E-005",
+        "E2E-006",
+        "E2E-007"
+      ],
+      "tests_failing": [
+        "E2E-002",
+        "E2E-003",
+        "E2E-008"
+      ],
+      "tests_skipped": [
+        "E2E-002 (conditionally, when <2 swatches)"
+      ],
+      "debug_notes_path": "apps/commerce-storefront/.dagent/plp-quick-view/debug-notes.md"
+    }
+  }
+}

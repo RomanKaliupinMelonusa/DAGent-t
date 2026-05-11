@@ -6,6 +6,9 @@
  * Wires a slim Add-to-Bag handler that delegates to the SDK basket mutations
  * and then closes QV + opens the global add-to-cart confirmation modal.
  *
+ * Uses useControlledVariations to manage variation state via React state (not URL params)
+ * so that swatch clicks update the modal instead of navigating away from the PLP.
+ *
  * See contracts/quick-view-modal.md §B for the binding contract.
  */
 import React, {useRef, useEffect, useCallback} from 'react'
@@ -21,6 +24,7 @@ import {
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
 import {useAddToCartModalContext} from '@salesforce/retail-react-app/app/hooks/use-add-to-cart-modal'
+import {useControlledVariations} from '@salesforce/retail-react-app/app/hooks/use-controlled-variations'
 import Link from '@salesforce/retail-react-app/app/components/link'
 import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
 import {useQuickView} from './context'
@@ -32,8 +36,12 @@ const QuickViewModalBody = () => {
     const addToCartModalContext = useAddToCartModalContext()
     const productViewRef = useRef(null)
 
+    // Manage variation state via React state (not URL params) since we're in a modal.
+    // This prevents swatch clicks from navigating away from the PLP.
+    const {controlledVariationValues, handleVariationChange} = useControlledVariations(openProduct)
+
     // Fetch full product detail on demand (only fires when the modal is open)
-    const {product, isFetching} = useProductViewModal(openProduct)
+    const {product, isFetching} = useProductViewModal(openProduct, controlledVariationValues)
 
     // Basket mutation helper handles basket create-or-add logic
     const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
@@ -74,6 +82,7 @@ const QuickViewModalBody = () => {
     // (we handle closing QV + opening the confirmation modal ourselves).
     const handleAddToCart = useCallback(
         async (productSelectionValues) => {
+            // Build the basket API payload — just productId + quantity
             const productItems = productSelectionValues.map((item) => {
                 const prod = item.variant || item.product
                 return {
@@ -84,15 +93,36 @@ const QuickViewModalBody = () => {
 
             await addItemToNewOrExistingBasket(productItems)
 
-            // Capture product data before closing the modal (which unmounts this component)
-            const currentProduct = product || openProduct
+            // Build the product object for the AddToCartModal.
+            // Ensure imageGroups is present — PLP search results (openProduct) always
+            // have imageGroups; variant-level useProduct responses may not.
+            const pvProduct = productSelectionValues[0]?.product
+            const fullProduct = {
+                ...(openProduct || {}),
+                ...(product || {}),
+                ...(pvProduct || {}),
+                imageGroups: pvProduct?.imageGroups || product?.imageGroups || openProduct?.imageGroups || []
+            }
+
+            // Build itemsAdded with full product/variant objects for AddToCartModal.
+            // AddToCartModal iterates itemsAdded and accesses product.imageGroups
+            // and variant.variationValues on each item.
+            const itemsAdded = productSelectionValues.map((item) => ({
+                product: {
+                    ...fullProduct,
+                    ...(item.product || {})
+                },
+                variant: item.variant || null,
+                quantity: item.quantity
+            }))
+
             const selectedQuantity = productSelectionValues[0]?.quantity || 1
 
             // Close Quick View and open global add-to-cart confirmation modal
             closeQuickView()
             addToCartModalContext.onOpen({
-                product: currentProduct,
-                itemsAdded: productItems,
+                product: fullProduct,
+                itemsAdded,
                 selectedQuantity
             })
 
@@ -122,6 +152,8 @@ const QuickViewModalBody = () => {
                 isLoading={isFetching}
                 isProductPartOfSet={false}
                 isProductPartOfBundle={false}
+                controlledVariationValues={controlledVariationValues}
+                onVariationChange={handleVariationChange}
             />
 
             <Divider my={4} />

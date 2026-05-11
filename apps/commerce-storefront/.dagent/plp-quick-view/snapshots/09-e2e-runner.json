@@ -1,0 +1,25 @@
+{
+  "nodeId": "e2e-runner",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:44:48.227Z",
+        "endedAt": "2026-05-11T02:46:45.721Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      },
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T03:00:11.620Z",
+        "endedAt": "2026-05-11T03:01:00.250Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    ],
+    "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+  }
+}
