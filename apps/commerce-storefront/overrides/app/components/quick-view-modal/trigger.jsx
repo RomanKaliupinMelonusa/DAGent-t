@@ -1,8 +1,10 @@
 /*
  * QuickViewTrigger — button overlay on product tiles that opens the Quick View modal.
  *
- * Uses the isMounted pattern to prevent interaction before hydration.
+ * Uses the isMounted pattern to prevent interaction before hydration (SSR safety).
  * Hidden for product sets and bundles (FR-014).
+ *
+ * Contract: contracts/quick-view-trigger.md
  */
 import React, {useState, useEffect} from 'react'
 import PropTypes from 'prop-types'
@@ -23,8 +25,7 @@ const QuickViewTrigger = ({product}) => {
         setMounted(true)
     }, [])
 
-    // PLP search hits usually expose `productId`, while detail responses expose `id`.
-    // Normalize so Quick View can be opened from either shape.
+    // PLP search hits expose `productId`; detail responses expose `id`. Normalize.
     const normalizedProductId = product?.id || product?.productId
     if (!normalizedProductId) return null
     if (product.type?.set || product.type?.bundle) return null
