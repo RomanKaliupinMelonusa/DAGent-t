@@ -1,0 +1,54 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:04:13.063Z",
+        "endedAt": "2026-05-11T01:06:45.058Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: opens Quick View modal from product tile",
+        "E2E-002: switching color swatch updates gallery image",
+        "E2E-003: adds product to bag from Quick View modal",
+        "E2E-004: closing Quick View via Escape restores focus to trigger",
+        "E2E-004b: closing Quick View via close button restores focus to trigger",
+        "E2E-004c: closing Quick View via overlay click restores focus to trigger",
+        "E2E-005: Quick View modal does not contain pickup/ship-to-store UI",
+        "E2E-006: Add to Bag is disabled when no variation is selected",
+        "E2E-007: View Full Details navigates to PDP",
+        "E2E-008: clicking tile image still navigates to PDP"
+      ],
+      "total_tests": 10,
+      "baseline_noise_patterns_derived": 5,
+      "testids_used": [
+        "quick-view-trigger-{productId}",
+        "quick-view-modal",
+        "quick-view-modal-error",
+        "quick-view-add-to-cart-btn",
+        "quick-view-view-full-details-link",
+        "product-view",
+        "add-to-cart-modal",
+        "product-added",
+        "product-tile-image"
+      ],
+      "self_review_gates_passed": [
+        "no networkidle/waitForTimeout",
+        "no tautological titles",
+        "consoleErrors in all tests",
+        "dismissOverlays in all specs",
+        "awaitHydrated in all specs",
+        "no hardcoded port",
+        "no locale-prefixed URLs"
+      ],
+      "dom_validated": true,
+      "contract_drift": []
+    }
+  }
+}

@@ -3,6 +3,8 @@
  *
  * Calls useProductViewModal to fetch full product data only when the modal opens.
  * Renders base ProductView with showDeliveryOptions={false} (FR-004).
+ * Uses useControlledVariations to manage variation state via React state
+ * (instead of URL params, which don't work inside a modal context).
  * Provides a slim addToCart handler that adds to basket and hands off to the
  * existing global AddToCartModal on success.
  *
@@ -17,6 +19,7 @@ import {
 } from '@salesforce/retail-react-app/app/components/shared/ui'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
+import {useControlledVariations} from '@salesforce/retail-react-app/app/hooks/use-controlled-variations'
 import {useShopperBasketsV2MutationHelper as useShopperBasketsMutationHelper} from '@salesforce/commerce-sdk-react'
 import Link from '@salesforce/retail-react-app/app/components/link'
 import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
@@ -63,8 +66,17 @@ const QuickViewModalBody = () => {
     const {openProduct, closeQuickView} = useQuickView()
     const containerRef = useRef(null)
 
+    // Manage variation state via React state (not URL params) since we're in a modal.
+    // This mirrors the pattern used by BonusProductSelectionModal in the base PWA Kit.
+    const {controlledVariationValues, handleVariationChange} =
+        useControlledVariations(openProduct)
+
     // Fetch full product detail only when the modal is open (gated by shell).
-    const {product, isFetching} = useProductViewModal(openProduct)
+    // Pass controlledVariationValues so the hook fetches the correct variant data.
+    const {product, isFetching} = useProductViewModal(
+        openProduct,
+        controlledVariationValues
+    )
     const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
 
     // Tag the Add-to-Cart button after each render.
@@ -132,6 +144,8 @@ const QuickViewModalBody = () => {
                 category={undefined}
                 addToCart={handleAddToCart}
                 isProductLoading={isFetching}
+                controlledVariationValues={controlledVariationValues}
+                onVariationChange={handleVariationChange}
             />
 
             <Divider my={4} />
