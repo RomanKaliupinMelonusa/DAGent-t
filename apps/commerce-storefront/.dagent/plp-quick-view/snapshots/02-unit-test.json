@@ -1,0 +1,42 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T20:41:58.113Z",
+        "endedAt": "2026-05-11T20:57:00.102Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 900000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-11T20:57:00.103Z",
+        "endedAt": "2026-05-11T20:58:37.631Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.2.log"
+      }
+    ],
+    "result": {
+      "test_suites": 5,
+      "test_suites_passed": 5,
+      "tests_total": 32,
+      "tests_passed": 32,
+      "tests_failed": 0,
+      "tests_skipped": 0,
+      "coverage_statements": 94.44,
+      "coverage_lines": 97.05,
+      "escalations": [],
+      "test_files": [
+        "overrides/app/components/quick-view-modal/context.test.jsx",
+        "overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "report_path": "apps/commerce-storefront/.dagent/plp-quick-view/unit-test-report.md"
+    }
+  }
+}

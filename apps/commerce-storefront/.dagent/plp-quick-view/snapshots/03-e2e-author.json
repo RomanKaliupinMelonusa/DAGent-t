@@ -1,0 +1,56 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T20:58:37.639Z",
+        "endedAt": "2026-05-11T21:01:47.915Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: open quick view from tile",
+        "E2E-002: switch color swatch in quick view",
+        "E2E-003: add to bag from quick view",
+        "E2E-004: close via Escape restores focus",
+        "E2E-004: close via close button restores focus",
+        "E2E-004: close via overlay click restores focus",
+        "E2E-005: no pickup UI in quick view",
+        "E2E-006: add to bag disabled when unavailable",
+        "E2E-007: view full details link navigates to PDP",
+        "E2E-008: tile click still navigates to PDP"
+      ],
+      "total_tests": 10,
+      "baseline_noise_patterns": 6,
+      "contracted_testids_used": [
+        "quick-view-trigger-{productId}",
+        "quick-view-modal",
+        "quick-view-modal-error",
+        "quick-view-add-to-cart-btn",
+        "quick-view-view-full-details-link",
+        "sf-product-tile-{productId}",
+        "product-view",
+        "add-to-cart-modal",
+        "product-added",
+        "inventory-message"
+      ],
+      "self_review_gates": {
+        "networkidle": "pass (only in JSDoc comment)",
+        "waitForTimeout": "pass (only in JSDoc comment)",
+        "tautological_titles": "pass",
+        "consoleErrors_present": "pass (22 occurrences)",
+        "dismissOverlays": "pass",
+        "awaitHydrated": "pass"
+      },
+      "skippable_tests": [
+        "E2E-002 (if no color swatches on opened product)",
+        "E2E-006 (if no OOS variant discoverable at runtime)"
+      ]
+    }
+  }
+}

@@ -9,7 +9,7 @@
  * does not expose a testid prop for it. The effect re-runs on every render
  * to keep the testid in sync with DOM updates (e.g., button disabled state).
  */
-import React, {useRef, useEffect} from 'react'
+import React, {useRef, useEffect, useState, useCallback} from 'react'
 import {useIntl} from 'react-intl'
 import {Box, Heading, Flex} from '@salesforce/retail-react-app/app/components/shared/ui'
 import Link from '@salesforce/retail-react-app/app/components/link'
@@ -18,6 +18,7 @@ import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-pr
 import {
     useShopperBasketsV2MutationHelper as useShopperBasketsMutationHelper
 } from '@salesforce/commerce-sdk-react'
+import {useAddToCartModalContext} from '@salesforce/retail-react-app/app/hooks/use-add-to-cart-modal'
 import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
 import {useQuickView} from './context'
 import messages from './messages'
@@ -25,9 +26,32 @@ import messages from './messages'
 const QuickViewModalBody = () => {
     const intl = useIntl()
     const {openProduct, closeQuickView} = useQuickView()
-    const {product, isFetching} = useProductViewModal(openProduct)
+    const [variationValues, setVariationValues] = useState({})
+    const {product, isFetching} = useProductViewModal(openProduct, variationValues)
     const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
+    const {isOpen: isAddToCartModalOpen} = useAddToCartModalContext()
     const containerRef = useRef(null)
+
+    // Handle variation changes from ProductView's swatch/size selectors.
+    // This keeps variant selection in React state instead of URL params,
+    // which is required for modal context (we're not on the PDP URL).
+    const handleVariationChange = useCallback((attribute, value) => {
+        setVariationValues((prev) => ({
+            ...prev,
+            [attribute]: value
+        }))
+    }, [])
+
+    // When the add-to-cart confirmation modal opens, close the Quick View modal.
+    // This must happen via effect rather than inside handleAddToCart because
+    // ProductView's internal handler calls onAddToCartModalOpen AFTER our
+    // addToCart callback returns. If we close the quick view inside
+    // handleAddToCart, the unmount races ProductView's onAddToCartModalOpen call.
+    useEffect(() => {
+        if (isAddToCartModalOpen) {
+            closeQuickView()
+        }
+    }, [isAddToCartModalOpen, closeQuickView])
 
     // Stamp data-testid on the Add-to-Cart button rendered by ProductView.
     // ProductView's button is identified by its "Add to Cart" text content.
@@ -63,7 +87,10 @@ const QuickViewModalBody = () => {
         })
 
         await addItemToNewOrExistingBasket(productItems)
-        closeQuickView()
+        // Do NOT call closeQuickView() here — ProductView needs to remain
+        // mounted so it can call onAddToCartModalOpen after this returns.
+        // The useEffect above watches isAddToCartModalOpen and closes
+        // the quick view once the confirmation modal is open.
         return productSelectionValues
     }
 
@@ -88,6 +115,8 @@ const QuickViewModalBody = () => {
                     category={undefined}
                     addToCart={handleAddToCart}
                     isProductLoading={isFetching}
+                    controlledVariationValues={variationValues}
+                    onVariationChange={handleVariationChange}
                 />
             </Box>
             <Box px={6} pb={6} pt={2}>
