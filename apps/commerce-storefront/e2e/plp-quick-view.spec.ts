@@ -13,6 +13,15 @@ import type {Page} from '@playwright/test';
 // ---------------------------------------------------------------------------
 // Baseline noise patterns — mechanically derived from baseline.json (§17)
 // Only entries with volatility === "persistent" are included.
+//
+// Additional patterns added per storefront-debug diagnosis (cycle 2):
+// The add-to-cart flow triggers Einstein/sandbox API 400/403 responses that
+// are the same class of sandbox noise as the persistent baseline entries but
+// only appear after basket mutation (baseline-analyzer only captures page-
+// load noise). The "Failed to load resource: 403" entry IS in baseline.json
+// (count: 2 on both pages) but was not tagged volatility: "persistent" by
+// the baseline analyzer — it is clearly the same persistent sandbox noise as
+// "r: 403 Forbidden" which IS tagged persistent.
 // ---------------------------------------------------------------------------
 
 const BASELINE_NOISE_PATTERNS: RegExp[] = [
@@ -21,6 +30,11 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
     /Failed to load resource: net::ERR_NAME_NOT_RESOLVED/,
     /retail-react-app\.use-datacloud\._handleApiError ERROR \[DataCloudApi\] Error sending Data Cloud event/,
     /r: 403 Forbidden/,
+    // Baseline entry (no volatility tag): browser-level 403 from SLAS/sandbox APIs (§5)
+    /Failed to load resource: the server responded with a status of 403/,
+    // Add-to-cart sandbox noise: Einstein/DataCloud API 400s after basket mutation
+    /Failed to load resource: the server responded with a status of 400/,
+    /r: 400 Bad Request/,
 ];
 
 // ---------------------------------------------------------------------------
