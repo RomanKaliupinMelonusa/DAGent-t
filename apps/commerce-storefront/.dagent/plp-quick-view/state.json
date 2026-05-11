@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-11T00:36:27.497Z",
-  "jumps": 1,
+  "jumps": 3,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -204,50 +204,53 @@
           "endedAt": "2026-05-11T01:06:45.058Z",
           "status": "completed",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:16:00.839Z",
+          "endedAt": "2026-05-11T01:19:59.171Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:20:39.251Z",
+          "endedAt": "2026-05-11T01:22:46.882Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
         }
       ],
       "result": {
-        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+        "file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
         "flows_authored": [
-          "E2E-001: opens Quick View modal from product tile",
-          "E2E-002: switching color swatch updates gallery image",
-          "E2E-003: adds product to bag from Quick View modal",
-          "E2E-004: closing Quick View via Escape restores focus to trigger",
-          "E2E-004b: closing Quick View via close button restores focus to trigger",
-          "E2E-004c: closing Quick View via overlay click restores focus to trigger",
-          "E2E-005: Quick View modal does not contain pickup/ship-to-store UI",
-          "E2E-006: Add to Bag is disabled when no variation is selected",
-          "E2E-007: View Full Details navigates to PDP",
-          "E2E-008: clicking tile image still navigates to PDP"
+          "E2E-001: open-quick-view-from-tile",
+          "E2E-002: switch-color-swatch-in-quick-view",
+          "E2E-003: add-to-bag-from-quick-view",
+          "E2E-004: close-quick-view-restores-focus (Escape)",
+          "E2E-004b: close-quick-view-restores-focus (close button)",
+          "E2E-004c: close-quick-view-restores-focus (overlay click)",
+          "E2E-005: no-pickup-ui-in-quick-view",
+          "E2E-006: add-to-bag-disabled-when-unavailable",
+          "E2E-007: view-full-details-link",
+          "E2E-008: tile-click-still-navigates-to-pdp"
         ],
         "total_tests": 10,
-        "baseline_noise_patterns_derived": 5,
-        "testids_used": [
-          "quick-view-trigger-{productId}",
-          "quick-view-modal",
-          "quick-view-modal-error",
-          "quick-view-add-to-cart-btn",
-          "quick-view-view-full-details-link",
-          "product-view",
-          "add-to-cart-modal",
-          "product-added",
-          "product-tile-image"
-        ],
         "self_review_gates_passed": [
-          "no networkidle/waitForTimeout",
+          "no networkidle",
+          "no waitForTimeout",
           "no tautological titles",
-          "consoleErrors in all tests",
-          "dismissOverlays in all specs",
-          "awaitHydrated in all specs",
-          "no hardcoded port",
+          "dismissOverlays present",
+          "awaitHydrated present",
+          "consoleErrors assertions in all tests",
           "no locale-prefixed URLs"
         ],
-        "dom_validated": true,
-        "contract_drift": []
+        "baseline_noise_patterns": 6,
+        "prior_cycle_status": "all fixes applied and validated green by e2e-runner (exitCode: 0)",
+        "changes_this_cycle": "none needed — prior cycle spec already passes all gates"
       }
     },
     "e2e-runner": {
-      "status": "pending",
+      "status": "completed",
       "attempts": [
         {
           "attempt": 1,
@@ -256,9 +259,48 @@
           "status": "failed",
           "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:19:59.177Z",
+          "endedAt": "2026-05-11T01:20:22.698Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:22:46.890Z",
+          "endedAt": "2026-05-11T01:23:33.193Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
         }
       ],
-      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+      "result": {
+        "exitCode": 0
+      }
+    },
+    "storefront-debug": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:07:33.439Z",
+          "endedAt": "2026-05-11T01:16:00.827Z",
+          "status": "failed",
+          "errorSummary": "Fixed code-defect (missing controlled variation state in QuickViewModalBody), improving pass rate from 7/10 to 8/10. Two remaining failures are test-code bugs:\n\n1. E2E-002 (line 136): Swatch selector `[role=\"radio\"]` matches ALL radios (color + size). First product has 1 color swatch, so nth(1) clicks a size swatch which doesn't change gallery image. Fix: scope to color radiogroup, e.g. `modal.getByRole('radiogroup', {name: 'Color'}).locator('[role=\"radio\"]')`.\n\n2. E2E-003 (line 232): Console-error budget BASELINE_NOISE_PATTERNS has `/r: 403 Forbidden/` but the actual console error text is `\"Failed to load resource: the server responded with a status of 403 (Forbidden)\"`. These are pre-existing Einstein 403s (baseline.json count: 4). Fix: add `/Failed to load resource: the server responded with a status of 403/` to BASELINE_NOISE_PATTERNS.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        },
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T01:20:22.712Z",
+          "endedAt": "2026-05-11T01:20:39.245Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        }
+      ],
+      "result": {
+        "diagnosis": "No failures detected. All prior nodes (dev, unit-test, e2e-author, e2e-runner) completed successfully. Nothing to debug."
+      }
     }
   },
   "history": [
@@ -312,8 +354,68 @@
         "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
       }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:07:33.439Z",
+        "endedAt": "2026-05-11T01:16:00.827Z",
+        "status": "failed",
+        "errorSummary": "Fixed code-defect (missing controlled variation state in QuickViewModalBody), improving pass rate from 7/10 to 8/10. Two remaining failures are test-code bugs:\n\n1. E2E-002 (line 136): Swatch selector `[role=\"radio\"]` matches ALL radios (color + size). First product has 1 color swatch, so nth(1) clicks a size swatch which doesn't change gallery image. Fix: scope to color radiogroup, e.g. `modal.getByRole('radiogroup', {name: 'Color'}).locator('[role=\"radio\"]')`.\n\n2. E2E-003 (line 232): Console-error budget BASELINE_NOISE_PATTERNS has `/r: 403 Forbidden/` but the actual console error text is `\"Failed to load resource: the server responded with a status of 403 (Forbidden)\"`. These are pre-existing Einstein 403s (baseline.json count: 4). Fix: add `/Failed to load resource: the server responded with a status of 403/` to BASELINE_NOISE_PATTERNS.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:16:00.839Z",
+        "endedAt": "2026-05-11T01:19:59.171Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:19:59.177Z",
+        "endedAt": "2026-05-11T01:20:22.698Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:20:22.712Z",
+        "endedAt": "2026-05-11T01:20:39.245Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:20:39.251Z",
+        "endedAt": "2026-05-11T01:22:46.882Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:22:46.890Z",
+        "endedAt": "2026-05-11T01:23:33.193Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
     }
   ],
-  "devServerPort": 3000,
-  "_failureSource": "e2e-runner"
+  "devServerPort": 3000
 }

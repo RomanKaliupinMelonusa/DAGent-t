@@ -1,0 +1,50 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:04:13.063Z",
+        "endedAt": "2026-05-11T01:06:45.058Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:16:00.839Z",
+        "endedAt": "2026-05-11T01:19:59.171Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    ],
+    "result": {
+      "fixes_applied": [
+        {
+          "test": "E2E-002",
+          "issue": "Swatch selector [role='radio'] was too broad — matched both color AND size radio buttons. First PLP product (25688608M) has 1 color swatch and 5 size swatches, so nth(1) clicked a size swatch which doesn't change gallery image.",
+          "fix": "Scoped selector to color radiogroup only: `modal.getByRole('radiogroup', { name: /color/i }).locator('[role=\"radio\"]')`. Added safety skip when no color radiogroup is found."
+        },
+        {
+          "test": "E2E-003",
+          "issue": "BASELINE_NOISE_PATTERNS was missing pattern for 'Failed to load resource: the server responded with a status of 403 (Forbidden)'. The existing /r: 403 Forbidden/ regex doesn't match Chrome's resource-loading error format. These are pre-existing Einstein recommendation 403s (baseline.json count: 4).",
+          "fix": "Added `/Failed to load resource: the server responded with a status of 403 \\(Forbidden\\)/` to BASELINE_NOISE_PATTERNS array."
+        },
+        {
+          "test": "E2E-003",
+          "issue": "Variation selection in add-to-bag flow used broad [role='radio'] selector that mixed color and size swatches.",
+          "fix": "Updated variation selection logic to use scoped radiogroup selectors: `modal.getByRole('radiogroup', { name: /size/i })` and `modal.getByRole('radiogroup', { name: /color/i })` separately, with explicit wait for button to become enabled."
+        }
+      ],
+      "file_modified": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "self_review_gates_passed": [
+        "no networkidle",
+        "no waitForTimeout",
+        "no tautological titles",
+        "dismissOverlays present",
+        "awaitHydrated present",
+        "consoleErrors assertions present (13 occurrences)"
+      ]
+    }
+  }
+}
