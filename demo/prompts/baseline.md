@@ -267,10 +267,15 @@ Match each entry's `pattern` field against the substrings below. Matching is **c
 | 4 | `retail-react-app.use-datacloud._handleApiError ERROR` | `persistent` | `network-sandbox` |
 | 5 | `r: 403 Forbidden` (Einstein recommendations — sandbox returns 403 in dev) | `persistent` | `network-sandbox` |
 | 6 | A `Warning:` message that **also** contains `will be removed` **and** `future major release` (React deprecation catch-all) | `persistent` | `legacy-deprecation` |
+| 7 | `Failed to load resource: the server responded with a status of 403` (browser-format of rule #5 — same Einstein/sandbox origin) | `persistent` | `network-sandbox` |
+| 8 | `r: 400 Bad Request` (Einstein API returns 400 on basket mutations in dev sandbox) | `persistent` | `network-sandbox` |
+| 9 | `Failed to load resource: the server responded with a status of 400` (browser-format of rule #8 — same Einstein/sandbox origin) | `persistent` | `network-sandbox` |
 
 Rule #3 is **URL-conditional**: only tag when the runtime request URL captured in this session contains one of the listed domain fragments. A bare `ERR_NAME_NOT_RESOLVED` against an unknown host stays untagged.
 
 Rule #6 is **compound**: the message must contain all three substrings — `Warning:`, `will be removed`, *and* `future major release`. A bare `Warning: …` without the deprecation phrasing stays untagged.
+
+Rules #7 and #9 are **browser-format companions** of rules #5 and #8 respectively. Browsers may emit `Failed to load resource: the server responded with a status of NNN (Reason)` alongside the shorter `r: NNN Reason` — both refer to the same HTTP response.
 
 ## Do NOT tag as persistent
 

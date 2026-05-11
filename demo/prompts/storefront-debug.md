@@ -137,8 +137,17 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
    Playwright MCP against the live dev server. Only when the MCP run is
    green do you commit.
 6. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
-7. `report_outcome` completed with `fault_domain: "code-defect"`. The DAG
-   will automatically re-run `e2e-author`, `e2e-runner` downstream of you.
+7. `report_outcome` with `status: "completed"`. The DAG will automatically
+   re-run `e2e-author`, `e2e-runner` downstream of you. Do **not** include
+   `fault_domain` on success — it is only used for failure routing.
+
+> **CRITICAL — test-code faults**: If at any point during diagnosis you
+> determine the root cause is in the E2E test file (`e2e/*.spec.ts`) — bad
+> selectors, wrong assertions, missing noise patterns, etc. — **stop
+> immediately**. Do not retry, do not attempt workarounds, do not try to
+> fix the test. Call `report_outcome` with `status: "failed"`,
+> `fault_domain: "test-code"`, and a detailed `message`. The orchestrator
+> will skip your remaining retries and route directly to `@e2e-author`.
 
 ## Fault Domain Classification
 
@@ -434,10 +443,15 @@ Match each entry's `pattern` field against the substrings below. Matching is **c
 | 4 | `retail-react-app.use-datacloud._handleApiError ERROR` | `persistent` | `network-sandbox` |
 | 5 | `r: 403 Forbidden` (Einstein recommendations — sandbox returns 403 in dev) | `persistent` | `network-sandbox` |
 | 6 | A `Warning:` message that **also** contains `will be removed` **and** `future major release` (React deprecation catch-all) | `persistent` | `legacy-deprecation` |
+| 7 | `Failed to load resource: the server responded with a status of 403` (browser-format of rule #5 — same Einstein/sandbox origin) | `persistent` | `network-sandbox` |
+| 8 | `r: 400 Bad Request` (Einstein API returns 400 on basket mutations in dev sandbox) | `persistent` | `network-sandbox` |
+| 9 | `Failed to load resource: the server responded with a status of 400` (browser-format of rule #8 — same Einstein/sandbox origin) | `persistent` | `network-sandbox` |
 
 Rule #3 is **URL-conditional**: only tag when the runtime request URL captured in this session contains one of the listed domain fragments. A bare `ERR_NAME_NOT_RESOLVED` against an unknown host stays untagged.
 
 Rule #6 is **compound**: the message must contain all three substrings — `Warning:`, `will be removed`, *and* `future major release`. A bare `Warning: …` without the deprecation phrasing stays untagged.
+
+Rules #7 and #9 are **browser-format companions** of rules #5 and #8 respectively. Browsers may emit `Failed to load resource: the server responded with a status of NNN (Reason)` alongside the shorter `r: NNN Reason` — both refer to the same HTTP response.
 
 ## Do NOT tag as persistent
 

@@ -21,7 +21,7 @@ import type { Tool } from "@github/copilot-sdk";
 
 const SAFE_READ_TOOLS = new Set([
   "read_file", "file_read", "view", "grep_search", "list_dir", "list_directory",
-  "semantic_search", "search_code", "report_outcome",
+  "semantic_search", "search_code", "report_outcome", "report_intent",
   // roam-code MCP — all read-only
   "roam_understand", "roam_file_info", "roam_diff", "roam_health", "roam_deps",
   "roam_context", "roam_explore", "roam_search_symbol", "roam_trace", "roam_uses",

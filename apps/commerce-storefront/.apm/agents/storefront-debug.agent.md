@@ -72,8 +72,17 @@ If the failing symbol appears in "Removed / renamed", the docs in `.apm/referenc
    Playwright MCP against the live dev server. Only when the MCP run is
    green do you commit.
 6. Commit: `bash demo/scripts/agent-commit.sh all "fix(storefront): <description>"`
-7. `report_outcome` completed with `fault_domain: "code-defect"`. The DAG
-   will automatically re-run `e2e-author`, `e2e-runner` downstream of you.
+7. `report_outcome` with `status: "completed"`. The DAG will automatically
+   re-run `e2e-author`, `e2e-runner` downstream of you. Do **not** include
+   `fault_domain` on success — it is only used for failure routing.
+
+> **CRITICAL — test-code faults**: If at any point during diagnosis you
+> determine the root cause is in the E2E test file (`e2e/*.spec.ts`) — bad
+> selectors, wrong assertions, missing noise patterns, etc. — **stop
+> immediately**. Do not retry, do not attempt workarounds, do not try to
+> fix the test. Call `report_outcome` with `status: "failed"`,
+> `fault_domain: "test-code"`, and a detailed `message`. The orchestrator
+> will skip your remaining retries and route directly to `@e2e-author`.
 
 ## Fault Domain Classification
 
