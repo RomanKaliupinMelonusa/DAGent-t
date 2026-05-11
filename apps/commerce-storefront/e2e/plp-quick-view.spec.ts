@@ -17,6 +17,7 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
   /Failed to load resource: net::ERR_NAME_NOT_RESOLVED/,
   /retail-react-app\.use-datacloud\._handleApiError ERROR \[DataCloudApi\] Error sending Data Cloud event/,
   /r: 403 Forbidden/,
+  /Failed to load resource: the server responded with a status of 403 \(Forbidden\)/,
 ];
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,6 @@ async function openQuickView(page: Page): Promise<{ triggerLocator: ReturnType<P
 
   // Three-outcome pattern (§12): content loaded, error state, or crash page.
   const modal = page.getByTestId('quick-view-modal');
-  const errorState = page.getByTestId('quick-view-modal-error');
   const crashPage = page.getByRole('heading', { name: /this page isn't working/i });
 
   const winner = await Promise.race([
@@ -139,21 +139,27 @@ test.describe('PLP Quick View Modal', () => {
 
     const modal = page.getByTestId('quick-view-modal');
 
-    // Find swatch buttons inside the modal. The base ProductView uses
-    // SwatchGroup with role="radio" or buttons for color selection.
-    const swatches = modal.locator('[role="radio"], button[aria-label*="color" i], button[aria-label*="Color" i]');
-    const swatchCount = await swatches.count();
-    // Skip if fewer than 2 swatches available
+    // Scope to the Color radiogroup only — the modal also contains Size
+    // radios, and clicking a size swatch does not change the gallery image.
+    // PWA Kit's SwatchGroup renders a [role="radiogroup"] with an accessible
+    // name derived from the variation attribute (e.g. "Color").
+    const colorGroup = modal.getByRole('radiogroup', { name: /color/i });
+    const colorGroupCount = await colorGroup.count();
+    test.skip(colorGroupCount === 0, 'No color radiogroup found in modal');
+
+    const colorSwatches = colorGroup.locator('[role="radio"]');
+    const swatchCount = await colorSwatches.count();
+    // Skip if fewer than 2 color swatches available
     test.skip(swatchCount < 2, `Only ${swatchCount} color swatch(es) available; need ≥ 2`);
 
     // Capture current gallery image src
     const galleryImg = modal.locator('img').first();
     const srcBefore = await galleryImg.getAttribute('src');
 
-    // Click the second swatch
-    await swatches.nth(1).click();
+    // Click the second color swatch
+    await colorSwatches.nth(1).click();
 
-    // Wait a moment for the image to update, then assert it changed
+    // Wait for the image to update, then assert it changed
     await expect(async () => {
       const srcAfter = await galleryImg.getAttribute('src');
       expect(srcAfter).not.toBe(srcBefore);
@@ -182,18 +188,39 @@ test.describe('PLP Quick View Modal', () => {
     // If the button is disabled, try to select a valid variation first
     if (await addToCartBtn.isDisabled()) {
       // Select first available size option if present
-      const sizeOptions = modal.locator('[role="radio"]');
-      const sizeCount = await sizeOptions.count();
-      for (let i = 0; i < sizeCount; i++) {
-        const option = sizeOptions.nth(i);
-        const isDisabled = await option.isDisabled().catch(() => false);
-        if (!isDisabled) {
-          await option.click();
-          break;
+      const sizeGroup = modal.getByRole('radiogroup', { name: /size/i });
+      const sizeGroupCount = await sizeGroup.count();
+      if (sizeGroupCount > 0) {
+        const sizeOptions = sizeGroup.locator('[role="radio"]');
+        const sizeCount = await sizeOptions.count();
+        for (let i = 0; i < sizeCount; i++) {
+          const option = sizeOptions.nth(i);
+          const isDisabled = await option.isDisabled().catch(() => false);
+          if (!isDisabled) {
+            await option.click();
+            break;
+          }
         }
       }
-      // Give the UI time to update
-      await page.waitForFunction(() => true, undefined, { timeout: 1_000 }).catch(() => {});
+
+      // Also select first available color if needed
+      const colorGroup = modal.getByRole('radiogroup', { name: /color/i });
+      const colorGroupCount = await colorGroup.count();
+      if (colorGroupCount > 0 && await addToCartBtn.isDisabled()) {
+        const colorOptions = colorGroup.locator('[role="radio"]');
+        const colorCount = await colorOptions.count();
+        for (let i = 0; i < colorCount; i++) {
+          const option = colorOptions.nth(i);
+          const isDisabled = await option.isDisabled().catch(() => false);
+          if (!isDisabled) {
+            await option.click();
+            break;
+          }
+        }
+      }
+
+      // Wait for button to become enabled after variation selection
+      await expect(addToCartBtn).toBeEnabled({ timeout: 5_000 });
     }
 
     // Track basket network response

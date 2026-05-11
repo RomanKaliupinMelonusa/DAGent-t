@@ -1,0 +1,43 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T01:07:33.439Z",
+        "endedAt": "2026-05-11T01:16:00.827Z",
+        "status": "failed",
+        "errorSummary": "Fixed code-defect (missing controlled variation state in QuickViewModalBody), improving pass rate from 7/10 to 8/10. Two remaining failures are test-code bugs:\n\n1. E2E-002 (line 136): Swatch selector `[role=\"radio\"]` matches ALL radios (color + size). First product has 1 color swatch, so nth(1) clicks a size swatch which doesn't change gallery image. Fix: scope to color radiogroup, e.g. `modal.getByRole('radiogroup', {name: 'Color'}).locator('[role=\"radio\"]')`.\n\n2. E2E-003 (line 232): Console-error budget BASELINE_NOISE_PATTERNS has `/r: 403 Forbidden/` but the actual console error text is `\"Failed to load resource: the server responded with a status of 403 (Forbidden)\"`. These are pre-existing Einstein 403s (baseline.json count: 4). Fix: add `/Failed to load resource: the server responded with a status of 403/` to BASELINE_NOISE_PATTERNS.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    ],
+    "errorSummary": "Fixed code-defect (missing controlled variation state in QuickViewModalBody), improving pass rate from 7/10 to 8/10. Two remaining failures are test-code bugs:\n\n1. E2E-002 (line 136): Swatch selector `[role=\"radio\"]` matches ALL radios (color + size). First product has 1 color swatch, so nth(1) clicks a size swatch which doesn't change gallery image. Fix: scope to color radiogroup, e.g. `modal.getByRole('radiogroup', {name: 'Color'}).locator('[role=\"radio\"]')`.\n\n2. E2E-003 (line 232): Console-error budget BASELINE_NOISE_PATTERNS has `/r: 403 Forbidden/` but the actual console error text is `\"Failed to load resource: the server responded with a status of 403 (Forbidden)\"`. These are pre-existing Einstein 403s (baseline.json count: 4). Fix: add `/Failed to load resource: the server responded with a status of 403/` to BASELINE_NOISE_PATTERNS.",
+    "result": {
+      "bugs": [
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 144,
+          "issue": "Swatch selector [role='radio'] is too broad — matches both color and size radios. First PLP product (25688608M) has only 1 color swatch but 5 size swatches, so nth(1) clicks a size radio which does not change the gallery image.",
+          "fix": "Replace `modal.locator('[role=\"radio\"], button[aria-label*=\"color\" i], button[aria-label*=\"Color\" i]')` with `modal.getByRole('radiogroup', { name: /color/i }).locator('[role=\"radio\"]')` to scope to color swatches only. Also consider finding a product with ≥2 colors if the first product only has one."
+        },
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 231,
+          "issue": "BASELINE_NOISE_PATTERNS missing pattern for 'Failed to load resource: the server responded with a status of 403 (Forbidden)'. Only has /r: 403 Forbidden/ which doesn't match the resource-loading variant. These 403s are pre-existing Einstein recommendation sandbox errors (baseline.json count: 4).",
+          "fix": "Add `/Failed to load resource: the server responded with a status of 403/` to the BASELINE_NOISE_PATTERNS array."
+        }
+      ],
+      "code_fix_applied": {
+        "file": "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.jsx",
+        "description": "Added useControlledVariations hook to manage variation state in modal context (matching BonusProductSelectionModal pattern). Passed controlledVariationValues to useProductViewModal and ProductView, and onVariationChange to ProductView."
+      },
+      "test_results_after_fix": {
+        "passed": 8,
+        "failed": 2,
+        "skipped": 1,
+        "total": 10
+      }
+    }
+  }
+}
