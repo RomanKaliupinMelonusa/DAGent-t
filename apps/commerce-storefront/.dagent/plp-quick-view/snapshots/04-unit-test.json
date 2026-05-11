@@ -1,0 +1,34 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T02:33:47.648Z",
+        "endedAt": "2026-05-11T02:41:22.801Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "test_suite_result": "PASS",
+      "total_test_cases": 32,
+      "total_test_files": 5,
+      "test_files": [
+        "overrides/app/components/quick-view-modal/context.test.jsx (3 tests: UT-PROV-001..003)",
+        "overrides/app/components/quick-view-modal/trigger.test.jsx (6 tests: UT-TRIG-001..006)",
+        "overrides/app/components/quick-view-modal/modal-shell.test.jsx (5 tests: UT-SHELL-001..005)",
+        "overrides/app/components/quick-view-modal/modal-body.test.jsx (15 tests: UT-BODY-001..015)",
+        "overrides/app/components/quick-view-modal/a11y.test.jsx (3 tests: UT-A11Y-001..003)"
+      ],
+      "skipped_cases": 0,
+      "extras_added": 0,
+      "contract_deviations": [
+        "UT-BODY-011/012: Implementation uses addItemToNewOrExistingBasket helper instead of separate createBasket/addItemToBasket mutations. Tests verify the helper is called with correct product items rather than asserting createBasket vs addItemToBasket separately, since the dev session's architecture_decisions note this abstraction.",
+        "UT-A11Y-003: Focus restoration tested by verifying trigger remains focusable after close. Chakra's returnFocusOnClose is mocked away, so full automatic focus restoration cannot be asserted in the mock environment; the real behavior relies on Chakra's Modal internals."
+      ],
+      "console_warnings": "React DOM warning about non-standard attributes passed to HTML elements (from mocked Chakra components) — benign, does not affect test validity."
+    }
+  }
+}
