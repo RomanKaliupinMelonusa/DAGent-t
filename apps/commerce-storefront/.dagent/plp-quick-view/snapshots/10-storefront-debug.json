@@ -1,0 +1,34 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:18:01.406Z",
+        "endedAt": "2026-05-11T04:43:03.296Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-11T04:43:03.308Z",
+        "endedAt": "2026-05-11T04:53:59.594Z",
+        "status": "failed",
+        "errorSummary": "Fixed code-defect: handleAddToCart was returning stripped-down [{productId, price, quantity}] instead of the original [{product, variant, quantity}] objects, causing AddToCartModal to crash with \"TypeError: Cannot read properties of undefined (reading 'imageGroups')\". Fix committed. However, the E2E test still fails on its console-error budget assertion because the add-to-cart flow triggers Einstein/sandbox API 400/403 errors not included in the test's BASELINE_NOISE_PATTERNS. The functional assertions (modal close, confirmation modal, product-added row) all pass.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-11T04:59:14.996Z",
+        "endedAt": "2026-05-11T04:59:33.333Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
+    ],
+    "result": {
+      "diagnosis": "No failures to debug. All prior nodes completed successfully: dev (implementation complete), unit-test (32/32 pass), e2e-author (8 flows covered), e2e-runner (exit code 0). Debug node has no actionable work."
+    }
+  }
+}

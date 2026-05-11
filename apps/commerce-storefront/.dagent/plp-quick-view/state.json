@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-11T03:50:28.866Z",
-  "jumps": 2,
+  "jumps": 3,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -269,7 +269,7 @@
       }
     },
     "e2e-author": {
-      "status": "pending",
+      "status": "completed",
       "attempts": [
         {
           "attempt": 1,
@@ -277,50 +277,49 @@
           "endedAt": "2026-05-11T04:17:19.185Z",
           "status": "completed",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-11T04:53:59.604Z",
+          "endedAt": "2026-05-11T04:58:47.509Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-11T04:59:33.346Z",
+          "endedAt": "2026-05-11T05:02:23.374Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.3.log"
         }
       ],
       "result": {
-        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
-        "flows_authored": [
+        "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+        "flows_covered": 8,
+        "test_blocks": 11,
+        "flows": [
           "E2E-001: open-quick-view-from-tile",
           "E2E-002: switch-color-swatch-in-quick-view",
           "E2E-003: add-to-bag-from-quick-view",
-          "E2E-004: close-quick-view-restores-focus (3 dismiss paths: Escape, close button, overlay)",
-          "E2E-005: no-pickup-ui-in-quick-view (negative)",
+          "E2E-004: close-quick-view-restores-focus (3 dismiss paths)",
+          "E2E-005: no-pickup-ui-in-quick-view",
           "E2E-006: add-to-bag-disabled-when-unavailable",
           "E2E-007: view-full-details-link",
-          "E2E-008: tile-click-still-navigates-to-pdp (regression)"
+          "E2E-008: tile-click-still-navigates-to-pdp"
         ],
-        "test_count": 10,
-        "baseline_noise_patterns": 5,
-        "testids_used": [
-          "quick-view-trigger-{productId}",
-          "quick-view-modal",
-          "quick-view-modal-error",
-          "quick-view-add-to-cart-btn",
-          "quick-view-view-full-details-link",
-          "product-view",
-          "add-to-cart-modal",
-          "product-added",
-          "product-tile-image"
-        ],
-        "self_review_checks": {
-          "networkidle": "PASS",
-          "waitForTimeout": "PASS",
-          "anti_tautology_titles": "PASS",
-          "consoleErrors_assertions": "PASS",
-          "dismissOverlays": "PASS",
-          "awaitHydrated": "PASS"
-        },
-        "skippable_flows": [
-          "E2E-002 (if <2 swatches)",
-          "E2E-006 (if no OOS variant discoverable)"
-        ],
-        "commit": "test(e2e): add PLP Quick View modal E2E tests (flows E2E-001 through E2E-008)"
+        "console_error_budget": "asserted in all 11 tests via assertConsoleErrorBudget with BASELINE_NOISE_PATTERNS",
+        "baseline_patterns_count": 8,
+        "skipped_flows": [],
+        "contract_drift": [],
+        "already_committed": true,
+        "commit_shas": [
+          "d24e79fe",
+          "4147a11a"
+        ]
       }
     },
     "e2e-runner": {
-      "status": "pending",
+      "status": "completed",
       "attempts": [
         {
           "attempt": 1,
@@ -329,12 +328,28 @@
           "status": "failed",
           "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-11T04:58:47.532Z",
+          "endedAt": "2026-05-11T04:59:14.983Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-11T05:02:23.385Z",
+          "endedAt": "2026-05-11T05:02:53.316Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.3.log"
         }
       ],
-      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+      "result": {
+        "exitCode": 0
+      }
     },
     "storefront-debug": {
-      "status": "pending",
+      "status": "completed",
       "attempts": [
         {
           "attempt": 1,
@@ -351,29 +366,17 @@
           "status": "failed",
           "errorSummary": "Fixed code-defect: handleAddToCart was returning stripped-down [{productId, price, quantity}] instead of the original [{product, variant, quantity}] objects, causing AddToCartModal to crash with \"TypeError: Cannot read properties of undefined (reading 'imageGroups')\". Fix committed. However, the E2E test still fails on its console-error budget assertion because the add-to-cart flow triggers Einstein/sandbox API 400/403 errors not included in the test's BASELINE_NOISE_PATTERNS. The functional assertions (modal close, confirmation modal, product-added row) all pass.",
           "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-11T04:59:14.996Z",
+          "endedAt": "2026-05-11T04:59:33.333Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
         }
       ],
-      "errorSummary": "Fixed code-defect: handleAddToCart was returning stripped-down [{productId, price, quantity}] instead of the original [{product, variant, quantity}] objects, causing AddToCartModal to crash with \"TypeError: Cannot read properties of undefined (reading 'imageGroups')\". Fix committed. However, the E2E test still fails on its console-error budget assertion because the add-to-cart flow triggers Einstein/sandbox API 400/403 errors not included in the test's BASELINE_NOISE_PATTERNS. The functional assertions (modal close, confirmation modal, product-added row) all pass.",
       "result": {
-        "code_fix_applied": true,
-        "code_fix_file": "overrides/app/components/quick-view-modal/modal-body.jsx",
-        "code_fix_description": "Changed handleAddToCart to return productSelectionValues (full product/variant objects) instead of productItems (stripped basket API payload)",
-        "bugs": [
-          {
-            "file": "e2e/plp-quick-view.spec.ts",
-            "line": 18,
-            "issue": "BASELINE_NOISE_PATTERNS missing patterns for 400 Bad Request and 403 Forbidden resource load errors that occur during add-to-cart flow",
-            "fix": "Add these patterns to BASELINE_NOISE_PATTERNS: /Failed to load resource: the server responded with a status of 40[03]/, /r: 400 Bad Request/"
-          }
-        ],
-        "next_failure_hint": {
-          "domain": "test-code",
-          "target_node": "e2e-author",
-          "summary": "The E2E test BASELINE_NOISE_PATTERNS array at line 18 needs two additional patterns: /Failed to load resource: the server responded with a status of 40[03]/ and /r: 400 Bad Request/ to cover Einstein and sandbox API noise triggered by the add-to-cart basket mutation.",
-          "evidence_paths": [
-            "apps/commerce-storefront/.dagent/plp-quick-view/debug-notes.md"
-          ]
-        }
+        "diagnosis": "No failures to debug. All prior nodes completed successfully: dev (implementation complete), unit-test (32/32 pass), e2e-author (8 flows covered), e2e-runner (exit code 0). Debug node has no actionable work."
       }
     }
   },
@@ -450,8 +453,57 @@
         "errorSummary": "Fixed code-defect: handleAddToCart was returning stripped-down [{productId, price, quantity}] instead of the original [{product, variant, quantity}] objects, causing AddToCartModal to crash with \"TypeError: Cannot read properties of undefined (reading 'imageGroups')\". Fix committed. However, the E2E test still fails on its console-error budget assertion because the add-to-cart flow triggers Einstein/sandbox API 400/403 errors not included in the test's BASELINE_NOISE_PATTERNS. The functional assertions (modal close, confirmation modal, product-added row) all pass.",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
       }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-11T04:53:59.604Z",
+        "endedAt": "2026-05-11T04:58:47.509Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.2.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-11T04:58:47.532Z",
+        "endedAt": "2026-05-11T04:59:14.983Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.2.log"
+      }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-11T04:59:14.996Z",
+        "endedAt": "2026-05-11T04:59:33.333Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-11T04:59:33.346Z",
+        "endedAt": "2026-05-11T05:02:23.374Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.3.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-11T05:02:23.385Z",
+        "endedAt": "2026-05-11T05:02:53.316Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.3.log"
+      }
     }
   ],
-  "devServerPort": 3000,
-  "_failureSource": "storefront-debug"
+  "devServerPort": 3000
 }

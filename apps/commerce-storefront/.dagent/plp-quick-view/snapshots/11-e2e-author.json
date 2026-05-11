@@ -1,0 +1,53 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:12:19.364Z",
+        "endedAt": "2026-05-11T04:17:19.185Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-11T04:53:59.604Z",
+        "endedAt": "2026-05-11T04:58:47.509Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-11T04:59:33.346Z",
+        "endedAt": "2026-05-11T05:02:23.374Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.3.log"
+      }
+    ],
+    "result": {
+      "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_covered": 8,
+      "test_blocks": 11,
+      "flows": [
+        "E2E-001: open-quick-view-from-tile",
+        "E2E-002: switch-color-swatch-in-quick-view",
+        "E2E-003: add-to-bag-from-quick-view",
+        "E2E-004: close-quick-view-restores-focus (3 dismiss paths)",
+        "E2E-005: no-pickup-ui-in-quick-view",
+        "E2E-006: add-to-bag-disabled-when-unavailable",
+        "E2E-007: view-full-details-link",
+        "E2E-008: tile-click-still-navigates-to-pdp"
+      ],
+      "console_error_budget": "asserted in all 11 tests via assertConsoleErrorBudget with BASELINE_NOISE_PATTERNS",
+      "baseline_patterns_count": 8,
+      "skipped_flows": [],
+      "contract_drift": [],
+      "already_committed": true,
+      "commit_shas": [
+        "d24e79fe",
+        "4147a11a"
+      ]
+    }
+  }
+}
