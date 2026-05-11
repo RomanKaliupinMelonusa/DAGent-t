@@ -1,41 +1,48 @@
 ---
 schemaVersion: 1
-producedBy: storefront-dev
-producedAt: "2026-05-11T03:58:00.000Z"
+producedBy: unit-test
+producedAt: 2026-05-11T04:15:00.000Z
 ---
 
-# PLP Quick View Modal — Development Summary
+# Unit Test Summary: PLP Quick View Modal
 
-## Changes
+## Result: PASS — 32/32 cases
 
-### New Files
-- `overrides/app/components/quick-view-modal/context.jsx` — QuickViewContext, QuickViewProvider, useQuickView hook
-- `overrides/app/components/quick-view-modal/trigger.jsx` — QuickViewTrigger button (isMounted-gated, set/bundle excluded)
-- `overrides/app/components/quick-view-modal/modal-shell.jsx` — Gated Chakra Modal with ErrorBoundary
-- `overrides/app/components/quick-view-modal/modal-body.jsx` — ProductView with showDeliveryOptions={false}, Add-to-Cart handler, View Full Details link
-- `overrides/app/components/quick-view-modal/messages.js` — react-intl defineMessages catalog
-- `overrides/app/components/quick-view-modal/index.jsx` — Barrel re-exports
+All 32 unit test cases from the binding test plan (`unit-tests.md` §3) are implemented and passing.
 
-### Modified Files
-- `overrides/app/components/_app/index.jsx` — Wraps route children in QuickViewProvider inside BaseApp's provider tree
-- `overrides/app/components/product-tile/index.jsx` — Wraps base ProductTile with QuickViewTrigger overlay
+## Test Files
 
-## Testid Contract
+| File | Cases | Status |
+|---|---|---|
+| `overrides/app/components/quick-view-modal/context.test.jsx` | UT-PROV-001, UT-PROV-002, UT-PROV-003 (3) | ✅ PASS |
+| `overrides/app/components/quick-view-modal/trigger.test.jsx` | UT-TRIG-001 – UT-TRIG-006 (6) | ✅ PASS |
+| `overrides/app/components/quick-view-modal/modal-shell.test.jsx` | UT-SHELL-001 – UT-SHELL-005 (5) | ✅ PASS |
+| `overrides/app/components/quick-view-modal/modal-body.test.jsx` | UT-BODY-001 – UT-BODY-015 (15) | ✅ PASS |
+| `overrides/app/components/quick-view-modal/a11y.test.jsx` | UT-A11Y-001 – UT-A11Y-003 (3) | ✅ PASS |
 
-| testid | Location |
-|--------|----------|
-| `quick-view-trigger-{productId}` | Trigger button on each eligible tile |
-| `quick-view-modal` | ModalContent element |
-| `quick-view-modal-error` | ErrorBoundary fallback |
-| `quick-view-add-to-cart-btn` | Add-to-Cart button inside ProductView (annotated via useEffect) |
-| `quick-view-view-full-details-link` | View Full Details link |
-| `quick-view-modal-title` | Product name heading (also has id for aria-labelledby) |
+## Mocking Strategy
 
-## Architecture Notes
+- **Provider tests**: Mock `modal-shell` only; test context state transitions directly.
+- **Trigger tests**: Mock `useQuickView` context, `react-intl`, Chakra `IconButton`, and icons.
+- **Shell tests**: Mock `useQuickView`, Chakra modal components, `react-error-boundary`, and `modal-body`.
+- **Body tests**: Mock `useQuickView`, `useProductViewModal`, `useCurrentBasket`, `useShopperBasketsV2Mutation`, `ProductView`, `Link`, and Chakra components. ProductView mock simulates disabled state, inventory messages, and error handling.
+- **A11y tests**: Integration-style tests using real `QuickViewContext` with mocked downstream components to verify `aria-labelledby`, `aria-haspopup`, and focus restoration.
 
-- **Reuse-first**: Uses base `ProductView` with `showDeliveryOptions={false}` — no cloned components
-- **SSR-safe**: Trigger uses isMounted pattern; modal body only mounts when `isOpen` is true
-- **Single modal instance**: QuickViewModalShell is a singleton mounted inside QuickViewProvider
-- **No second AddToCartModal**: Consumes existing `useAddToCartModalContext` via ProductView's internal handler
-- **Set/Bundle exclusion**: Trigger returns null for product.type.set or product.type.bundle
-- **Pickup UI suppressed**: `showDeliveryOptions={false}` on ProductView
+## Contract Surface Verified
+
+| Identifier | Kind | Verified By |
+|---|---|---|
+| `quick-view-trigger-{productId}` | testid | UT-TRIG-001, UT-TRIG-004 |
+| `quick-view-modal` | testid | UT-SHELL-001, UT-SHELL-002, UT-SHELL-005 |
+| `quick-view-modal-error` | testid | UT-SHELL-005 |
+| `quick-view-add-to-cart-btn` | testid | UT-BODY-003, UT-BODY-005–009 |
+| `quick-view-view-full-details-link` | testid | UT-BODY-004 |
+| `quick-view-modal-title` | DOM id | UT-A11Y-001 |
+
+## Skipped Cases
+
+None — all 32 cases implemented.
+
+## Escalations
+
+None — implementation surfaces match the contracts.

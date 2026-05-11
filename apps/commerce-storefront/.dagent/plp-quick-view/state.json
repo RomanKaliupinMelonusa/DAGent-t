@@ -206,6 +206,67 @@
         "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/snapshots/summary.md",
         "contract_drift": []
       }
+    },
+    "unit-test": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-11T04:03:44.459Z",
+          "endedAt": "2026-05-11T04:12:19.325Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+        }
+      ],
+      "result": {
+        "test_count": 32,
+        "pass_count": 32,
+        "fail_count": 0,
+        "skip_count": 0,
+        "test_files": [
+          "overrides/app/components/quick-view-modal/context.test.jsx",
+          "overrides/app/components/quick-view-modal/trigger.test.jsx",
+          "overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+          "overrides/app/components/quick-view-modal/modal-body.test.jsx",
+          "overrides/app/components/quick-view-modal/a11y.test.jsx"
+        ],
+        "cases_implemented": [
+          "UT-PROV-001",
+          "UT-PROV-002",
+          "UT-PROV-003",
+          "UT-TRIG-001",
+          "UT-TRIG-002",
+          "UT-TRIG-003",
+          "UT-TRIG-004",
+          "UT-TRIG-005",
+          "UT-TRIG-006",
+          "UT-SHELL-001",
+          "UT-SHELL-002",
+          "UT-SHELL-003",
+          "UT-SHELL-004",
+          "UT-SHELL-005",
+          "UT-BODY-001",
+          "UT-BODY-002",
+          "UT-BODY-003",
+          "UT-BODY-004",
+          "UT-BODY-005",
+          "UT-BODY-006",
+          "UT-BODY-007",
+          "UT-BODY-008",
+          "UT-BODY-009",
+          "UT-BODY-010",
+          "UT-BODY-011",
+          "UT-BODY-012",
+          "UT-BODY-013",
+          "UT-BODY-014",
+          "UT-BODY-015",
+          "UT-A11Y-001",
+          "UT-A11Y-002",
+          "UT-A11Y-003"
+        ],
+        "escalations": [],
+        "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/snapshots/summary.md"
+      }
     }
   },
   "history": [
@@ -227,6 +288,16 @@
         "endedAt": "2026-05-11T04:03:44.431Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/dev.1.log"
+      }
+    },
+    {
+      "nodeId": "unit-test",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-11T04:03:44.459Z",
+        "endedAt": "2026-05-11T04:12:19.325Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
       }
     }
   ],
