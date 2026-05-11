@@ -26,6 +26,7 @@ import {
 } from "./harness.ts";
 import type { NodeDef, NodeId, RunState } from "./types.ts";
 import { createLiveLogger } from "./live-logger.ts";
+import { ActivityWatchdog } from "./watchdog.ts";
 
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min — same as `Promise.race` cap.
@@ -309,6 +310,20 @@ export async function runAgentNode(
   // Track tool names by callId so we can correlate completion events.
   const toolCallNames = new Map<string, string>();
 
+  // Inactivity watchdog — only ticks when no tool calls are in-flight.
+  // Long-running Playwright/shell operations keep inFlight > 0 and
+  // pause the clock, so they won't trigger a false positive.
+  const watchdog = node.inactivityTimeoutMs
+    ? new ActivityWatchdog(node.inactivityTimeoutMs, () => {
+        logLine("watchdog.inactivity", {
+          thresholdMs: node.inactivityTimeoutMs,
+          message: "LLM idle — no tool calls in-flight. Disconnecting session.",
+        });
+        live.error(`Inactivity watchdog fired after ${node.inactivityTimeoutMs! / 1000}s idle — killing session`);
+        session.disconnect().catch(() => {});
+      })
+    : null;
+
   // Stream high-signal events into the log + live terminal.
   session.on("tool.execution_start", (e: any) => {
     const toolName = e?.data?.toolName;
@@ -316,6 +331,7 @@ export async function runAgentNode(
     if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName);
     logLine("tool.start", { tool: toolName, args: e?.data?.arguments });
     live.toolStart(toolName, e?.data?.arguments);
+    watchdog?.toolStarted();
   });
   session.on("tool.execution_complete", (e: any) => {
     const toolCallId = e?.data?.toolCallId;
@@ -324,6 +340,7 @@ export async function runAgentNode(
     logLine("tool.complete", { tool: toolName, result: resultText.slice(0, 200) });
     live.toolComplete(toolName, resultText.slice(0, 120));
     if (toolCallId) toolCallNames.delete(toolCallId);
+    watchdog?.toolCompleted();
   });
   session.on("session.error" as any, (e: any) => {
     logLine("session.error", { message: String(e?.data?.message ?? e) });
@@ -361,6 +378,7 @@ export async function runAgentNode(
       logPath,
     };
   } finally {
+    watchdog?.dispose();
     await session.disconnect().catch(() => {});
     logLine("attempt.end", { ok: result.ok, error: result.errorMessage });
     live.done(result.ok, result.errorMessage);

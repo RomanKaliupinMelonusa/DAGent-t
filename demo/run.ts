@@ -296,6 +296,15 @@ async function runMainLoop(
       continue;
     }
 
+    // Recovery-only nodes (e.g. storefront-debug) are skipped on linear
+    // advance. They only execute when reached via failure routing, which
+    // sets _failureSource. Peek — don't consume — executeNode handles that.
+    if (node.recoveryOnly && !(state as any)._failureSource) {
+      console.log(`[run] ⤳ ${node.id} is recovery-only and no failure routed here — skipping`);
+      i = i + 1;
+      continue;
+    }
+
     try {
       await executeNode(node, state);
       if (node.onSuccess) {

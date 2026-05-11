@@ -31,6 +31,13 @@ export interface NodeDef {
   readonly mcp?: readonly string[];
   /** Per-node hard timeout in ms. Defaults applied in run.ts. */
   readonly timeoutMs?: number;
+  /**
+   * Kill the session when the LLM is idle (no tool calls in-flight AND
+   * no new tool call issued) for this many ms.  Only fires when
+   * inFlightToolCalls === 0, so long-running Playwright/shell operations
+   * do NOT count as inactivity.  Default: no inactivity watchdog.
+   */
+  readonly inactivityTimeoutMs?: number;
   /** In-place retry count before triggering onFailure. Default 1. */
   readonly maxRetries?: number;
   /**
@@ -51,6 +58,13 @@ export interface NodeDef {
    * back into unit-test after a code fix. Default is to advance linearly.
    */
   readonly onSuccess?: NodeId;
+  /**
+   * When true, this node is skipped during linear pipeline progression
+   * (i → i+1). It only executes when reached via failure routing (i.e.
+   * `_failureSource` is set). Use for recovery nodes like
+   * `storefront-debug` that have no work to do unless a prior node failed.
+   */
+  readonly recoveryOnly?: boolean;
   /**
    * If true, this node always runs even if the main loop terminated with
    * an error. Reserved for the pr-creation finalizer.

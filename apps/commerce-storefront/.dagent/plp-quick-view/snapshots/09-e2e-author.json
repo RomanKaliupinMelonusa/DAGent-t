@@ -1,0 +1,65 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T16:34:12.388Z",
+        "endedAt": "2026-05-11T16:37:55.354Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-11T17:46:10.777Z",
+        "endedAt": "2026-05-11T17:49:50.088Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-11T17:50:40.493Z",
+        "endedAt": "2026-05-11T17:53:15.158Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.3.log"
+      }
+    ],
+    "result": {
+      "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: open-quick-view-from-tile",
+        "E2E-002: switch-color-swatch-in-quick-view",
+        "E2E-003: add-to-bag-from-quick-view",
+        "E2E-004: close-quick-view-restores-focus (Escape, close button, overlay click)",
+        "E2E-005: no-pickup-ui-in-quick-view",
+        "E2E-006: add-to-bag-disabled-when-unavailable",
+        "E2E-007: view-full-details-link",
+        "E2E-008: tile-click-still-navigates-to-pdp"
+      ],
+      "total_tests": 11,
+      "contract_testids_used": [
+        "quick-view-trigger-{productId}",
+        "quick-view-modal",
+        "quick-view-modal-error",
+        "quick-view-add-to-cart-btn",
+        "quick-view-view-full-details-link",
+        "product-view",
+        "add-to-cart-modal",
+        "product-added",
+        "inventory-message"
+      ],
+      "baseline_noise_patterns": 6,
+      "self_review_gates": {
+        "networkidle": "PASS",
+        "waitForTimeout": "PASS",
+        "tautological_titles": "PASS",
+        "consoleErrors_in_all_tests": "PASS",
+        "dismissOverlays": "PASS",
+        "awaitHydrated": "PASS"
+      },
+      "prior_cycle_status": "e2e-runner exited code 0 — all tests passed",
+      "changes_this_cycle": "none — spec already committed and passing from prior cycle"
+    }
+  }
+}

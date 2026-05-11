@@ -107,6 +107,9 @@ export const MAIN_NODES: readonly NodeDef[] = [
     // On success, replay e2e-author → e2e-runner to validate the fix.
     // e2e-author will consume any patch file storefront-debug wrote.
     onSuccess: "e2e-author",
+    // Recovery-only: only runs when e2e-runner fails and routes here.
+    // Skipped on linear progression (e2e-runner passes → pipeline ends).
+    recoveryOnly: true,
     // Fault-domain routing: when the debugger diagnoses a test-code fault
     // (bad selectors, wrong assertions, etc.), skip remaining retries and
     // jump directly to e2e-author with the diagnosis as context.
@@ -116,6 +119,10 @@ export const MAIN_NODES: readonly NodeDef[] = [
     onFailureRoutes: { "test-code": "e2e-author" },
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
+    // storefront-debug uses Playwright for live diagnosis — those tool
+    // calls keep inFlight > 0. 5min with zero in-flight calls means the
+    // LLM is genuinely stuck, not waiting on a slow page load.
+    inactivityTimeoutMs: 5 * 60 * 1000,
   },
 ];
 
