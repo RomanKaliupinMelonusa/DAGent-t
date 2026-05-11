@@ -38,36 +38,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const MAX_JUMPS = 5;
 
-/**
- * Check whether the just-completed node left any meaningful working-tree
- * changes (staged or unstaged) within its `allowedWritePaths`. Files
- * under `.dagent/` are excluded — those are pipeline bookkeeping, not
- * source changes that warrant a re-validation loop.
- */
-function hasNodeChangedFiles(node: NodeDef, state: RunState): boolean {
-  const appRoot = path.resolve(REPO_ROOT, state.app);
-  try {
-    const raw = execSync("git status --porcelain", {
-      cwd: appRoot,
-      encoding: "utf-8",
-    }).trim();
-    if (!raw) return false;
-    const changedPaths = raw
-      .split("\n")
-      .map((line) => line.slice(3)) // strip XY + space prefix
-      .filter((p) => !p.startsWith(".dagent/"));
-    if (changedPaths.length === 0) return false;
-    if (!node.allowedWritePaths || node.allowedWritePaths.length === 0) {
-      return changedPaths.length > 0;
-    }
-    const patterns = node.allowedWritePaths.map((p) => new RegExp(p));
-    return changedPaths.some((f) => patterns.some((re) => re.test(f)));
-  } catch {
-    // If git fails, assume files changed to avoid skipping valid work.
-    return true;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -210,6 +180,11 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
 
   const maxAttempts = (node.maxRetries ?? 1) + 1;
 
+  // Offset attempt numbering by prior attempts so log files and attempt
+  // records have globally unique sequence numbers across jump-routed
+  // re-executions of the same node.
+  const attemptOffset = out.attempts.length;
+
   // If a prior node failed and routed here, build a short failure
   // context string that lists the relevant log paths. The agent can
   // then file_read those logs itself — no domain-specific parsing.
@@ -217,10 +192,11 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
   delete (state as any)._failureSource;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const globalAttempt = attemptOffset + attempt;
     ensureRunDirs(state.dagentDir);
-    const logPath = path.join(logsDir(state.dagentDir), `${node.id}.${attempt}.log`);
+    const logPath = path.join(logsDir(state.dagentDir), `${node.id}.${globalAttempt}.log`);
     const startedAt = new Date().toISOString();
-    console.log(`\n[run] ▶ ${node.id} (attempt ${attempt}/${maxAttempts}) — log: ${logPath}`);
+    console.log(`\n[run] ▶ ${node.id} (attempt ${globalAttempt}/${attemptOffset + maxAttempts}) — log: ${logPath}`);
 
     // Build failure context: on first attempt use the failed source node,
     // on retries use our own node (so the agent sees its own prior logs).
@@ -231,11 +207,11 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
         : undefined;
 
     const res = node.kind === "agent"
-      ? await runAgentNode(node, state, attempt, REPO_ROOT, logPath, failureContext)
-      : await runScriptNode(node, state, attempt, REPO_ROOT, logPath);
+      ? await runAgentNode(node, state, globalAttempt, REPO_ROOT, logPath, failureContext)
+      : await runScriptNode(node, state, globalAttempt, REPO_ROOT, logPath);
 
     const attemptRecord: NodeAttempt = {
-      attempt,
+      attempt: globalAttempt,
       startedAt,
       endedAt: new Date().toISOString(),
       status: res.ok ? "completed" : "failed",
@@ -258,7 +234,7 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
     out.errorSummary = res.errorMessage;
     saveState(state);
 
-    console.log(`[run] ✗ ${node.id} attempt ${attempt} failed: ${res.errorMessage}`);
+    console.log(`[run] ✗ ${node.id} attempt ${globalAttempt} failed: ${res.errorMessage}`);
 
     // Fault-domain routing: when an agent reports a fault_domain that
     // matches an onFailureRoutes entry, skip remaining in-place retries
@@ -273,7 +249,7 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
       snapshotNode(state, node.id);
       console.log(`[run] ⚡ ${node.id} reported fault_domain='${faultDomain}' — skipping remaining retries, routing via onFailureRoutes`);
       throw Object.assign(
-        new Error(`Node ${node.id} failed with fault_domain '${faultDomain}' (attempt ${attempt}).`),
+        new Error(`Node ${node.id} failed with fault_domain '${faultDomain}' (attempt ${globalAttempt}).`),
         { nodeId: node.id, faultDomain },
       );
     }
@@ -324,12 +300,7 @@ async function runMainLoop(
       await executeNode(node, state);
       if (node.onSuccess) {
         const target = findIndex(MAIN_NODES, node.onSuccess);
-        if (target < i && !hasNodeChangedFiles(node, state)) {
-          // No meaningful file changes — skip the backward jump to avoid
-          // a wasteful re-validation cycle.
-          console.log(`[run] ⤳ ${node.id} completed with no file changes — skipping onSuccess jump`);
-          i = i + 1;
-        } else if (target < i && state.jumps < MAX_JUMPS) {
+        if (target < i && state.jumps < MAX_JUMPS) {
           // Backward success jump (e.g. storefront-debug → unit-test). Re-validate
           // by clearing the segment [target, i] so it actually re-runs.
           state.jumps++;
