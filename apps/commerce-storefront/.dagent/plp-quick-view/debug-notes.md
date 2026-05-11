@@ -1,83 +1,66 @@
 ---
 schemaVersion: 1
 producedBy: storefront-debug
-producedAt: 2026-05-11T02:52:00.000Z
+producedAt: 2026-05-11T03:20:00.000Z
 ---
 
-# Debug Notes — plp-quick-view E2E Failures
+# Debug Notes — plp-quick-view E2E Failures (Attempt 2)
 
-## Root Cause: Dev Server Crash + Test Code Bugs
+## Root Cause Analysis
 
-### Server Crash (resolved)
+Two code-defect bugs in `modal-body.jsx` caused E2E-003 (add-to-bag-from-quick-view) to fail:
 
-The e2e-runner failed because the dev server had crashed (OOM-killed during
-a prior build). The server was returning **500 Internal Server Error** for
-all PLP requests because `build/loadable-stats.json` was missing (client-side
-webpack bundle artifacts weren't generated).
+### Bug 1: Missing controlled variation management
 
-**Fix**: Restarted the dev server via `npm start`, which rebuilds client
-bundles automatically. After restart, the PLP returns 200 and the Quick View
-feature renders correctly.
+**File**: `overrides/app/components/quick-view-modal/modal-body.jsx`
 
-### Remaining Failures (3 of 10 tests, all test-code bugs)
+The Quick View modal body was passing `product` to `<ProductView>` without
+`controlledVariationValues` or `onVariationChange` props. This caused two issues:
 
-After server restart, **7 tests pass** (E2E-001, E2E-004a/b/c, E2E-005,
-E2E-006, E2E-007) and **3 fail** due to test-code issues:
+1. **Variation state was URL-bound**: `useDerivedProduct` inside `ProductView` used
+   `useVariationParams` which reads from URL search params. On the PLP page, there
+   are no color/size params in the URL, so no variant was ever resolved.
 
-#### Bug 1: E2E-002 & E2E-003 — Incomplete baseline noise filter
+2. **Swatch clicks would navigate away**: Without `onVariationChange`, clicking a
+   color/size swatch in the modal would trigger URL-based navigation (via the
+   swatch's `href` prop), navigating away from the PLP.
 
-The `BASELINE_NOISE_PATTERNS` array in the test file filters known platform
-noise from the console-error budget. However, it is missing two patterns that
-appear during normal PLP page loads (pre-existing sandbox behavior):
+3. **Add to Cart silently failed**: `validateAndShowError()` inside `ProductView`
+   checks `product?.variationAttributes?.length > 0 && !variant` — with no variant
+   resolved, it returned `false`, preventing the `addToCart` callback from ever
+   being called.
 
-1. `Failed to load resource: the server responded with a status of 403 (Forbidden)` —
-   This is the browser's generic resource-failure message for Einstein
-   recommendations 403s. The test filters `r: 403 Forbidden` (the SDK's
-   error log) but NOT the browser's `Failed to load resource: ...403...`
-   companion message.
+**Fix**: Import and use `useControlledVariations` hook (same pattern used by
+`BonusProductViewModal`) to manage variation state via React state. Pass
+`controlledVariationValues` to both `useProductViewModal` and `<ProductView>`,
+and pass `handleVariationChange` as `onVariationChange`.
 
-2. `400 Bad Request` errors from `shopper-customers` API endpoints — Guest
-   users hitting `/customers/{id}/baskets` and `/customers/{id}/product-lists`
-   get 400 responses. These appear in the browser console as
-   `Failed to load resource: the server responded with a status of 400 (Bad Request)`
-   and `r: 400 Bad Request`. These are not in the baseline JSON because the
-   baseline analyzer ran with a different session/timing, but they are
-   consistently reproducible pre-existing sandbox noise.
+### Bug 2: Incomplete `itemsAdded` structure for AddToCartModal
 
-**Fix**: Add two more patterns to `BASELINE_NOISE_PATTERNS`:
-```typescript
-/Failed to load resource: the server responded with a status of 40[03]/,
-/r: 400 Bad Request/,
-```
+**File**: `overrides/app/components/quick-view-modal/modal-body.jsx`
 
-#### Bug 2: E2E-008 — Wrong selector for tile image click
+The `handleAddToCart` callback was building `itemsAdded` as flat
+`{productId, quantity}` objects for the basket API. But
+`addToCartModalContext.onOpen({itemsAdded})` passes these to the
+`AddToCartModal` component, which iterates `itemsAdded` and accesses
+`item.product.imageGroups` and `item.variant.variationValues`.
 
-The test uses:
-```typescript
-const firstTile = page.locator('[data-testid^="sf-product-tile-"]').first();
-const tileImage = firstTile.locator('a img, a picture, a').first();
-```
+With `itemsAdded = [{productId, quantity}]`, `item.product` was `undefined`,
+causing: `TypeError: Cannot read properties of undefined (reading 'imageGroups')`
 
-But `sf-product-tile-{id}` testid is on the `<Link>` (`<a>`) element itself
-(the base `ProductTile` spreads `{...rest}` onto its root `<Link>`). So
-`firstTile` IS the `<a>`, and looking for `a img` or `a` inside an `<a>`
-finds nothing (the img is a direct child, not nested in another `<a>`).
+**Fix**: Build separate `productItems` (flat, for basket API) and `itemsAdded`
+(with full product/variant objects, for AddToCartModal). Ensure `imageGroups`
+is always present by merging from `openProduct` (PLP search result, which
+always includes `imageGroups` via `expand=images`).
 
-**Fix**: Change the selector to target the image or the link directly:
-```typescript
-// Option A: Click the tile link directly (it IS the <a>)
-await firstTile.click();
+## Verification
 
-// Option B: Click the img inside the tile
-const tileImage = firstTile.locator('img').first();
-await tileImage.click();
-```
-
-### Verification
-
-All 7 passing tests confirm the Quick View feature works correctly:
-- Modal opens from trigger (E2E-001) ✓
-- Focus restoration on all dismiss paths (E2E-004a/b/c) ✓
-- No pickup UI in modal (E2E-005) ✓
-- Add-to-bag disabled when variation unselected (E2E-006) ✓
-- View Full Details navigates to PDP (E2E-007) ✓
+All 10 E2E tests pass after the fix:
+- E2E-001: opens Quick View modal ✓
+- E2E-002: switches color swatch ✓
+- E2E-003: adds item to bag ✓
+- E2E-004a/b/c: close & focus restoration ✓
+- E2E-005: no pickup UI ✓
+- E2E-006: disabled when no variation ✓
+- E2E-007: view full details ✓
+- E2E-008: tile click regression ✓
