@@ -1,0 +1,22 @@
+{
+  "specFolder": "/workspaces/DAGent-t/apps/commerce-storefront/specs/001-plp-quick-view",
+  "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
+  "stagedAt": "2026-05-11T20:27:23Z",
+  "entries": [
+    {"kind":"spec","path":"spec.md","source":"spec.md"},
+    {"kind":"plan","path":"plan.md","source":"plan.md"},
+    {"kind":"quickstart","path":"quickstart.md","source":"quickstart.md"},
+    {"kind":"tasks","path":"tasks.md","source":"tasks.md"},
+    {"kind":"unit-tasks","path":"unit-tasks.md","source":"unit-tasks.md"},
+    {"kind":"research","path":"research.md","source":"research.md"},
+    {"kind":"data-model","path":"data-model.md","source":"data-model.md"},
+    {"kind":"e2e-tasks","path":"e2e-tasks.md","source":"e2e-tasks.md"},
+    {"kind":"unit-tests","path":"unit-tests.md","source":"unit-tests.md"},
+    {"kind":"e2e-contract","path":"e2e-contract.md","source":"contracts/e2e-tests.md"},
+    {"kind":"contracts","path":"contracts/quick-view-context.md","source":"contracts/quick-view-context.md"},
+    {"kind":"contracts","path":"contracts/quick-view-modal.md","source":"contracts/quick-view-modal.md"},
+    {"kind":"contracts","path":"contracts/quick-view-trigger.md","source":"contracts/quick-view-trigger.md"},
+    {"kind":"checklists","path":"checklists/requirements.md","source":"checklists/requirements.md"},
+    {"kind":"clarifications","path":"clarifications.md","source":"checklists/requirements.md"}
+  ]
+}
