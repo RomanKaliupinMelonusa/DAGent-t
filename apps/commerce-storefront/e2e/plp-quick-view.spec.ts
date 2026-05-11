@@ -34,11 +34,10 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
  * that intercepts pointer events on PLP/PDP/cart roots. PWA-Kit-generic;
  * idempotent; never throws; bounded total wall time (~1.5s worst case,
  * <50 ms when no overlay is present). Uses only `@playwright/test`
- * primitives — no `waitForTimeout`, no `networkidle` (per rules §1–§2).
+ * primitives — no `waitForTimeout`, no `networkidle`.
  */
 async function dismissOverlays(page: Page): Promise<void> {
   const ctaPattern = /accept|decline|close|continue|got it|dismiss|confirm|select/i;
-  // Up to 3 passes — stacked portals (consent + locale) need sequential dismiss.
   for (let pass = 0; pass < 3; pass++) {
     const dialogs = await page.getByRole('dialog').all();
     let dismissed = false;
@@ -63,7 +62,7 @@ async function dismissOverlays(page: Page): Promise<void> {
 const PLP_PATH = '/category/womens-clothing-dresses';
 
 /**
- * Navigate to the PLP, await hydration, and dismiss overlays.
+ * Navigate to the PLP, dismiss overlays, then await hydration.
  * Every test MUST call this before any interaction.
  */
 async function gotoPlp(page: Page): Promise<void> {
@@ -76,7 +75,7 @@ async function gotoPlp(page: Page): Promise<void> {
  * Returns the first Quick View trigger on the PLP and its parsed productId.
  */
 async function firstQuickViewTrigger(page: Page) {
-  const trigger = page.locator('[data-testid^="quick-view-trigger-"]').first();
+  const trigger = page.getByTestId(/^quick-view-trigger-/).first();
   await trigger.waitFor({ state: 'visible', timeout: 10_000 });
   const testid = await trigger.getAttribute('data-testid');
   const productId = testid!.replace('quick-view-trigger-', '');
@@ -86,12 +85,12 @@ async function firstQuickViewTrigger(page: Page) {
 /**
  * Opens Quick View by clicking the first trigger. Returns trigger locator
  * and productId for downstream assertions (e.g. focus restoration).
+ * Uses three-outcome diagnostic pattern (§12).
  */
 async function openQuickView(page: Page) {
   const { trigger, productId } = await firstQuickViewTrigger(page);
   await trigger.click();
 
-  // Three-outcome diagnostic (§12): content, error, or crash page.
   const modal = page.getByTestId('quick-view-modal');
   const errorState = page.getByTestId('quick-view-modal-error');
   const crashPage = page.getByRole('heading', { name: /this page isn't working/i });
@@ -161,16 +160,11 @@ test.describe('PLP Quick View Modal', () => {
 
     const modal = page.getByTestId('quick-view-modal');
 
-    // Look for color swatch radio buttons inside the modal.
-    // Color swatches are typically in a fieldset/group labelled "Color" or similar.
-    const colorGroup = modal.getByRole('radiogroup').filter({
-      has: page.locator('label, legend, [aria-label]'),
-    });
-
-    // Collect all radio buttons across all radiogroups that look like color swatches.
-    // We use a broad approach: find all radiogroups, check their label for "color".
+    // Find the color swatch radiogroup by inspecting each radiogroup's
+    // label/aria-label for "color". Contract says to identify by swatch
+    // group (fieldset/label/name), not positional index.
     const allRadioGroups = await modal.getByRole('radiogroup').all();
-    let colorRadios: ReturnType<typeof modal.getByRole>[] = [];
+    let colorRadios: Awaited<ReturnType<typeof modal.getByRole<'radio'>['all']>> = [];
     let foundColorGroup = false;
 
     for (const group of allRadioGroups) {
@@ -183,15 +177,9 @@ test.describe('PLP Quick View Modal', () => {
       }
     }
 
-    // If no color group found, try looking at headings/labels near swatch groups
-    if (!foundColorGroup) {
-      // Fallback: look for any swatch buttons — skip if none
-      const swatchBtns = await modal.locator('[data-testid^="color-swatch"]').all();
-      if (swatchBtns.length === 0) {
-        test.skip(true, 'No color swatch group visible in Quick View modal for this product');
-        return;
-      }
-      colorRadios = swatchBtns;
+    if (!foundColorGroup || colorRadios.length === 0) {
+      test.skip(true, 'No color swatch group visible in Quick View modal for this product');
+      return;
     }
 
     if (colorRadios.length < 2) {
@@ -206,12 +194,11 @@ test.describe('PLP Quick View Modal', () => {
     // Click the second color swatch
     await colorRadios[1].click();
 
-    // Wait briefly for the image to update
-    await heroImg.waitFor({ state: 'visible', timeout: 5_000 });
-
-    // Assert image src changed
-    const srcAfter = await heroImg.getAttribute('src');
-    expect(srcAfter).not.toBe(srcBefore);
+    // Wait for the image to update — poll for a changed src
+    await expect(async () => {
+      const srcAfter = await heroImg.getAttribute('src');
+      expect(srcAfter).not.toBe(srcBefore);
+    }).toPass({ timeout: 5_000 });
 
     // Modal remains visible
     await expect(modal).toBeVisible();
@@ -231,23 +218,16 @@ test.describe('PLP Quick View Modal', () => {
     const modal = page.getByTestId('quick-view-modal');
     const addToCartBtn = page.getByTestId('quick-view-add-to-cart-btn');
 
-    // If the button is disabled, we need to select a valid variation first.
-    // Try selecting the first available option in each radiogroup inside the modal.
+    // If the button is disabled, select a valid variation first.
+    // Try selecting the first available option in each radiogroup.
     const isDisabled = await addToCartBtn.isDisabled().catch(() => false);
     if (isDisabled) {
       const radioGroups = await modal.getByRole('radiogroup').all();
       for (const group of radioGroups) {
         const radios = await group.getByRole('radio').all();
         for (const radio of radios) {
-          // Try clicking each radio; some may represent OOS variants
           await radio.click();
-          // Small wait for state update
-          await page.waitForFunction(
-            () => true,
-            undefined,
-            { timeout: 500 },
-          ).catch(() => {});
-          // Check if button became enabled
+          // Wait for button state to update
           const nowEnabled = await addToCartBtn.isEnabled().catch(() => false);
           if (nowEnabled) break;
         }
@@ -262,10 +242,10 @@ test.describe('PLP Quick View Modal', () => {
       }
     });
 
-    // Click Add to Cart and wait for basket response
+    // Click Add to Cart
     await addToCartBtn.click();
 
-    // Three-outcome: quick-view-modal hidden, add-to-cart-modal visible, or crash
+    // Three-outcome: add-to-cart confirmation, or crash
     const addToCartModal = page.getByTestId('add-to-cart-modal');
     const crashPage = page.getByRole('heading', { name: /this page isn't working/i });
 
@@ -284,8 +264,7 @@ test.describe('PLP Quick View Modal', () => {
 
     // Add-to-cart confirmation modal visible with at least one product-added row
     await expect(addToCartModal).toBeVisible();
-    const productAddedRows = addToCartModal.getByTestId('product-added');
-    await expect(productAddedRows.first()).toBeVisible();
+    await expect(addToCartModal.getByTestId('product-added').first()).toBeVisible();
 
     // No basket-related 4xx/5xx
     expect(basketErrors).toEqual([]);
@@ -349,7 +328,7 @@ test.describe('PLP Quick View Modal', () => {
     const modal = page.getByTestId('quick-view-modal');
     await expect(modal).toBeVisible();
 
-    // Click the overlay (Chakra modal overlay is a sibling of the modal content).
+    // Click the overlay (Chakra modal overlay sits behind the modal content).
     // Click at the edge of the viewport to hit the overlay.
     await page.mouse.click(5, 5);
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
@@ -376,13 +355,8 @@ test.describe('PLP Quick View Modal', () => {
     await expect(modal).toBeVisible();
 
     // Pickup-related testids must NOT be visible
-    await expect(
-      modal.locator('[data-testid="pickup-select-store-msg"]'),
-    ).not.toBeVisible();
-
-    await expect(
-      modal.locator('[data-testid="store-stock-status-msg"]'),
-    ).not.toBeVisible();
+    await expect(modal.getByTestId('pickup-select-store-msg')).not.toBeVisible();
+    await expect(modal.getByTestId('store-stock-status-msg')).not.toBeVisible();
 
     // No element with data-testid containing "pickup"
     const pickupElements = await modal.locator('[data-testid*="pickup"]').all();
@@ -420,8 +394,7 @@ test.describe('PLP Quick View Modal', () => {
 
     await expect(addToCartBtn).toBeDisabled();
 
-    // Attempt to find an OOS variation: scan radiogroups for crossed-out or
-    // visually-disabled swatches. This is a best-effort runtime probe.
+    // Attempt to find an OOS variation: scan radiogroups for inventory hints.
     const radioGroups = await modal.getByRole('radiogroup').all();
     let foundOos = false;
 
@@ -429,11 +402,11 @@ test.describe('PLP Quick View Modal', () => {
       const radios = await group.getByRole('radio').all();
       for (const radio of radios) {
         await radio.click();
-        // Brief wait for state propagation
-        await page.waitForFunction(() => true, undefined, { timeout: 300 }).catch(() => {});
 
         const inventoryMsg = modal.getByTestId('inventory-message');
-        const isOos = await inventoryMsg.isVisible().catch(() => false);
+        const isOos = await inventoryMsg.waitFor({ state: 'visible', timeout: 1_000 })
+          .then(() => true)
+          .catch(() => false);
         if (isOos) {
           // Verify button stays disabled with OOS selection
           await expect(addToCartBtn).toBeDisabled();
@@ -489,11 +462,11 @@ test.describe('PLP Quick View Modal', () => {
     await gotoPlp(page);
 
     // Get the first product tile
-    const firstTile = page.locator('[data-testid^="sf-product-tile-"]').first();
+    const firstTile = page.getByTestId(/^sf-product-tile-/).first();
     await firstTile.waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Click the tile's image (NOT the quick view trigger)
-    // The image inside the tile is the standard navigation target
+    // Click the tile's image (NOT the quick view trigger).
+    // The image inside the tile is the standard navigation target.
     const tileImage = firstTile.locator('img').first();
     await tileImage.click();
 
