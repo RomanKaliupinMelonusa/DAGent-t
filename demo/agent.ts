@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 import type { MCPServerConfig } from "@github/copilot-sdk";
 
@@ -225,9 +226,10 @@ function resolveMcpServers(
     servers["roam-code"] = {
       type: "local",
       command: path.join(process.env.HOME ?? "/home/node", ".roam-venv", "bin", "roam"),
-      args: ["mcp", "--repo-root", repoRoot],
+      args: ["mcp"],
       tools: ["*"],
       env: { APP_ROOT: appRoot },
+      cwd: repoRoot,
     } as MCPServerConfig;
   }
   if (node.mcp.includes("playwright")) {
@@ -252,11 +254,21 @@ export async function runAgentNode(
   failureContext?: string,
 ): Promise<AgentRunResult> {
   const appRoot = path.resolve(repoRoot, state.app);
+  const hasRoam = node.mcp?.includes("roam-code") ?? false;
+  const roamBin = path.join(process.env.HOME ?? "/home/node", ".roam-venv", "bin", "roam");
+  const postWriteHook = hasRoam
+    ? () => {
+        try {
+          execSync(`${roamBin} index -q`, { cwd: repoRoot, timeout: 10_000, stdio: "ignore" });
+        } catch { /* non-fatal — stale index is acceptable */ }
+      }
+    : undefined;
   const sandbox = buildSandbox(
     repoRoot,
     appRoot,
     node.allowedWritePaths,
     node.blockedCommandRegexes,
+    postWriteHook,
   );
   const collector: OutcomeCollector = {};
   const { systemMessage, taskPrompt } = buildAgentPrompt(node, state, repoRoot, failureContext);

@@ -631,6 +631,20 @@ async function main(): Promise<void> {
 
   let exitCode = 0;
   try {
+    // Ensure roam index is fresh before any agent node reads it.
+    // Exclude pipeline infrastructure — agents must only see app code.
+    try {
+      const roamBin = path.join(process.env.HOME ?? "/home/node", ".roam-venv", "bin", "roam");
+      for (const pat of ["demo/**", "tools/**"]) {
+        execSync(`${roamBin} config --exclude "${pat}"`, { cwd: REPO_ROOT, timeout: 5_000, stdio: "ignore" });
+      }
+      console.log("[run] roam: rebuilding index…");
+      execSync(`${roamBin} index -q`, { cwd: REPO_ROOT, timeout: 30_000, stdio: "ignore" });
+      console.log("[run] roam: index ready");
+    } catch {
+      console.warn("[run] roam: index rebuild failed (non-fatal)");
+    }
+
     await runMainLoop(state, async () => {
       devServer = await ensureDevServer(devServer, appRoot, port);
     });

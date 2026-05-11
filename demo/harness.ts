@@ -79,6 +79,8 @@ export interface Sandbox {
   readonly appRoot: string;
   readonly allowedWritePaths: RegExp[];
   readonly blockedCommandRegexes: RegExp[];
+  /** Optional hook fired after a successful write_file — used for roam reindex. */
+  readonly postWriteHook?: () => void;
 }
 
 export function buildSandbox(
@@ -86,12 +88,14 @@ export function buildSandbox(
   appRoot: string,
   allowedWritePaths: readonly string[] = [],
   blockedCommandRegexes: readonly string[] = [],
+  postWriteHook?: () => void,
 ): Sandbox {
   return {
     repoRoot,
     appRoot,
     allowedWritePaths: allowedWritePaths.map((s) => new RegExp(s)),
     blockedCommandRegexes: blockedCommandRegexes.map((s) => new RegExp(s)),
+    postWriteHook,
   };
 }
 
@@ -226,6 +230,7 @@ export function buildWriteFileTool(sandbox: Sandbox): Tool<any> {
       }
       fs.mkdirSync(path.dirname(resolved), { recursive: true });
       fs.writeFileSync(resolved, args.content);
+      sandbox.postWriteHook?.();
       return `OK: wrote ${args.content.length} bytes to ${args.file_path}`;
     },
   });

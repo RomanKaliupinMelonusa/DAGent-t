@@ -38,6 +38,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     // 3 total attempts — dev server may need warm-up time.
     maxRetries: 2,
     timeoutMs: 10 * 60 * 1000,
+    inactivityTimeoutMs: 5 * 60 * 1000,
     // No onFailure — baseline is mandatory. Without it, e2e tests
     // will always fail on platform noise, wasting all downstream compute.
   },
@@ -59,6 +60,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     // opens a halted PR with the failure context.
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
+    inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
     id: "unit-test",
@@ -72,6 +74,9 @@ export const MAIN_NODES: readonly NodeDef[] = [
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
     maxRetries: 1,
     timeoutMs: 15 * 60 * 1000,
+    // Jest runs are in-flight shell calls — timer paused during them.
+    // 5min idle with no tool call = stuck (same pattern as storefront-debug).
+    inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
     id: "e2e-author",
@@ -82,6 +87,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
     maxRetries: 1,
     timeoutMs: 15 * 60 * 1000,
+    inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
     id: "e2e-runner",
@@ -138,4 +144,5 @@ export const FINALIZER: NodeDef = {
   blockedCommandRegexes: ["(^|\\s)(az|aws|terraform)($|\\s)"],
   maxRetries: 1,
   timeoutMs: 5 * 60 * 1000,
+  inactivityTimeoutMs: 5 * 60 * 1000,
 };
