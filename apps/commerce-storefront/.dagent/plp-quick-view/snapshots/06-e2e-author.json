@@ -1,0 +1,56 @@
+{
+  "nodeId": "e2e-author",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-11T20:58:37.639Z",
+        "endedAt": "2026-05-11T21:01:47.915Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-11T21:16:08.842Z",
+        "endedAt": "2026-05-11T21:20:26.059Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.2.log"
+      }
+    ],
+    "result": {
+      "spec_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+      "flows_authored": [
+        "E2E-001: open quick view from tile",
+        "E2E-002: switch color swatch in quick view",
+        "E2E-003: add to bag from quick view",
+        "E2E-004: close via Escape restores focus",
+        "E2E-004: close via close button restores focus",
+        "E2E-004: close via overlay click restores focus",
+        "E2E-005: no pickup UI in quick view",
+        "E2E-006: add to bag disabled when unavailable",
+        "E2E-007: view full details link navigates to PDP",
+        "E2E-008: tile click still navigates to PDP"
+      ],
+      "test_count": 10,
+      "baseline_noise_patterns": 6,
+      "selectors_policy": "All selectors use getByTestId or contracted testids only. No CSS/XPath selectors for Quick-View-owned UI.",
+      "fixes_from_prior_version": [
+        "Replaced CSS [data-testid^=...] selectors with getByTestId(/^regex/) for prefix matches",
+        "Removed non-contract color-swatch testid fallback in E2E-002",
+        "Replaced page.waitForFunction(() => true) no-ops with proper locator waits",
+        "Replaced modal.locator('[data-testid=...]') with modal.getByTestId() calls",
+        "Used expect().toPass() polling pattern for image src change assertion in E2E-002",
+        "Used inventoryMsg.waitFor() with bounded timeout instead of isVisible() in E2E-006"
+      ],
+      "self_review_gates_passed": [
+        "No networkidle or waitForTimeout in code",
+        "No tautological test titles",
+        "consoleErrors asserted in all 10 tests",
+        "dismissOverlays present",
+        "awaitHydrated present",
+        "No hardcoded locale/port URLs"
+      ]
+    }
+  }
+}
