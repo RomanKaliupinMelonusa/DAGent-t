@@ -1,24 +1,23 @@
 /**
- * briefing.ts — Build a short failure-context string that tells a
- * recovery agent where to look in the .dagent/ folder.
+ * briefing.ts — Build structured failure context for recovery agents.
  *
- * The agent has file_read / shell — it can read logs and parse them
- * itself. All we do here is list the relevant paths and attempt
- * metadata so it doesn't waste time discovering what exists.
+ * Instead of just listing log paths (forcing the LLM to read them),
+ * this module parses e2e-runner output to extract actual test failures
+ * and injects prior-attempt diffs so retry agents know what was already
+ * tried.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import type { NodeAttempt, NodeId, RunState } from "./types.ts";
 import { logsDir } from "./state.ts";
 
 /**
- * Build a markdown snippet that orients the recovery agent:
- *  - which node failed and why
- *  - paths to every relevant log (failed node + own prior attempts)
- *  - pointer to the .dagent/ folder for full context
- *
- * No domain-specific parsing — the LLM is the parser.
+ * Build a markdown snippet with everything a recovery agent needs:
+ *  - parsed test failures (not just log paths)
+ *  - prior-attempt diffs (what was already tried)
+ *  - artifact paths for deeper investigation
  */
 export function buildFailureContext(
   state: RunState,
@@ -33,16 +32,72 @@ export function buildFailureContext(
     ``,
     `**${failedNodeId}** failed. Diagnose and fix the root cause.`,
     ``,
+  ];
+
+  // ── Parsed test failures (the key upgrade) ──
+  // Instead of making the agent read logs, give it the errors directly.
+  // Always include e2e-runner errors when they exist — both on first
+  // routing (failedNodeId === "e2e-runner") AND on storefront-debug
+  // retries (failedNodeId === "storefront-debug") where the agent still
+  // needs to see what tests are failing.
+  const e2eOutput = state.outputs["e2e-runner" as NodeId];
+  const e2eAttempts = e2eOutput?.attempts ?? [];
+  if (e2eAttempts.length > 0) {
+    const lastE2eAttempt = e2eAttempts[e2eAttempts.length - 1];
+    // logPath is repo-relative; dagentDir is absolute. Derive repo root
+    // by stripping the known app-relative suffix from dagentDir.
+    const dagentSuffix = `/${state.app}/.dagent/`;
+    const suffixIdx = state.dagentDir.indexOf(dagentSuffix);
+    const repoRoot = suffixIdx >= 0
+      ? state.dagentDir.slice(0, suffixIdx)
+      : path.resolve(state.dagentDir, "..", "..", "..");
+    const logPath = lastE2eAttempt.logPath
+      ? path.resolve(repoRoot, lastE2eAttempt.logPath)
+      : undefined;
+    if (logPath && fs.existsSync(logPath)) {
+      const parsed = parseE2eRunnerLog(fs.readFileSync(logPath, "utf-8"));
+      if (parsed.failures.length > 0) {
+        lines.push(`### Test Failures (parsed from e2e-runner log)`);
+        lines.push(``);
+        lines.push(`${parsed.summary}`);
+        lines.push(``);
+        for (const f of parsed.failures) {
+          lines.push(`#### ${f.testName}`);
+          lines.push(``);
+          lines.push(`**File:** \`${f.file}:${f.line}\``);
+          lines.push(``);
+          lines.push("```");
+          lines.push(f.errorText);
+          lines.push("```");
+          lines.push(``);
+        }
+        lines.push(`---`);
+        lines.push(``);
+      }
+    }
+  }
+
+  // ── Prior-attempt diffs (what was already tried) ──
+  const priorDebugAttempts = state.history
+    .filter((h) => h.nodeId === "storefront-debug")
+    .map((h) => h.attempt);
+  if (priorDebugAttempts.length > 0) {
+    const diffs = buildPriorAttemptDiffs(state, priorDebugAttempts);
+    if (diffs) {
+      lines.push(diffs);
+    }
+  }
+
+  // ── Artifact paths (for deeper investigation if needed) ──
+  lines.push(
     `### Pipeline artifacts`,
     ``,
     `Everything from this run lives under \`${dagentDir}/\`.`,
-    `Read whatever you need — logs, state, snapshots.`,
-    ``,
     `Key paths:`,
     `- State: \`${dagentDir}/state.json\``,
     `- Logs dir: \`${logsDir(dagentDir)}/\``,
     ``,
-  ];
+  );
 
   // Include debug-notes.md path if the debug agent wrote one.
   const debugNotesPath = path.join(dagentDir, "debug-notes.md");
@@ -56,7 +111,7 @@ export function buildFailureContext(
     );
   }
 
-  // Failed node attempts
+  // Failed node attempts (compact)
   if (attempts.length > 0) {
     lines.push(`### ${failedNodeId} attempts`, ``);
     for (const a of attempts) {
@@ -66,32 +121,161 @@ export function buildFailureContext(
       if (a.errorSummary) lines.push(`  > ${a.errorSummary}`);
     }
     lines.push(``);
-    lines.push(`**Start by reading the most recent failed log above.**`);
-    lines.push(``);
-  }
-
-  // Prior attempts on the recovery node itself (for retries)
-  const ownAttempts = state.history
-    .filter((h) => h.nodeId !== failedNodeId && h.attempt.status === "failed")
-    .filter((h) => {
-      // Only include attempts for nodes that are recovery nodes
-      // (i.e., the node about to run). We don't know the recovery
-      // nodeId here, so include all failed non-source attempts.
-      return true;
-    });
-
-  if (ownAttempts.length > 0) {
-    lines.push(`### Prior debug attempts on this run`, ``);
-    for (const h of ownAttempts) {
-      const dur = fmtDuration(h.attempt);
-      lines.push(`- ${h.nodeId} attempt ${h.attempt.attempt}: **${h.attempt.status}** (${dur}) — \`${h.attempt.logPath}\``);
-    }
-    lines.push(``);
-    lines.push(`Read these logs to see what was already tried. Do not repeat the same approach.`);
-    lines.push(``);
   }
 
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// E2E runner log parser
+// ---------------------------------------------------------------------------
+
+interface ParsedFailure {
+  testName: string;
+  file: string;
+  line: string;
+  errorText: string;
+}
+
+interface ParsedE2eLog {
+  summary: string;
+  failures: ParsedFailure[];
+}
+
+/**
+ * Parse a Playwright --reporter=line log to extract individual test failures
+ * with their error messages. This gives the debug agent the actual errors
+ * instead of just a path to a log file.
+ *
+ * Playwright line-reporter failure blocks look like:
+ *   N) [chromium] › e2e/file.spec.ts:LINE:COL › Test Name
+ *   <error text>
+ *   <until next "N) [chromium]" or summary line>
+ */
+function parseE2eRunnerLog(logContent: string): ParsedE2eLog {
+  const failures: ParsedFailure[] = [];
+
+  // Split on numbered failure markers: "  N) [chromium] › ..."
+  const blocks = logContent.split(/(?=\s+\d+\) \[chromium\] ›)/);
+
+  for (const block of blocks) {
+    const headerMatch = block.match(
+      /\d+\) \[chromium\] › (e2e\/[^\s:]+):(\d+):\d+ › (.+)/,
+    );
+    if (!headerMatch) continue;
+    const [, file, line, testNameRaw] = headerMatch;
+
+    // Extract error text after the header line, cap at 40 lines
+    const lines = block.split("\n");
+    const headerIdx = lines.findIndex((l) => l.match(/\d+\) \[chromium\]/));
+    const errorLines = lines
+      .slice(headerIdx + 1)
+      .filter((l) => !l.match(/^\s*\[\d+\/\d+\]/)) // strip progress lines
+      .slice(0, 40);
+
+    failures.push({
+      testName: testNameRaw.trim(),
+      file,
+      line,
+      errorText: errorLines.join("\n").trim(),
+    });
+  }
+
+  // Grab the summary line: "5 failed\n2 skipped\n3 passed (51.1s)"
+  const summaryMatch = logContent.match(/\d+ failed[\s\S]*?passed \([^)]+\)/);
+  const summary = summaryMatch?.[0]?.trim() ?? `${failures.length} failure(s) detected`;
+
+  return { failures, summary };
+}
+
+// ---------------------------------------------------------------------------
+// Prior-attempt diff builder
+// ---------------------------------------------------------------------------
+
+/**
+ * For retry attempts, show what files the prior debug attempts changed.
+ * This prevents the agent from repeating the same fix or re-investigating
+ * files that were already patched.
+ */
+function buildPriorAttemptDiffs(
+  state: RunState,
+  priorAttempts: readonly NodeAttempt[],
+): string | null {
+  const dagentSuffix = `/${state.app}/.dagent/`;
+  const suffixIdx = state.dagentDir.indexOf(dagentSuffix);
+  const repoRoot = suffixIdx >= 0
+    ? state.dagentDir.slice(0, suffixIdx)
+    : path.resolve(state.dagentDir, "..", "..", "..");
+
+  const lines: string[] = [
+    `### What prior debug attempts already tried`,
+    ``,
+    `Do NOT repeat these approaches. Build on them or try something different.`,
+    ``,
+  ];
+
+  let hasContent = false;
+
+  for (const attempt of priorAttempts) {
+    // Read the structured result from the attempt if available
+    const sdOutput = state.outputs["storefront-debug"];
+    if (sdOutput?.result) {
+      const fixes = (sdOutput.result as any).fixes_applied ?? (sdOutput.result as any).bugs_found;
+      if (fixes && Array.isArray(fixes)) {
+        lines.push(`**Attempt ${attempt.attempt}** (${attempt.status}):`);
+        for (const fix of fixes) {
+          lines.push(`- ${fix.file ?? fix.issue ?? JSON.stringify(fix).slice(0, 150)}`);
+        }
+        lines.push(``);
+        hasContent = true;
+      }
+    }
+
+    // Show git diff for files changed during this attempt's window
+    if (attempt.status === "completed" || attempt.status === "failed") {
+      try {
+        const logPath = attempt.logPath
+          ? path.resolve(repoRoot, attempt.logPath)
+          : undefined;
+        if (logPath && fs.existsSync(logPath)) {
+          // Extract commit hashes from agent-commit.sh output in the log
+          const logText = fs.readFileSync(logPath, "utf-8");
+          const commitMatches = logText.match(/\[[\w-]+ ([a-f0-9]{7,})\]/g);
+          if (commitMatches && commitMatches.length > 0) {
+            const lastCommit = commitMatches[commitMatches.length - 1]
+              .match(/([a-f0-9]{7,})/)?.[1];
+            if (lastCommit) {
+              const diffStat = execSync(
+                `git diff --stat ${lastCommit}~1..${lastCommit} 2>/dev/null || true`,
+                { cwd: repoRoot, encoding: "utf-8", timeout: 5_000 },
+              ).trim();
+              if (diffStat) {
+                lines.push(`**Files changed in attempt ${attempt.attempt}:**`);
+                lines.push("```");
+                lines.push(diffStat);
+                lines.push("```");
+                lines.push(``);
+                hasContent = true;
+              }
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+  }
+
+  if (!hasContent) {
+    // Fallback: at least note that prior attempts exist
+    lines.push(`${priorAttempts.length} prior attempt(s) exist. Check their logs to avoid repeating approaches.`);
+    lines.push(``);
+    for (const a of priorAttempts) {
+      lines.push(`- Attempt ${a.attempt}: **${a.status}** (${fmtDuration(a)}) — \`${a.logPath}\``);
+    }
+    lines.push(``);
+    hasContent = true;
+  }
+
+  return hasContent ? lines.join("\n") : null;
 }
 
 function fmtDuration(a: NodeAttempt): string {
