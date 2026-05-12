@@ -18,23 +18,35 @@ import {useQuickView} from './context'
 import messages from './messages'
 
 /**
- * Imperatively tag the Add-to-Cart button(s) rendered by ProductView with
+ * Imperatively tag the Add-to-Cart button rendered by ProductView with
  * data-testid="quick-view-add-to-cart-btn". ProductView renders the button
  * internally with no testid; we locate it by the intl text "Add to Cart"
  * and apply the attribute. This runs after every render via a ref callback
  * and a MutationObserver for robustness across loading/variant transitions.
+ *
+ * IMPORTANT: ProductView may render responsive duplicate buttons (one for
+ * mobile, one for desktop). The testid contract requires cardinality: one,
+ * so we tag only the FIRST matching button.
  */
 const useTagCartButton = () => {
     const containerRef = useRef(null)
 
     const tagButtons = useCallback(() => {
         if (!containerRef.current) return
+        // Clear any previously applied testid to avoid stale duplicates
+        const stale = containerRef.current.querySelectorAll(
+            '[data-testid="quick-view-add-to-cart-btn"]'
+        )
+        for (const el of stale) {
+            el.removeAttribute('data-testid')
+        }
+        // Tag only the FIRST "Add to Cart" button (cardinality: one)
         const buttons = containerRef.current.querySelectorAll('button')
         for (const btn of buttons) {
             const text = btn.textContent || ''
-            // Match the default "Add to Cart" text (or "Update" for cart edits)
-            if (/add to cart/i.test(text) && !btn.hasAttribute('data-testid')) {
+            if (/add to cart/i.test(text)) {
                 btn.setAttribute('data-testid', 'quick-view-add-to-cart-btn')
+                break
             }
         }
     }, [])

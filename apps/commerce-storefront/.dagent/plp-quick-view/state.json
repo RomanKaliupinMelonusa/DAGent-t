@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-12T02:08:11.058Z",
-  "jumps": 0,
+  "jumps": 1,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -195,6 +195,113 @@
         "implementation_status_path": "apps/commerce-storefront/.dagent/plp-quick-view/implementation-status.json",
         "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/summary.md"
       }
+    },
+    "unit-test": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-12T02:31:27.322Z",
+          "endedAt": "2026-05-12T02:41:51.202Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+        }
+      ],
+      "result": {
+        "test_suite_status": "PASS",
+        "total_cases": 32,
+        "passed": 32,
+        "failed": 0,
+        "skipped": 0,
+        "test_files": [
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx",
+          "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx"
+        ],
+        "case_breakdown": {
+          "UT-PROV": 3,
+          "UT-TRIG": 6,
+          "UT-SHELL": 5,
+          "UT-BODY": 15,
+          "UT-A11Y": 3
+        },
+        "escalations": [],
+        "summary_path": "apps/commerce-storefront/.dagent/plp-quick-view/summary.md"
+      }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-12T02:41:51.214Z",
+          "endedAt": "2026-05-12T02:45:29.344Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "test_file": "apps/commerce-storefront/e2e/plp-quick-view.spec.ts",
+        "flows_authored": [
+          "E2E-001: open-quick-view-from-tile",
+          "E2E-002: switch-color-swatch-in-quick-view",
+          "E2E-003: add-to-bag-from-quick-view",
+          "E2E-004: close-quick-view-restores-focus (3 dismiss paths: Escape, close button, overlay)",
+          "E2E-005: no-pickup-ui-in-quick-view (negative)",
+          "E2E-006: add-to-bag-disabled-when-unavailable",
+          "E2E-007: view-full-details-link",
+          "E2E-008: tile-click-still-navigates-to-pdp"
+        ],
+        "total_test_blocks": 10,
+        "testids_used": [
+          "quick-view-trigger-{productId}",
+          "quick-view-modal",
+          "quick-view-modal-error",
+          "quick-view-add-to-cart-btn",
+          "quick-view-view-full-details-link",
+          "sf-product-tile-{productId}",
+          "product-view",
+          "add-to-cart-modal",
+          "product-added",
+          "inventory-message",
+          "product-tile-image"
+        ],
+        "baseline_noise_patterns": 6,
+        "self_review_checks": {
+          "networkidle": "PASS",
+          "waitForTimeout": "PASS",
+          "anti_tautology": "PASS",
+          "consoleErrors": "PASS",
+          "dismissOverlays": "PASS",
+          "awaitHydrated": "PASS",
+          "warmup_beforeAll": "PASS",
+          "or_locators": "PASS",
+          "locale_urls": "PASS",
+          "typescript": "PASS"
+        },
+        "dom_validation": "Confirmed quick-view-trigger-* testids present in live DOM (25+ triggers on PLP dresses page)",
+        "escalations": [],
+        "skippable_flows": [
+          "E2E-002 (if no color swatches on first tile)",
+          "E2E-006 (if no OOS variant discoverable at runtime)"
+        ]
+      }
+    },
+    "e2e-runner": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-12T02:45:33.402Z",
+          "endedAt": "2026-05-12T02:46:22.786Z",
+          "status": "failed",
+          "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+        }
+      ],
+      "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
     }
   },
   "history": [
@@ -217,7 +324,39 @@
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/dev.1.log"
       }
+    },
+    {
+      "nodeId": "unit-test",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-12T02:31:27.322Z",
+        "endedAt": "2026-05-12T02:41:51.202Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-12T02:41:51.214Z",
+        "endedAt": "2026-05-12T02:45:29.344Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-runner",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-12T02:45:33.402Z",
+        "endedAt": "2026-05-12T02:46:22.786Z",
+        "status": "failed",
+        "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
+      }
     }
   ],
-  "devServerPort": 3000
+  "devServerPort": 3000,
+  "_failureSource": "e2e-runner"
 }
