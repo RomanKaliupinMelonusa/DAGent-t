@@ -1,57 +1,54 @@
 ---
 schemaVersion: 1
-producedBy: storefront-dev
-producedAt: "2026-05-12T02:30:00.000Z"
+producedBy: unit-test
+producedAt: 2026-05-12T02:45:00.000Z
 ---
 
-# PLP Quick View Modal — Implementation Summary
+# Unit Test Summary: PLP Product Quick View Modal
 
-## What was built
+## Results
 
-A Product Quick View modal triggered from each product tile on the Product List Page (PLP). The modal renders the base PWA Kit `ProductView` component with `showDeliveryOptions={false}` (Pickup/Ship-to-Store deferred), supports variation switching, Add-to-Bag, and on success closes itself and delegates to the existing global `AddToCartModal`.
+**Status**: PASS  
+**Total test cases**: 32  
+**Passed**: 32  
+**Failed**: 0  
+**Skipped**: 0  
 
-## Files created/modified
+## Test Files
 
-### New files (under `overrides/app/components/quick-view-modal/`)
+| File | Cases | Status |
+|---|---|---|
+| `context.test.jsx` | UT-PROV-001..003 (3) | ✅ All pass |
+| `trigger.test.jsx` | UT-TRIG-001..006 (6) | ✅ All pass |
+| `modal-shell.test.jsx` | UT-SHELL-001..005 (5) | ✅ All pass |
+| `modal-body.test.jsx` | UT-BODY-001..015 (15) | ✅ All pass |
+| `a11y.test.jsx` | UT-A11Y-001..003 (3) | ✅ All pass |
 
-| File | Purpose |
-|------|---------|
-| `context.jsx` | `QuickViewProvider`, `QuickViewContext`, `useQuickView` hook — singleton state management |
-| `trigger.jsx` | `QuickViewTrigger` — isMounted-gated button overlay on product tiles |
-| `modal-shell.jsx` | `QuickViewModalShell` — Chakra Modal wrapper, gated on `isOpen`, with ErrorBoundary |
-| `modal-body.jsx` | `QuickViewModalBody` — ProductView + add-to-cart handler + View Full Details link |
-| `messages.js` | react-intl `defineMessages` catalog for Quick View strings |
-| `index.jsx` | Barrel re-exports for all public symbols |
+## Coverage
 
-### Modified files
+| File | Stmts | Branch | Funcs | Lines |
+|---|---|---|---|---|
+| context.jsx | 94.44% | 50% | 100% | 94.44% |
+| messages.js | 100% | 100% | 100% | 100% |
+| modal-body.jsx | 88.57% | 48% | 87.5% | 93.54% |
+| modal-shell.jsx | 75% | 100% | 50% | 71.42% |
+| trigger.jsx | 94.44% | 75% | 75% | 100% |
 
-| File | Change |
-|------|--------|
-| `overrides/app/components/_app/index.jsx` | Wrapped `BaseApp` in `QuickViewProvider`; injected `QuickViewModalShell` as child of `BaseApp` (inside its provider tree) |
-| `overrides/app/components/product-tile/index.jsx` | Changed from transparent re-export to wrapper that renders base `ProductTile` + `QuickViewTrigger` overlay |
+## Exposed testids verified
 
-## Testid contract
+- `quick-view-trigger-{productId}` — asserted in UT-TRIG-001, UT-TRIG-004, UT-TRIG-005, UT-A11Y-002
+- `quick-view-modal` — asserted in UT-SHELL-001, UT-SHELL-002, UT-A11Y-001
+- `quick-view-modal-error` — asserted in UT-SHELL-005, UT-BODY-014
+- `quick-view-add-to-cart-btn` — asserted in UT-BODY-003, UT-BODY-005..009, UT-BODY-015
+- `quick-view-view-full-details-link` — asserted in UT-BODY-004
 
-| testid | Element | Where |
-|--------|---------|-------|
-| `quick-view-trigger-{productId}` | IconButton (one per eligible tile) | `trigger.jsx` |
-| `quick-view-modal` | ModalContent (when open) | `modal-shell.jsx` |
-| `quick-view-modal-error` | Error fallback Box (on error) | `modal-shell.jsx` |
-| `quick-view-add-to-cart-btn` | Add-to-Cart button (imperatively tagged) | `modal-body.jsx` via `useTagCartButton` |
-| `quick-view-view-full-details-link` | Link to PDP | `modal-body.jsx` |
+## Implementation notes
 
-## SSR safety
+- **Mocking strategy**: All SDK hooks mocked at module boundary (`jest.mock`). No real network calls.
+- **ProductView mocked**: The base `ProductView` component is mocked to avoid pulling in the full SDK/Chakra dependency tree. The mock captures props for assertion and simulates add-to-cart/disabled behaviors.
+- **`addItemToNewOrExistingBasket` helper**: The implementation uses the commerce-sdk-react helper which internally handles basket creation vs. add-to-existing. Tests verify the helper is called (UT-BODY-011, UT-BODY-012) rather than testing low-level createBasket/addItemToBasket separately, since the helper encapsulates that logic.
+- **No deviations from contract**: All 32 enumerated cases implemented. No extras added. No skips.
 
-- Trigger uses `isMounted` pattern: button renders SSR-safe, onClick is noop until client mount
-- Modal shell gates on `isOpen` (initially `false`): body never mounts during SSR
-- No `window`/`document` access in render scope
-- `MutationObserver` only used inside `useEffect` (client-only)
+## Escalations to development session
 
-## Key architectural decisions
-
-1. **Reuse, don't clone**: ProductView is imported directly from `@salesforce/retail-react-app/app/components/product-view` with `showDeliveryOptions={false}`
-2. **`useShopperBasketsMutationHelper`**: Uses the SDK's built-in `addItemToNewOrExistingBasket` helper for create-or-add basket logic
-3. **Single AddToCartModal**: Reuses the global confirmation modal via ProductView's internal `useAddToCartModalContext().onOpen()` — no second modal mounted
-4. **`useProductViewModal`**: Delegates variation state management to the existing hook
-5. **Provider placement**: `QuickViewProvider` wraps `BaseApp`, modal shell rendered inside `BaseApp`'s children (inside `AddToCartModalProvider`, `IntlProvider`, `CommerceApiProvider` etc.)
-6. **Set/Bundle exclusion**: Trigger returns `null` when `product.type?.set || product.type?.bundle`
+None. All public surfaces matched the contracts.
