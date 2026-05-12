@@ -1,0 +1,43 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-12T00:33:47.460Z",
+        "endedAt": "2026-05-12T00:35:46.729Z",
+        "status": "failed",
+        "errorSummary": "2 test-code bugs found in e2e/plp-quick-view.spec.ts:\n\n1. E2E-003 (line 272): basketErrors regex `/baskets/i` is too broad — it catches `GET /customer/shopper-customers/.../customers/.../baskets -> 400` which is a customer-service read endpoint that returns 400 for anonymous/guest shoppers in the sandbox after SDK cache invalidation. The actual basket mutation succeeded (modal closed, confirmation appeared, product-added row visible). Fix: narrow the regex to exclude the shopper-customers baskets read endpoint, e.g. filter only POST/PATCH on `/checkout/shopper-baskets/` or exclude GET requests to the customer baskets listing endpoint.\n\n2. E2E-006 (line 380): Test assumes add-to-cart button is disabled before selecting a size, but `useProductViewModal` initializes with `initialProduct` from the PLP tile which already has a pre-selected variant (PLP tile products include representedProduct/color selection). ProductView auto-resolves to a valid variant so the button is correctly enabled. Fix: either (a) skip the initial-disabled assertion and only test the OOS path, or (b) find a product that is truly a master with no pre-selected variant (may not exist on this PLP).",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-12T00:38:55.985Z",
+        "endedAt": "2026-05-12T00:39:53.172Z",
+        "status": "failed",
+        "errorSummary": "E2E-003 console-error budget fails due to missing noise patterns for Einstein API 400 Bad Request errors in BASELINE_NOISE_PATTERNS (line 22-28 of e2e/plp-quick-view.spec.ts).\n\nWhen add-to-bag fires, Einstein recommendation API calls return 400 in the dev sandbox — these are known persistent platform noise per baseline volatility tagging rules #8 and #9:\n- Rule #8: \"r: 400 Bad Request\" → persistent, network-sandbox\n- Rule #9: \"Failed to load resource: the server responded with a status of 400\" → persistent, network-sandbox\n\nThe test's BASELINE_NOISE_PATTERNS array (lines 22-28) filters 403 errors but NOT 400 errors. The baseline.json didn't capture these because the baseline was taken before any basket mutations existed — Einstein 400s only appear when basket-mutating actions trigger Einstein API calls.\n\nFix: Add two patterns to the BASELINE_NOISE_PATTERNS array:\n  /Failed to load resource: the server responded with a status of 400/,\n  /r: 400 Bad Request/,\n\nThese match baseline volatility tagging rules #8 and #9 exactly.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-12T00:43:20.834Z",
+        "endedAt": "2026-05-12T00:53:30.784Z",
+        "status": "failed",
+        "errorSummary": "E2E-001 fails intermittently with `awaitHydrated` timeout (10s) on cold server start. This is NOT a code defect — the `window.__APP_HYDRATED__` signal in `_app/index.jsx` is correctly implemented (useEffect fires after hydration). Evidence: E2E-001 passed in e2e-runner attempts 1 and 2, failed only in attempt 3. In that same attempt 3, 7 other tests passed — all using the identical `gotoPlp` → `awaitHydrated` flow. No app code changed between attempts 2 and 3.\n\nRoot cause: When Playwright's webServer starts a fresh dev server, webpack compilation + SSR + client bundle download + React hydration can exceed the 10s `awaitHydrated` timeout on the FIRST page load. Subsequent tests benefit from warm caches.\n\nFix options (all in test code/infrastructure):\n1. Add a `beforeAll` warm-up hook in the test file that navigates to the PLP once with a longer timeout (e.g., 30s) before any test runs\n2. Pass a longer timeout to `awaitHydrated` in the `gotoPlp` helper: `await awaitHydrated(page, { timeout: 30_000 })`\n3. Add `retries: 1` in playwright.config.ts for non-CI runs",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.3.log"
+      }
+    ],
+    "errorSummary": "E2E-001 fails intermittently with `awaitHydrated` timeout (10s) on cold server start. This is NOT a code defect — the `window.__APP_HYDRATED__` signal in `_app/index.jsx` is correctly implemented (useEffect fires after hydration). Evidence: E2E-001 passed in e2e-runner attempts 1 and 2, failed only in attempt 3. In that same attempt 3, 7 other tests passed — all using the identical `gotoPlp` → `awaitHydrated` flow. No app code changed between attempts 2 and 3.\n\nRoot cause: When Playwright's webServer starts a fresh dev server, webpack compilation + SSR + client bundle download + React hydration can exceed the 10s `awaitHydrated` timeout on the FIRST page load. Subsequent tests benefit from warm caches.\n\nFix options (all in test code/infrastructure):\n1. Add a `beforeAll` warm-up hook in the test file that navigates to the PLP once with a longer timeout (e.g., 30s) before any test runs\n2. Pass a longer timeout to `awaitHydrated` in the `gotoPlp` helper: `await awaitHydrated(page, { timeout: 30_000 })`\n3. Add `retries: 1` in playwright.config.ts for non-CI runs",
+    "result": {
+      "bugs": [
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 79,
+          "issue": "gotoPlp calls awaitHydrated with default 10s timeout, which is insufficient on cold server start (first test after Playwright's webServer starts fresh dev server)",
+          "fix": "Option A (recommended): Add a beforeAll warm-up hook:\n\ntest.beforeAll(async ({ browser }) => {\n  const page = await browser.newPage();\n  await page.goto(PLP_PATH, { waitUntil: 'domcontentloaded', timeout: 60_000 });\n  await awaitHydrated(page, { timeout: 30_000 });\n  await page.close();\n});\n\nOption B: Increase timeout in gotoPlp:\nasync function gotoPlp(page: Page): Promise<void> {\n  await page.goto(PLP_PATH, { waitUntil: 'domcontentloaded' });\n  await dismissOverlays(page);\n  await awaitHydrated(page, { timeout: 30_000 });\n}"
+        }
+      ]
+    }
+  }
+}

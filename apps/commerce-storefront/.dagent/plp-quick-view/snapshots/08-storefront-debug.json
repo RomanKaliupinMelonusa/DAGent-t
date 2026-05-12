@@ -1,0 +1,35 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-12T00:33:47.460Z",
+        "endedAt": "2026-05-12T00:35:46.729Z",
+        "status": "failed",
+        "errorSummary": "2 test-code bugs found in e2e/plp-quick-view.spec.ts:\n\n1. E2E-003 (line 272): basketErrors regex `/baskets/i` is too broad — it catches `GET /customer/shopper-customers/.../customers/.../baskets -> 400` which is a customer-service read endpoint that returns 400 for anonymous/guest shoppers in the sandbox after SDK cache invalidation. The actual basket mutation succeeded (modal closed, confirmation appeared, product-added row visible). Fix: narrow the regex to exclude the shopper-customers baskets read endpoint, e.g. filter only POST/PATCH on `/checkout/shopper-baskets/` or exclude GET requests to the customer baskets listing endpoint.\n\n2. E2E-006 (line 380): Test assumes add-to-cart button is disabled before selecting a size, but `useProductViewModal` initializes with `initialProduct` from the PLP tile which already has a pre-selected variant (PLP tile products include representedProduct/color selection). ProductView auto-resolves to a valid variant so the button is correctly enabled. Fix: either (a) skip the initial-disabled assertion and only test the OOS path, or (b) find a product that is truly a master with no pre-selected variant (may not exist on this PLP).",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-12T00:38:55.985Z",
+        "endedAt": "2026-05-12T00:39:53.172Z",
+        "status": "failed",
+        "errorSummary": "E2E-003 console-error budget fails due to missing noise patterns for Einstein API 400 Bad Request errors in BASELINE_NOISE_PATTERNS (line 22-28 of e2e/plp-quick-view.spec.ts).\n\nWhen add-to-bag fires, Einstein recommendation API calls return 400 in the dev sandbox — these are known persistent platform noise per baseline volatility tagging rules #8 and #9:\n- Rule #8: \"r: 400 Bad Request\" → persistent, network-sandbox\n- Rule #9: \"Failed to load resource: the server responded with a status of 400\" → persistent, network-sandbox\n\nThe test's BASELINE_NOISE_PATTERNS array (lines 22-28) filters 403 errors but NOT 400 errors. The baseline.json didn't capture these because the baseline was taken before any basket mutations existed — Einstein 400s only appear when basket-mutating actions trigger Einstein API calls.\n\nFix: Add two patterns to the BASELINE_NOISE_PATTERNS array:\n  /Failed to load resource: the server responded with a status of 400/,\n  /r: 400 Bad Request/,\n\nThese match baseline volatility tagging rules #8 and #9 exactly.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.2.log"
+      }
+    ],
+    "errorSummary": "E2E-003 console-error budget fails due to missing noise patterns for Einstein API 400 Bad Request errors in BASELINE_NOISE_PATTERNS (line 22-28 of e2e/plp-quick-view.spec.ts).\n\nWhen add-to-bag fires, Einstein recommendation API calls return 400 in the dev sandbox — these are known persistent platform noise per baseline volatility tagging rules #8 and #9:\n- Rule #8: \"r: 400 Bad Request\" → persistent, network-sandbox\n- Rule #9: \"Failed to load resource: the server responded with a status of 400\" → persistent, network-sandbox\n\nThe test's BASELINE_NOISE_PATTERNS array (lines 22-28) filters 403 errors but NOT 400 errors. The baseline.json didn't capture these because the baseline was taken before any basket mutations existed — Einstein 400s only appear when basket-mutating actions trigger Einstein API calls.\n\nFix: Add two patterns to the BASELINE_NOISE_PATTERNS array:\n  /Failed to load resource: the server responded with a status of 400/,\n  /r: 400 Bad Request/,\n\nThese match baseline volatility tagging rules #8 and #9 exactly.",
+    "result": {
+      "bugs": [
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 22,
+          "issue": "BASELINE_NOISE_PATTERNS missing 400 Bad Request patterns. Einstein API returns 400 on basket mutations in dev sandbox (rules #8/#9 in volatility tagging). The array filters 403s but not 400s.",
+          "fix": "Add two entries to BASELINE_NOISE_PATTERNS:\n  /Failed to load resource: the server responded with a status of 400/,\n  /r: 400 Bad Request/,"
+        }
+      ]
+    }
+  }
+}

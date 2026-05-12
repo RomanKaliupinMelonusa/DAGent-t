@@ -1,0 +1,33 @@
+{
+  "nodeId": "storefront-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-12T00:33:47.460Z",
+        "endedAt": "2026-05-12T00:35:46.729Z",
+        "status": "failed",
+        "errorSummary": "2 test-code bugs found in e2e/plp-quick-view.spec.ts:\n\n1. E2E-003 (line 272): basketErrors regex `/baskets/i` is too broad — it catches `GET /customer/shopper-customers/.../customers/.../baskets -> 400` which is a customer-service read endpoint that returns 400 for anonymous/guest shoppers in the sandbox after SDK cache invalidation. The actual basket mutation succeeded (modal closed, confirmation appeared, product-added row visible). Fix: narrow the regex to exclude the shopper-customers baskets read endpoint, e.g. filter only POST/PATCH on `/checkout/shopper-baskets/` or exclude GET requests to the customer baskets listing endpoint.\n\n2. E2E-006 (line 380): Test assumes add-to-cart button is disabled before selecting a size, but `useProductViewModal` initializes with `initialProduct` from the PLP tile which already has a pre-selected variant (PLP tile products include representedProduct/color selection). ProductView auto-resolves to a valid variant so the button is correctly enabled. Fix: either (a) skip the initial-disabled assertion and only test the OOS path, or (b) find a product that is truly a master with no pre-selected variant (may not exist on this PLP).",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
+    ],
+    "errorSummary": "2 test-code bugs found in e2e/plp-quick-view.spec.ts:\n\n1. E2E-003 (line 272): basketErrors regex `/baskets/i` is too broad — it catches `GET /customer/shopper-customers/.../customers/.../baskets -> 400` which is a customer-service read endpoint that returns 400 for anonymous/guest shoppers in the sandbox after SDK cache invalidation. The actual basket mutation succeeded (modal closed, confirmation appeared, product-added row visible). Fix: narrow the regex to exclude the shopper-customers baskets read endpoint, e.g. filter only POST/PATCH on `/checkout/shopper-baskets/` or exclude GET requests to the customer baskets listing endpoint.\n\n2. E2E-006 (line 380): Test assumes add-to-cart button is disabled before selecting a size, but `useProductViewModal` initializes with `initialProduct` from the PLP tile which already has a pre-selected variant (PLP tile products include representedProduct/color selection). ProductView auto-resolves to a valid variant so the button is correctly enabled. Fix: either (a) skip the initial-disabled assertion and only test the OOS path, or (b) find a product that is truly a master with no pre-selected variant (may not exist on this PLP).",
+    "result": {
+      "bugs": [
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 260,
+          "issue": "basketErrors response listener regex `/baskets/i` is too broad — catches GET /customer/shopper-customers/.../baskets -> 400 (customer-service read, not basket mutation). This 400 is expected sandbox behavior for anonymous users after SDK cache invalidation.",
+          "fix": "Change the response filter to exclude GET requests on the shopper-customers baskets endpoint. E.g.: `if (/shopper-baskets/i.test(res.url()) && res.status() >= 400 && res.request().method() !== 'GET')` or more precisely filter only mutation endpoints (POST/PATCH on `/checkout/shopper-baskets/`)."
+        },
+        {
+          "file": "e2e/plp-quick-view.spec.ts",
+          "line": 380,
+          "issue": "toBeDisabled assertion on quick-view-add-to-cart-btn before size selection. useProductViewModal initializes with the PLP tile's initialProduct which already has a representedProduct/variant pre-selected. ProductView auto-resolves a valid variant, so the button is correctly enabled from the start.",
+          "fix": "Remove or guard the initial-disabled assertion. Options: (1) skip the initial-disabled check and only verify the OOS path, (2) attempt to find a true master product with no pre-selected variant and test.skip if none found, or (3) reset variation state by deselecting all swatches before asserting disabled (if ProductView supports that)."
+        }
+      ]
+    }
+  }
+}
