@@ -1,0 +1,123 @@
+{
+  "slug": "plp-quick-view",
+  "app": "apps/commerce-storefront",
+  "baseBranch": "main",
+  "featureBranch": "plp-quick-view",
+  "specFolderPath": "/workspaces/DAGent-t/apps/commerce-storefront/specs/001-plp-quick-view",
+  "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
+  "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
+  "startedAt": "2026-05-12T00:05:35.217Z",
+  "jumps": 0,
+  "outputs": {
+    "baseline": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-12T00:05:42.519Z",
+          "endedAt": "2026-05-12T00:08:14.859Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+        }
+      ],
+      "result": {
+        "schemaVersion": 1,
+        "producedBy": "baseline-analyzer",
+        "producedAt": "2026-05-12T00:06:45.000Z",
+        "feature": "plp-quick-view",
+        "captured_at": "2026-05-12T00:06:45.000Z",
+        "base_sha": "72a08fcc4d168d397680c74cdcc4bfb09b53301b",
+        "targets": [
+          {
+            "name": "PLP - Dresses",
+            "url": "/category/womens-clothing-dresses",
+            "kind": "page"
+          },
+          {
+            "name": "PLP - New Arrivals",
+            "url": "/category/newarrivals",
+            "kind": "page"
+          }
+        ],
+        "console_errors": [
+          {
+            "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+            "source_page": "PLP - Dresses",
+            "count": 2,
+            "volatility": "persistent",
+            "category": "framework-warning"
+          },
+          {
+            "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+            "source_page": "PLP - Dresses",
+            "count": 2,
+            "volatility": "persistent",
+            "category": "legacy-deprecation"
+          },
+          {
+            "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+            "source_page": "PLP - Dresses",
+            "count": 2,
+            "volatility": "persistent",
+            "category": "network-sandbox"
+          },
+          {
+            "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+            "source_page": "PLP - Dresses",
+            "count": 2,
+            "volatility": "persistent",
+            "category": "network-sandbox"
+          },
+          {
+            "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "source_page": "PLP - Dresses",
+            "count": 4,
+            "volatility": "persistent",
+            "category": "network-sandbox"
+          },
+          {
+            "pattern": "r: 403 Forbidden",
+            "source_page": "PLP - Dresses",
+            "count": 4,
+            "volatility": "persistent",
+            "category": "network-sandbox"
+          }
+        ],
+        "network_failures": [
+          {
+            "pattern": "POST https://g82wgnrvm-ywk9dggrrw8mtggy.pc-rnd.c360a.salesforce.com/web/events/ net::ERR_NAME_NOT_RESOLVED",
+            "source_page": "PLP - Dresses",
+            "count": 2,
+            "volatility": "persistent",
+            "category": "network-sandbox"
+          },
+          {
+            "pattern": "GET /dw/image/v2/AAIA_PRD/ net::ERR_ABORTED",
+            "source_page": "PLP - Dresses",
+            "count": 1
+          },
+          {
+            "pattern": "GET /callback?usid= net::ERR_ABORTED",
+            "source_page": "PLP - Dresses",
+            "count": 1
+          }
+        ],
+        "uncaught_exceptions": [],
+        "notes": "Both PLP pages (womens-clothing-dresses and newarrivals) timed out on networkidle (30s) but rendered successfully — the timeout is caused by long-polling DataCloud/Einstein requests that never settle. Errors are consistent across both pages: React framework warnings (getServerSnapshot caching, defaultProps deprecation), DataCloud c360a.salesforce.com DNS failures (sandbox-only), and Einstein recommendations 403s (sandbox returns 403 in dev). No uncaught exceptions observed. No feature code exists yet so all errors are pre-existing platform noise."
+      }
+    }
+  },
+  "history": [
+    {
+      "nodeId": "baseline",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-12T00:05:42.519Z",
+        "endedAt": "2026-05-12T00:08:14.859Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    }
+  ],
+  "devServerPort": 3000
+}
