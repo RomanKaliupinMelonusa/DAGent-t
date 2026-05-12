@@ -95,6 +95,36 @@ Playwright MCP tools (\`playwright_navigate\`, \`playwright_evaluate\`,
 etc.) to navigate pages and capture console / network errors. Do NOT
 start or stop the dev server.
 
+### Broad Exploration (MANDATORY)
+
+Do NOT limit your capture to only the pages mentioned in the spec.
+Many platform-noise patterns (Einstein API 400s, SLAS 403s, DataCloud
+resolution failures) only manifest when **specific user flows** are
+exercised. A baseline that visits only listing pages will miss noise
+that appears after basket mutations — causing downstream debug cycles
+to chase false positives.
+
+**After capturing spec-derived targets, also exercise these common
+storefront flows on the live dev server:**
+
+1. **Product Detail Page** — click any product tile to navigate to a PDP.
+   Capture console/network errors on the PDP.
+2. **Add to Cart** — find an in-stock product on the PDP and add it to
+   the cart (click the Add-to-Cart / Add-to-Bag button). This triggers
+   basket-creation API calls and Einstein recommendation requests that
+   return 400 in dev sandbox.
+3. **Cart page** — navigate to \`/cart\` and capture errors. Cart page
+   triggers basket-read and recommendation API calls.
+4. **Search** — use the site search (e.g. \`/search?q=shirt\`) to
+   capture search-specific API noise.
+5. **Any modal or overlay** mentioned in the spec — open it and capture
+   errors while it is visible.
+
+Err on the side of **more** targets and **more** interactions — extra
+baseline entries are harmless; missing ones cost downstream debug
+cycles. If a flow fails (product out of stock, page 404s), log it in
+\`notes\` and move on.
+
 `;
 }
 
@@ -115,6 +145,23 @@ so you don't repeat what was already tried.
 The \`.dagent/<slug>/\` directory also contains \`state.json\` (full
 pipeline state), \`summary.md\` (what the dev node built), and node
 snapshots. Read whatever you need.
+
+### Diagnose ALL Failures (MANDATORY)
+
+Do NOT stop after diagnosing the first test failure. Read the **entire**
+e2e-runner log and identify **every distinct failing test**. Each failure
+may have a different root cause (bad regex, missing noise pattern,
+timeout, wrong selector, etc.).
+
+Your \`report_outcome\` call MUST include a \`result.bugs[]\` array that
+covers **every** distinct failure you found — not just the first one.
+Diagnosing one bug per cycle wastes the pipeline's limited jump budget
+(max 5 jumps). A single cycle that surfaces 3 bugs lets the e2e-author
+fix all 3 at once, instead of burning 3 separate cycles.
+
+When multiple tests fail, group related failures (e.g. same root cause
+manifesting in different tests) under one bug entry, but always list
+every affected test name.
 
 ### Time Budget
 

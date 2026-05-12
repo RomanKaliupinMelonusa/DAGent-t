@@ -54,6 +54,23 @@ The `.dagent/<slug>/` directory also contains `state.json` (full
 pipeline state), `summary.md` (what the dev node built), and node
 snapshots. Read whatever you need.
 
+### Diagnose ALL Failures (MANDATORY)
+
+Do NOT stop after diagnosing the first test failure. Read the **entire**
+e2e-runner log and identify **every distinct failing test**. Each failure
+may have a different root cause (bad regex, missing noise pattern,
+timeout, wrong selector, etc.).
+
+Your `report_outcome` call MUST include a `result.bugs[]` array that
+covers **every** distinct failure you found — not just the first one.
+Diagnosing one bug per cycle wastes the pipeline's limited jump budget
+(max 5 jumps). A single cycle that surfaces 3 bugs lets the e2e-author
+fix all 3 at once, instead of burning 3 separate cycles.
+
+When multiple tests fail, group related failures (e.g. same root cause
+manifesting in different tests) under one bug entry, but always list
+every affected test name.
+
 ### Time Budget
 
 Spend at most 3 minutes reading logs and source files. Spend the rest
@@ -702,6 +719,27 @@ This applies to ALL roam tools: `roam_understand`, `roam_context`, `roam_search_
   multiple `roam_context` calls.
 - **No grep for code.** Use `roam_search_symbol` for symbol search. Grep is only
   for non-code files (markdown, config).
+
+### Roam vs Shell Priority (MANDATORY)
+
+Roam tools are **always preferred** over shell-based alternatives for code
+exploration. The roam index provides semantic understanding (call graphs,
+dependency chains, symbol resolution) that text search cannot match.
+
+| Task | Use this | NOT this |
+|------|----------|----------|
+| Find symbol definition / usage | `roam_context <symbol>` | `grep -r "symbol"` |
+| Understand a module / area | `roam_explore <path>` | multiple `file_read` calls |
+| Search for a symbol by name | `roam_search_symbol <name>` | `grep -rn` / `find` |
+| Trace call graph / callers | `roam_trace <symbol>` | manual import-following |
+| Check dependencies | `roam_deps <path>` | reading `import` statements |
+| Validate syntax after edits | `roam_syntax_check <paths>` | running the full build |
+| Pre-change impact analysis | `roam_preflight <symbol>` | guessing impact |
+
+**Use shell (`grep`, `find`, `cat`) only for:**
+- Non-code files (markdown, JSON config, YAML, logs)
+- When roam returns no results for a symbol (rare — try alternate names first)
+- Text-level searches where semantic understanding is not needed (e.g. string literals)
 
 ### Anti-Loitering Rule (STRICT)
 

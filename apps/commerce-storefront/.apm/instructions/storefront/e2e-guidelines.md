@@ -375,3 +375,45 @@ The app shell sets `window.__APP_HYDRATED__ = true` from a single `useEffect` af
     done
     [ "$missing" = 0 ] || echo "FAIL: add awaitHydrated(page) per §22 to the files above (or annotate with // pre-hydration)"
     ```
+
+## Cold-Start Warm-Up Hook (MANDATORY)
+
+23. **Every spec file that navigates to a storefront page MUST include a `test.beforeAll` warm-up hook** that performs one throwaway navigation before any tests run. This prevents cold-start timeout flakes: when Playwright's `webServer` starts a fresh dev server, the first page load requires webpack compilation + SSR + client bundle download + React hydration, which can exceed `awaitHydrated`'s default timeout. Subsequent tests benefit from warm caches.
+
+    ```ts
+    // Use the primary URL your spec exercises (PLP, PDP, cart, etc.)
+    const WARM_UP_URL = '/category/newarrivals'; // ← replace with your spec's target
+
+    test.beforeAll(async ({ browser }) => {
+      const page = await browser.newPage();
+      // Warm up the dev server — first load triggers webpack compilation + SSR.
+      // Use a generous timeout (60s navigation + 30s hydration) so cold starts
+      // don't flake. All subsequent test navigations will hit warm caches.
+      await page.goto(WARM_UP_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60_000,
+      });
+      await awaitHydrated(page, { timeout: 30_000 });
+      await page.close();
+    });
+    ```
+
+    **Rules:**
+    - The warm-up URL MUST be the primary page the spec exercises (PLP, PDP, cart, etc.) — derive it from the acceptance contract, not from this example. Use `domcontentloaded` (per §3) with a `60_000` timeout.
+    - Call `awaitHydrated` with `{ timeout: 30_000 }` (3× the default) to absorb cold-start latency.
+    - Close the page after warm-up — it exists only to prime the server and browser caches.
+    - Do NOT add any assertions in the warm-up hook. Its only purpose is to trigger compilation and caching.
+    - The `browser` fixture is available in `test.beforeAll` — use it to create a throwaway page.
+
+    Self-review grep (run before commit):
+    ```bash
+    # Every spec that calls page.goto must include a beforeAll warm-up hook.
+    missing=0
+    for f in $(grep -lE "page\.goto\(" e2e/*.spec.ts 2>/dev/null); do
+      if ! grep -q "test.beforeAll" "$f"; then
+        echo "MISSING warm-up beforeAll: $f"
+        missing=1
+      fi
+    done
+    [ "$missing" = 0 ] || echo "FAIL: add test.beforeAll warm-up hook per §23 to the files above"
+    ```

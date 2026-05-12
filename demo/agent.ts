@@ -304,6 +304,12 @@ export async function runAgentNode(
 
   logLine("attempt.start", { node: node.id, attempt, model: MODEL });
 
+  // Log when PATCH mode was injected so audits can confirm it reached the LLM.
+  const failedSource = (state as any)._failureSource as string | undefined;
+  if (failedSource && state.outputs[failedSource as NodeId]?.status === "failed") {
+    logLine("patch_mode.injected", { source: failedSource, target: node.id });
+  }
+
   const session = await client.createSession({
     model: MODEL,
     workingDirectory: repoRoot,
