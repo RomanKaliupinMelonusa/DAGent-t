@@ -169,39 +169,6 @@ function buildAgentPrompt(
     )}\n\`\`\``);
   }
 
-  // When a node was reached via fault-domain routing, surface the failed
-  // node's structured diagnosis (errorSummary + result) so the receiving
-  // agent has actionable context beyond just log paths.
-  const failedSourceId = (state as any)._failureSource as string | undefined;
-  if (failedSourceId) {
-    const failedOut = state.outputs[failedSourceId as NodeId];
-    if (failedOut && failedOut.status === "failed") {
-      // Inject a top-level MODE: PATCH signal before any other content
-      // so the LLM knows to apply surgical fixes, not regenerate.
-      sections.unshift(
-        `## ⚠ MODE: PATCH\n\n` +
-        `This node was activated via **fault-domain routing** from \`${failedSourceId}\`.\n` +
-        `You are in **PATCH MODE** — apply only the specific fixes from the diagnosis below.\n` +
-        `Do NOT regenerate files from scratch. Read existing files first, change the minimum\n` +
-        `number of lines, and preserve everything that was already working.`,
-      );
-
-      const diagParts: string[] = [
-        `## Debug diagnosis from ${failedSourceId}`,
-        ``,
-        `The **${failedSourceId}** node diagnosed the failure but could not fix it.`,
-        `Use this diagnosis to guide your fix — do not re-investigate from scratch.`,
-      ];
-      if (failedOut.errorSummary) {
-        diagParts.push(``, `### Diagnosis`, ``, failedOut.errorSummary);
-      }
-      if (failedOut.result) {
-        diagParts.push(``, `### Structured result`, ``, `\`\`\`json`, JSON.stringify(failedOut.result, null, 2), `\`\`\``);
-      }
-      sections.push(diagParts.join("\n"));
-    }
-  }
-
   if (failureContext) {
     sections.push(failureContext);
   }
@@ -303,12 +270,6 @@ export async function runAgentNode(
   const live = createLiveLogger(node.id, attempt);
 
   logLine("attempt.start", { node: node.id, attempt, model: MODEL });
-
-  // Log when PATCH mode was injected so audits can confirm it reached the LLM.
-  const failedSource = (state as any)._failureSource as string | undefined;
-  if (failedSource && state.outputs[failedSource as NodeId]?.status === "failed") {
-    logLine("patch_mode.injected", { source: failedSource, target: node.id });
-  }
 
   const session = await client.createSession({
     model: MODEL,

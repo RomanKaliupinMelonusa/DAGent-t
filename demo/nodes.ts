@@ -9,9 +9,9 @@
  *   - unit-test           → in-place retries (1), then terminal halt → PR
  *   - e2e-author          → in-place retries (1), then terminal halt → PR
  *   - e2e-runner          → no retries; onFailure = storefront-debug
- *   - storefront-debug    → in-place retries (2); onSuccess = e2e-author
- *                            (replays e2e-author → e2e-runner);
- *                           on exhaustion, terminal halt → PR
+ *   - storefront-debug    → in-place retries (2); fixes BOTH code-defects
+ *                           AND test-code bugs; onSuccess = e2e-runner
+ *                           (re-validates fix); on exhaustion, halt → PR
  *
  * Finalizer: pr-creation (alwaysRun=true) — runs in the `finally` block,
  * including on terminal halt. Opens a Draft PR with the run history.
@@ -108,21 +108,17 @@ export const MAIN_NODES: readonly NodeDef[] = [
       "^worker/",
       "^overrides/",
       "^\\.dagent/.*\\.patch\\.json$",
+      "^e2e/.*\\.spec\\.ts$",
     ],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
-    // On success, replay e2e-author → e2e-runner to validate the fix.
-    // e2e-author will consume any patch file storefront-debug wrote.
-    onSuccess: "e2e-author",
+    // On success, re-run e2e-runner to validate the fix.
+    onSuccess: "e2e-runner",
     // Recovery-only: only runs when e2e-runner fails and routes here.
     // Skipped on linear progression (e2e-runner passes → pipeline ends).
     recoveryOnly: true,
-    // Fault-domain routing: when the debugger diagnoses a test-code fault
-    // (bad selectors, wrong assertions, etc.), skip remaining retries and
-    // jump directly to e2e-author with the diagnosis as context.
-    // For code-defect faults (or no fault_domain), in-place retries apply
-    // as usual, and on exhaustion the main loop terminates with the
-    // finalizer opening a halted PR.
-    onFailureRoutes: { "test-code": "e2e-author" },
+    // No onFailureRoutes — storefront-debug handles ALL fault domains
+    // (code-defect AND test-code) directly. This eliminates the context
+    // loss from routing diagnoses to a separate e2e-author agent.
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
     // storefront-debug uses Playwright for live diagnosis — those tool

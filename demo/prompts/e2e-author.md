@@ -37,6 +37,25 @@ fragments:
 ---
 
 
+## E2E author node — demo pipeline overrides
+
+### First-Pass Only
+
+In the demo pipeline, you run **once** to author E2E tests from the
+spec and acceptance scenarios. You are NOT re-invoked for test fixes —
+the `storefront-debug` node handles all test-code bug fixes directly.
+
+**Ignore** any references in the instructions below to:
+- "fault-domain routing from storefront-debug"
+- "Debug diagnosis from storefront-debug"
+- "triage-handoff" / `inputs/triage-handoff.json`
+- "redev-cycle discipline"
+
+These apply to the production pipeline's repair loop, which is not used
+in the demo pipeline. Focus entirely on authoring high-quality tests
+from the spec on your first and only pass.
+
+
 <!-- agents/e2e-author.agent.md -->
 ---
 description: "SDET agent — authors Playwright E2E tests based on data-testid contracts"
