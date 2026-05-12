@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "producedBy": "storefront-dev",
+  "producedAt": "2026-05-12T02:30:00.000Z",
+  "flows": [
+    {
+      "flowId": "open-quick-view-from-tile",
+      "status": "live"
+    },
+    {
+      "flowId": "switch-color-swatch-in-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "add-to-bag-from-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "close-quick-view-restores-focus",
+      "status": "live"
+    },
+    {
+      "flowId": "no-pickup-ui-in-quick-view",
+      "status": "live"
+    },
+    {
+      "flowId": "add-to-bag-disabled-when-unavailable",
+      "status": "live"
+    },
+    {
+      "flowId": "view-full-details-link",
+      "status": "live"
+    },
+    {
+      "flowId": "tile-click-still-navigates-to-pdp",
+      "status": "live"
+    }
+  ]
+}
