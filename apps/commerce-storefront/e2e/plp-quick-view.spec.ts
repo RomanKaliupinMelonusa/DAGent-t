@@ -24,6 +24,12 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
   /retail-react-app\.use-datacloud\._handleApiError ERROR \[DataCloudApi\] Error sending Data Cloud event/,
   /Failed to load resource: the server responded with a status of 403 \(Forbidden\)/,
   /r: 403 Forbidden/,
+  // Einstein API returns 400 in dev sandbox when basket-mutating actions trigger
+  // recommendation calls. Same network-sandbox category as the 403s above.
+  // Not in baseline.json because baseline was captured before any basket mutations
+  // existed — Einstein 400s only appear post-ATC. Added per storefront-debug diagnosis.
+  /Failed to load resource: the server responded with a status of 400 \(Bad Request\)/,
+  /r: 400 Bad Request/,
 ];
 
 // ---------------------------------------------------------------------------
