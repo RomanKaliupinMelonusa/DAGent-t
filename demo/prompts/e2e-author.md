@@ -99,6 +99,16 @@ You do **NOT** modify application source code — only test files.
 
 ## Workflow
 
+> **⚠ PATCH MODE CHECK — read before anything else.**
+>
+> If your task prompt contains a **"Debug diagnosis from storefront-debug"**
+> section (or a `## ⚠ MODE: PATCH` header), you are in **PATCH MODE**.
+> **Skip steps 1–4 below entirely.** Go directly to
+> [Handling Debug Diagnosis](#handling-debug-diagnosis-fault-domain-routing).
+> You **MUST NOT** regenerate the test file from the acceptance contract.
+> Read the existing test file, apply only the specific fixes from the
+> diagnosis, and preserve every test that was already passing.
+
 1. **Read the acceptance contract:** `{{acceptancePath}}`. This is your specification.
 2. **Read the human spec:** `{{specPath}}` — for narrative context only. The contract wins on any disagreement.
 3. **Check existing tests** in `{{appRoot}}/e2e/` — avoid duplication, match style. This is where you learn the testing conventions for this app.
@@ -176,13 +186,22 @@ When this node is activated via **fault-domain routing** from `storefront-debug`
 a **"Debug diagnosis from storefront-debug"** section and a **"Failure Context"**
 section with log paths.
 
-In this scenario:
-1. **Read the debug diagnosis first** — it contains the root-cause analysis with
-   specific selector bugs, regex typos, or assertion errors already identified.
-2. **Read the debug-notes.md** file if referenced — it has detailed fix recommendations.
-3. **Apply the recommended fixes** to the test file. Do not re-investigate from scratch.
-4. **Validate each fix against the live DOM** using the Playwright MCP before committing.
-5. If the diagnosis identifies multiple bugs, fix all of them in a single pass.
+**You are in PATCH MODE. Do NOT regenerate the test file from the acceptance
+contract. Apply surgical fixes only.**
+
+1. **Read the existing test file** `{{appRoot}}/e2e/{{featureSlug}}.spec.ts` in full
+   before making any changes. Understand what currently passes and what fails.
+2. **Read the debug diagnosis** — it contains `bugs[]` with file, line, issue, and fix.
+3. **Read the debug-notes.md** file if referenced — it has detailed fix recommendations.
+4. **For each bug in the diagnosis, apply ONLY that fix** — change the minimum number
+   of lines. Do not rewrite surrounding code, do not re-derive assertions from the
+   acceptance contract, do not restructure test blocks.
+5. **Do NOT delete, reorder, or regenerate test blocks that are not mentioned in the
+   diagnosis.** Passing tests must remain untouched. A regression (more tests failing
+   after your edit than before) is a critical failure.
+6. **Validate each fix against the live DOM** using the Playwright MCP before committing.
+7. If the diagnosis identifies multiple bugs, fix all of them in a single pass.
+8. Commit with message: `fix(e2e): apply storefront-debug diagnosis`
 
 ## Critical Rules
 

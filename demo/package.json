@@ -5,9 +5,11 @@
   "type": "module",
   "description": "Single-file demo pipeline. DO NOT MERGE.",
   "scripts": {
-    "demo": "tsx run.ts",
+    "demo": "bash scripts/run-supervised.sh",
+    "demo:direct": "tsx run.ts",
     "build:prompts": "node build-prompts.mjs",
-    "predemo": "node build-prompts.mjs"
+    "predemo": "node build-prompts.mjs",
+    "predemo:direct": "node build-prompts.mjs"
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.1.32",

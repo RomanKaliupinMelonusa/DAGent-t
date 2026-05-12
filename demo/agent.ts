@@ -176,6 +176,16 @@ function buildAgentPrompt(
   if (failedSourceId) {
     const failedOut = state.outputs[failedSourceId as NodeId];
     if (failedOut && failedOut.status === "failed") {
+      // Inject a top-level MODE: PATCH signal before any other content
+      // so the LLM knows to apply surgical fixes, not regenerate.
+      sections.unshift(
+        `## ⚠ MODE: PATCH\n\n` +
+        `This node was activated via **fault-domain routing** from \`${failedSourceId}\`.\n` +
+        `You are in **PATCH MODE** — apply only the specific fixes from the diagnosis below.\n` +
+        `Do NOT regenerate files from scratch. Read existing files first, change the minimum\n` +
+        `number of lines, and preserve everything that was already working.`,
+      );
+
       const diagParts: string[] = [
         `## Debug diagnosis from ${failedSourceId}`,
         ``,
@@ -325,6 +335,16 @@ export async function runAgentNode(
   // Inactivity watchdog — only ticks when no tool calls are in-flight.
   // Long-running Playwright/shell operations keep inFlight > 0 and
   // pause the clock, so they won't trigger a false positive.
+  //
+  // When the watchdog fires it rejects `watchdogPromise` so that the
+  // Promise.race below settles immediately — `session.disconnect()` alone
+  // is not enough because `sendAndWait` can block for up to `timeoutMs`
+  // waiting for the SDK's internal idle signal.
+  let rejectWatchdog: ((err: Error) => void) | undefined;
+  const watchdogPromise = new Promise<never>((_resolve, reject) => {
+    rejectWatchdog = reject;
+  });
+
   const watchdog = node.inactivityTimeoutMs
     ? new ActivityWatchdog(node.inactivityTimeoutMs, () => {
         logLine("watchdog.inactivity", {
@@ -333,6 +353,9 @@ export async function runAgentNode(
         });
         live.error(`Inactivity watchdog fired after ${node.inactivityTimeoutMs! / 1000}s idle — killing session`);
         session.disconnect().catch(() => {});
+        rejectWatchdog?.(new Error(
+          `Inactivity watchdog: no tool calls for ${node.inactivityTimeoutMs! / 1000}s — session killed.`,
+        ));
       })
     : null;
 
@@ -365,7 +388,10 @@ export async function runAgentNode(
     logPath,
   };
   try {
-    await session.sendAndWait({ prompt: taskPrompt }, timeoutMs);
+    // Race sendAndWait against the watchdog — if the LLM goes idle the
+    // watchdog rejects immediately instead of waiting for the SDK timeout.
+    const sessionDone = session.sendAndWait({ prompt: taskPrompt }, timeoutMs);
+    await (watchdog ? Promise.race([sessionDone, watchdogPromise]) : sessionDone);
     if (collector.outcome?.status === "completed") {
       result = { ok: true, result: collector.outcome.result, logPath };
     } else if (collector.outcome?.status === "failed") {
@@ -392,6 +418,20 @@ export async function runAgentNode(
   } finally {
     watchdog?.dispose();
     await session.disconnect().catch(() => {});
+    // Force-kill any MCP-spawned processes that survived session.disconnect().
+    // SDK teardown is not reliable across npx process trees.
+    if (node.mcp?.includes("playwright")) {
+      try {
+        execSync(`pkill -f '@playwright/mcp' 2>/dev/null; pkill -f 'chromium' 2>/dev/null`, {
+          stdio: "ignore", timeout: 5_000,
+        });
+      } catch { /* no matches is fine */ }
+    }
+    if (node.mcp?.includes("roam-code")) {
+      try {
+        execSync(`pkill -f 'roam mcp' 2>/dev/null`, { stdio: "ignore", timeout: 5_000 });
+      } catch { /* no matches is fine */ }
+    }
     logLine("attempt.end", { ok: result.ok, error: result.errorMessage });
     live.done(result.ok, result.errorMessage);
     logStream.end();

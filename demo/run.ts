@@ -375,7 +375,7 @@ async function runMainLoop(
 // Finalizer — always runs.
 // ---------------------------------------------------------------------------
 
-async function runFinalizer(state: RunState): Promise<void> {
+export async function runFinalizer(state: RunState): Promise<void> {
   console.log(`\n[run] ▶ finalizer: ${FINALIZER.id} (terminalError=${state.terminalError ? "yes" : "no"})`);
   try {
     await executeNode(FINALIZER, state);
@@ -391,7 +391,7 @@ async function runFinalizer(state: RunState): Promise<void> {
   }
 }
 
-function renderRecoveryBody(state: RunState): string {
+export function renderRecoveryBody(state: RunState): string {
   const status = state.terminalError ? "FAILED" : "SUCCEEDED";
   const lines = [
     `# [demo] ${state.slug} (${status})`,
@@ -419,7 +419,7 @@ function renderRecoveryBody(state: RunState): string {
  * written by executeNode after the agent already committed and pushed).
  * Best-effort — failures here are logged but do not crash the run.
  */
-function finalCommitAndPush(state: RunState): void {
+export function finalCommitAndPush(state: RunState): void {
   try {
     // Save final state snapshot so the on-disk state.json reflects the
     // completed pr-creation node (executeNode already called saveState,
@@ -583,19 +583,32 @@ async function ensureDevServer(
   appRoot: string,
   port: number,
 ): Promise<ChildProcess> {
-  // Kill any orphaned Chromium/Playwright MCP processes left by
+  // Kill any orphaned Chromium/Playwright/roam MCP processes left by
   // prior agent sessions. session.disconnect() should handle this,
   // but if the session crashed, browsers may linger and accumulate
   // memory, eventually triggering the OOM killer which can take
   // down VS Code's remote server and cause a window reload.
   try {
     execSync(
-      `pkill -f '@playwright/mcp' 2>/dev/null; pkill -f 'chromium.*--headless' 2>/dev/null`,
+      `pkill -f '@playwright/mcp' 2>/dev/null; pkill -f 'chromium' 2>/dev/null; pkill -f 'roam mcp' 2>/dev/null`,
       { stdio: "ignore" },
     );
   } catch {
     // pkill exits non-zero when no process matches — that's fine.
   }
+
+  // Proactive memory check — if available memory is low, log a warning.
+  try {
+    const memInfo = fs.readFileSync("/proc/meminfo", "utf-8");
+    const availableKb = parseInt(memInfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? "0", 10);
+    if (availableKb > 0 && availableKb < 512_000) {
+      console.warn(`[run] WARN: low memory (${Math.round(availableKb / 1024)}MB available) — aggressive cleanup`);
+      execSync(
+        `pkill -f 'chromium' 2>/dev/null; pkill -f '@playwright/mcp' 2>/dev/null; pkill -f 'roam mcp' 2>/dev/null`,
+        { stdio: "ignore" },
+      );
+    }
+  } catch { /* /proc/meminfo not available or pkill no-match — non-fatal */ }
 
   if (await tcpProbe(port)) return current;
   console.warn(`[run] WARN: dev server on port ${port} is not responding — restarting`);
@@ -612,6 +625,26 @@ async function main(): Promise<void> {
   const state = initState(args);
   ensureRunDirs(state.dagentDir);
   saveState(state);
+
+  // Signal handlers — catch SIGTERM/SIGINT for graceful shutdown.
+  // SIGKILL (OOM killer) cannot be caught — the wrapper script handles that.
+  let shuttingDown = false;
+  const signalHandler = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error(`\n[run] received ${signal} — running finalizer before exit`);
+    state.terminalError = `Process terminated by ${signal}`;
+    saveState(state);
+    try {
+      await runFinalizer(state);
+      finalCommitAndPush(state);
+    } catch (err) {
+      console.error(`[run] finalizer failed during ${signal} handler:`, err);
+    }
+    process.exit(1);
+  };
+  process.on('SIGTERM', () => signalHandler('SIGTERM'));
+  process.on('SIGINT', () => signalHandler('SIGINT'));
 
   if (!args.resume) {
     stageSpec(state);
