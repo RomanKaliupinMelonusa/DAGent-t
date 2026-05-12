@@ -13,7 +13,7 @@ import type { Page } from '@playwright/test';
 // ---------------------------------------------------------------------------
 const BASELINE_NOISE_PATTERNS: RegExp[] = [
   /Warning: The result of getServerSnapshot should be cached to avoid an infinite loop/,
-  /Warning: %s: Support for defaultProps will be removed from function components in a future major release\.Use JavaScript default parameters instead\.%s PageDesignerProvider/,
+  /Warning: %s: Support for defaultProps will be removed from function components in a future major release\. Use JavaScript default parameters instead\.%s PageDesignerProvider/,
   /Failed to load resource: net::ERR_NAME_NOT_RESOLVED/,
   /retail-react-app\.use-datacloud\._handleApiError ERROR \[DataCloudApi\] Error sending Data Cloud event \{\}/,
   /Failed to load resource: the server responded with a status of 403 \(Forbidden\)/,

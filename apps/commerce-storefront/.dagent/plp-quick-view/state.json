@@ -7,7 +7,7 @@
   "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
   "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
   "startedAt": "2026-05-12T02:08:11.058Z",
-  "jumps": 1,
+  "jumps": 2,
   "outputs": {
     "baseline": {
       "status": "completed",
@@ -232,7 +232,7 @@
       }
     },
     "e2e-author": {
-      "status": "completed",
+      "status": "pending",
       "attempts": [
         {
           "attempt": 1,
@@ -302,6 +302,50 @@
         }
       ],
       "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log."
+    },
+    "storefront-debug": {
+      "status": "pending",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-12T02:46:22.793Z",
+          "endedAt": "2026-05-12T02:48:26.135Z",
+          "status": "failed",
+          "errorSummary": "Fixed 1 code-defect (duplicate quick-view-add-to-cart-btn testid). Remaining failures are all test-code: the BASELINE_NOISE_PATTERNS regex for the defaultProps warning is missing a space between \"release.\" and \"Use\", so it never matches the actual console message. This causes assertConsoleErrorBudget() to fail in 7 of 9 tests (E2E-001, E2E-004, E2E-004b, E2E-004c, E2E-005, E2E-007, E2E-008).",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+        }
+      ],
+      "errorSummary": "Fixed 1 code-defect (duplicate quick-view-add-to-cart-btn testid). Remaining failures are all test-code: the BASELINE_NOISE_PATTERNS regex for the defaultProps warning is missing a space between \"release.\" and \"Use\", so it never matches the actual console message. This causes assertConsoleErrorBudget() to fail in 7 of 9 tests (E2E-001, E2E-004, E2E-004b, E2E-004c, E2E-005, E2E-007, E2E-008).",
+      "result": {
+        "bugs": [
+          {
+            "file": "e2e/plp-quick-view.spec.ts",
+            "line": 17,
+            "issue": "BASELINE_NOISE_PATTERNS[1] regex has `release\\.Use` but the actual console message has `release. Use` (with a space before 'Use'). The regex never matches, so all defaultProps warnings leak through assertConsoleErrorBudget() and fail the test.",
+            "fix": "Change the regex from `/Warning: %s: Support for defaultProps will be removed from function components in a future major release\\.Use JavaScript default parameters instead\\.%s PageDesignerProvider/` to `/Warning: %s: Support for defaultProps will be removed from function components in a future major release\\. Use JavaScript default parameters instead\\.%s PageDesignerProvider/` (add space after `release\\.`)",
+            "affected_tests": [
+              "E2E-001",
+              "E2E-004",
+              "E2E-004b",
+              "E2E-004c",
+              "E2E-005",
+              "E2E-007",
+              "E2E-008"
+            ]
+          },
+          {
+            "file": "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.jsx",
+            "line": 36,
+            "issue": "FIXED: useTagCartButton tagged ALL buttons matching 'add to cart' text with data-testid='quick-view-add-to-cart-btn'. ProductView renders responsive duplicate buttons (mobile + desktop), causing strict mode violation when Playwright resolves the testid to 2 elements.",
+            "fix": "Applied: now clears stale testids first, then tags only the FIRST matching button (break after first match).",
+            "affected_tests": [
+              "E2E-003",
+              "E2E-006"
+            ],
+            "status": "FIXED"
+          }
+        ]
+      }
     }
   },
   "history": [
@@ -355,8 +399,19 @@
         "errorSummary": "Script 'e2e-runner' exited with code 1. See /workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log.",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-runner.1.log"
       }
+    },
+    {
+      "nodeId": "storefront-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-12T02:46:22.793Z",
+        "endedAt": "2026-05-12T02:48:26.135Z",
+        "status": "failed",
+        "errorSummary": "Fixed 1 code-defect (duplicate quick-view-add-to-cart-btn testid). Remaining failures are all test-code: the BASELINE_NOISE_PATTERNS regex for the defaultProps warning is missing a space between \"release.\" and \"Use\", so it never matches the actual console message. This causes assertConsoleErrorBudget() to fail in 7 of 9 tests (E2E-001, E2E-004, E2E-004b, E2E-004c, E2E-005, E2E-007, E2E-008).",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/storefront-debug.1.log"
+      }
     }
   ],
   "devServerPort": 3000,
-  "_failureSource": "e2e-runner"
+  "_failureSource": "storefront-debug"
 }
