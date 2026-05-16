@@ -67,11 +67,8 @@ const COMPOSITIONS = {
   "dev.md": {
     agent: "storefront-dev.md",
     fragments: [
-      // pwa-kit-patterns: hooks table removed (discoverable via roam);
-      //   scars (SSR, ErrorBoundary, prop-spread) inlined in agent
-      // data-testid-contract: essential rules inlined in agent
-      // config-management: removed — dev rarely touches config; rules self-evident
-      // git-operations, hard-limits, roam-tool-rules, roam-efficiency: moved to _preamble.md
+      // Shared code-writing scars — SSR, ErrorBoundary, testid, SDK, config
+      "_pwa-kit-scars.md",
     ],
   },
   "unit-test.md": {
@@ -81,12 +78,12 @@ const COMPOSITIONS = {
   "e2e-author.md": {
     agent: "e2e-author.md",
     fragments: [
-      // Use lean demo-specific e2e guidelines (removes §21, §23-25, compresses rest)
+      // E2E patterns — banned patterns, crash detection, anti-tautology, step translation
       "e2e-guidelines-lean.md",
     ],
   },
   "e2e-debug.md": {
-    // Lean, self-contained prompt — no fragments needed.
+    // Lean, self-contained prompt — critical scars are inlined in the agent body.
     standalone: "e2e-debug.md",
   },
   // Finalizer — bespoke prompt, no source agent.md.

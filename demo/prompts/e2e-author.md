@@ -32,52 +32,104 @@ You run **once** to author tests from the acceptance contract. You are NOT re-in
 
 ## Context
 
-- Feature: {{featureSlug}}
-- Spec: `{{specPath}}`
-- Acceptance contract: `{{acceptancePath}}`
-- App root: `{{appRoot}}`
-
-{{{rules}}}
-
-{{#if pwa_kit_drift_report}}
-## Upstream API Drift Notice
-
-{{{pwa_kit_drift_report}}}
-
-Use this to understand why a `required_dom` testid may have moved or changed shape. Do NOT change assertions — the acceptance contract is your oracle.
-{{/if}}
+The task prompt contains the feature slug, app root, spec, acceptance contract (e2e-contract.md), and baseline inlined under headings.
 
 ## You are blind to the implementation
 
 Your sandbox denies reads of `overrides/`, `config/`, `app/`. Author tests from the **acceptance contract only**.
 
-1. Read `{{acceptancePath}}`. Each `required_dom` → assert visible. Each `required_flow` → translate `steps[]` to Playwright.
-2. Read `{{specPath}}` for narrative context only.
-3. Read existing tests in `{{appRoot}}/e2e/` — avoid duplication, match style.
-4. If contract is insufficient, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what>" })`.
+1. Read the acceptance contract from the task prompt. Each `required_dom` → assert visible. Each `required_flow` → translate `steps[]` to Playwright (see Step Translation Table in E2E Guidelines).
+2. Read the spec for narrative context only.
+3. Read existing tests in `<appRoot>/e2e/` — avoid duplication, match style.
+4. If contract is insufficient, call `report_outcome({ status: "failed", message: "Acceptance contract under-specified: <what>" }).
 
 ## Scope
 
-- `{{appRoot}}/e2e/` — Playwright test files
-- `{{appRoot}}/playwright.config.ts` — read-only unless broken
+- `e2e/` — Playwright test files (relative to app root)
+- `playwright.config.ts` — read-only unless broken
 
 You do NOT modify application source code.
 
 ## Workflow
 
-1. **Read** `{{acceptancePath}}` — your specification.
-2. **Read** `{{specPath}}` for context.
-3. **Check** existing tests in `{{appRoot}}/e2e/`.
-4. **Create** `{{appRoot}}/e2e/{{featureSlug}}.spec.ts`:
+1. **Read** the acceptance contract from the task prompt — your specification.
+2. **Read** the spec for context.
+3. **Check** existing tests in `<appRoot>/e2e/`.
+4. **Create** `<appRoot>/e2e/<slug>.spec.ts`:
    - One `test()` per `required_flow`, title mirrors flow `name`.
-   - Translate `steps[]` via the table below.
    - For each `required_dom`, add `expect(...).toBeVisible()`. Use `.first()` when `cardinality: many`.
    - After every flow, assert console error budget against baseline.
    - Use `page.getByTestId()` only — **NEVER** CSS/XPath, **NEVER** `or` fallbacks.
-   - **NEVER** `waitForTimeout()`, **NEVER** `waitForLoadState('networkidle')`.
-5. **Validate selectors** against live DOM using Playwright MCP.
-6. **Self-review:** `grep -rn 'networkidle\|waitForTimeout\| or ' e2e/{{featureSlug}}.spec.ts` — fix any hits.
-7. **Commit:** `bash demo/scripts/agent-commit.sh all "test(e2e): <description>"`
+5. **Baseline noise**: derive `BASELINE_NOISE_PATTERNS` mechanically from baseline output in the task prompt — one escaped regex per `console_errors[]` entry with `volatility: "persistent"`. Skip `"transient"`. If no baseline: empty array.
+6. **Validate selectors** against live DOM using Playwright MCP.
+7. **Self-review:** `grep -rn 'networkidle\|waitForTimeout\| or ' e2e/<slug>.spec.ts` — fix any hits.
+8. **Commit:** `bash demo/scripts/agent-commit.sh all "test(e2e): <description>"`
+
+<!-- demo/instructions/e2e-guidelines-lean.md -->
+# E2E Test Guidelines (PWA Kit — Demo Pipeline)
+
+## Banned Patterns
+
+1. **NEVER `page.waitForLoadState('networkidle')`** — PWA Kit HMR WebSocket keeps the network active forever. Use `domcontentloaded` + explicit locator waits.
+2. **NEVER `page.waitForTimeout()`** — use explicit locator waits.
+3. Console 403s from SLAS/Shopper APIs are expected local-dev noise. Do NOT debug them.
+
+## Server & Resource Rules
+
+4. Do NOT start the dev server — `playwright.config.ts` `webServer` handles it.
+5. Always `--workers=1` — multiple Chromium instances cause OOM.
+6. Budget 60s for PWA Kit server boot.
+
+## Diagnostics
+
+7. Import `test` and `expect` from `./fixtures` (NOT `@playwright/test`). The `signals` fixture auto-captures console errors and failed requests. Do NOT roll your own `page.on('console')` handlers.
+
+## Self-Review Gate
+
+8. `grep -rn 'networkidle' e2e/` — any hit is a commit-blocker.
+
+## Crash Page Detection (MANDATORY)
+
+9. After actions triggering rendering (click, navigation, modal open), check for the PWA Kit crash page:
+    ```ts
+    const crashHeading = page.getByRole('heading', { name: /this page isn't working/i });
+    const hasCrash = await crashHeading.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false);
+    if (hasCrash) {
+      const stack = await page.locator('pre').textContent().catch(() => 'no stack');
+      throw new Error(`PWA Kit crash page detected. Stack: ${stack}`);
+    }
+    ```
+
+## Three-Outcome Assertion (MANDATORY for modals/drawers)
+
+10. After opening a modal that fetches API data, assert one of: content loaded, graceful error state, or crash page. Use `Promise.race` with three locators and 15s timeout. Happy-path tests MUST assert the success branch won.
+
+## Anti-Tautology Rules
+
+11. Test titles MUST NOT contain ` or ` between happy and failure outcomes — split into separate tests. Forbidden: `expect(A.or(B)).toBeVisible()` where A = success, B = error. Every happy-path test MUST assert a feature-specific `data-testid` with feature-specific content.
+
+## Console Error Budget (MANDATORY)
+
+12. Every happy-path test MUST end with:
+    ```ts
+    expect(
+      consoleErrors.filter((e) => !BASELINE_NOISE_PATTERNS.some((re) => re.test(e)))
+    ).toEqual([]);
+    ```
+    `BASELINE_NOISE_PATTERNS` MUST be derived mechanically from baseline (see agent prompt).
+
+## Overlay & Hydration (MANDATORY)
+
+13. Call `dismissOverlays(page)` after `page.goto()` and BEFORE the first interaction — overlays intercept pointer events.
+14. `await awaitHydrated(page)` between `goto()` and first user action. Import from `./fixtures`. Place after `dismissOverlays(page)`.
+
+## Strict-Mode Locators
+
+15. Every actionable locator (`.click`, `.hover`, `.fill`) MUST resolve to exactly 1 element. Use `.first()` / `.nth(i)` or assert `.toHaveCount(1)` before acting.
+
+## Cold-Start Warm-Up (MANDATORY)
+
+16. Every spec file MUST include `test.beforeAll` with one throwaway navigation to prevent cold-start timeout flakes.
 
 ## Step Translation Table
 
@@ -90,91 +142,3 @@ You do NOT modify application source code.
 | `{ action: assert_text, testid, contains }` | `await expect(page.getByTestId(testid)).toContainText(contains)` |
 
 **Match modifiers:** `match: first` → `.first()`, `match: nth` → `.nth(nth)`, `match: only` (default) → bare locator.
-
-## Baseline Noise Patterns (MANDATORY)
-
-Derive `BASELINE_NOISE_PATTERNS` mechanically from baseline output in the task prompt:
-1. Iterate `console_errors[]`. For each with `volatility: "persistent"`, emit one escaped regex from `pattern`.
-2. Skip `"transient"` or absent entries.
-3. If no baseline: `const BASELINE_NOISE_PATTERNS: RegExp[] = []`.
-
-Do NOT hand-roll patterns — derive from baseline only.
-
-{{> completion}}
-
-<!-- demo/instructions/e2e-guidelines-lean.md -->
-# E2E Test Guidelines (PWA Kit — Demo Pipeline)
-
-## Banned Patterns
-
-1. **NEVER `page.waitForLoadState('networkidle')`** — PWA Kit HMR WebSocket keeps the network active forever. Use `domcontentloaded` + explicit locator waits.
-2. **NEVER `page.waitForTimeout()`** — use explicit locator waits.
-
-## Wait Strategies
-
-3. Navigation: `await page.goto(url, { waitUntil: 'domcontentloaded' })`
-4. Readiness: wait for a known element after navigation: `await page.locator('[data-testid="product-tile"]').first().waitFor({ state: 'visible' })`
-
-## SLAS / Commerce API Noise
-
-5. Console 403s from SLAS/Shopper APIs are expected local-dev noise. Do NOT debug them.
-
-## Server & Resource Rules
-
-6. Do NOT start the dev server — `playwright.config.ts` `webServer` handles it.
-7. Always `--workers=1` — multiple Chromium instances cause OOM.
-8. Budget 60s for PWA Kit server boot.
-
-## Diagnostics
-
-9. Import `test` and `expect` from `./fixtures` (NOT `@playwright/test`). The `signals` fixture auto-captures console errors and failed requests. Do NOT roll your own `page.on('console')` handlers.
-
-## Self-Review Gate
-
-10. `grep -rn 'networkidle' e2e/` — any hit is a commit-blocker.
-
-## Crash Page Detection (MANDATORY)
-
-11. After actions triggering rendering (click, navigation, modal open), check for the PWA Kit crash page:
-    ```ts
-    const crashHeading = page.getByRole('heading', { name: /this page isn't working/i });
-    const hasCrash = await crashHeading.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false);
-    if (hasCrash) {
-      const stack = await page.locator('pre').textContent().catch(() => 'no stack');
-      throw new Error(`PWA Kit crash page detected. Stack: ${stack}`);
-    }
-    ```
-
-## Three-Outcome Assertion (MANDATORY for modals/drawers)
-
-12. After opening a modal that fetches API data, assert one of: content loaded, graceful error state, or crash page. Use `Promise.race` with three locators and 15s timeout. Happy-path tests MUST assert the success branch won.
-
-## Anti-Tautology Rules
-
-13. Test titles MUST NOT contain ` or ` between happy and failure outcomes — split into separate tests. Forbidden: `expect(A.or(B)).toBeVisible()` where A = success, B = error. Every happy-path test MUST assert a feature-specific `data-testid` with feature-specific content.
-
-## Console Error Budget (MANDATORY)
-
-14. Every happy-path test MUST end with:
-    ```ts
-    expect(
-      consoleErrors.filter((e) => !BASELINE_NOISE_PATTERNS.some((re) => re.test(e)))
-    ).toEqual([]);
-    ```
-    `BASELINE_NOISE_PATTERNS` MUST be derived mechanically from baseline (see agent prompt).
-
-## Overlay Dismissal (MANDATORY)
-
-15. PWA Kit mounts cookie/consent and locale dialogs that intercept pointer events. Every spec MUST call `dismissOverlays(page)` after `page.goto(...)` and BEFORE the first interaction. Import from `./helpers`.
-
-## Strict-Mode Locators
-
-16. Every actionable locator (`.click`, `.hover`, `.fill`) MUST resolve to exactly 1 element. Use `.first()` / `.nth(i)` or assert `.toHaveCount(1)` before acting. Never use prefix-stem locators for actions — only enumeration.
-
-## Hydration Gate (MANDATORY)
-
-17. Every spec MUST `await awaitHydrated(page)` between `page.goto(...)` and the first user-action verb. Import from `./fixtures`. Place after `dismissOverlays(page)`.
-
-## Cold-Start Warm-Up (MANDATORY)
-
-18. Every spec file MUST include `test.beforeAll` with one throwaway navigation to prevent cold-start timeout flakes.

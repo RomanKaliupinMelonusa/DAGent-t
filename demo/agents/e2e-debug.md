@@ -31,13 +31,14 @@ The test suite for a feature takes ~50 seconds. Budget allows 3+ full runs.
 ### Test-code bugs (`e2e/*.spec.ts`)
 - **Bad selector** → update the locator. Check live DOM via Playwright MCP if unsure.
 - **Wrong assertion** → update the expected value.
-- **Timing/flake** → add explicit `waitFor` / `expect.toBeVisible()` before the assertion.
+- **Timing/flake** → add explicit `waitFor` / `expect.toBeVisible()` before the assertion. **NEVER** introduce `waitForTimeout()` or `waitForLoadState('networkidle')` — these hang forever on PWA Kit.
 - **Noise pattern** → add framework console error to the noise filter.
 
 ### Code bugs (`app/` / `overrides/`)
-- **Missing testid** → add `data-testid` to the component.
+- **Missing testid** → add `data-testid` to the component. Use a **wrapper element** (not base component root — prop-spread overwrites).
+- **SSR crash** → never access `window`/`document` in render bodies. Use `isMounted` pattern for interactive elements.
 - **Broken handler** → trace and fix the logic.
-- **Render bug** → trace the render path and fix.
+- **Render bug** → trace the render path and fix. Wrap base-template components in `<ErrorBoundary>` inside portals.
 
 ## Multiple Failures
 

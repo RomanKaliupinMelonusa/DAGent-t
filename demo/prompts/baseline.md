@@ -32,12 +32,7 @@ You do NOT write code, author tests, or modify contracts. Output goes exclusivel
 
 ## Context
 
-- Feature: `{{featureSlug}}`
-- Spec: `{{specPath}}`
-- App root: `{{appRoot}}`
-- Dev server: `http://localhost:3000` (already running — do NOT start/stop it)
-
-{{{rules}}}
+The task prompt contains the feature slug, app root, and the spec inlined under headings. Dev server is at `http://localhost:3000` (already running — do NOT start/stop it).
 
 ## Output Schema
 
@@ -46,7 +41,7 @@ You do NOT write code, author tests, or modify contracts. Output goes exclusivel
   "schemaVersion": 1,
   "producedBy": "baseline-analyzer",
   "producedAt": "<ISO-8601>",
-  "feature": "{{featureSlug}}",
+  "feature": "<slug from task prompt>",
   "captured_at": "<ISO-8601>",
   "base_sha": "<git rev-parse HEAD>",
   "targets": [
@@ -64,7 +59,7 @@ You do NOT write code, author tests, or modify contracts. Output goes exclusivel
 
 ## Workflow
 
-1. Read `{{specPath}}` to identify target pages and interactions.
+1. Read the spec from the task prompt to identify target pages and interactions.
 2. **Per page target** (Playwright MCP): attach `console`, `pageerror`, `requestfailed` listeners BEFORE navigation → `page.goto(url, { waitUntil: 'networkidle' })` → wait 10s, scroll once → collect signals.
 3. **Per modal/overlay target**: navigate to host page, click trigger, capture signals.
 4. **Broad exploration (MANDATORY)**: also exercise PDP (click a tile), Add to Cart, `/cart`, `/search?q=shirt`, and any modal in the spec. Extra entries are harmless; missing ones cost debug cycles.
@@ -77,5 +72,3 @@ You do NOT write code, author tests, or modify contracts. Output goes exclusivel
 - Write NO files — output via `report_outcome.result` only.
 - Do NOT fabricate entries — every pattern must be observed via Playwright MCP.
 - Unreachable pages → log in `notes` and move on.
-
-{{> completion}}
