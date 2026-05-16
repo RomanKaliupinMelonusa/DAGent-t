@@ -19,7 +19,7 @@
 import type { NodeDef } from "./types.ts";
 
 const SAFE_BLOCKED_CMDS: readonly string[] = [
-  "(^|\\s)(az|aws|terraform|npm\\s+start|npm\\s+run\\s+watch)($|\\s)",
+  "(^|\\s)(az|aws|terraform|npm\\s+start|npm\\s+run\\s+watch|pwa-kit-dev\\s+start)($|\\s)",
   // Block broad process-killing commands — agents must NEVER kill arbitrary
   // node processes; doing so takes down VS Code's remote server.
   "\\b(pkill|killall)\\b",
@@ -59,6 +59,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     // opens a halted PR with the failure context.
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
+    shellTimeoutMs: 3 * 60 * 1000, // 180s — room for dev-server starts
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
@@ -108,6 +109,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     // agent times out or completely fails.
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
+    shellTimeoutMs: 10 * 60 * 1000, // 600s — full test suite can take minutes
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
 ];

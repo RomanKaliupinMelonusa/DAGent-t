@@ -34,9 +34,12 @@ You fix either **application code** or **test code** — whichever is broken.
 ## Workflow
 
 ```
-1.  RUN    npx playwright test e2e/<slug>.spec.ts --reporter=line --workers=1
+1.  RUN    Use `shell_async` for full test suite runs (>90s):
+           shell_async({ command: "npx playwright test e2e/<slug>.spec.ts --reporter=line --workers=1" })
+           Then poll with shell_poll({ handle }) until done.
+           For single-test runs (<90s), use `shell` directly.
 2.  GREEN? → commit → report_outcome(completed) → DONE
-3.  RED?   → read errors from the shell output (they're right there)
+3.  RED?   → read errors from the shell_poll output (they're right there)
 4.  Read the failing test file + the relevant source file
 5.  Identify root cause: code bug or test bug?
 6.  Fix ALL failures using edit_file — one call per change
@@ -46,6 +49,10 @@ You fix either **application code** or **test code** — whichever is broken.
 ```
 
 The test suite for a feature takes ~50 seconds. Budget allows 3+ full runs.
+
+## Dev Server
+
+The dev server is **managed by the pipeline**. It runs on `http://localhost:${DEVSERVER_PORT:-3000}`. Do NOT start, stop, or restart it. Use `curl -s http://localhost:${DEVSERVER_PORT:-3000}/ -o /dev/null -w '%{http_code}'` to verify it's responding.
 
 ## Edit Discipline (SCAR)
 

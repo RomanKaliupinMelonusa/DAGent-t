@@ -463,7 +463,7 @@ export function finalCommitAndPush(state: RunState): void {
 // ---------------------------------------------------------------------------
 
 const DEV_SERVER_POLL_INTERVAL_MS = 2_000;
-const DEV_SERVER_POLL_TIMEOUT_MS = 60_000;
+const DEV_SERVER_POLL_TIMEOUT_MS = 120_000; // 120s — PWA Kit Webpack can take 70s on cold start
 
 /** Resolve the configured storefront port (env > default 3000). */
 function resolvePort(): number {

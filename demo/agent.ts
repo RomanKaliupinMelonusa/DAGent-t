@@ -22,8 +22,12 @@ import {
   buildFileReadTool,
   buildEditFileTool,
   buildShellTool,
+  buildShellAsyncTool,
+  buildShellPollTool,
   buildWriteFileTool,
   buildReportOutcomeTool,
+  createAsyncProcessStore,
+  cleanupAsyncProcesses,
   type OutcomeCollector,
 } from "./harness.ts";
 import type { NodeDef, NodeId, RunState } from "./types.ts";
@@ -212,12 +216,19 @@ function resolveMcpServers(
   }
   if (node.mcp.includes("playwright")) {
     const port = state.devServerPort ?? (Number(process.env.STOREFRONT_PORT) || 3000);
+    const playwrightEnv: Record<string, string> = {
+      BASE_URL: `http://localhost:${port}`,
+    };
+    // Point at the installed browser path to avoid runtime download failures.
+    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
+      playwrightEnv.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    }
     servers["playwright"] = {
       type: "local",
       command: "npx",
-      args: ["@playwright/mcp@latest", "--headless"],
+      args: ["@playwright/mcp@latest", "--headless", "--browser", "chromium"],
       tools: ["*"],
-      env: { BASE_URL: `http://localhost:${port}` },
+      env: playwrightEnv,
     } as MCPServerConfig;
   }
   return servers;
@@ -241,14 +252,24 @@ export async function runAgentNode(
         } catch { /* non-fatal — stale index is acceptable */ }
       }
     : undefined;
+  // Build extra env vars the shell tool merges into every invocation.
+  const extraEnv: Record<string, string> = {};
+  if (state.devServerPort) extraEnv.DEVSERVER_PORT = String(state.devServerPort);
+
   const sandbox = buildSandbox(
     repoRoot,
     appRoot,
     node.allowedWritePaths,
     node.blockedCommandRegexes,
     postWriteHook,
+    node.shellTimeoutMs,
+    Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
   );
   const collector: OutcomeCollector = {};
+  const asyncStore = createAsyncProcessStore();
+  // Late-binding watchdog ref — shell_async needs to signal the watchdog
+  // which is created after session setup. The getter is closed over.
+  let watchdogRef: { toolStarted: () => void; toolCompleted: () => void } | null = null;
   const { systemMessage, taskPrompt } = buildAgentPrompt(node, state, repoRoot, failureContext);
 
   const tools = [
@@ -256,6 +277,8 @@ export async function runAgentNode(
     buildEditFileTool(sandbox),
     buildWriteFileTool(sandbox),
     buildShellTool(sandbox),
+    buildShellAsyncTool(sandbox, asyncStore, () => watchdogRef),
+    buildShellPollTool(asyncStore),
     buildReportOutcomeTool(collector),
   ];
 
@@ -328,6 +351,9 @@ export async function runAgentNode(
       })
     : null;
 
+  // Bind the watchdog reference so shell_async can signal it.
+  if (watchdog) watchdogRef = watchdog;
+
   // Stream high-signal events into the log + live terminal.
   session.on("tool.execution_start", (e: any) => {
     const toolName = e?.data?.toolName;
@@ -386,6 +412,7 @@ export async function runAgentNode(
     };
   } finally {
     watchdog?.dispose();
+    cleanupAsyncProcesses(asyncStore);
     await session.disconnect().catch(() => {});
     // Force-kill any MCP-spawned processes that survived session.disconnect().
     // SDK teardown is not reliable across npx process trees.

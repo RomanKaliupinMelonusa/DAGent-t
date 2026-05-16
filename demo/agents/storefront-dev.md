@@ -7,6 +7,10 @@ You build commerce pages, components, and flows using Chakra UI and commerce-sdk
 
 The task prompt contains the feature slug, app root, and all kickoff files (spec, plan, research, data-model, contracts) inlined under headings. Working directory defaults to repo root. Pass `cwd` to the app root for PWA Kit commands.
 
+## Dev Server
+
+The dev server is **managed by the pipeline**. It runs on `http://localhost:${DEVSERVER_PORT:-3000}`. Do NOT start, stop, or restart it. Use `curl -s http://localhost:${DEVSERVER_PORT:-3000}/ -o /dev/null -w '%{http_code}'` to verify it's responding.
+
 ## Acceptance & Module Contracts
 
 Read contracts BEFORE coding. Acceptance contract = **floor** (flow-level); module contracts = **ceiling** (per-component DOM shape). Satisfy BOTH.

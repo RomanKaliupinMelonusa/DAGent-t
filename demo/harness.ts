@@ -11,7 +11,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { defineTool } from "@github/copilot-sdk";
 import type { Tool } from "@github/copilot-sdk";
 
@@ -34,7 +36,7 @@ const SAFE_READ_TOOLS = new Set([
 const SAFE_MCP_PREFIXES = ["roam-code-", "roam_", "playwright_", "playwright-"];
 
 /** Tools defined via defineTool that enforce their own RBAC in-handler. */
-const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "edit_file", "shell", "report_outcome"]);
+const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "edit_file", "shell", "shell_async", "shell_poll", "report_outcome"]);
 
 // ---------------------------------------------------------------------------
 // Path normalization
@@ -79,6 +81,10 @@ export interface Sandbox {
   readonly appRoot: string;
   readonly allowedWritePaths: RegExp[];
   readonly blockedCommandRegexes: RegExp[];
+  /** Shell command timeout in ms. Defaults to SHELL_TIMEOUT_MS (120s). */
+  readonly shellTimeoutMs: number;
+  /** Optional extra env vars merged into every shell invocation. */
+  readonly extraEnv?: Readonly<Record<string, string>>;
   /** Optional hook fired after a successful write_file — used for roam reindex. */
   readonly postWriteHook?: () => void;
 }
@@ -89,12 +95,16 @@ export function buildSandbox(
   allowedWritePaths: readonly string[] = [],
   blockedCommandRegexes: readonly string[] = [],
   postWriteHook?: () => void,
+  shellTimeoutMs?: number,
+  extraEnv?: Readonly<Record<string, string>>,
 ): Sandbox {
   return {
     repoRoot,
     appRoot,
     allowedWritePaths: allowedWritePaths.map((s) => new RegExp(s)),
     blockedCommandRegexes: blockedCommandRegexes.map((s) => new RegExp(s)),
+    shellTimeoutMs: shellTimeoutMs ?? SHELL_TIMEOUT_MS,
+    extraEnv,
     postWriteHook,
   };
 }
@@ -308,9 +318,9 @@ export function buildShellTool(sandbox: Sandbox): Tool<any> {
       try {
         const out = execSync(args.command, {
           cwd,
-          env: { ...process.env, ...safeEnv },
+          env: { ...process.env, ...sandbox.extraEnv, ...safeEnv },
           encoding: "utf-8",
-          timeout: SHELL_TIMEOUT_MS,
+          timeout: sandbox.shellTimeoutMs,
           maxBuffer: 10 * 1024 * 1024,
         });
         return out.length > SHELL_OUTPUT_LIMIT
@@ -319,12 +329,161 @@ export function buildShellTool(sandbox: Sandbox): Tool<any> {
       } catch (err: unknown) {
         const e = err as { status?: number; stdout?: string; stderr?: string; killed?: boolean; signal?: string };
         if (e?.killed || e?.signal === "SIGTERM") {
-          return `ERROR: Command killed — exceeded ${SHELL_TIMEOUT_MS / 1000}s timeout. ` +
+          return `ERROR: Command killed — exceeded ${sandbox.shellTimeoutMs / 1000}s timeout. ` +
             `Do NOT retry the same long-running command. Break it into smaller steps or use a different approach.\n` +
             `STDOUT:\n${String(e.stdout ?? "").slice(0, 4000)}\nSTDERR:\n${String(e.stderr ?? "").slice(0, 4000)}`;
         }
         return `EXIT ${e?.status ?? 1}\nSTDOUT:\n${String(e?.stdout ?? "").slice(0, 4000)}\nSTDERR:\n${String(e?.stderr ?? "").slice(0, 4000)}`;
       }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// shell_async / shell_poll — non-blocking shell for long-running commands
+// ---------------------------------------------------------------------------
+
+export interface AsyncProcess {
+  proc: ChildProcess;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  killed: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+export type AsyncProcessStore = Map<string, AsyncProcess>;
+
+export function createAsyncProcessStore(): AsyncProcessStore {
+  return new Map();
+}
+
+/** Kill all remaining async processes — called on session teardown. */
+export function cleanupAsyncProcesses(store: AsyncProcessStore): void {
+  for (const [handle, entry] of store) {
+    if (entry.exitCode === null) {
+      try { process.kill(-entry.proc.pid!, "SIGKILL"); } catch { /* already gone */ }
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    store.delete(handle);
+  }
+}
+
+export function buildShellAsyncTool(
+  sandbox: Sandbox,
+  store: AsyncProcessStore,
+  getWatchdog?: () => { toolStarted: () => void; toolCompleted: () => void } | null,
+): Tool<any> {
+  return defineTool("shell_async", {
+    description:
+      "Start a long-running shell command in the background. Returns a handle immediately. " +
+      "Use `shell_poll` to check progress and retrieve output. Best for commands >90s " +
+      "(e.g. full test suite runs). For quick commands (<90s), prefer `shell`.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The bash command." },
+        cwd: { type: "string", description: "Repo-relative or absolute working directory." },
+        env_vars: { type: "object", description: "Key/value env injections." },
+      },
+      required: ["command"],
+    },
+    handler: (args: { command: string; cwd?: string; env_vars?: Record<string, unknown> }) => {
+      const denial = checkRbac("shell", args, sandbox);
+      if (denial) return denial;
+
+      const cwd = args.cwd
+        ? path.resolve(sandbox.repoRoot, args.cwd)
+        : sandbox.repoRoot;
+      if (cwd !== sandbox.repoRoot && !cwd.startsWith(sandbox.repoRoot + path.sep)) {
+        return `ERROR: cwd resolves outside repo root.`;
+      }
+      const safeEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(args.env_vars ?? {})) safeEnv[k] = String(v);
+
+      const handle = randomUUID();
+      const proc = spawn("bash", ["-c", args.command], {
+        cwd,
+        env: { ...process.env, ...sandbox.extraEnv, ...safeEnv },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
+      });
+
+      const entry: AsyncProcess = {
+        proc,
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+        killed: false,
+        timer: null,
+      };
+
+      // Accumulate output (capped at 2MB to prevent memory pressure).
+      const CAP = 2 * 1024 * 1024;
+      proc.stdout?.on("data", (chunk: Buffer) => {
+        if (entry.stdout.length < CAP) entry.stdout += chunk.toString();
+      });
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        if (entry.stderr.length < CAP) entry.stderr += chunk.toString();
+      });
+
+      proc.on("close", (code) => {
+        entry.exitCode = code ?? 1;
+        if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+        getWatchdog?.()?.toolCompleted();
+      });
+
+      // Kill if it exceeds shellTimeoutMs.
+      entry.timer = setTimeout(() => {
+        if (entry.exitCode === null) {
+          entry.killed = true;
+          try { process.kill(-proc.pid!, "SIGKILL"); } catch { /* already gone */ }
+        }
+      }, sandbox.shellTimeoutMs);
+
+      store.set(handle, entry);
+      getWatchdog?.()?.toolStarted();
+
+      return JSON.stringify({ handle, message: `Command started. Use shell_poll with this handle to check progress.` });
+    },
+  });
+}
+
+export function buildShellPollTool(store: AsyncProcessStore): Tool<any> {
+  return defineTool("shell_poll", {
+    description:
+      "Check the status of an async shell command started with `shell_async`. " +
+      "Returns current output tail and completion status.",
+    parameters: {
+      type: "object",
+      properties: {
+        handle: { type: "string", description: "The handle returned by shell_async." },
+      },
+      required: ["handle"],
+    },
+    handler: (args: { handle: string }) => {
+      const entry = store.get(args.handle);
+      if (!entry) return `ERROR: Unknown handle '${args.handle}'. It may have already been cleaned up.`;
+
+      const done = entry.exitCode !== null;
+      const stdoutTail = entry.stdout.slice(-SHELL_OUTPUT_LIMIT);
+      const stderrTail = entry.stderr.slice(-SHELL_OUTPUT_LIMIT);
+
+      const result: Record<string, unknown> = {
+        done,
+        exitCode: entry.exitCode,
+        killed: entry.killed,
+        stdout_tail: stdoutTail,
+        stderr_tail: stderrTail,
+      };
+
+      // Clean up completed entries.
+      if (done) {
+        if (entry.timer) clearTimeout(entry.timer);
+        store.delete(args.handle);
+      }
+
+      return JSON.stringify(result);
     },
   });
 }

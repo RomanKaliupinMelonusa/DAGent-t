@@ -75,3 +75,11 @@ The task prompt contains the feature slug, app root, and the spec inlined under 
 - **NEVER run Playwright via shell** (`require('playwright')`, `node -e`, `npx playwright`). The Playwright MCP server is your only browser. Shell-based scripts will timeout at 120s and silently fail.
 - **One page per MCP navigation** — do NOT batch multiple pages in a single `browser_run_code_unsafe` call. Navigate, observe, collect, then navigate to the next page.
 - If Playwright MCP navigation returns empty or the page shows `about:blank`, call `browser_snapshot` to check state, then retry navigation once. If still blank, log the page as unreachable in `notes` and continue to the next target.
+
+## Playwright MCP Fallback
+
+If Playwright MCP tools return empty results for all pages (permission failures, blank responses on every tool call), fall back to collecting console errors via the `shell` tool using the baseline-capture spec:
+```
+cd <appRoot> && npx playwright test e2e/_baseline-capture.spec.ts --reporter=json 2>/dev/null
+```
+Parse the JSON output to extract `console_errors` and `network_failures`, then assemble the baseline schema above from the captured data. This is a last resort — always try Playwright MCP first.

@@ -7,7 +7,7 @@ Hard-won lessons from prior runs. Every code-writing agent MUST honour these.
 - **No `Date.now()` / `Math.random()` in render output** — causes hydration mismatch.
 - **isMounted pattern** for interactive affordances in the SSR tree: gate `onClick` elements behind `useState(false)` + `useEffect(() => setMounted(true), [])` so they appear only after hydration.
 - **Modals/drawers/popovers** that use commerce-sdk-react hooks MUST NOT render during SSR. Guard with `{isOpen && <Component />}` — never `<Component isOpen={isOpen} />`.
-
+- **useBreakpointValue / useMediaQuery** return the `base` (mobile) value during SSR but the responsive value on the client, causing a hydration mismatch. React silently fails hydration, breaking `__APP_HYDRATED__` and all E2E tests that depend on `awaitHydrated()`. **Always provide a stable value** for SSR: either always-on (`aria-label` present for all viewports) or gate behind `useEffect`/`isMounted` if the value must differ.
 ### ErrorBoundary
 - **Wrap base-template components** (`ProductView`, `ProductItem`, `ProductScroller`) in a local `<ErrorBoundary>` when rendered inside portals (modal, drawer, popover). The SDK's `AppErrorBoundary` wraps routes, not portals — an unhandled throw destroys the entire page. Fallback MUST include `data-testid` ending in `-error`.
 

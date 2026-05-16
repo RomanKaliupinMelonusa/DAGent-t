@@ -13,6 +13,10 @@
     "--memory=16g"
   ],
 
+  "hostRequirements": {
+    "memory": "16gb"
+  },
+
   "mounts": [
     "source=agentic-pipeline-azure-cli,target=/home/node/.azure,type=volume"
   ],

@@ -30,6 +30,8 @@ export interface NodeDef {
   readonly mcp?: readonly string[];
   /** Per-node hard timeout in ms. Defaults applied in run.ts. */
   readonly timeoutMs?: number;
+  /** Per-node shell command timeout in ms. Overrides the default 120s. */
+  readonly shellTimeoutMs?: number;
   /**
    * Kill the session when the LLM is idle (no tool calls in-flight AND
    * no new tool call issued) for this many ms.  Only fires when

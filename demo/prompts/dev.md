@@ -33,6 +33,10 @@ You build commerce pages, components, and flows using Chakra UI and commerce-sdk
 
 The task prompt contains the feature slug, app root, and all kickoff files (spec, plan, research, data-model, contracts) inlined under headings. Working directory defaults to repo root. Pass `cwd` to the app root for PWA Kit commands.
 
+## Dev Server
+
+The dev server is **managed by the pipeline**. It runs on `http://localhost:${DEVSERVER_PORT:-3000}`. Do NOT start, stop, or restart it. Use `curl -s http://localhost:${DEVSERVER_PORT:-3000}/ -o /dev/null -w '%{http_code}'` to verify it's responding.
+
 ## Acceptance & Module Contracts
 
 Read contracts BEFORE coding. Acceptance contract = **floor** (flow-level); module contracts = **ceiling** (per-component DOM shape). Satisfy BOTH.
@@ -65,7 +69,7 @@ Hard-won lessons from prior runs. Every code-writing agent MUST honour these.
 - **No `Date.now()` / `Math.random()` in render output** — causes hydration mismatch.
 - **isMounted pattern** for interactive affordances in the SSR tree: gate `onClick` elements behind `useState(false)` + `useEffect(() => setMounted(true), [])` so they appear only after hydration.
 - **Modals/drawers/popovers** that use commerce-sdk-react hooks MUST NOT render during SSR. Guard with `{isOpen && <Component />}` — never `<Component isOpen={isOpen} />`.
-
+- **useBreakpointValue / useMediaQuery** return the `base` (mobile) value during SSR but the responsive value on the client, causing a hydration mismatch. React silently fails hydration, breaking `__APP_HYDRATED__` and all E2E tests that depend on `awaitHydrated()`. **Always provide a stable value** for SSR: either always-on (`aria-label` present for all viewports) or gate behind `useEffect`/`isMounted` if the value must differ.
 ### ErrorBoundary
 - **Wrap base-template components** (`ProductView`, `ProductItem`, `ProductScroller`) in a local `<ErrorBoundary>` when rendered inside portals (modal, drawer, popover). The SDK's `AppErrorBoundary` wraps routes, not portals — an unhandled throw destroys the entire page. Fallback MUST include `data-testid` ending in `-error`.
 
