@@ -307,6 +307,16 @@ async function runMainLoop(
 
     try {
       await executeNode(node, state);
+
+      // Materialize baseline output to kickoff dir so downstream nodes
+      // (e2e-author, e2e-debug) can inline it under a dedicated heading
+      // rather than relying on the generic prior-outputs JSON blob.
+      if (node.id === "baseline" && state.outputs["baseline"]?.result) {
+        const baselinePath = path.join(state.kickoffDir, "baseline.json");
+        fs.writeFileSync(baselinePath, JSON.stringify(state.outputs["baseline"].result, null, 2));
+        console.log(`[run] materialized baseline.json → ${path.relative(REPO_ROOT, baselinePath)}`);
+      }
+
       if (node.onSuccess) {
         const target = findIndex(MAIN_NODES, node.onSuccess);
         if (target < i && state.jumps < MAX_JUMPS) {

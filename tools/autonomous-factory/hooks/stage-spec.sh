@@ -197,16 +197,10 @@ if [[ "$module_contract_count" -eq 0 ]]; then
   log "WARN: no module contracts found under contracts/"
 fi
 
-# ── Checklists (en-bloc) ─────────────────────────────────────────────
+# ── Clarifications (derived from checklists) ─────────────────────────
+# Raw checklists/*.md are NOT staged — no pipeline node consumes them.
+# Only the derived clarifications.md (used by the dev node) is emitted.
 if [[ -d "$SPEC_FOLDER/checklists" ]]; then
-  mkdir -p "$KICKOFF_DIR/checklists"
-  for src in "$SPEC_FOLDER"/checklists/*.md; do
-    [[ -f "$src" ]] || continue
-    base="$(basename "$src")"
-    cp -f "$src" "$KICKOFF_DIR/checklists/$base"
-    manifest_entries+=("{\"kind\":\"checklists\",\"path\":\"checklists/$(json_escape "$base")\",\"source\":\"checklists/$(json_escape "$base")\"}")
-  done
-
   # clarifications symlink: prefer requirements.md, else first *.md.
   clarif_src=""
   if [[ -f "$SPEC_FOLDER/checklists/requirements.md" ]]; then
