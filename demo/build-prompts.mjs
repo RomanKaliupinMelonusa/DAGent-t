@@ -1,18 +1,15 @@
 #!/usr/bin/env node
 /**
- * build-prompts.mjs — Flatten APM agent prompts + instruction fragments
+ * build-prompts.mjs — Flatten agent prompts + instruction fragments
  * into a single self-contained `.md` per demo node.
  *
  * Usage: node demo/build-prompts.mjs
  *
- * Source of truth: apps/commerce-storefront/.apm/{agents,instructions}/.
- * Output: demo/prompts/<nodeId>.md
+ * Demo-specific agents live in demo/agents/. Demo-specific instruction
+ * overrides live in demo/instructions/. Production fragments from
+ * .apm/instructions/ are used as fallback when no demo override exists.
  *
- * The compositions below are a hand-curated subset of each agent's
- * `instructions` list in `.apm/apm.yml`. We drop fragments that are
- * irrelevant to the demo (e.g. spec-compilation when there is no
- * spec-compiler node) so the prompts stay under the practical ~12k
- * token budget.
+ * Output: demo/prompts/<nodeId>.md
  */
 
 import fs from "node:fs";
@@ -23,187 +20,94 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APM_ROOT = path.resolve(__dirname, "..", "apps", "commerce-storefront", ".apm");
 const OUT_DIR = path.resolve(__dirname, "prompts");
 
-const AGENTS = path.join(APM_ROOT, "agents");
-const INST = path.join(APM_ROOT, "instructions");
+// Demo-specific sources (preferred)
+const DEMO_AGENTS = path.join(__dirname, "agents");
+const DEMO_INST = path.join(__dirname, "instructions");
 
-/** Shared addendum prepended to every prompt to override legacy production conventions. */
-const DEMO_ADDENDUM = `# Demo pipeline addendum (read first)
+// Production sources (fallback)
+const APM_AGENTS = path.join(APM_ROOT, "agents");
+const APM_INST = path.join(APM_ROOT, "instructions");
 
-The instruction fragments below were authored for the production agentic
-pipeline. This is the **demo pipeline** — a stripped-down 7-node linear
-runner. Apply these overrides everywhere they conflict with the legacy
-fragments:
-
-- **Pipeline state lives in the app's \`.dagent/<slug>/\` directory**
-  (e.g. \`apps/commerce-storefront/.dagent/plp-quick-view/state.json\`).
-  Logs, snapshots, and the PR body also live there. The \`demo/\` folder
-  is the pipeline engine — never write run artifacts into it.
-- **There is no spec-compiler or qa-adversary node.** A
-  **baseline-analyzer** node runs before \`dev\` and its output is available
-  to subsequent nodes.
-- **The only outcome tool is \`report_outcome\`.** Ignore references to
-  \`report_intent\`, \`pipeline:complete\`, \`pipeline:fail\`, the kernel
-  command bus, intent registries, etc. Call \`report_outcome\` exactly
-  once at the end of your session.
-- **There are no \`consumes_artifacts\` / \`produces_artifacts\`
-  declarations.** Outputs of prior nodes are appended to your task
-  prompt as JSON.
-- **There is no triage / failure-routing LLM.** If you cannot complete
-  your work, call \`report_outcome\` with status=failed and a clear
-  message; the orchestrator decides what to do.
-- **Tools available to you:** \`file_read\`, \`write_file\`, \`shell\`,
-  \`report_outcome\`, plus any MCP tools enabled for your node
-  (e.g. \`roam_*\`). Use \`shell\` instead of \`bash\` / \`write_bash\`.
-- **Git:** never run raw \`git commit\` / \`git push\`. The \`pr-creation\`
-  finalizer handles all git operations at the end of the run.
-- **Working directory** for shell calls defaults to repo root
-  (\`/workspaces/DAGent-t\`). Pass \`cwd: 'apps/commerce-storefront'\`
-  when running PWA Kit commands.
-
----
-
-`;
-
-function BASELINE_PREFACE() {
-  return `## Baseline node — demo pipeline overrides
-
-In the demo pipeline, this node runs **before** the \`dev\` node and
-captures pre-feature page errors so downstream nodes can subtract
-platform noise.
-
-### Output
-
-Do **NOT** write a file to \`$OUTPUTS_DIR\`, \`.dagent/\`, or any other
-path. Instead, call \`report_outcome\` with \`status: "completed"\` and
-\`result\` containing the full baseline JSON object (the schema is
-defined in the agent prompt below). The orchestrator injects your
-\`result\` into all downstream nodes' task prompts automatically under
-**"Outputs from prior nodes"**.
-
-### Inputs
-
-The spec is inlined in your task prompt under **## Spec**. Read it to
-determine which pages and interactions to exercise. There is **no**
-acceptance contract (\`acceptance.yml\`) and **no** pre-computed capture
-targets section in the demo pipeline — derive target URLs and modal
-interactions directly from the spec's acceptance scenarios.
-
-### Dev server
-
-A local dev server is running at \`http://localhost:3000\`. Use the
-Playwright MCP tools (\`playwright_navigate\`, \`playwright_evaluate\`,
-etc.) to navigate pages and capture console / network errors. Do NOT
-start or stop the dev server.
-
-### Broad Exploration (MANDATORY)
-
-Do NOT limit your capture to only the pages mentioned in the spec.
-Many platform-noise patterns (Einstein API 400s, SLAS 403s, DataCloud
-resolution failures) only manifest when **specific user flows** are
-exercised. A baseline that visits only listing pages will miss noise
-that appears after basket mutations — causing downstream debug cycles
-to chase false positives.
-
-**After capturing spec-derived targets, also exercise these common
-storefront flows on the live dev server:**
-
-1. **Product Detail Page** — click any product tile to navigate to a PDP.
-   Capture console/network errors on the PDP.
-2. **Add to Cart** — find an in-stock product on the PDP and add it to
-   the cart (click the Add-to-Cart / Add-to-Bag button). This triggers
-   basket-creation API calls and Einstein recommendation requests that
-   return 400 in dev sandbox.
-3. **Cart page** — navigate to \`/cart\` and capture errors. Cart page
-   triggers basket-read and recommendation API calls.
-4. **Search** — use the site search (e.g. \`/search?q=shirt\`) to
-   capture search-specific API noise.
-5. **Any modal or overlay** mentioned in the spec — open it and capture
-   errors while it is visible.
-
-Err on the side of **more** targets and **more** interactions — extra
-baseline entries are harmless; missing ones cost downstream debug
-cycles. If a flow fails (product out of stock, page 404s), log it in
-\`notes\` and move on.
-
-`;
+/**
+ * Resolve an agent file — demo-specific first, then APM fallback.
+ * Demo agents use bare names (e.g. "storefront-dev.md").
+ * APM agents use ".agent.md" suffix (e.g. "storefront-dev.agent.md").
+ */
+function resolveAgent(name) {
+  const demoPath = path.join(DEMO_AGENTS, name);
+  if (fs.existsSync(demoPath)) return { path: demoPath, source: `demo/agents/${name}` };
+  // Fallback: try APM agents dir with .agent.md suffix
+  const apmName = name.replace(/\.md$/, ".agent.md");
+  const apmPath = path.join(APM_AGENTS, apmName);
+  if (fs.existsSync(apmPath)) return { path: apmPath, source: `agents/${apmName}` };
+  throw new Error(`Agent not found: ${name} (checked demo/agents/ and .apm/agents/)`);
 }
 
-function E2E_AUTHOR_PREFACE() {
-  return `## E2E author node — demo pipeline overrides
-
-### First-Pass Only
-
-In the demo pipeline, you run **once** to author E2E tests from the
-spec and acceptance scenarios. You are NOT re-invoked for test fixes —
-the \`e2e-debug\` node handles all test-code bug fixes directly.
-
-**Ignore** any references in the instructions below to:
-- "fault-domain routing from e2e-debug"
-- "Debug diagnosis from e2e-debug"
-- "triage-handoff" / \`inputs/triage-handoff.json\`
-- "redev-cycle discipline"
-
-These apply to the production pipeline's repair loop, which is not used
-in the demo pipeline. Focus entirely on authoring high-quality tests
-from the spec on your first and only pass.
-
-`;
+/**
+ * Resolve an instruction fragment — demo-specific first, then APM fallback.
+ * Demo instructions are flat files (e.g. "e2e-guidelines-lean.md").
+ * APM instructions use nested paths (e.g. "storefront/e2e-guidelines.md").
+ */
+function resolveFragment(name) {
+  // If name has no slash, it's a demo-only fragment
+  const demoPath = path.join(DEMO_INST, name);
+  if (fs.existsSync(demoPath)) return { path: demoPath, source: `demo/instructions/${name}` };
+  // Try APM instructions
+  const apmPath = path.join(APM_INST, name);
+  if (fs.existsSync(apmPath)) return { path: apmPath, source: `instructions/${name}` };
+  throw new Error(`Fragment not found: ${name} (checked demo/instructions/ and .apm/instructions/)`);
 }
 
-/** @type {Record<string, { agent?: string; fragments: string[]; preface?: string }>} */
+/** @type {Record<string, { agent?: string; fragments?: string[]; preface?: () => string; standalone?: string }>} */
 const COMPOSITIONS = {
   "baseline.md": {
-    agent: "baseline-analyzer.agent.md",
-    preface: BASELINE_PREFACE,
+    agent: "baseline-analyzer.md",
     fragments: [
       "always/hard-limits.md",
-      "storefront/baseline-volatility-tagging.md",
       "tooling/roam-tool-rules.md",
     ],
   },
   "dev.md": {
-    agent: "storefront-dev.agent.md",
+    agent: "storefront-dev.md",
     fragments: [
       "always/git-operations.md",
       "always/hard-limits.md",
-      "always/sfcc-credentials.md",
+      // sfcc-credentials removed — demo sandbox is pre-configured
       "storefront/pwa-kit-patterns.md",
-      "storefront/reuse-audit.md",
+      // reuse-audit inlined as compressed rule in demo agent
       "storefront/data-testid-contract.md",
       "storefront/config-management.md",
-      "storefront/ssr-rendering.md",
-      "storefront/baseline-volatility-tagging.md",
+      // ssr-rendering compressed into demo agent SSR checklist
       "storefront/debugging.md",
-      "storefront/testing-mandate.md",
+      // testing-mandate removed — dev doesn't write tests
+      // baseline-volatility-tagging removed — only baseline agent needs it
       "tooling/roam-tool-rules.md",
       "tooling/roam-efficiency.md",
     ],
   },
   "unit-test.md": {
-    agent: "storefront-unit-test.agent.md",
+    agent: "storefront-unit-test.md",
     fragments: [
       "always/git-operations.md",
       "always/hard-limits.md",
-      "storefront/testing-mandate.md",
-      "storefront/data-testid-contract.md",
+      // data-testid-contract removed — unit-test only needs "use getByTestId"
       "tooling/roam-tool-rules.md",
     ],
   },
   "e2e-author.md": {
-    agent: "e2e-author.agent.md",
-    preface: E2E_AUTHOR_PREFACE,
+    agent: "e2e-author.md",
     fragments: [
       "always/git-operations.md",
       "always/hard-limits.md",
-      "storefront/testing-mandate.md",
-      "storefront/e2e-guidelines.md",
-      "storefront/data-testid-contract.md",
+      // Use lean demo-specific e2e guidelines (removes §21, §23-25, compresses rest)
+      "e2e-guidelines-lean.md",
+      // testing-mandate removed — e2e-author doesn't write Jest tests
+      // data-testid-contract removed — e2e-author uses getByTestId, doesn't author them
       "tooling/roam-tool-rules.md",
     ],
   },
   "e2e-debug.md": {
-    // Lean, self-contained prompt — the agent runs tests, fixes failures,
-    // and loops internally. No production fragments or overrides needed.
+    // Lean, self-contained prompt — no fragments needed.
     standalone: "e2e-debug-lean.md",
   },
   // Finalizer — bespoke prompt, no source agent.md.
@@ -286,18 +190,18 @@ function buildPrompt(name, spec) {
     parts.push("");
     parts.push(readOrFail(path.resolve(OUT_DIR, spec.standalone)));
   } else {
-    parts.push(`<!-- Source of truth: apps/commerce-storefront/.apm/ -->`);
     parts.push("");
-    parts.push(DEMO_ADDENDUM);
 
     if (spec.preface) parts.push(spec.preface());
     if (spec.agent) {
-      parts.push(`<!-- agents/${spec.agent} -->`);
-      parts.push(readOrFail(path.join(AGENTS, spec.agent)));
+      const resolved = resolveAgent(spec.agent);
+      parts.push(`<!-- ${resolved.source} -->`);
+      parts.push(readOrFail(resolved.path));
     }
     for (const frag of spec.fragments ?? []) {
-      parts.push(`<!-- instructions/${frag} -->`);
-      parts.push(readOrFail(path.join(INST, frag)));
+      const resolved = resolveFragment(frag);
+      parts.push(`<!-- ${resolved.source} -->`);
+      parts.push(readOrFail(resolved.path));
     }
   }
   return parts.join("\n");
