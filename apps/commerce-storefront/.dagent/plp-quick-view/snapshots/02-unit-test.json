@@ -1,0 +1,78 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-16T19:03:34.804Z",
+        "endedAt": "2026-05-16T19:12:39.221Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "case_coverage": {
+        "a11y": [
+          "UT-A11Y-001",
+          "UT-A11Y-002",
+          "UT-A11Y-003"
+        ],
+        "body": [
+          "UT-BODY-001",
+          "UT-BODY-002",
+          "UT-BODY-003",
+          "UT-BODY-004",
+          "UT-BODY-005",
+          "UT-BODY-006",
+          "UT-BODY-007",
+          "UT-BODY-008",
+          "UT-BODY-009",
+          "UT-BODY-010",
+          "UT-BODY-011",
+          "UT-BODY-012",
+          "UT-BODY-013",
+          "UT-BODY-014",
+          "UT-BODY-015"
+        ],
+        "provider": [
+          "UT-PROV-001",
+          "UT-PROV-002",
+          "UT-PROV-003"
+        ],
+        "shell": [
+          "UT-SHELL-001",
+          "UT-SHELL-002",
+          "UT-SHELL-003",
+          "UT-SHELL-004",
+          "UT-SHELL-005"
+        ],
+        "trigger": [
+          "UT-TRIG-001",
+          "UT-TRIG-002",
+          "UT-TRIG-003",
+          "UT-TRIG-004",
+          "UT-TRIG-005",
+          "UT-TRIG-006"
+        ]
+      },
+      "commit": "test(storefront): add 32 unit tests for PLP Quick View modal (provider, trigger, shell, body, a11y)",
+      "escalations_to_dev_session": [
+        "UT-A11Y-001: Chakra ModalContent's internal dialogProps override user-provided aria-labelledby when no ModalHeader is mounted. The implementation passes aria-labelledby='quick-view-modal-title' on ModalContent, but Chakra sets it to undefined because headerMounted is false. The heading element with id='quick-view-modal-title' IS rendered correctly. Dev session should either use ModalHeader or set the Modal id prop so Chakra wires aria-labelledby automatically."
+      ],
+      "files_created": [
+        "overrides/app/components/quick-view-modal/context.test.jsx",
+        "overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "suite_result": "PASS",
+      "test_suites": 5,
+      "total_failed": 0,
+      "total_passed": 32,
+      "total_skipped": 0,
+      "total_tests": 32
+    }
+  }
+}
