@@ -258,6 +258,21 @@
         }
       ],
       "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
+    },
+    "pr-creation": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T20:31:47.649Z",
+          "endedAt": "2026-05-16T20:32:47.030Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
+        }
+      ],
+      "result": {
+        "prUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/112"
+      }
     }
   },
   "history": [
@@ -343,6 +358,16 @@
         "status": "failed",
         "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.3.log"
+      }
+    },
+    {
+      "nodeId": "pr-creation",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T20:31:47.649Z",
+        "endedAt": "2026-05-16T20:32:47.030Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
       }
     }
   ],
