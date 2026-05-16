@@ -108,7 +108,7 @@ const COMPOSITIONS = {
   },
   "e2e-debug.md": {
     // Lean, self-contained prompt — no fragments needed.
-    standalone: "e2e-debug-lean.md",
+    standalone: "e2e-debug.md",
   },
   // Finalizer — bespoke prompt, no source agent.md.
   "pr-creation.md": {
@@ -186,9 +186,10 @@ function buildPrompt(name, spec) {
 
   if (spec.standalone) {
     // Standalone prompts are self-contained — no addendum, agent, or fragments.
-    parts.push(`<!-- Source: demo/prompts/${spec.standalone} -->`);
+    const resolved = resolveAgent(spec.standalone);
+    parts.push(`<!-- ${resolved.source} -->`);
     parts.push("");
-    parts.push(readOrFail(path.resolve(OUT_DIR, spec.standalone)));
+    parts.push(readOrFail(resolved.path));
   } else {
     parts.push("");
 
