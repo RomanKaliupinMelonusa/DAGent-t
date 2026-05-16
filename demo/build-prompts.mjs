@@ -78,7 +78,7 @@ const COMPOSITIONS = {
       "storefront/data-testid-contract.md",
       "storefront/config-management.md",
       // ssr-rendering compressed into demo agent SSR checklist
-      "storefront/debugging.md",
+      // debugging.md removed — triage handoff instructions for production pipeline only
       // testing-mandate removed — dev doesn't write tests
       // baseline-volatility-tagging removed — only baseline agent needs it
       "tooling/roam-tool-rules.md",
