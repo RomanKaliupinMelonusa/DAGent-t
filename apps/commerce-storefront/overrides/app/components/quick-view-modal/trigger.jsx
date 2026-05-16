@@ -11,7 +11,7 @@
 import React, {useState, useEffect, useCallback} from 'react'
 import PropTypes from 'prop-types'
 import {useIntl} from 'react-intl'
-import {Button, useBreakpointValue} from '@salesforce/retail-react-app/app/components/shared/ui'
+import {Button} from '@salesforce/retail-react-app/app/components/shared/ui'
 import {useQuickView} from './context'
 import messages from './messages'
 
@@ -21,7 +21,6 @@ const QuickViewTrigger = ({product}) => {
     const intl = useIntl()
     const {openQuickView} = useQuickView()
     const [mounted, setMounted] = useState(false)
-    const isMobile = useBreakpointValue({base: true, lg: false})
 
     useEffect(() => {
         setMounted(true)
@@ -49,13 +48,9 @@ const QuickViewTrigger = ({product}) => {
             data-testid={`quick-view-trigger-${productIdentifier}`}
             aria-haspopup="dialog"
             aria-controls="quick-view-modal"
-            aria-label={
-                isMobile
-                    ? intl.formatMessage(messages.triggerAriaLabelMobile, {
-                          productName: product.name || product.productName || ''
-                      })
-                    : undefined
-            }
+            aria-label={intl.formatMessage(messages.triggerAriaLabelMobile, {
+                productName: product.name || product.productName || ''
+            })}
             onClick={mounted ? handleClick : noop}
             size="sm"
             variant="solid"

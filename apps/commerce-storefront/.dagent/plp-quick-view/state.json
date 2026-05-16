@@ -194,6 +194,70 @@
         "total_skipped": 0,
         "total_tests": 32
       }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T19:12:39.228Z",
+          "endedAt": "2026-05-16T19:14:18.650Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "baseline_noise_patterns": [],
+        "commit": "test(e2e): add PLP Quick View modal E2E spec with 8 flows",
+        "file_created": "apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+        "flows_authored": [
+          "E2E-001: open-quick-view-from-tile",
+          "E2E-002: switch-color-swatch-in-quick-view",
+          "E2E-003: add-to-bag-from-quick-view",
+          "E2E-004: close-quick-view-restores-focus (3 dismiss paths)",
+          "E2E-005: no-pickup-ui-in-quick-view",
+          "E2E-006: add-to-bag-disabled-when-unavailable",
+          "E2E-007: view-full-details-link",
+          "E2E-008: tile-click-still-navigates-to-pdp"
+        ],
+        "notes": "Type import from @playwright/test for Page/Locator types only; runtime test/expect from ./fixtures as required.",
+        "selectors_policy": "data-testid only, contract §2 compliant",
+        "skippable_flows": [
+          "E2E-002 (if <2 color swatches)",
+          "E2E-006 (if no OOS variant discoverable)"
+        ],
+        "total_tests": 10
+      }
+    },
+    "e2e-debug": {
+      "status": "failed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T19:14:18.668Z",
+          "endedAt": "2026-05-16T19:40:06.002Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-16T19:40:06.007Z",
+          "endedAt": "2026-05-16T20:06:13.527Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.2.log"
+        },
+        {
+          "attempt": 3,
+          "startedAt": "2026-05-16T20:06:13.530Z",
+          "endedAt": "2026-05-16T20:31:47.643Z",
+          "status": "failed",
+          "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.3.log"
+        }
+      ],
+      "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
     }
   },
   "history": [
@@ -237,7 +301,51 @@
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
       }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T19:12:39.228Z",
+        "endedAt": "2026-05-16T19:14:18.650Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-debug",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T19:14:18.668Z",
+        "endedAt": "2026-05-16T19:40:06.002Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-debug",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-16T19:40:06.007Z",
+        "endedAt": "2026-05-16T20:06:13.527Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.2.log"
+      }
+    },
+    {
+      "nodeId": "e2e-debug",
+      "attempt": {
+        "attempt": 3,
+        "startedAt": "2026-05-16T20:06:13.530Z",
+        "endedAt": "2026-05-16T20:31:47.643Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.3.log"
+      }
     }
   ],
-  "devServerPort": 3000
+  "devServerPort": 3000,
+  "terminalError": "Node 'e2e-debug' failed and has no onFailure route: Node e2e-debug failed after 3 attempt(s)."
 }

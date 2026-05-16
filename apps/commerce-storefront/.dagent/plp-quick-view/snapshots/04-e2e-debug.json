@@ -1,0 +1,33 @@
+{
+  "nodeId": "e2e-debug",
+  "output": {
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-16T19:14:18.668Z",
+        "endedAt": "2026-05-16T19:40:06.002Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-16T19:40:06.007Z",
+        "endedAt": "2026-05-16T20:06:13.527Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.2.log"
+      },
+      {
+        "attempt": 3,
+        "startedAt": "2026-05-16T20:06:13.530Z",
+        "endedAt": "2026-05-16T20:31:47.643Z",
+        "status": "failed",
+        "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.3.log"
+      }
+    ],
+    "errorSummary": "Session error: Timeout after 1500000ms waiting for session.idle"
+  }
+}

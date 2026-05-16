@@ -77,11 +77,14 @@ const QuickViewModalBody = () => {
                 })
             }
 
-            // Close quick view first, then open the global add-to-cart confirmation
+            // Close quick view first, then open the global add-to-cart confirmation.
+            // Pass the original items array (with product/variant/quantity) as itemsAdded
+            // because AddToCartModal iterates over itemsAdded and accesses product.imageGroups.
+            const productForModal = itemProduct || product
             closeQuickView()
             addToCartModalContext.onOpen({
-                product: product,
-                itemsAdded: productItems,
+                product: productForModal,
+                itemsAdded: items,
                 selectedQuantity: quantity
             })
 
