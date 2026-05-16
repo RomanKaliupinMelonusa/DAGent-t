@@ -19,7 +19,7 @@ import BaseApp from '@salesforce/retail-react-app/app/components/_app'
 import {QuickViewProvider} from '../quick-view-modal/context'
 import QuickViewModalShell from '../quick-view-modal/modal-shell'
 
-const App = (props) => {
+const App = ({children, ...rest}) => {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             window.__APP_HYDRATED__ = true
@@ -28,8 +28,10 @@ const App = (props) => {
 
     return (
         <QuickViewProvider>
-            <BaseApp {...props} />
-            <QuickViewModalShell />
+            <BaseApp {...rest}>
+                {children}
+                <QuickViewModalShell />
+            </BaseApp>
         </QuickViewProvider>
     )
 }

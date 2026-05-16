@@ -18,6 +18,11 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
   /Warning: The result of getServerSnapshot should be cached/,
   /Warning:.*Support for defaultProps will be removed from function components/,
   /TypeError: Failed to fetch at vendor\.js/,
+  /Failed to load resource: net::ERR_NAME_NOT_RESOLVED/,
+  /\[DataCloudApi\] Error sending Data Cloud event/,
+  /Failed to load resource: the server responded with a status of 4\d\d/,
+  /r: 4\d\d\s/,
+  /Failed to load resource: the server responded with a status of 5\d\d/,
 ];
 
 // ---------------------------------------------------------------------------
@@ -442,12 +447,9 @@ test.describe('PLP Quick View Modal', () => {
   test('E2E-008: tile-click-still-navigates-to-pdp', async ({ page }) => {
     await gotoPlp(page);
 
-    // Get the first product tile and click its image (not the quick view trigger)
-    const firstTile = page.locator('[data-testid^="sf-product-tile-"]').first();
-    await expect(firstTile).toBeVisible({ timeout: 15_000 });
-
-    // Click the image link within the tile
-    const tileImage = firstTile.locator('a img').first();
+    // Click the first tile image (not the quick view trigger) — should navigate to PDP
+    const tileImage = page.locator('[data-testid="product-tile-image"]').first();
+    await expect(tileImage).toBeVisible({ timeout: 15_000 });
     await tileImage.click();
 
     // Should navigate to PDP

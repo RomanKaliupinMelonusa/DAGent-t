@@ -236,6 +236,40 @@
         "test_cases": 32,
         "test_suites": 5
       }
+    },
+    "e2e-author": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T21:52:28.032Z",
+          "endedAt": "2026-05-16T21:54:12.379Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
+        }
+      ],
+      "result": {
+        "banned_patterns_check": "PASS (no networkidle, no waitForTimeout)",
+        "baseline_noise_patterns": 3,
+        "commit": "test(e2e): add PLP Quick View modal E2E spec (8 flows)",
+        "flows_authored": [
+          "E2E-001: open-quick-view-from-tile",
+          "E2E-002: switch-color-swatch-in-quick-view",
+          "E2E-003: add-to-bag-from-quick-view",
+          "E2E-004: close-quick-view-restores-focus (3 dismiss paths)",
+          "E2E-005: no-pickup-ui-in-quick-view (negative)",
+          "E2E-006: add-to-bag-disabled-when-unavailable",
+          "E2E-007: view-full-details-link",
+          "E2E-008: tile-click-still-navigates-to-pdp"
+        ],
+        "imports": "test/expect from ./fixtures, helpers from ./helpers, type-only from @playwright/test",
+        "skippable_flows": [
+          "E2E-002 (if <2 color swatches)",
+          "E2E-006 (if no OOS variant discoverable)"
+        ],
+        "spec_file": "apps/commerce-storefront/e2e/product-quick-view.spec.ts",
+        "testid_contract_compliance": "PASS (only contract testids used)"
+      }
     }
   },
   "history": [
@@ -267,6 +301,16 @@
         "endedAt": "2026-05-16T21:52:28.026Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    },
+    {
+      "nodeId": "e2e-author",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T21:52:28.032Z",
+        "endedAt": "2026-05-16T21:54:12.379Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-author.1.log"
       }
     }
   ],

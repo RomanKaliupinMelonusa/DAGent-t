@@ -85,13 +85,21 @@ const QuickViewModalBody = () => {
                 })
             }
 
-            // Close quick view and open the global AddToCartModal
-            closeQuickView()
+            // Build safe product reference for AddToCartModal (it accesses
+            // product.imageGroups which may not exist in PLP tile / hook data).
+            const productForModal = product || openProduct
+            const safeProduct = productForModal
+                ? {...productForModal, imageGroups: productForModal.imageGroups || []}
+                : {name: '', imageGroups: []}
+
+            // Open AddToCartModal BEFORE closing QuickView to commit data
+            // before the unmount cycle.
             addToCartModalContext.onOpen({
-                product: product || openProduct,
-                itemsAdded: productItems,
+                product: safeProduct,
+                itemsAdded: [{product: safeProduct, variant, quantity}],
                 selectedQuantity: quantity
             })
+            closeQuickView()
         } catch (err) {
             showToast({
                 title: intl.formatMessage(API_ERROR_MESSAGE),
