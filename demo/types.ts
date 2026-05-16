@@ -10,8 +10,7 @@ export type NodeId =
   | "dev"
   | "unit-test"
   | "e2e-author"
-  | "e2e-runner"
-  | "storefront-debug"
+  | "e2e-debug"
   | "pr-creation";
 
 export type NodeKind = "agent" | "script";
@@ -54,15 +53,15 @@ export interface NodeDef {
    */
   readonly onFailureRoutes?: Readonly<Record<string, NodeId>>;
   /**
-   * Node id to jump to on success. Used by storefront-debug to short-loop
-   * back into unit-test after a code fix. Default is to advance linearly.
+   * Node id to jump to on success. Used by recovery agents to short-loop
+   * back into a validation node after a fix. Default is to advance linearly.
    */
   readonly onSuccess?: NodeId;
   /**
    * When true, this node is skipped during linear pipeline progression
    * (i → i+1). It only executes when reached via failure routing (i.e.
    * `_failureSource` is set). Use for recovery nodes like
-   * `storefront-debug` that have no work to do unless a prior node failed.
+   * recovery nodes that have no work to do unless a prior node failed.
    */
   readonly recoveryOnly?: boolean;
   /**

@@ -135,11 +135,11 @@ function E2E_AUTHOR_PREFACE() {
 
 In the demo pipeline, you run **once** to author E2E tests from the
 spec and acceptance scenarios. You are NOT re-invoked for test fixes —
-the \`storefront-debug\` node handles all test-code bug fixes directly.
+the \`e2e-debug\` node handles all test-code bug fixes directly.
 
 **Ignore** any references in the instructions below to:
-- "fault-domain routing from storefront-debug"
-- "Debug diagnosis from storefront-debug"
+- "fault-domain routing from e2e-debug"
+- "Debug diagnosis from e2e-debug"
 - "triage-handoff" / \`inputs/triage-handoff.json\`
 - "redev-cycle discipline"
 
@@ -201,11 +201,10 @@ const COMPOSITIONS = {
       "tooling/roam-tool-rules.md",
     ],
   },
-  "storefront-debug.md": {
-    // Lean, self-contained prompt — no production fragments or overrides.
-    // This is the key change: the agent gets ~100 lines of clear instructions
-    // instead of ~780 lines of contradicting production + demo overrides.
-    standalone: "storefront-debug-lean.md",
+  "e2e-debug.md": {
+    // Lean, self-contained prompt — the agent runs tests, fixes failures,
+    // and loops internally. No production fragments or overrides needed.
+    standalone: "e2e-debug-lean.md",
   },
   // Finalizer — bespoke prompt, no source agent.md.
   "pr-creation.md": {
@@ -249,7 +248,7 @@ you a full \`RunState\` snapshot (in the task prompt) including:
      - The \`terminalError\` block verbatim (if present).
      - For success: a \`### Acceptance summary\` block listing the
        artifacts produced (read \`outputs.dev.result\`,
-       \`outputs['e2e-runner'].result\`, etc.).
+       \`outputs['e2e-debug'].result\`, etc.).
    - Use \`--draft --base <baseBranch> --head <featureBranch>\`.
 4. Call \`report_outcome\` with status=completed and \`result\` containing
    \`{ prUrl: "<url printed by gh pr create>" }\`.

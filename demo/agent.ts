@@ -20,6 +20,7 @@ import {
   buildSandbox,
   checkRbac,
   buildFileReadTool,
+  buildEditFileTool,
   buildShellTool,
   buildWriteFileTool,
   buildReportOutcomeTool,
@@ -45,7 +46,7 @@ export interface AgentRunResult {
 /**
  * Per-node mapping of which staged kickoff files to inline into the
  * task prompt. Mirrors the `consumes_kickoff` declarations described in
- * the spec-kit integration plan; broader for `dev` / `storefront-debug`,
+ * the spec-kit integration plan; broader for `dev` / `e2e-debug`,
  * narrower for the test authors. Files that don't exist in `_kickoff/`
  * are silently skipped (the spec-kit folder doesn't have to ship every
  * optional kind).
@@ -83,7 +84,7 @@ const KICKOFF_PER_NODE: Record<string, readonly KickoffFile[]> = {
     { heading: "E2E task list",       relPath: "e2e-tasks.md" },
     { heading: "Baseline (pre-feature noise)", relPath: "baseline.json" },
   ],
-  "storefront-debug": [
+  "e2e-debug": [
     { heading: "Spec",                relPath: "spec.md" },
     { heading: "Plan",                relPath: "plan.md" },
     { heading: "Research",            relPath: "research.md" },
@@ -112,7 +113,7 @@ function inlineKickoffSections(node: NodeDef, kickoffDir: string): string[] {
   // Module contracts: include every file under contracts/ that the dev /
   // unit-test / debug agents need to satisfy. e2e-author already pulls
   // the e2e contract above; module contracts are dev/test-side concerns.
-  if (node.id === "dev" || node.id === "unit-test" || node.id === "storefront-debug") {
+  if (node.id === "dev" || node.id === "unit-test" || node.id === "e2e-debug") {
     const cdir = path.join(kickoffDir, CONTRACTS_DIR);
     if (fs.existsSync(cdir)) {
       const files = fs.readdirSync(cdir)
@@ -252,6 +253,7 @@ export async function runAgentNode(
 
   const tools = [
     buildFileReadTool(sandbox),
+    buildEditFileTool(sandbox),
     buildWriteFileTool(sandbox),
     buildShellTool(sandbox),
     buildReportOutcomeTool(collector),

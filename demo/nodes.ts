@@ -1,17 +1,16 @@
 /**
- * nodes.ts — The 7-node literal that defines the demo pipeline.
+ * nodes.ts — The 6-node literal that defines the demo pipeline.
  *
- * Linear order: baseline → dev → unit-test → e2e-author → e2e-runner → storefront-debug.
+ * Linear order: baseline → dev → unit-test → e2e-author → e2e-debug.
  *
  * Failure routing:
  *   - baseline            → in-place retries (2); NO onFailure (pipeline halts)
  *   - dev                 → in-place retries (2), then terminal halt → PR
  *   - unit-test           → in-place retries (1), then terminal halt → PR
  *   - e2e-author          → in-place retries (1), then terminal halt → PR
- *   - e2e-runner          → no retries; onFailure = storefront-debug
- *   - storefront-debug    → in-place retries (2); fixes BOTH code-defects
- *                           AND test-code bugs; onSuccess = e2e-runner
- *                           (re-validates fix); on exhaustion, halt → PR
+ *   - e2e-debug           → in-place retries (2); self-contained: runs
+ *                           tests, fixes BOTH code-defects AND test-code
+ *                           bugs, and loops internally until green.
  *
  * Finalizer: pr-creation (alwaysRun=true) — runs in the `finally` block,
  * including on terminal halt. Opens a Draft PR with the run history.
@@ -75,7 +74,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     maxRetries: 1,
     timeoutMs: 15 * 60 * 1000,
     // Jest runs are in-flight shell calls — timer paused during them.
-    // 5min idle with no tool call = stuck (same pattern as storefront-debug).
+    // 5min idle with no tool call = stuck (same pattern as e2e-debug).
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
@@ -90,17 +89,9 @@ export const MAIN_NODES: readonly NodeDef[] = [
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
   {
-    id: "e2e-runner",
-    kind: "script",
-    command: "npx playwright test e2e/{slug}.spec.ts --reporter=line --workers=1",
-    onFailure: "storefront-debug",
-    maxRetries: 0,
-    timeoutMs: 10 * 60 * 1000,
-  },
-  {
-    id: "storefront-debug",
+    id: "e2e-debug",
     kind: "agent",
-    promptFile: "storefront-debug.md",
+    promptFile: "e2e-debug.md",
     mcp: ["roam-code", "playwright"],
     allowedWritePaths: [
       "^app/",
@@ -111,19 +102,12 @@ export const MAIN_NODES: readonly NodeDef[] = [
       "^e2e/.*\\.spec\\.ts$",
     ],
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
-    // On success, re-run e2e-runner to validate the fix.
-    onSuccess: "e2e-runner",
-    // Recovery-only: only runs when e2e-runner fails and routes here.
-    // Skipped on linear progression (e2e-runner passes → pipeline ends).
-    recoveryOnly: true,
-    // No onFailureRoutes — storefront-debug handles ALL fault domains
-    // (code-defect AND test-code) directly. This eliminates the context
-    // loss from routing diagnoses to a separate e2e-author agent.
+    // Self-contained: runs e2e tests, diagnoses failures, patches code
+    // or test code, and loops internally until green (max 3 cycles).
+    // Pipeline-level retries (maxRetries) give 3 total sessions if the
+    // agent times out or completely fails.
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
-    // storefront-debug uses Playwright for live diagnosis — those tool
-    // calls keep inFlight > 0. 5min with zero in-flight calls means the
-    // LLM is genuinely stuck, not waiting on a slow page load.
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
 ];

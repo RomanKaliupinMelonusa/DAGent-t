@@ -43,11 +43,11 @@ fragments:
 
 In the demo pipeline, you run **once** to author E2E tests from the
 spec and acceptance scenarios. You are NOT re-invoked for test fixes —
-the `storefront-debug` node handles all test-code bug fixes directly.
+the `e2e-debug` node handles all test-code bug fixes directly.
 
 **Ignore** any references in the instructions below to:
-- "fault-domain routing from storefront-debug"
-- "Debug diagnosis from storefront-debug"
+- "fault-domain routing from e2e-debug"
+- "Debug diagnosis from e2e-debug"
 - "triage-handoff" / `inputs/triage-handoff.json`
 - "redev-cycle discipline"
 

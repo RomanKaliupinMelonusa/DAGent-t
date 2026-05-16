@@ -2,7 +2,7 @@
  * briefing.ts — Build structured failure context for recovery agents.
  *
  * Instead of just listing log paths (forcing the LLM to read them),
- * this module parses e2e-runner output to extract actual test failures
+ * this module parses agent log output to extract actual test failures
  * and injects prior-attempt diffs so retry agents know what was already
  * tried.
  */
@@ -36,11 +36,10 @@ export function buildFailureContext(
 
   // ── Parsed test failures (the key upgrade) ──
   // Instead of making the agent read logs, give it the errors directly.
-  // Always include e2e-runner errors when they exist — both on first
-  // routing (failedNodeId === "e2e-runner") AND on storefront-debug
-  // retries (failedNodeId === "storefront-debug") where the agent still
-  // needs to see what tests are failing.
-  const e2eOutput = state.outputs["e2e-runner" as NodeId];
+  // On pipeline-level retries of e2e-debug, the agent's own prior attempt
+  // logs contain test output. Parse the last attempt's log to extract
+  // structured failures so the retry agent starts with full context.
+  const e2eOutput = state.outputs[failedNodeId];
   const e2eAttempts = e2eOutput?.attempts ?? [];
   if (e2eAttempts.length > 0) {
     const lastE2eAttempt = e2eAttempts[e2eAttempts.length - 1];
@@ -57,7 +56,7 @@ export function buildFailureContext(
     if (logPath && fs.existsSync(logPath)) {
       const parsed = parseE2eRunnerLog(fs.readFileSync(logPath, "utf-8"));
       if (parsed.failures.length > 0) {
-        lines.push(`### Test Failures (parsed from e2e-runner log)`);
+        lines.push(`### Test Failures (parsed from prior attempt log)`);
         lines.push(``);
         lines.push(`${parsed.summary}`);
         lines.push(``);
@@ -79,10 +78,10 @@ export function buildFailureContext(
 
   // ── Prior-attempt diffs (what was already tried) ──
   const priorDebugAttempts = state.history
-    .filter((h) => h.nodeId === "storefront-debug")
+    .filter((h) => h.nodeId === failedNodeId)
     .map((h) => h.attempt);
   if (priorDebugAttempts.length > 0) {
-    const diffs = buildPriorAttemptDiffs(state, priorDebugAttempts);
+    const diffs = buildPriorAttemptDiffs(state, failedNodeId, priorDebugAttempts);
     if (diffs) {
       lines.push(diffs);
     }
@@ -199,6 +198,7 @@ function parseE2eRunnerLog(logContent: string): ParsedE2eLog {
  */
 function buildPriorAttemptDiffs(
   state: RunState,
+  failedNodeId: NodeId,
   priorAttempts: readonly NodeAttempt[],
 ): string | null {
   const dagentSuffix = `/${state.app}/.dagent/`;
@@ -218,7 +218,7 @@ function buildPriorAttemptDiffs(
 
   for (const attempt of priorAttempts) {
     // Read the structured result from the attempt if available
-    const sdOutput = state.outputs["storefront-debug"];
+    const sdOutput = state.outputs[failedNodeId];
     if (sdOutput?.result) {
       const fixes = (sdOutput.result as any).fixes_applied ?? (sdOutput.result as any).bugs_found;
       if (fixes && Array.isArray(fixes)) {

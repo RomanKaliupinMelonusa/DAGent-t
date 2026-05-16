@@ -69,7 +69,7 @@ you a full `RunState` snapshot (in the task prompt) including:
      - The `terminalError` block verbatim (if present).
      - For success: a `### Acceptance summary` block listing the
        artifacts produced (read `outputs.dev.result`,
-       `outputs['e2e-runner'].result`, etc.).
+       `outputs['e2e-debug'].result`, etc.).
    - Use `--draft --base <baseBranch> --head <featureBranch>`.
 4. Call `report_outcome` with status=completed and `result` containing
    `{ prUrl: "<url printed by gh pr create>" }`.

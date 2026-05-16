@@ -34,7 +34,7 @@ const SAFE_READ_TOOLS = new Set([
 const SAFE_MCP_PREFIXES = ["roam-code-", "roam_", "playwright_", "playwright-"];
 
 /** Tools defined via defineTool that enforce their own RBAC in-handler. */
-const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "shell", "report_outcome"]);
+const SELF_ENFORCING_TOOLS = new Set(["file_read", "write_file", "edit_file", "shell", "report_outcome"]);
 
 // ---------------------------------------------------------------------------
 // Path normalization
@@ -232,6 +232,49 @@ export function buildWriteFileTool(sandbox: Sandbox): Tool<any> {
       fs.writeFileSync(resolved, args.content);
       sandbox.postWriteHook?.();
       return `OK: wrote ${args.content.length} bytes to ${args.file_path}`;
+    },
+  });
+}
+
+export function buildEditFileTool(sandbox: Sandbox): Tool<any> {
+  return defineTool("edit_file", {
+    description:
+      "Surgical text replacement in an existing file. Provide the exact text to find " +
+      "(old_text) and its replacement (new_text). old_text must appear exactly once " +
+      "in the file. RBAC-gated against the node's allowedWritePaths.",
+    parameters: {
+      type: "object",
+      properties: {
+        file_path: { type: "string", description: "Absolute or repo-relative path." },
+        old_text: { type: "string", description: "Exact text to find (must appear exactly once)." },
+        new_text: { type: "string", description: "Replacement text." },
+      },
+      required: ["file_path", "old_text", "new_text"],
+    },
+    handler: (args: { file_path: string; old_text: string; new_text: string }) => {
+      const denial = checkRbac("write_file", args, sandbox);
+      if (denial) return denial;
+      const resolved = path.isAbsolute(args.file_path)
+        ? args.file_path
+        : path.resolve(sandbox.repoRoot, args.file_path);
+      if (resolved !== sandbox.repoRoot && !resolved.startsWith(sandbox.repoRoot + path.sep)) {
+        return `ERROR: Path resolves outside repo root.`;
+      }
+      if (!fs.existsSync(resolved)) {
+        return `ERROR: File not found: ${args.file_path}`;
+      }
+      const content = fs.readFileSync(resolved, "utf-8");
+      const count = content.split(args.old_text).length - 1;
+      if (count === 0) {
+        return `ERROR: old_text not found in ${args.file_path}. Verify exact whitespace and content.`;
+      }
+      if (count > 1) {
+        return `ERROR: old_text appears ${count} times in ${args.file_path}. It must appear exactly once. Add more context lines to make it unique.`;
+      }
+      const updated = content.replace(args.old_text, args.new_text);
+      fs.writeFileSync(resolved, updated);
+      sandbox.postWriteHook?.();
+      return `OK: replaced ${args.old_text.length} chars with ${args.new_text.length} chars in ${args.file_path}`;
     },
   });
 }

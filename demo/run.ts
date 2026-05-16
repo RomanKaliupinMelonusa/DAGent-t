@@ -289,14 +289,14 @@ async function runMainLoop(
       console.log(`[run] ⤳ ${node.id} already completed — skipping`);
       // The skip path always advances linearly. Honoring `onSuccess` here
       // would route backward through already-completed nodes (e.g.
-      // storefront-debug → unit-test) and loop forever — backward jumps
+      // e.g. recovery → prior-node) and loop forever — backward jumps
       // are only valid on a *live* successful execution, which is
       // handled below where we reset intermediate statuses.
       i = i + 1;
       continue;
     }
 
-    // Recovery-only nodes (e.g. storefront-debug) are skipped on linear
+    // Recovery-only nodes are skipped on linear
     // advance. They only execute when reached via failure routing, which
     // sets _failureSource. Peek — don't consume — executeNode handles that.
     if (node.recoveryOnly && !(state as any)._failureSource) {
@@ -310,7 +310,7 @@ async function runMainLoop(
       if (node.onSuccess) {
         const target = findIndex(MAIN_NODES, node.onSuccess);
         if (target < i && state.jumps < MAX_JUMPS) {
-          // Backward success jump (e.g. storefront-debug → unit-test). Re-validate
+          // Backward success jump (e.g. recovery → validation). Re-validate
           // by clearing the segment [target, i] so it actually re-runs.
           state.jumps++;
           for (let k = target; k < i; k++) {
