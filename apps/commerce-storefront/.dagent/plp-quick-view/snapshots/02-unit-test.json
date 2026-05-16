@@ -1,0 +1,77 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-16T21:44:57.341Z",
+        "endedAt": "2026-05-16T21:52:28.026Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "case_mapping": {
+        "a11y.test.jsx": [
+          "UT-A11Y-001",
+          "UT-A11Y-002",
+          "UT-A11Y-003"
+        ],
+        "context.test.jsx": [
+          "UT-PROV-001",
+          "UT-PROV-002",
+          "UT-PROV-003"
+        ],
+        "modal-body.test.jsx": [
+          "UT-BODY-001",
+          "UT-BODY-002",
+          "UT-BODY-003",
+          "UT-BODY-004",
+          "UT-BODY-005",
+          "UT-BODY-006",
+          "UT-BODY-007",
+          "UT-BODY-008",
+          "UT-BODY-009",
+          "UT-BODY-010",
+          "UT-BODY-011",
+          "UT-BODY-012",
+          "UT-BODY-013",
+          "UT-BODY-014",
+          "UT-BODY-015"
+        ],
+        "modal-shell.test.jsx": [
+          "UT-SHELL-001",
+          "UT-SHELL-002",
+          "UT-SHELL-003",
+          "UT-SHELL-004",
+          "UT-SHELL-005"
+        ],
+        "trigger.test.jsx": [
+          "UT-TRIG-001",
+          "UT-TRIG-002",
+          "UT-TRIG-003",
+          "UT-TRIG-004",
+          "UT-TRIG-005",
+          "UT-TRIG-006"
+        ]
+      },
+      "commit": "test(storefront): add PLP Quick View modal unit tests (32 cases)",
+      "console_error_leaks": "none beyond project baseline",
+      "escalations": [
+        "UT-A11Y-001: Chakra Modal internally overrides aria-labelledby unless ModalHeader is used. The heading element with id='quick-view-modal-title' exists in the DOM, but the aria-labelledby attribute is not rendered on the dialog by Chakra. The development session should consider using ModalHeader or manually applying aria-labelledby via Chakra's useModal hook to ensure the attribute appears on the dialog element."
+      ],
+      "files_created": [
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "skipped": 0,
+      "suite_result": "PASS",
+      "test_cases": 32,
+      "test_suites": 5
+    }
+  }
+}
