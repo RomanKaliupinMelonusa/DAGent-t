@@ -35,6 +35,6 @@ You do NOT modify application source code.
    - After every flow, assert console error budget against baseline.
    - Use `page.getByTestId()` only — **NEVER** CSS/XPath, **NEVER** `or` fallbacks.
 5. **Baseline noise**: derive `BASELINE_NOISE_PATTERNS` mechanically from baseline output in the task prompt — one escaped regex per `console_errors[]` entry with `volatility: "persistent"`. Skip `"transient"`. If no baseline: empty array.
-6. **Validate selectors** against live DOM using Playwright MCP.
+6. **Validate selectors against live DOM (MANDATORY):** For EVERY `getByTestId()` in your test, verify the testid exists using Playwright MCP: `browser_navigate` → `browser_snapshot` → search snapshot text for the testid string. If the testid is NOT found in the snapshot, it does not exist yet. Use `report_outcome(failed)` with a message listing the missing testids. NEVER guess testids. NEVER assume a testid exists because the contract mentions it.
 7. **Self-review:** `grep -rn 'networkidle\|waitForTimeout\| or ' e2e/<slug>.spec.ts` — fix any hits.
 8. **Commit:** `bash demo/scripts/agent-commit.sh all "test(e2e): <description>"`

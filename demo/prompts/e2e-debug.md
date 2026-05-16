@@ -23,6 +23,11 @@
 - Unscoped calls risk cross-app symbol pollution.
 - Roam first, read second. Max 5 consecutive reads before writing code.
 
+### shell_async Pacing
+- After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
+- Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.
+
 <!-- demo/agents/e2e-debug.md -->
 
 # E2E Debug Agent (demo pipeline)
@@ -36,7 +41,10 @@ You fix either **application code** or **test code** — whichever is broken.
 ```
 1.  RUN    Use `shell_async` for full test suite runs (>90s):
            shell_async({ command: "npx playwright test e2e/<slug>.spec.ts --reporter=line --workers=1" })
-           Then poll with shell_poll({ handle }) until done.
+           After `shell_async`, wait **at least 30 seconds** before the first `shell_poll`.
+           Then poll every **30 seconds**.
+           Test suites take 50-90 seconds. Polling faster wastes your tool-call budget.
+           Read the FULL output from `shell_poll` — errors are right there in the result.
            For single-test runs (<90s), use `shell` directly.
 2.  GREEN? → commit → report_outcome(completed) → DONE
 3.  RED?   → read errors from the shell_poll output (they're right there)

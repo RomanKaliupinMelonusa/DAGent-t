@@ -93,6 +93,16 @@ for p in "${PATHS[@]}"; do
   fi
 done
 
+# If scoped staging found nothing, fall back to 'all' scope
+if git diff --cached --quiet && [ "$ALL_SCOPE" != "true" ]; then
+  echo "⚠️  agent-commit: scope '${SCOPE}' staged nothing — falling back to 'all'" >&2
+  git add "${AR}/"
+  [ -d ".github/" ] && git add .github/
+  for _excl in "${AR}/node_modules" "${AR}/build" "${AR}/.apm/.compiled"; do
+    git reset HEAD -- "$_excl" 2>/dev/null || true
+  done
+fi
+
 # For `all` scope: also stage .github/ (CI workflows) and unstage heavy/generated dirs.
 if [ "$ALL_SCOPE" = true ]; then
   [ -d ".github/" ] && git add .github/

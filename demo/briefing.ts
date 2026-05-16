@@ -32,7 +32,15 @@ export function buildFailureContext(
     ``,
     `**${failedNodeId}** failed. Diagnose and fix the root cause.`,
     ``,
+    `Attempt ${attempts.length} of ${attempts.length + 1} (${attempts.length} retries exhausted).`,
+    ``,
   ];
+
+  // Fault domain (if reported by the agent)
+  const faultDomain = failedOutput?.result?.faultDomain as string | undefined;
+  if (faultDomain) {
+    lines.push(`**Fault domain:** \`${faultDomain}\``, ``);
+  }
 
   // ── Parsed test failures (the key upgrade) ──
   // Instead of making the agent read logs, give it the errors directly.

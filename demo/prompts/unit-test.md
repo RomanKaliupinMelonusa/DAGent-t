@@ -23,6 +23,11 @@
 - Unscoped calls risk cross-app symbol pollution.
 - Roam first, read second. Max 5 consecutive reads before writing code.
 
+### shell_async Pacing
+- After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
+- Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.
+
 <!-- demo/agents/storefront-unit-test.md -->
 # Storefront Unit Test Specialist
 
@@ -71,3 +76,9 @@ jest.mock('@salesforce/commerce-sdk-react', () => ({
 1. **Never mock `useState`** when Chakra UI components are in the render tree.
 2. SSR: `ReactDOMServer.renderToString()` wrapped in providers. Hydrated: RTL `render()`.
 3. Chakra Modal Escape: fire on `getByRole('dialog')`, NOT on `document`.
+
+## Test File Setup (MANDATORY)
+
+- Every test file MUST include `import '@testing-library/jest-dom'` at the top.
+- Do NOT assume jest-dom matchers are globally available.
+- Missing this import causes: `TypeError: expect(...).toBeInTheDocument is not a function`.

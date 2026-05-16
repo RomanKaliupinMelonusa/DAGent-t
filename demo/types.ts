@@ -93,6 +93,15 @@ export interface NodeOutput {
   errorSummary?: string;
 }
 
+export interface NodeMetrics {
+  nodeId: NodeId;
+  attempt: number;
+  wallClockMs: number;
+  toolCalls: Record<string, number>;
+  testRuns?: number;
+  ok: boolean;
+}
+
 export interface RunState {
   readonly slug: string;
   readonly app: string; // app root (e.g. apps/commerce-storefront)

@@ -23,6 +23,11 @@
 - Unscoped calls risk cross-app symbol pollution.
 - Roam first, read second. Max 5 consecutive reads before writing code.
 
+### shell_async Pacing
+- After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
+- Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.
+
 <!-- demo/agents/e2e-author.md -->
 # SDET Expert — E2E Test Author
 
@@ -61,7 +66,7 @@ You do NOT modify application source code.
    - After every flow, assert console error budget against baseline.
    - Use `page.getByTestId()` only — **NEVER** CSS/XPath, **NEVER** `or` fallbacks.
 5. **Baseline noise**: derive `BASELINE_NOISE_PATTERNS` mechanically from baseline output in the task prompt — one escaped regex per `console_errors[]` entry with `volatility: "persistent"`. Skip `"transient"`. If no baseline: empty array.
-6. **Validate selectors** against live DOM using Playwright MCP.
+6. **Validate selectors against live DOM (MANDATORY):** For EVERY `getByTestId()` in your test, verify the testid exists using Playwright MCP: `browser_navigate` → `browser_snapshot` → search snapshot text for the testid string. If the testid is NOT found in the snapshot, it does not exist yet. Use `report_outcome(failed)` with a message listing the missing testids. NEVER guess testids. NEVER assume a testid exists because the contract mentions it.
 7. **Self-review:** `grep -rn 'networkidle\|waitForTimeout\| or ' e2e/<slug>.spec.ts` — fix any hits.
 8. **Commit:** `bash demo/scripts/agent-commit.sh all "test(e2e): <description>"`
 

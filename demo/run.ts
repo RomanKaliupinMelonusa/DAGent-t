@@ -221,6 +221,18 @@ async function executeNode(node: NodeDef, state: RunState): Promise<void> {
     out.attempts.push(attemptRecord);
     state.history.push({ nodeId: node.id, attempt: attemptRecord });
 
+    // Persist per-attempt metrics to disk (agent nodes only).
+    if ("metrics" in res && res.metrics) {
+      const metricsPath = path.join(state.dagentDir, "metrics.json");
+      try {
+        const existing = fs.existsSync(metricsPath)
+          ? JSON.parse(fs.readFileSync(metricsPath, "utf-8"))
+          : [];
+        existing.push(res.metrics);
+        fs.writeFileSync(metricsPath, JSON.stringify(existing, null, 2));
+      } catch { /* non-fatal — metrics are best-effort */ }
+    }
+
     if (res.ok) {
       out.status = "completed";
       out.result = res.result;
@@ -420,6 +432,35 @@ export function renderRecoveryBody(state: RunState): string {
   if (state.terminalError) {
     lines.push("## Terminal error", "", "```", state.terminalError, "```", "");
   }
+
+  // Timing metrics (if available)
+  const metricsPath = path.join(state.dagentDir, "metrics.json");
+  if (fs.existsSync(metricsPath)) {
+    try {
+      const metrics = JSON.parse(fs.readFileSync(metricsPath, "utf-8")) as Array<{
+        nodeId: string; attempt: number; wallClockMs: number; ok: boolean;
+        toolCalls?: Record<string, number>;
+      }>;
+      if (metrics.length > 0) {
+        lines.push(
+          "## Timing", "",
+          "| Node | Attempt | Wall Clock | Tools | Status |",
+          "|------|---------|-----------|-------|--------|",
+        );
+        for (const m of metrics) {
+          const dur = m.wallClockMs > 60_000
+            ? `${(m.wallClockMs / 60_000).toFixed(1)}m`
+            : `${(m.wallClockMs / 1000).toFixed(0)}s`;
+          const totalTools = m.toolCalls
+            ? Object.values(m.toolCalls).reduce((a, b) => a + b, 0)
+            : 0;
+          lines.push(`| ${m.nodeId} | ${m.attempt} | ${dur} | ${totalTools} | ${m.ok ? "✓" : "✗"} |`);
+        }
+        lines.push("");
+      }
+    } catch { /* malformed metrics — skip */ }
+  }
+
   return lines.join("\n");
 }
 
@@ -686,6 +727,17 @@ async function main(): Promise<void> {
       console.log("[run] roam: index ready");
     } catch {
       console.warn("[run] roam: index rebuild failed (non-fatal)");
+    }
+
+    // Pre-install Playwright MCP browser to avoid empty-result failures.
+    try {
+      console.log("[run] playwright-mcp: ensuring browser is installed…");
+      execSync("npx @playwright/mcp@0.0.75 install", {
+        cwd: REPO_ROOT, timeout: 60_000, stdio: "inherit",
+      });
+      console.log("[run] playwright-mcp: browser ready");
+    } catch {
+      console.warn("[run] playwright-mcp: browser install failed (non-fatal — MCP fallback will activate)");
     }
 
     await runMainLoop(state, async () => {

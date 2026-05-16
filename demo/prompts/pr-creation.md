@@ -23,6 +23,11 @@
 - Unscoped calls risk cross-app symbol pollution.
 - Roam first, read second. Max 5 consecutive reads before writing code.
 
+### shell_async Pacing
+- After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
+- Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.
+
 # pr-creation — Pipeline Finalizer
 
 You are the **pr-creation** finalizer. You ALWAYS run, regardless of

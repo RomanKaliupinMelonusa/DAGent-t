@@ -23,6 +23,11 @@
 - Unscoped calls risk cross-app symbol pollution.
 - Roam first, read second. Max 5 consecutive reads before writing code.
 
+### shell_async Pacing
+- After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
+- Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.
+
 <!-- demo/agents/baseline-analyzer.md -->
 # Baseline Page Analyzer
 
@@ -63,6 +68,7 @@ The task prompt contains the feature slug, app root, and the spec inlined under 
 2. **Per page target** — use Playwright MCP tools (`browser_navigate`, `browser_snapshot`, `browser_console_messages`, `browser_network_requests`). Visit **one page at a time**: navigate → wait for load → snapshot → collect console/network signals → move on.
 3. **Per modal/overlay target**: navigate to host page, click trigger, capture signals.
 4. **Broad exploration (MANDATORY)**: also exercise PDP (click a tile), Add to Cart, `/cart`, `/search?q=shirt`, and any modal in the spec. Extra entries are harmless; missing ones cost debug cycles.
+   - **Warm-path exploration (when spec doesn't specify targets):** If the spec doesn't explicitly list pages/interactions to baseline, identify the primary surface the feature touches. On that surface, exercise the standard user journey: scroll, click a product tile, open any existing overlay/modal, add to cart, navigate to cart. Capture signals after EACH interaction, not just after initial page load. The goal is to surface noise from lazy-loaded components, deferred API calls, and HMR reconnects during interaction sequences.
 5. **Dedupe and normalize**: strip ANSI, remove volatile tokens (timestamps, UUIDs, session IDs, line numbers), collapse identical patterns.
 6. **Tag known platform noise** with `volatility: "persistent"` + `category`.
 7. Call `report_outcome` with the baseline JSON as `result`.

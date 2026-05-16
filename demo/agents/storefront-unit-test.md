@@ -45,3 +45,9 @@ jest.mock('@salesforce/commerce-sdk-react', () => ({
 1. **Never mock `useState`** when Chakra UI components are in the render tree.
 2. SSR: `ReactDOMServer.renderToString()` wrapped in providers. Hydrated: RTL `render()`.
 3. Chakra Modal Escape: fire on `getByRole('dialog')`, NOT on `document`.
+
+## Test File Setup (MANDATORY)
+
+- Every test file MUST include `import '@testing-library/jest-dom'` at the top.
+- Do NOT assume jest-dom matchers are globally available.
+- Missing this import causes: `TypeError: expect(...).toBeInTheDocument is not a function`.

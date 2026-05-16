@@ -30,7 +30,7 @@ import {
   cleanupAsyncProcesses,
   type OutcomeCollector,
 } from "./harness.ts";
-import type { NodeDef, NodeId, RunState } from "./types.ts";
+import type { NodeDef, NodeId, NodeMetrics, RunState } from "./types.ts";
 import { createLiveLogger } from "./live-logger.ts";
 import { ActivityWatchdog } from "./watchdog.ts";
 
@@ -45,6 +45,8 @@ export interface AgentRunResult {
   /** Fault classification from report_outcome (e.g. "test-code", "code-defect"). */
   faultDomain?: string;
   logPath: string;
+  /** Per-attempt metrics (tool calls, wall clock). */
+  metrics?: NodeMetrics;
 }
 
 /**
@@ -157,6 +159,9 @@ function buildAgentPrompt(
   const sections: string[] = [];
   sections.push(`# Task\n\nYou are the **${node.id}** node of the demo pipeline for feature **${state.slug}**.`);
   sections.push(`Working app root: \`${state.app}\``);
+  sections.push(`Repo root (absolute): \`${repoRoot}\``);
+  sections.push(`App root (absolute): \`${path.resolve(repoRoot, state.app)}\``);
+  sections.push(`Shell CWD: all shell commands execute from the repo root above. Always use absolute paths or repo-root-relative paths.`);
   sections.push(`Feature branch: \`${state.featureBranch}\` (already created and checked out).`);
   sections.push(`Spec-kit kickoff dir: \`${path.relative(repoRoot, state.kickoffDir)}\` (read-only).`);
 
@@ -226,7 +231,8 @@ function resolveMcpServers(
     servers["playwright"] = {
       type: "local",
       command: "npx",
-      args: ["@playwright/mcp@latest", "--headless", "--browser", "chromium"],
+      // Pinned — @latest causes version drift + missing browser binary.
+      args: ["@playwright/mcp@0.0.75", "--headless", "--browser", "chromium"],
       tools: ["*"],
       env: playwrightEnv,
     } as MCPServerConfig;
@@ -296,6 +302,9 @@ export async function runAgentNode(
 
   logLine("attempt.start", { node: node.id, attempt, model: MODEL });
 
+  const startMs = Date.now();
+  const toolCallCounts: Record<string, number> = {};
+
   const session = await client.createSession({
     model: MODEL,
     workingDirectory: repoRoot,
@@ -359,6 +368,7 @@ export async function runAgentNode(
     const toolName = e?.data?.toolName;
     const toolCallId = e?.data?.toolCallId;
     if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName);
+    if (toolName) toolCallCounts[toolName] = (toolCallCounts[toolName] ?? 0) + 1;
     logLine("tool.start", { tool: toolName, args: e?.data?.arguments });
     live.toolStart(toolName, e?.data?.arguments);
     watchdog?.toolStarted();
@@ -429,6 +439,16 @@ export async function runAgentNode(
       } catch { /* no matches is fine */ }
     }
     logLine("attempt.end", { ok: result.ok, error: result.errorMessage });
+    // Attach per-attempt metrics
+    const wallClockMs = Date.now() - startMs;
+    result.metrics = {
+      nodeId: node.id,
+      attempt,
+      wallClockMs,
+      toolCalls: { ...toolCallCounts },
+      ok: result.ok,
+    };
+    logLine("metrics", result.metrics);
     live.done(result.ok, result.errorMessage);
     logStream.end();
   }
