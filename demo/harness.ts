@@ -317,9 +317,11 @@ export function buildShellTool(sandbox: Sandbox): Tool<any> {
           ? out.slice(0, SHELL_OUTPUT_LIMIT) + `\n\n[TRUNCATED at ${SHELL_OUTPUT_LIMIT} bytes]`
           : out;
       } catch (err: unknown) {
-        const e = err as { status?: number; stdout?: string; stderr?: string; killed?: boolean };
-        if (e?.killed) {
-          return `EXIT: timeout after ${SHELL_TIMEOUT_MS / 1000}s\n${String(e.stdout ?? "").slice(0, 4000)}\n${String(e.stderr ?? "").slice(0, 4000)}`;
+        const e = err as { status?: number; stdout?: string; stderr?: string; killed?: boolean; signal?: string };
+        if (e?.killed || e?.signal === "SIGTERM") {
+          return `ERROR: Command killed — exceeded ${SHELL_TIMEOUT_MS / 1000}s timeout. ` +
+            `Do NOT retry the same long-running command. Break it into smaller steps or use a different approach.\n` +
+            `STDOUT:\n${String(e.stdout ?? "").slice(0, 4000)}\nSTDERR:\n${String(e.stderr ?? "").slice(0, 4000)}`;
         }
         return `EXIT ${e?.status ?? 1}\nSTDOUT:\n${String(e?.stdout ?? "").slice(0, 4000)}\nSTDERR:\n${String(e?.stderr ?? "").slice(0, 4000)}`;
       }

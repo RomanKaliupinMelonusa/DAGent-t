@@ -34,7 +34,7 @@ The task prompt contains the feature slug, app root, and the spec inlined under 
 ## Workflow
 
 1. Read the spec from the task prompt to identify target pages and interactions.
-2. **Per page target** (Playwright MCP): attach `console`, `pageerror`, `requestfailed` listeners BEFORE navigation → `page.goto(url, { waitUntil: 'networkidle' })` → wait 10s, scroll once → collect signals.
+2. **Per page target** — use Playwright MCP tools (`browser_navigate`, `browser_snapshot`, `browser_console_messages`, `browser_network_requests`). Visit **one page at a time**: navigate → wait for load → snapshot → collect console/network signals → move on.
 3. **Per modal/overlay target**: navigate to host page, click trigger, capture signals.
 4. **Broad exploration (MANDATORY)**: also exercise PDP (click a tile), Add to Cart, `/cart`, `/search?q=shirt`, and any modal in the spec. Extra entries are harmless; missing ones cost debug cycles.
 5. **Dedupe and normalize**: strip ANSI, remove volatile tokens (timestamps, UUIDs, session IDs, line numbers), collapse identical patterns.
@@ -46,3 +46,6 @@ The task prompt contains the feature slug, app root, and the spec inlined under 
 - Write NO files — output via `report_outcome.result` only.
 - Do NOT fabricate entries — every pattern must be observed via Playwright MCP.
 - Unreachable pages → log in `notes` and move on.
+- **NEVER run Playwright via shell** (`require('playwright')`, `node -e`, `npx playwright`). The Playwright MCP server is your only browser. Shell-based scripts will timeout at 120s and silently fail.
+- **One page per MCP navigation** — do NOT batch multiple pages in a single `browser_run_code_unsafe` call. Navigate, observe, collect, then navigate to the next page.
+- If Playwright MCP navigation returns empty or the page shows `about:blank`, call `browser_snapshot` to check state, then retry navigation once. If still blank, log the page as unreachable in `notes` and continue to the next target.

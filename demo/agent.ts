@@ -215,7 +215,7 @@ function resolveMcpServers(
     servers["playwright"] = {
       type: "local",
       command: "npx",
-      args: ["@playwright/mcp@latest"],
+      args: ["@playwright/mcp@latest", "--headless"],
       tools: ["*"],
       env: { BASE_URL: `http://localhost:${port}` },
     } as MCPServerConfig;
