@@ -1,6 +1,7 @@
 /*
  * App Shell Override — wraps the base PWA Kit App component to expose a
- * deterministic hydration signal for E2E tests.
+ * deterministic hydration signal for E2E tests, and mounts the Quick View
+ * provider + modal singleton.
  *
  * Why: Playwright specs that click SSR-rendered buttons before React has
  * attached its event handlers race with hydration and time out silently.
@@ -15,6 +16,8 @@
  */
 import React, {useEffect} from 'react'
 import BaseApp from '@salesforce/retail-react-app/app/components/_app'
+import {QuickViewProvider} from '../quick-view-modal/context'
+import QuickViewModalShell from '../quick-view-modal/modal-shell'
 
 const App = (props) => {
     useEffect(() => {
@@ -23,7 +26,12 @@ const App = (props) => {
         }
     }, [])
 
-    return <BaseApp {...props} />
+    return (
+        <QuickViewProvider>
+            <BaseApp {...props} />
+            <QuickViewModalShell />
+        </QuickViewProvider>
+    )
 }
 
 App.getProps = BaseApp.getProps

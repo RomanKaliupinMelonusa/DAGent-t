@@ -1,0 +1,105 @@
+{
+  "nodeId": "baseline",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-16T21:34:24.935Z",
+        "endedAt": "2026-05-16T21:36:17.353Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    ],
+    "result": {
+      "base_sha": "eced6e153040a27b64bfeaa5fbdb0b45d9bdd747",
+      "captured_at": "2026-05-16T21:35:49.948Z",
+      "console_errors": [
+        {
+          "category": "react-dev-warning",
+          "count": 2,
+          "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        },
+        {
+          "category": "react-dev-warning",
+          "count": 2,
+          "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        },
+        {
+          "category": "network-fetch-error",
+          "count": 1,
+          "pattern": "TypeError: Failed to fetch at vendor.js",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        }
+      ],
+      "feature": "plp-quick-view",
+      "network_failures": [
+        {
+          "category": "missing-product-image",
+          "count": 1,
+          "pattern": "GET /dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        },
+        {
+          "category": "auth-redirect-failure",
+          "count": 1,
+          "pattern": "GET /mobify/proxy/api/shopper/auth/v1/organizations/f_ecom_aaia_prd/oauth2/authorize",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        },
+        {
+          "category": "dev-hmr-noise",
+          "count": 1,
+          "pattern": "GET /__mrt/hmr",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        },
+        {
+          "category": "auth-callback-failure",
+          "count": 1,
+          "pattern": "GET /callback",
+          "source_page": "PDP",
+          "volatility": "persistent"
+        }
+      ],
+      "notes": "PLP (/category/newarrivals), Search (/search?q=shirt), and Cart (/cart) pages are clean — zero console errors and zero network failures. All baseline noise originates from the PDP page only (React dev warnings + auth/image fetch failures in the sandbox environment). PLP-Dresses (/category/womens-clothing-dresses) returns HTTP 200 and is expected to share the same clean PLP baseline. Playwright MCP was unavailable (permission error); data captured via the e2e/_baseline-capture.spec.ts fallback.",
+      "producedAt": "2026-05-16T21:35:49.948Z",
+      "producedBy": "baseline-analyzer",
+      "schemaVersion": 1,
+      "targets": [
+        {
+          "kind": "page",
+          "name": "PLP",
+          "url": "/category/newarrivals"
+        },
+        {
+          "kind": "page",
+          "name": "PLP-Dresses",
+          "url": "/category/womens-clothing-dresses"
+        },
+        {
+          "kind": "page",
+          "name": "PDP",
+          "url": "/product/<first-tile>"
+        },
+        {
+          "kind": "page",
+          "name": "Search",
+          "url": "/search?q=shirt"
+        },
+        {
+          "kind": "page",
+          "name": "Cart",
+          "url": "/cart"
+        }
+      ],
+      "uncaught_exceptions": []
+    }
+  }
+}
