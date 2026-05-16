@@ -304,6 +304,21 @@
         "test_runs": 6,
         "test_summary": "8 passed, 2 skipped (48.9s) - all E2E tests green"
       }
+    },
+    "pr-creation": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T22:15:34.142Z",
+          "endedAt": "2026-05-16T22:16:19.227Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
+        }
+      ],
+      "result": {
+        "prUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/113"
+      }
     }
   },
   "history": [
@@ -355,6 +370,16 @@
         "endedAt": "2026-05-16T22:15:34.138Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "pr-creation",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T22:15:34.142Z",
+        "endedAt": "2026-05-16T22:16:19.227Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
       }
     }
   ],
