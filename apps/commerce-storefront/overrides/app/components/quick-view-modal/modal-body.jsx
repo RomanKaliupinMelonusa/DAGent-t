@@ -14,10 +14,9 @@ import {
     ModalBody,
     ModalHeader
 } from '@salesforce/retail-react-app/app/components/shared/ui'
-import {useShopperBasketsV2Mutation as useShopperBasketsMutation} from '@salesforce/commerce-sdk-react'
+import {useShopperBasketsV2MutationHelper as useShopperBasketsMutationHelper} from '@salesforce/commerce-sdk-react'
 import ProductView from '@salesforce/retail-react-app/app/components/product-view'
 import {useProductViewModal} from '@salesforce/retail-react-app/app/hooks/use-product-view-modal'
-import {useCurrentBasket} from '@salesforce/retail-react-app/app/hooks/use-current-basket'
 import {useAddToCartModalContext} from '@salesforce/retail-react-app/app/hooks/use-add-to-cart-modal'
 import Link from '@salesforce/retail-react-app/app/components/link'
 import {productUrlBuilder} from '@salesforce/retail-react-app/app/utils/url'
@@ -52,10 +51,8 @@ const QuickViewModalBody = () => {
     // Fetch full product detail; seed with tile-level data for instant first paint
     const {product, isFetching} = useProductViewModal(openProduct)
 
-    // Basket hooks for add-to-bag
-    const {data: basket} = useCurrentBasket()
-    const createBasket = useShopperBasketsMutation('createBasket')
-    const addItemToBasket = useShopperBasketsMutation('addItemToBasket')
+    // Basket helper — same utility the PDP uses
+    const {addItemToNewOrExistingBasket} = useShopperBasketsMutationHelper()
 
     // Apply testid to the ProductView's Add to Cart button
     useAddToCartButtonTestId(wrapperRef)
@@ -74,14 +71,7 @@ const QuickViewModalBody = () => {
         const productId = selectedProduct?.productId || selectedProduct?.id
         const productItems = [{productId, quantity}]
 
-        if (!basket?.basketId) {
-            await createBasket.mutateAsync({body: {productItems}})
-        } else {
-            await addItemToBasket.mutateAsync({
-                parameters: {basketId: basket.basketId},
-                body: productItems
-            })
-        }
+        await addItemToNewOrExistingBasket(productItems)
 
         // Close quick view first, then open the global add-to-cart confirmation
         closeQuickView()
@@ -91,8 +81,8 @@ const QuickViewModalBody = () => {
             selectedQuantity: items[0].quantity
         })
 
-        // Return undefined so ProductView's internal handler does NOT
-        // try to call onAddToCartModalOpen a second time
+        // Return undefined so ProductView does NOT double-open the
+        // add-to-cart confirmation modal via its internal handler
     }
 
     const pdpUrl = productUrlBuilder({id: openProduct?.productId || openProduct?.id})

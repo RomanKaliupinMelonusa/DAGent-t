@@ -48,5 +48,20 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "e2e-author",
+    "attempt": 1,
+    "wallClockMs": 229900,
+    "toolCalls": {
+      "report_intent": 5,
+      "shell": 11,
+      "file_read": 4,
+      "playwright-browser_navigate": 2,
+      "write_file": 1,
+      "edit_file": 1,
+      "report_outcome": 1
+    },
+    "ok": true
   }
 ]
