@@ -1,30 +1,16 @@
 {
-  "name": "agentic-pipeline-platform",
-  "version": "0.1.0",
+  "name": "dagent-demo",
+  "version": "0.0.1",
   "private": true,
-  "description": "Deterministic agentic coding pipeline — DAG-scheduled AI agents from spec to PR",
+  "description": "DAGent demo branch — single-file agentic pipeline. DO NOT MERGE.",
   "workspaces": [
-    "apps/**",
-    "tools/*"
+    "demo"
   ],
   "scripts": {
-    "pipeline:init": "node tools/autonomous-factory/pipeline-state.mjs init",
-    "pipeline:complete": "node tools/autonomous-factory/pipeline-state.mjs complete",
-    "pipeline:fail": "node tools/autonomous-factory/pipeline-state.mjs fail",
-    "pipeline:reset-ci": "node tools/autonomous-factory/pipeline-state.mjs reset-ci",
-    "pipeline:reset-infra-plan": "node tools/autonomous-factory/pipeline-state.mjs reset-infra-plan",
-    "pipeline:redevelop-infra": "node tools/autonomous-factory/pipeline-state.mjs redevelop-infra",
-    "pipeline:status": "node tools/autonomous-factory/pipeline-state.mjs status",
-    "pipeline:next": "node tools/autonomous-factory/pipeline-state.mjs next",
-    "pipeline:set-note": "node tools/autonomous-factory/pipeline-state.mjs set-note",
-    "pipeline:doc-note": "node tools/autonomous-factory/pipeline-state.mjs doc-note",
-    "pipeline:resume": "node tools/autonomous-factory/pipeline-state.mjs resume",
-    "pipeline:recover-elevated": "node tools/autonomous-factory/pipeline-state.mjs recover-elevated",
-    "pipeline:set-url": "node tools/autonomous-factory/pipeline-state.mjs set-url",
-    "agent:commit": "bash tools/autonomous-factory/agent-commit.sh",
-    "agent:branch": "bash tools/autonomous-factory/agent-branch.sh",
-    "agent:run": "cd tools/autonomous-factory && npx tsx src/watchdog.ts",
-    "build:instructions": "node tools/autonomous-factory/build-instructions.mjs"
+    "demo": "npm run demo --workspace=@dagent/demo --",
+    "build:prompts": "npm run build:prompts --workspace=@dagent/demo",
+    "agent:commit": "bash demo/scripts/agent-commit.sh",
+    "agent:branch": "bash demo/scripts/agent-branch.sh"
   },
   "engines": {
     "node": ">=22.0.0"

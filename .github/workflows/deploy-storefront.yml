@@ -1,0 +1,85 @@
+# =============================================================================
+# Commerce Storefront Deployment — Salesforce Managed Runtime
+# =============================================================================
+# Builds the PWA Kit storefront and pushes a bundle to Managed Runtime.
+#
+# Triggered on pushes to main/feature branches that modify storefront code.
+#
+# Prerequisites:
+#   - MOBIFY_API_KEY → from Runtime Admin > Account Settings > API Key
+#     (stored in repo secrets, written to ~/.mobify at build time)
+# =============================================================================
+
+name: Deploy Storefront
+
+concurrency:
+  group: deploy-storefront-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths:
+      - 'apps/commerce-storefront/**'
+      - '.github/workflows/deploy-storefront.yml'
+  workflow_dispatch:
+    inputs:
+      app-path:
+        description: 'App directory relative to repo root'
+        required: true
+        type: string
+        default: 'apps/commerce-storefront'
+
+permissions:
+  contents: read
+
+env:
+  APP_PATH: ${{ inputs.app-path || 'apps/commerce-storefront' }}
+
+jobs:
+  build-test-deploy:
+    name: Build, Test & Deploy to MRT
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.APP_PATH }}
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: ${{ env.APP_PATH }}
+        run: npm test -- --ci --passWithNoTests
+
+      - name: Build production bundle
+        working-directory: ${{ env.APP_PATH }}
+        run: npm run build
+
+      - name: Configure Managed Runtime credentials
+        working-directory: ${{ env.APP_PATH }}
+        env:
+          MOBIFY_API_KEY: ${{ secrets.MOBIFY_API_KEY }}
+        run: |
+          # Write the .mobify credentials file for the push command
+          if [[ -n "${MOBIFY_API_KEY}" ]]; then
+            mkdir -p ~/.mobify
+            echo "{\"username\":\"\",\"api_key\":\"${MOBIFY_API_KEY}\"}" > ~/.mobify
+          else
+            echo "::warning::MOBIFY_API_KEY not set — skipping deploy"
+            exit 0
+          fi
+
+      - name: Push bundle to Managed Runtime
+        working-directory: ${{ env.APP_PATH }}
+        run: npm run push -- -m "CI deploy: ${{ github.sha }}"

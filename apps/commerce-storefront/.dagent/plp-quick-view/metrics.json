@@ -1,0 +1,95 @@
+[
+  {
+    "nodeId": "baseline",
+    "attempt": 1,
+    "wallClockMs": 72603,
+    "toolCalls": {
+      "report_intent": 1,
+      "shell": 6,
+      "playwright-browser_navigate": 4,
+      "playwright-browser_snapshot": 1,
+      "playwright-browser_tabs": 1,
+      "file_read": 1,
+      "shell_async": 1,
+      "shell_poll": 5,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "dev",
+    "attempt": 1,
+    "wallClockMs": 699631,
+    "toolCalls": {
+      "report_intent": 5,
+      "roam-code-roam_explore": 1,
+      "view": 1,
+      "shell": 46,
+      "file_read": 17,
+      "write_file": 10,
+      "roam-code-roam_syntax_check": 2,
+      "edit_file": 2,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "unit-test",
+    "attempt": 1,
+    "wallClockMs": 740566,
+    "toolCalls": {
+      "report_intent": 6,
+      "file_read": 7,
+      "shell": 31,
+      "write_file": 8,
+      "shell_async": 10,
+      "shell_poll": 15,
+      "edit_file": 9,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "e2e-author",
+    "attempt": 1,
+    "wallClockMs": 229900,
+    "toolCalls": {
+      "report_intent": 5,
+      "shell": 11,
+      "file_read": 4,
+      "playwright-browser_navigate": 2,
+      "write_file": 1,
+      "edit_file": 1,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "e2e-debug",
+    "attempt": 1,
+    "wallClockMs": 1204467,
+    "toolCalls": {
+      "report_intent": 7,
+      "shell": 50,
+      "shell_async": 5,
+      "shell_poll": 72,
+      "file_read": 14,
+      "edit_file": 14,
+      "view": 1,
+      "playwright-browser_navigate": 1,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "pr-creation",
+    "attempt": 1,
+    "wallClockMs": 65630,
+    "toolCalls": {
+      "report_intent": 1,
+      "shell": 6,
+      "report_outcome": 1
+    },
+    "ok": true
+  }
+]

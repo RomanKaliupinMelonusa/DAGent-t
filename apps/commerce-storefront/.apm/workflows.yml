@@ -1,0 +1,199 @@
+# workflows.yml — Storefront-spine DAG (post-refactor).
+#
+# 11-node spine for commerce-storefront. Triage classifier is LLM-only
+# with three routes: test-code, code-defect, test-data. Anything else
+# halts via the kernel halt-and-flush guard (no per-node opt-in).
+#
+# Pool defaults live in apm.yml → nodes:. The compiler merges
+# pool-default → workflow-node (workflow fields win). Graph-only fields
+# (depends_on, on_failure) are NEVER inherited from the pool.
+
+storefront:
+  description: "Storefront pipeline: spec → dev → unit test → E2E → QA → Draft PR"
+
+  default_triage: triage-storefront
+
+  nodes:
+    # ── Wave 0: Scaffolding ───────────────────────────────────────────
+    # create-branch:
+    #   depends_on: []
+    #   NOTE: Branch creation is now owned by spec-kit (/speckit.git.feature).
+    #   The pipeline assumes it is already on the correct feature branch.
+
+    stage-spec:
+      depends_on: []
+
+    # ── Acceptance contract compilation ─────────────────────────────
+    # Single LLM producer: reads the staged spec-kit folder and
+    # produces acceptance.yml end-to-end. On triage `test-data`
+    # reroute, patches only the failing fixture.
+    spec-compile:
+      depends_on: [stage-spec]
+      consumes_kickoff: [spec, plan, research, contracts, e2e-contract, clarifications]
+      produces_artifacts: [acceptance]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-data: \"$SELF\"
+
+    # ── Pre-feature baseline ──────────────────────────────────────────
+    # Advisory artifact only — every downstream consumer reads it as
+    # `required: false`. A baseline-analyzer failure must NOT trigger
+    # triage / reroute (was a misconfiguration). Omitting `on_failure`
+    # makes the node fail-soft per the kernel's no-implicit-opt-in rule.
+    baseline-analyzer:
+      depends_on: [spec-compile]
+      consumes_kickoff: [spec]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+      produces_artifacts: [baseline]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+
+    # ── Development ───────────────────────────────────────────────────
+    storefront-dev:
+      depends_on: [spec-compile, baseline-analyzer]
+      consumes_kickoff: [spec, plan, research, data-model, contracts]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      produces_artifacts: [implementation-status]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          code-defect: "$SELF"
+          test-code: "$SELF"
+          test-data: spec-compile
+
+    # ── Dev-server smoke gate ─────────────────────────────────────────
+    storefront-dev-smoke:
+      depends_on: [storefront-dev]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: storefront-dev, kind: implementation-status, required: false }
+      produces_artifacts: [smoke-report]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          code-defect: storefront-debug
+          test-data: spec-compile
+
+    # ── Runtime-defect debugger (reroute-only) ────────────────────────
+    storefront-debug:
+      depends_on: [storefront-dev-smoke]
+      consumes_kickoff: [spec, plan, contracts]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      produces_artifacts: [debug-notes]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          code-defect: "$SELF"
+          test-code: e2e-author
+          test-data: spec-compile
+
+    storefront-unit-test:
+      depends_on: [storefront-debug]
+      consumes_kickoff: [unit-tests, contracts]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      # `code-defect` routes to storefront-debug to match e2e-runner /
+      # qa-adversary. Resource isolation: only the debug agent owns the
+      # Playwright MCP, so any runtime defect surfaced (even by a unit
+      # test) belongs on the debug path. `test-code` stays on dev — a
+      # bad assertion is an author-side fix the dev agent rewrites.
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-code: storefront-dev
+          code-defect: storefront-debug
+
+    # ── Validation (Author / Runner) ──────────────────────────────────
+    e2e-author:
+      depends_on: [storefront-unit-test]
+      consumes_kickoff: [e2e-contract]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-code: "$SELF"
+          test-data: spec-compile
+
+    e2e-runner:
+      depends_on: [e2e-author]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+      produces_artifacts: [playwright-report]
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-code: e2e-author
+          code-defect: storefront-debug
+          test-data: spec-compile
+
+    # ── Adversarial QA pass ───────────────────────────────────────────
+    qa-adversary:
+      depends_on: [e2e-runner]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: e2e-runner, kind: playwright-report, required: false }
+        - { from: storefront-dev, kind: implementation-status, required: false }
+        - { from: baseline-analyzer, kind: baseline, required: false }
+      produces_artifacts: [qa-report]
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+        routes:
+          test-code: "$SELF"
+          code-defect: storefront-debug
+          test-data: spec-compile
+
+    # ── Open Draft PR (terminal) ──────────────────────────────────────
+    # Always opens as Draft. Human reviewer flips to Ready.
+    publish-pr:
+      depends_on: [storefront-unit-test, e2e-runner, qa-adversary]
+      consumes_artifacts:
+        - { from: spec-compile, kind: acceptance }
+        - { from: qa-adversary, kind: qa-report, required: false }
+      consumes_reroute:
+        - { kind: triage-handoff, required: true }
+      on_failure:
+        triage: triage-storefront
+
+    # ── Triage ────────────────────────────────────────────────────────
+    triage-storefront:
+      _node: triage-node
+      depends_on: []
+      triage_profile: storefront
+      produces_artifacts: [triage-handoff]
+
+  # ── Triage Profile (LLM-only, three routes) ─────────────────────────
+  triage:
+    storefront:
+      classifier: llm-only
+      llm_fallback: true
+      max_reroutes: 5
+      evidence_enrichment: false
+      baseline_noise_filter: true
+      domains: [test-code, code-defect, test-data]
+      routing:
+        test-code:
+          description: "The Playwright spec itself is wrong (bad locator, strict-mode violation, race condition, assertion contradicts the acceptance contract). Route to the SDET (e2e-author)."
+        code-defect:
+          description: "Defect in the storefront application code surfaced by the failing node — rendering crash, hydration mismatch, runtime exception, hook misuse, missing null guard. Route to the live-browser debugger (storefront-debug)."
+        test-data:
+          description: "The acceptance contract's test fixture is misconfigured for the running storefront — URL 404s under the active locale/site config, the chosen product violates a runtime assertion declared on the fixture (swatch count, in-stock, product type), or http_status:200 contradicts a baseline failure. Route to spec-compile so it can patch the fixture (different product / category / locale)."

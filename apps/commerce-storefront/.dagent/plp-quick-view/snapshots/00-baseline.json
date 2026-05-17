@@ -1,0 +1,100 @@
+{
+  "nodeId": "baseline",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-17T02:00:29.269Z",
+        "endedAt": "2026-05-17T02:01:41.879Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    ],
+    "result": {
+      "schemaVersion": 1,
+      "producedBy": "baseline-analyzer",
+      "producedAt": "2026-05-17T02:02:00.000Z",
+      "feature": "plp-quick-view",
+      "captured_at": "2026-05-17T02:01:17.957Z",
+      "base_sha": "815c208568e850100e8e7e438ac67c7847dad2eb",
+      "targets": [
+        {
+          "name": "PLP",
+          "url": "/category/newarrivals",
+          "kind": "page"
+        },
+        {
+          "name": "PDP",
+          "url": "/category/newarrivals (click first tile)",
+          "kind": "page"
+        },
+        {
+          "name": "Search",
+          "url": "/search?q=shirt",
+          "kind": "page"
+        },
+        {
+          "name": "Cart",
+          "url": "/cart",
+          "kind": "page"
+        }
+      ],
+      "console_errors": [
+        {
+          "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+          "source_page": "PDP",
+          "count": 2,
+          "volatility": "persistent",
+          "category": "react-dev-warning"
+        },
+        {
+          "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+          "source_page": "PDP",
+          "count": 2,
+          "volatility": "persistent",
+          "category": "react-dev-warning"
+        },
+        {
+          "pattern": "TypeError: Failed to fetch at vendor.js",
+          "source_page": "PDP",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "network-fetch-error"
+        }
+      ],
+      "network_failures": [
+        {
+          "pattern": "GET /__mrt/hmr",
+          "source_page": "PDP",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "hmr-dev-server"
+        },
+        {
+          "pattern": "GET /dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/dw8f647e4c/images/medium/PG.10256690.JJ169XX.PZ.jpg",
+          "source_page": "PDP",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "missing-product-image"
+        },
+        {
+          "pattern": "GET /mobify/proxy/api/shopper/auth/v1/organizations/f_ecom_aaia_prd/oauth2/authorize",
+          "source_page": "PDP",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "auth-redirect"
+        },
+        {
+          "pattern": "GET /callback",
+          "source_page": "PDP",
+          "count": 1,
+          "volatility": "persistent",
+          "category": "auth-redirect"
+        }
+      ],
+      "uncaught_exceptions": [],
+      "notes": "Baseline captured via shell fallback (Playwright MCP blocked by permissions). All signals originate from the PDP page (navigated via tile click from PLP). PLP, Search, and Cart pages produced zero console errors and zero network failures — they are clean. The PDP errors are all pre-existing platform noise: two React dev-mode warnings (getServerSnapshot caching, defaultProps deprecation), a fetch TypeError likely tied to the auth redirect chain, and four network failures (HMR reconnect, a missing product image, and the shopper auth OAuth2 authorize+callback pair). None of these relate to the Quick View feature being developed."
+    }
+  }
+}

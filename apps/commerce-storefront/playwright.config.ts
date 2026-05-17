@@ -1,0 +1,55 @@
+import { defineConfig, devices } from '@playwright/test';
+
+/**
+ * Playwright configuration for the PWA Kit commerce storefront.
+ *
+ * Runs E2E tests against the local dev server (npm start → localhost:3000).
+ * The webServer config auto-starts the dev server before tests and shuts it
+ * down after.
+ */
+const storefrontPort = process.env.STOREFRONT_PORT || '3000';
+const storefrontUrl = process.env.STOREFRONT_URL || `http://localhost:${storefrontPort}`;
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  // Always emit a JSON report alongside the human-readable reporter so the
+  // orchestrator can parse structured failures for triage. See
+  // `tools/autonomous-factory/src/triage/playwright-report.ts`.
+  // PLAYWRIGHT_JSON_OUTPUT_NAME controls the JSON reporter's output file —
+  // the orchestrator's `local-exec` handler sets it to the per-invocation
+  // outputs directory when the e2e-runner node declares
+  // `structured_failure: { format: playwright-json, ... }`. The fallback
+  // points at `test-results/` (already gitignored and matching Playwright's
+  // own convention) so an ad-hoc CLI invocation can't pollute the app root.
+  reporter: process.env.CI
+    ? [['github'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/playwright-report.json' }]]
+    : [['list'], ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/playwright-report.json' }]],
+  timeout: 60_000,
+
+  use: {
+    baseURL: storefrontUrl,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+
+  /* Start the PWA Kit dev server before running tests */
+  webServer: process.env.STOREFRONT_URL
+    ? undefined // Skip webServer when testing against a deployed URL
+    : {
+        command: `PORT=${storefrontPort} npm start`,
+        url: `http://localhost:${storefrontPort}`,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000, // PWA Kit SSR startup can be slow
+      },
+});

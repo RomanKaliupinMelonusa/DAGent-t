@@ -1,0 +1,75 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-17T02:13:21.542Z",
+        "endedAt": "2026-05-17T02:25:42.112Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      }
+    ],
+    "result": {
+      "summary": "All 32 unit test cases from unit-tests.md §3 implemented and passing",
+      "test_suites": 5,
+      "tests_passed": 32,
+      "tests_failed": 0,
+      "tests_skipped": 0,
+      "files_created": [
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx"
+      ],
+      "case_mapping": {
+        "context.test.jsx": [
+          "UT-PROV-001",
+          "UT-PROV-002",
+          "UT-PROV-003"
+        ],
+        "trigger.test.jsx": [
+          "UT-TRIG-001",
+          "UT-TRIG-002",
+          "UT-TRIG-003",
+          "UT-TRIG-004",
+          "UT-TRIG-005",
+          "UT-TRIG-006"
+        ],
+        "modal-shell.test.jsx": [
+          "UT-SHELL-001",
+          "UT-SHELL-002",
+          "UT-SHELL-003",
+          "UT-SHELL-004",
+          "UT-SHELL-005"
+        ],
+        "modal-body.test.jsx": [
+          "UT-BODY-001",
+          "UT-BODY-002",
+          "UT-BODY-003",
+          "UT-BODY-004",
+          "UT-BODY-005",
+          "UT-BODY-006",
+          "UT-BODY-007",
+          "UT-BODY-008",
+          "UT-BODY-009",
+          "UT-BODY-010",
+          "UT-BODY-011",
+          "UT-BODY-012",
+          "UT-BODY-013",
+          "UT-BODY-014",
+          "UT-BODY-015"
+        ],
+        "a11y.test.jsx": [
+          "UT-A11Y-001",
+          "UT-A11Y-002",
+          "UT-A11Y-003"
+        ]
+      },
+      "escalations": [],
+      "commit": "test(storefront): add Quick View modal unit tests (32 cases across provider, trigger, shell, body, a11y)"
+    }
+  }
+}

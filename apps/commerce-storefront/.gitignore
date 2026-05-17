@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+
+# APM compiled context
+.apm/.compiled/
+
+# Managed Runtime credentials
+.mobify
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pipeline working directory (`<app>/.dagent/<slug>/`) — slug folders are
+# tracked in Git so PR reviewers can audit pipeline state alongside the
+# feature diff. Only transient junk that pollutes the working dir
+# (stray scripts an agent might emit at the slug root) is ignored.
+.dagent/*.mjs
+.dagent/*.js
+.dagent/*.ts
+
+# QA-adversary transient artefacts. The agent emits a Playwright spec
+# under `e2e/_qa_<slug>.spec.ts` per run; `.apm/hooks/qa-adversary-post.sh`
+# is the load-bearing cleanup, this entry is just a backstop for the
+# fresh-clone / agent-skip scenarios.
+e2e/_qa_*.spec.ts
+qa-pw-report.json
+qa-stderr.log
