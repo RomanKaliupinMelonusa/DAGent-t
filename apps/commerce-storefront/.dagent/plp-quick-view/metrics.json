@@ -1,0 +1,25 @@
+[
+  {
+    "nodeId": "baseline",
+    "attempt": 1,
+    "wallClockMs": 302105,
+    "toolCalls": {},
+    "ok": false
+  },
+  {
+    "nodeId": "baseline",
+    "attempt": 2,
+    "wallClockMs": 106515,
+    "toolCalls": {
+      "report_intent": 1,
+      "shell": 6,
+      "playwright-browser_navigate": 3,
+      "playwright-browser_snapshot": 1,
+      "playwright-browser_tabs": 1,
+      "playwright-browser_run_code_unsafe": 1,
+      "file_read": 1,
+      "report_outcome": 1
+    },
+    "ok": true
+  }
+]

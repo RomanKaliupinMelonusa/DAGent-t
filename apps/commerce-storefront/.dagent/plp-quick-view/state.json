@@ -1,0 +1,203 @@
+{
+  "slug": "plp-quick-view",
+  "app": "apps/commerce-storefront",
+  "baseBranch": "main",
+  "featureBranch": "product-quick-view-001",
+  "specFolderPath": "/workspaces/DAGent-t/apps/commerce-storefront/specs/001-plp-quick-view",
+  "kickoffDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view/_kickoff",
+  "dagentDir": "/workspaces/DAGent-t/apps/commerce-storefront/.dagent/plp-quick-view",
+  "startedAt": "2026-05-16T23:50:10.676Z",
+  "jumps": 0,
+  "outputs": {
+    "baseline": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-16T23:51:20.245Z",
+          "endedAt": "2026-05-16T23:56:22.359Z",
+          "status": "failed",
+          "errorSummary": "Session error: Inactivity watchdog: no tool calls for 300s — session killed.",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+        },
+        {
+          "attempt": 2,
+          "startedAt": "2026-05-16T23:56:22.365Z",
+          "endedAt": "2026-05-16T23:58:08.887Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.2.log"
+        }
+      ],
+      "result": {
+        "base_sha": "3079bbd46b49c20107907d242013fa5c4e7eca69",
+        "captured_at": "2026-05-16T23:57:30.000Z",
+        "console_errors": [
+          {
+            "category": "react-warning",
+            "count": 1,
+            "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "react-warning",
+            "count": 1,
+            "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "api-auth-error",
+            "count": 2,
+            "pattern": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "api-auth-error",
+            "count": 2,
+            "pattern": "r: 403 Forbidden at vendor.js",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "dns-resolution",
+            "count": 1,
+            "pattern": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "datacloud-analytics",
+            "count": 1,
+            "pattern": "retail-react-app.use-datacloud._handleApiError ERROR [DataCloudApi] Error sending Data Cloud event",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "react-warning",
+            "count": 2,
+            "pattern": "Warning: The result of getServerSnapshot should be cached to avoid an infinite loop",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          },
+          {
+            "category": "react-warning",
+            "count": 2,
+            "pattern": "Warning: %s: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.%s PageDesignerProvider",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          },
+          {
+            "category": "network-fetch-error",
+            "count": 1,
+            "pattern": "TypeError: Failed to fetch at vendor.js",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          }
+        ],
+        "feature": "plp-quick-view",
+        "network_failures": [
+          {
+            "category": "image-404",
+            "count": 1,
+            "pattern": "GET /dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "auth-callback",
+            "count": 1,
+            "pattern": "GET /callback",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "datacloud-analytics",
+            "count": 1,
+            "pattern": "POST /web/events/",
+            "source_page": "PLP-Dresses",
+            "volatility": "persistent"
+          },
+          {
+            "category": "hmr-dev-server",
+            "count": 1,
+            "pattern": "GET /__mrt/hmr",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          },
+          {
+            "category": "shopper-auth",
+            "count": 1,
+            "pattern": "GET /mobify/proxy/api/shopper/auth/v1/organizations/f_ecom_aaia_prd/oauth2/authorize",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          },
+          {
+            "category": "image-404",
+            "count": 1,
+            "pattern": "GET /dw/image/v2/AAIA_PRD/on/demandware.static/-/Sites-apparel-m-catalog/default/",
+            "source_page": "PDP",
+            "volatility": "persistent"
+          }
+        ],
+        "notes": "Playwright MCP navigation was blocked by permission errors. Fallback used: shell-based Playwright test runner (e2e/_baseline-capture.spec.ts) plus direct node script for the primary PLP-Dresses target. PLP (newarrivals), Search, and Cart pages are clean with zero console errors and zero network failures. The PLP-Dresses page and PDP show persistent platform noise: React deprecation warnings (getServerSnapshot, defaultProps), 403 auth failures on shopper API, DataCloud event errors (DNS unresolved), and missing product images from CDN. All are pre-existing and unrelated to the quick-view feature.",
+        "producedAt": "2026-05-16T23:57:30.000Z",
+        "producedBy": "baseline-analyzer",
+        "schemaVersion": 1,
+        "targets": [
+          {
+            "kind": "page",
+            "name": "PLP-Dresses",
+            "url": "/category/womens-clothing-dresses"
+          },
+          {
+            "kind": "page",
+            "name": "PLP",
+            "url": "/category/newarrivals"
+          },
+          {
+            "kind": "page",
+            "name": "PDP",
+            "url": "/category/newarrivals (click tile)"
+          },
+          {
+            "kind": "page",
+            "name": "Search",
+            "url": "/search?q=shirt"
+          },
+          {
+            "kind": "page",
+            "name": "Cart",
+            "url": "/cart"
+          }
+        ],
+        "uncaught_exceptions": []
+      }
+    }
+  },
+  "history": [
+    {
+      "nodeId": "baseline",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-16T23:51:20.245Z",
+        "endedAt": "2026-05-16T23:56:22.359Z",
+        "status": "failed",
+        "errorSummary": "Session error: Inactivity watchdog: no tool calls for 300s — session killed.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.1.log"
+      }
+    },
+    {
+      "nodeId": "baseline",
+      "attempt": {
+        "attempt": 2,
+        "startedAt": "2026-05-16T23:56:22.365Z",
+        "endedAt": "2026-05-16T23:58:08.887Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/baseline.2.log"
+      }
+    }
+  ],
+  "devServerPort": 3000
+}
