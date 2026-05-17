@@ -333,6 +333,21 @@
         ],
         "test_summary": "10 tests: 8 passed, 2 skipped (expected - preconditions not met for color-swatch-switch and disabled-button-state tests). 0 failed. Duration: 46.9s"
       }
+    },
+    "pr-creation": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-17T00:58:57.929Z",
+          "endedAt": "2026-05-17T00:59:45.711Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
+        }
+      ],
+      "result": {
+        "prUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/114"
+      }
     }
   },
   "history": [
@@ -417,6 +432,16 @@
         "endedAt": "2026-05-17T00:58:57.926Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.2.log"
+      }
+    },
+    {
+      "nodeId": "pr-creation",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-17T00:58:57.929Z",
+        "endedAt": "2026-05-17T00:59:45.711Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
       }
     }
   ],
