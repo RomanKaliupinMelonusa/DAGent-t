@@ -97,5 +97,20 @@
       "bash": 1
     },
     "ok": false
+  },
+  {
+    "nodeId": "e2e-debug",
+    "attempt": 2,
+    "wallClockMs": 328582,
+    "toolCalls": {
+      "report_intent": 4,
+      "shell": 9,
+      "file_read": 9,
+      "shell_async": 2,
+      "shell_poll": 33,
+      "edit_file": 2,
+      "report_outcome": 1
+    },
+    "ok": true
   }
 ]
