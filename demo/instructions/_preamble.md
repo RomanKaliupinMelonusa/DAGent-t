@@ -24,4 +24,5 @@
 ### shell_async Pacing
 - After launching `shell_async`, do NOT poll immediately. Wait 30s, then poll every 30s.
 - Long-running commands (test suites, builds) should use `shell_async` + `shell_poll`; short commands (<60s) should use `shell` directly.
+- `shell_poll` has a server-enforced minimum interval on some nodes. If the response contains `"stale": true`, the process is still running but you polled too soon — do other useful work (read files, plan next steps) before polling again.
 - If `agent-commit.sh <scope>` reports no changes, it automatically falls back to `all` scope. Do NOT retry with a different scope manually.

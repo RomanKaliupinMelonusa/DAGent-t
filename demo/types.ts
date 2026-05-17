@@ -33,6 +33,13 @@ export interface NodeDef {
   /** Per-node shell command timeout in ms. Overrides the default 120s. */
   readonly shellTimeoutMs?: number;
   /**
+   * Minimum ms between fresh `shell_poll` responses for this node's async
+   * processes.  Polls arriving before the interval return a stale result
+   * (non-blocking).  Default 0 (no throttle).  Set higher for nodes that
+   * run long test suites where rapid polling wastes tool-call budget.
+   */
+  readonly pollMinIntervalMs?: number;
+  /**
    * Kill the session when the LLM is idle (no tool calls in-flight AND
    * no new tool call issued) for this many ms.  Only fires when
    * inFlightToolCalls === 0, so long-running Playwright/shell operations

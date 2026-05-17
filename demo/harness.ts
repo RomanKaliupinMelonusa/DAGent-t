@@ -350,6 +350,11 @@ export interface AsyncProcess {
   exitCode: number | null;
   killed: boolean;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Epoch ms of last fresh (non-stale) poll.  Initialised to 0 so the
+   *  first poll after spawn is always fresh. */
+  lastPollAt: number;
+  /** Minimum ms between fresh poll responses.  0 = no throttle. */
+  pollMinIntervalMs: number;
 }
 
 export type AsyncProcessStore = Map<string, AsyncProcess>;
@@ -373,6 +378,7 @@ export function buildShellAsyncTool(
   sandbox: Sandbox,
   store: AsyncProcessStore,
   getWatchdog?: () => { toolStarted: () => void; toolCompleted: () => void } | null,
+  pollMinIntervalMs = 0,
 ): Tool<any> {
   return defineTool("shell_async", {
     description:
@@ -416,6 +422,8 @@ export function buildShellAsyncTool(
         exitCode: null,
         killed: false,
         timer: null,
+        lastPollAt: 0,
+        pollMinIntervalMs,
       };
 
       // Accumulate output (capped at 2MB to prevent memory pressure).
@@ -466,24 +474,44 @@ export function buildShellPollTool(store: AsyncProcessStore): Tool<any> {
       if (!entry) return `ERROR: Unknown handle '${args.handle}'. It may have already been cleaned up.`;
 
       const done = entry.exitCode !== null;
-      const stdoutTail = entry.stdout.slice(-SHELL_OUTPUT_LIMIT);
-      const stderrTail = entry.stderr.slice(-SHELL_OUTPUT_LIMIT);
 
-      const result: Record<string, unknown> = {
-        done,
-        exitCode: entry.exitCode,
-        killed: entry.killed,
-        stdout_tail: stdoutTail,
-        stderr_tail: stderrTail,
-      };
-
-      // Clean up completed entries.
+      // Completed processes always return immediately — never throttled.
       if (done) {
+        const result = {
+          done: true as const,
+          exitCode: entry.exitCode,
+          killed: entry.killed,
+          stdout_tail: entry.stdout.slice(-SHELL_OUTPUT_LIMIT),
+          stderr_tail: entry.stderr.slice(-SHELL_OUTPUT_LIMIT),
+        };
         if (entry.timer) clearTimeout(entry.timer);
         store.delete(args.handle);
+        return JSON.stringify(result);
       }
 
-      return JSON.stringify(result);
+      // Still running — check throttle.
+      const now = Date.now();
+      const elapsed = now - entry.lastPollAt;
+      if (entry.pollMinIntervalMs > 0 && elapsed < entry.pollMinIntervalMs) {
+        const waitSeconds = Math.ceil((entry.pollMinIntervalMs - elapsed) / 1000);
+        return JSON.stringify({
+          done: false,
+          stale: true,
+          message: `Process still running. Last polled ${Math.round(elapsed / 1000)}s ago. ` +
+                   `Poll again in ~${waitSeconds}s for fresh output.`,
+          stdout_tail: entry.stdout.slice(-SHELL_OUTPUT_LIMIT),
+        });
+      }
+
+      // Fresh poll.
+      entry.lastPollAt = now;
+      return JSON.stringify({
+        done: false,
+        exitCode: null,
+        killed: entry.killed,
+        stdout_tail: entry.stdout.slice(-SHELL_OUTPUT_LIMIT),
+        stderr_tail: entry.stderr.slice(-SHELL_OUTPUT_LIMIT),
+      });
     },
   });
 }

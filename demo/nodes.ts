@@ -74,6 +74,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     blockedCommandRegexes: SAFE_BLOCKED_CMDS,
     maxRetries: 1,
     timeoutMs: 15 * 60 * 1000,
+    pollMinIntervalMs: 10_000,      // 10s — Jest suites take 10-30s; throttle rapid polling
     // Jest runs are in-flight shell calls — timer paused during them.
     // 5min idle with no tool call = stuck (same pattern as e2e-debug).
     inactivityTimeoutMs: 5 * 60 * 1000,
@@ -110,6 +111,7 @@ export const MAIN_NODES: readonly NodeDef[] = [
     maxRetries: 2,
     timeoutMs: 25 * 60 * 1000,
     shellTimeoutMs: 10 * 60 * 1000, // 600s — full test suite can take minutes
+    pollMinIntervalMs: 15_000,      // 15s — E2E runs take 30-90s; throttle rapid polling
     inactivityTimeoutMs: 5 * 60 * 1000,
   },
 ];

@@ -306,7 +306,7 @@ export async function runAgentNode(
     buildEditFileTool(sandbox),
     buildWriteFileTool(sandbox),
     buildShellTool(sandbox),
-    buildShellAsyncTool(sandbox, asyncStore, () => watchdogRef),
+    buildShellAsyncTool(sandbox, asyncStore, () => watchdogRef, node.pollMinIntervalMs),
     buildShellPollTool(asyncStore),
     buildReportOutcomeTool(collector),
   ];
