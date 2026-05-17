@@ -329,6 +329,21 @@
           "fix(e2e): narrow basket error filter to shopper-baskets API only"
         ]
       }
+    },
+    "pr-creation": {
+      "status": "completed",
+      "attempts": [
+        {
+          "attempt": 1,
+          "startedAt": "2026-05-17T02:49:36.542Z",
+          "endedAt": "2026-05-17T02:50:42.178Z",
+          "status": "completed",
+          "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
+        }
+      ],
+      "result": {
+        "prUrl": "https://github.com/RomanKaliupinMelonusa/DAGent-t/pull/115"
+      }
     }
   },
   "history": [
@@ -380,6 +395,16 @@
         "endedAt": "2026-05-17T02:49:36.536Z",
         "status": "completed",
         "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/e2e-debug.1.log"
+      }
+    },
+    {
+      "nodeId": "pr-creation",
+      "attempt": {
+        "attempt": 1,
+        "startedAt": "2026-05-17T02:49:36.542Z",
+        "endedAt": "2026-05-17T02:50:42.178Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/pr-creation.1.log"
       }
     }
   ],

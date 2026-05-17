@@ -80,5 +80,16 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "pr-creation",
+    "attempt": 1,
+    "wallClockMs": 65630,
+    "toolCalls": {
+      "report_intent": 1,
+      "shell": 6,
+      "report_outcome": 1
+    },
+    "ok": true
   }
 ]
