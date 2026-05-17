@@ -181,8 +181,9 @@ test.describe('PLP Quick View Modal', () => {
         const basketErrors: string[] = []
 
         // Track basket-related responses for error assertion
+        // Only track shopper-baskets API (our mutations), not shopper-customers/baskets (SDK background query)
         page.on('response', (res) => {
-            if (/baskets/i.test(res.url()) && res.status() >= 400) {
+            if (/shopper-baskets/i.test(res.url()) && res.status() >= 400) {
                 basketErrors.push(`${res.request().method()} ${res.url()} -> ${res.status()}`)
             }
         })
