@@ -1,0 +1,38 @@
+{
+  "nodeId": "unit-test",
+  "output": {
+    "status": "completed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "startedAt": "2026-05-17T00:16:15.848Z",
+        "endedAt": "2026-05-17T00:21:52.157Z",
+        "status": "failed",
+        "errorSummary": "Agent session ended without calling report_outcome.",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.1.log"
+      },
+      {
+        "attempt": 2,
+        "startedAt": "2026-05-17T00:21:52.163Z",
+        "endedAt": "2026-05-17T00:26:27.535Z",
+        "status": "completed",
+        "logPath": "apps/commerce-storefront/.dagent/plp-quick-view/logs/unit-test.2.log"
+      }
+    ],
+    "result": {
+      "commit": "test(storefront): add 32 unit tests for PLP Quick View modal (provider, trigger, shell, body, a11y)",
+      "escalations": [],
+      "skipped": 0,
+      "summary": "All 32 unit tests for PLP Quick View modal pass across 5 test suites",
+      "test_cases": 32,
+      "test_files": [
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/context.test.jsx (3 tests: UT-PROV-001..003)",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/trigger.test.jsx (6 tests: UT-TRIG-001..006)",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-shell.test.jsx (5 tests: UT-SHELL-001..005)",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/modal-body.test.jsx (15 tests: UT-BODY-001..015)",
+        "apps/commerce-storefront/overrides/app/components/quick-view-modal/a11y.test.jsx (3 tests: UT-A11Y-001..003)"
+      ],
+      "test_suites": 5
+    }
+  }
+}
