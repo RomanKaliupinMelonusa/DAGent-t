@@ -1,0 +1,19 @@
+[
+  {
+    "nodeId": "baseline",
+    "attempt": 1,
+    "wallClockMs": 72603,
+    "toolCalls": {
+      "report_intent": 1,
+      "shell": 6,
+      "playwright-browser_navigate": 4,
+      "playwright-browser_snapshot": 1,
+      "playwright-browser_tabs": 1,
+      "file_read": 1,
+      "shell_async": 1,
+      "shell_poll": 5,
+      "report_outcome": 1
+    },
+    "ok": true
+  }
+]
