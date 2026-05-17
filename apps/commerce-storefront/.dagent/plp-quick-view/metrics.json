@@ -32,5 +32,21 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "unit-test",
+    "attempt": 1,
+    "wallClockMs": 740566,
+    "toolCalls": {
+      "report_intent": 6,
+      "file_read": 7,
+      "shell": 31,
+      "write_file": 8,
+      "shell_async": 10,
+      "shell_poll": 15,
+      "edit_file": 9,
+      "report_outcome": 1
+    },
+    "ok": true
   }
 ]
