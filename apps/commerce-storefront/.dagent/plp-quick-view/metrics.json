@@ -21,5 +21,35 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "dev",
+    "attempt": 1,
+    "wallClockMs": 1086937,
+    "toolCalls": {
+      "report_intent": 7,
+      "view": 1,
+      "shell": 87,
+      "file_read": 7,
+      "write_file": 9,
+      "roam-code-roam_syntax_check": 1,
+      "edit_file": 8,
+      "shell_async": 3,
+      "shell_poll": 21,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "unit-test",
+    "attempt": 1,
+    "wallClockMs": 336304,
+    "toolCalls": {
+      "report_intent": 3,
+      "task": 2,
+      "file_read": 11,
+      "shell": 16
+    },
+    "ok": false
   }
 ]
