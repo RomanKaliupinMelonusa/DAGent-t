@@ -63,5 +63,22 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "e2e-debug",
+    "attempt": 1,
+    "wallClockMs": 1204467,
+    "toolCalls": {
+      "report_intent": 7,
+      "shell": 50,
+      "shell_async": 5,
+      "shell_poll": 72,
+      "file_read": 14,
+      "edit_file": 14,
+      "view": 1,
+      "playwright-browser_navigate": 1,
+      "report_outcome": 1
+    },
+    "ok": true
   }
 ]
