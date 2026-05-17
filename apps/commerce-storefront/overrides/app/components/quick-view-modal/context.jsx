@@ -27,7 +27,11 @@ export const QuickViewProvider = ({children}) => {
 
     const closeQuickView = useCallback(() => {
         setIsOpen(false)
-        setOpenProduct(null)
+        // Do NOT clear openProduct here. React Query's observer inside
+        // QuickViewModalBody may still call its `select` callback during
+        // the unmount cycle, which references initialProduct.productId.
+        // Clearing the product causes a null-dereference crash.
+        // The product will be replaced on the next openQuickView() call.
     }, [])
 
     const value = {isOpen, openProduct, openQuickView, closeQuickView}

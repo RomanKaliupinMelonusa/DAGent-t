@@ -67,5 +67,35 @@
       "report_outcome": 1
     },
     "ok": true
+  },
+  {
+    "nodeId": "e2e-author",
+    "attempt": 1,
+    "wallClockMs": 120039,
+    "toolCalls": {
+      "report_intent": 4,
+      "file_read": 4,
+      "shell": 5,
+      "playwright-browser_navigate": 1,
+      "write_file": 1,
+      "report_outcome": 1
+    },
+    "ok": true
+  },
+  {
+    "nodeId": "e2e-debug",
+    "attempt": 1,
+    "wallClockMs": 1501730,
+    "toolCalls": {
+      "report_intent": 3,
+      "shell": 100,
+      "shell_async": 4,
+      "shell_poll": 39,
+      "file_read": 14,
+      "edit_file": 1,
+      "edit": 1,
+      "bash": 1
+    },
+    "ok": false
   }
 ]

@@ -37,20 +37,28 @@ const QuickViewModalBody = () => {
      * opens the global AddToCartModal via onAddToCartModalOpen.
      */
     const handleAddToCart = async (productSelectionValues) => {
-        const productItems = productSelectionValues.map(({variant, product: p, quantity}) => ({
-            productId: variant?.productId || p?.productId || p?.id,
-            price: variant?.price || p?.price,
-            quantity
-        }))
+        const items = productSelectionValues.map(({variant, product: p, quantity}) => {
+            const selectedProduct = variant || p
+            return {
+                productId: selectedProduct?.productId || selectedProduct?.id,
+                quantity,
+                price: selectedProduct?.price
+            }
+        })
 
-        if (!basket?.basketId) {
-            await createBasket.mutateAsync({body: {productItems}})
-        } else {
-            await addItemToBasket.mutateAsync({
-                parameters: {basketId: basket.basketId},
-                body: productItems
+        let basketId = basket?.basketId
+        if (!basketId) {
+            const newBasket = await createBasket.mutateAsync({
+                parameters: {temporary: true},
+                body: {}
             })
+            basketId = newBasket.basketId
         }
+
+        await addItemToBasket.mutateAsync({
+            parameters: {basketId},
+            body: items
+        })
 
         // Close the Quick View modal. React batches this state update, so
         // the caller (ProductView's handleCartItem) still gets to run

@@ -40,12 +40,11 @@ const ErrorFallback = () => {
 const QuickViewModalShell = () => {
     const {isOpen, openProduct, closeQuickView} = useQuickView()
 
-    // Gate: don't mount the body (and its hooks) when modal is closed.
-    if (!isOpen || !openProduct) return null
-
+    // Always render the Modal so Chakra can manage its exit animation and
+    // portal cleanup. Only mount the expensive body when open.
     return (
         <Modal
-            isOpen
+            isOpen={isOpen && !!openProduct}
             onClose={closeQuickView}
             size={{base: 'full', lg: '5xl'}}
             isCentered
@@ -57,9 +56,11 @@ const QuickViewModalShell = () => {
             <ModalContent data-testid="quick-view-modal" aria-labelledby="quick-view-modal-title">
                 <ModalCloseButton />
                 <ModalBody p={{base: 4, lg: 8}}>
-                    <ErrorBoundary FallbackComponent={ErrorFallback}>
-                        <QuickViewModalBody />
-                    </ErrorBoundary>
+                    {isOpen && openProduct ? (
+                        <ErrorBoundary FallbackComponent={ErrorFallback}>
+                            <QuickViewModalBody />
+                        </ErrorBoundary>
+                    ) : null}
                 </ModalBody>
             </ModalContent>
         </Modal>
