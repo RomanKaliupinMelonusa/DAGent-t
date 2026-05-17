@@ -550,6 +550,30 @@ function tcpProbe(port: number): Promise<boolean> {
 }
 
 /**
+ * HTTP content readiness probe: resolves true when the dev server responds
+ * with content that is NOT the PWA Kit loading/building screen.
+ * The dev server returns 200 with the loading screen while Webpack compiles,
+ * so a TCP-only check gives a false positive.
+ */
+async function httpReadyProbe(port: number): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const body = await res.text();
+    // PWA Kit serves a loading screen with these markers while building.
+    if (body.includes("__mrt/loading-screen") || body.includes("Building your app")) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Start the PWA Kit dev server in the background and wait for it to
  * accept TCP connections. Returns the child process handle for cleanup.
  */
@@ -582,20 +606,39 @@ async function startDevServer(
   });
   (child.stderr as any)?.unref?.();
 
-  // Poll until the port is reachable.
+  // Phase 1: Poll until the port accepts TCP connections.
   const deadline = Date.now() + DEV_SERVER_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (await tcpProbe(port)) {
-      console.log(`[run] dev server ready on port ${port}`);
+      console.log(`[run] dev server TCP ready on port ${port}`);
+      break;
+    }
+    await new Promise((r) => setTimeout(r, DEV_SERVER_POLL_INTERVAL_MS));
+  }
+  if (Date.now() >= deadline) {
+    child.kill("SIGKILL");
+    throw new Error(
+      `Dev server failed to accept connections on port ${port} within ${DEV_SERVER_POLL_TIMEOUT_MS / 1000}s.`,
+    );
+  }
+
+  // Phase 2: Wait for the loading screen to clear (HTTP content probe).
+  // The dev server returns 200 with a loading/building screen while
+  // Webpack compiles. Keep polling until we get real content.
+  const HTTP_READY_TIMEOUT_MS = 90_000;
+  const httpDeadline = Date.now() + HTTP_READY_TIMEOUT_MS;
+  while (Date.now() < httpDeadline) {
+    if (await httpReadyProbe(port)) {
+      console.log(`[run] dev server HTTP ready on port ${port} (loading screen cleared)`);
       return child;
     }
     await new Promise((r) => setTimeout(r, DEV_SERVER_POLL_INTERVAL_MS));
   }
 
-  // Timed out — kill the child and throw.
+  // HTTP readiness timed out — kill the child and throw.
   child.kill("SIGKILL");
   throw new Error(
-    `Dev server failed to accept connections on port ${port} within ${DEV_SERVER_POLL_TIMEOUT_MS / 1000}s.`,
+    `Dev server loading screen did not clear on port ${port} within ${HTTP_READY_TIMEOUT_MS / 1000}s.`,
   );
 }
 
@@ -732,7 +775,7 @@ async function main(): Promise<void> {
     // Pre-install Playwright MCP browser to avoid empty-result failures.
     try {
       console.log("[run] playwright-mcp: ensuring browser is installed…");
-      execSync("npx @playwright/mcp@0.0.75 install", {
+      execSync("npx @playwright/mcp@0.0.75 install-browser", {
         cwd: REPO_ROOT, timeout: 60_000, stdio: "inherit",
       });
       console.log("[run] playwright-mcp: browser ready");

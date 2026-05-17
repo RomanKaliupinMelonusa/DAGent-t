@@ -191,6 +191,29 @@ function buildAgentPrompt(
     );
   }
 
+  // Build dynamic tool registry based on what's available for this node.
+  const toolLines: string[] = [
+    "- `file_read` — read file contents (repo-relative or absolute path)",
+    "- `edit_file` — replace exact text match in a file",
+    "- `write_file` — create or overwrite a file",
+    "- `shell` — run a shell command (timeout: " + ((node.shellTimeoutMs ?? 30_000) / 1000) + "s)",
+    "- `shell_async` — run a long-running command, returns handle",
+    "- `shell_poll` — poll async command by handle",
+    "- `report_outcome` — report final status (call exactly once)",
+  ];
+  if (node.mcp?.includes("playwright")) {
+    toolLines.push("- `playwright-browser_*` — Playwright MCP browser tools (navigate, snapshot, click, etc.)");
+  }
+  if (node.mcp?.includes("roam-code")) {
+    toolLines.push("- `roam-code-roam_*` — code intelligence tools (trace, deps, context, search_symbol, etc.)");
+  }
+
+  sections.push(
+    `## Available tools\n\n` +
+    toolLines.join("\n") + "\n\n" +
+    `These are your ONLY tools. Do not attempt to call tools not listed here (e.g., \`edit\`, \`bash\`, \`task\`).`,
+  );
+
   sections.push(
     `## Mandatory protocol\n\n` +
     `- Use \`file_read\` / \`shell\` / \`write_file\` (RBAC-gated) for all I/O.\n` +
@@ -329,6 +352,36 @@ export async function runAgentNode(
     },
     ...(mcpServers ? { mcpServers } : {}),
   });
+
+  // MCP smoke test — verify Playwright MCP is working before the agent starts.
+  // If the health check fails, log a warning but continue (agent falls back to shell).
+  if (mcpServers?.["playwright"]) {
+    try {
+      logLine("mcp.healthcheck", { action: "start" });
+      live.info("MCP health check: navigating to about:blank…");
+      const healthSession = session as any;
+      // Use the session's MCP tool invocation to test browser_navigate + browser_snapshot.
+      // The SDK exposes callTool on the session for direct tool invocations.
+      if (typeof healthSession.callTool === "function") {
+        await healthSession.callTool("playwright-browser_navigate", { url: "about:blank" });
+        const snapshot = await healthSession.callTool("playwright-browser_snapshot", {});
+        const snapshotText = typeof snapshot === "string" ? snapshot : JSON.stringify(snapshot ?? "");
+        if (!snapshotText || snapshotText.length < 5) {
+          logLine("mcp.healthcheck", { result: "fail", reason: "empty snapshot" });
+          live.error("MCP health check FAILED: empty snapshot — Playwright MCP may be broken");
+        } else {
+          logLine("mcp.healthcheck", { result: "pass" });
+          live.info("MCP health check passed");
+        }
+      } else {
+        logLine("mcp.healthcheck", { result: "skip", reason: "callTool not available on session" });
+        live.info("MCP health check skipped (callTool not available)");
+      }
+    } catch (err) {
+      logLine("mcp.healthcheck", { result: "fail", error: String(err) });
+      live.error(`MCP health check failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Track tool names by callId so we can correlate completion events.
   const toolCallNames = new Map<string, string>();

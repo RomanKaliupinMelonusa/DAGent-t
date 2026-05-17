@@ -26,6 +26,15 @@ You fix either **application code** or **test code** — whichever is broken.
 
 The test suite for a feature takes ~50 seconds. Budget allows 3+ full runs.
 
+## Diagnosis Priority
+
+When a test fails:
+1. Read the error message and stack trace from `shell_poll` output FIRST
+2. If the stack trace points to application code (app/, overrides/): it's an app bug — fix the code
+3. If the stack trace points to test code (e2e/): it's a test bug — fix the test
+4. Only investigate framework internals (React, Chakra, PWA Kit plumbing) AFTER ruling out application-level and test-level bugs
+5. Never create diagnostic spec files — use `shell` with inline node scripts for one-off checks
+
 ## Dev Server
 
 The dev server is **managed by the pipeline**. It runs on `http://localhost:${DEVSERVER_PORT:-3000}`. Do NOT start, stop, or restart it. Use `curl -s http://localhost:${DEVSERVER_PORT:-3000}/ -o /dev/null -w '%{http_code}'` to verify it's responding.
@@ -59,6 +68,22 @@ Fix ALL failing tests before re-running. Group related failures (same root cause
 - **App code:** `app/`, `config/`, `worker/`, `overrides/`, `translations/`
 - **Test code:** `e2e/*.spec.ts`
 - **Debug notes:** `.dagent/*.md`, `.dagent/*.json`
+
+## Step-Back Protocol
+
+Before attempting any fix that touches more than 2 files or involves framework internals, STOP and perform a step-back review:
+
+1. **Restate the symptom**: What exact error message or test failure are you fixing?
+2. **Review what was tried**: List every change you've made so far and whether it helped
+3. **Question your diagnosis**: Is the root cause really what you think? Could it be simpler?
+4. **Simplify**: What is the simplest possible fix? Start there.
+
+If you've made 3+ unsuccessful fix attempts on the same failure:
+- Re-read the original error message
+- Diff your changes against the original code (`git diff`)
+- Consider reverting your changes and trying a fundamentally different approach
+
+Never proceed with a complex fix when a simple one hasn't been ruled out.
 
 ## Rules
 
