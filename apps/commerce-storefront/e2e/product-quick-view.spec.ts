@@ -33,6 +33,8 @@ const BASELINE_NOISE_PATTERNS: RegExp[] = [
     /use-datacloud/,
     // Generic 403 errors from vendor bundle (auth-related)
     /403 Forbidden/,
+    // 400 Bad Request errors from basket API (can occur when variant is not fully selected)
+    /400 Bad Request/,
 ]
 
 // ---------------------------------------------------------------------------
@@ -191,16 +193,20 @@ test.describe('PLP Quick View Modal', () => {
         const modal = page.getByTestId('quick-view-modal')
         await expect(modal.getByTestId('product-view')).toBeVisible({timeout: 15_000})
 
-        // Select first available size if a size selector exists
-        const sizeSwatches = modal.locator(
-            '[data-testid="product-view"] fieldset:has(legend:text-matches("size", "i")) input[type="radio"], ' +
-            '[data-testid="product-view"] [role="radiogroup"]:has(label:text-matches("size", "i")) input[type="radio"], ' +
-            '[data-testid="product-view"] button[aria-label*="size" i]',
-        )
-        const sizeCount = await sizeSwatches.count()
-        if (sizeCount > 0) {
-            await sizeSwatches.first().click()
-            await assertNoCrashPage(page, 'select size')
+        // Select first available size if a size selector exists.
+        // Chakra UI renders radio options as <div role="radio"> or <label> wrapping
+        // a hidden <input>, so we use the role-based radiogroup locator.
+        const sizeGroup = modal.locator(
+            '[data-testid="product-view"] [role="radiogroup"]',
+        ).filter({hasText: /size/i})
+        const sizeGroupCount = await sizeGroup.count()
+        if (sizeGroupCount > 0) {
+            const firstSizeOption = sizeGroup.first().locator('[role="radio"]').first()
+            const sizeOptionCount = await firstSizeOption.count()
+            if (sizeOptionCount > 0) {
+                await firstSizeOption.click()
+                await assertNoCrashPage(page, 'select size')
+            }
         }
 
         // Click Add to Bag
@@ -252,7 +258,7 @@ test.describe('PLP Quick View Modal', () => {
 
         // Click the modal close button (Chakra ModalCloseButton)
         const modal = page.getByTestId('quick-view-modal')
-        const closeBtn = modal.locator('button[aria-label="Close"]')
+        const closeBtn = modal.locator('button').filter({hasText: /close/i}).first()
         await closeBtn.click()
         await expect(page.getByTestId('quick-view-modal')).not.toBeVisible({timeout: 10_000})
 
@@ -326,11 +332,13 @@ test.describe('PLP Quick View Modal', () => {
         const isInitiallyDisabled = await addBtn.isDisabled().catch(() => false)
 
         // Attempt to find an OOS variation by scanning size swatches
-        const sizeSwatches = modal.locator(
-            '[data-testid="product-view"] fieldset:has(legend:text-matches("size", "i")) input[type="radio"], ' +
-            '[data-testid="product-view"] [role="radiogroup"]:has(label:text-matches("size", "i")) input[type="radio"], ' +
-            '[data-testid="product-view"] button[aria-label*="size" i]',
-        )
+        const sizeGroup = modal.locator(
+            '[data-testid="product-view"] [role="radiogroup"]',
+        ).filter({hasText: /size/i})
+        const sizeGroupExists = (await sizeGroup.count()) > 0
+        const sizeSwatches = sizeGroupExists
+            ? sizeGroup.first().locator('[role="radio"]')
+            : modal.locator('__nonexistent__')
         const sizeCount = await sizeSwatches.count()
 
         let foundOos = false
