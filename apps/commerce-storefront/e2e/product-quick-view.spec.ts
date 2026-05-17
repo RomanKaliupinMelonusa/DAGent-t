@@ -258,7 +258,7 @@ test.describe('PLP Quick View Modal', () => {
 
         // Click the modal close button (Chakra ModalCloseButton)
         const modal = page.getByTestId('quick-view-modal')
-        const closeBtn = modal.locator('button').filter({hasText: /close/i}).first()
+        const closeBtn = modal.getByLabel(/close/i)
         await closeBtn.click()
         await expect(page.getByTestId('quick-view-modal')).not.toBeVisible({timeout: 10_000})
 

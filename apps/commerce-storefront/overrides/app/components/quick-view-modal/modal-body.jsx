@@ -77,7 +77,7 @@ const QuickViewModalBody = () => {
         closeQuickView()
         addToCartModalContext.onOpen({
             product: product,
-            itemsAdded: productItems,
+            itemsAdded: items,
             selectedQuantity: items[0].quantity
         })
 
