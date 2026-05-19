@@ -1,0 +1,420 @@
+# conductor-workflow.yaml
+# DAGent pipeline mapped to Microsoft Conductor format.
+# Run:  conductor run conductor-workflow.yaml --web \
+#         --input slug="plp-quick-view" \
+#         --input app="apps/commerce-storefront" \
+#         --input spec_folder="apps/commerce-storefront/specs/001-plp-quick-view"
+#
+# Pipeline: load_kickoff → baseline → dev → unit-test → e2e-author → e2e-debug → pr-creation
+# On any node failure (after retries), the pipeline jumps straight to pr-creation
+# which opens a Draft PR with the failure context.
+
+workflow:
+  name: dagent-feature-pipeline
+  description: >
+    End-to-end agentic pipeline: capture baseline noise, implement feature,
+    author unit + e2e tests, debug until green, open a draft PR.
+  entry_point: load_kickoff
+
+  instructions:
+    - ./demo/instructions/_preamble.md
+
+  limits:
+    max_iterations: 50          # 6 agents × retries + routing overhead
+    timeout_seconds: 5400       # 90 min hard cap (sum of all node budgets)
+
+  context_mode: accumulate      # each agent sees all prior agent outputs
+
+  runtime:
+    provider: copilot
+    default_model: claude-opus-4.6
+    default_reasoning_effort: high
+    mcp_servers:
+      # roam-code intentionally excluded — its index is built at MCP
+      # server startup and goes stale after file mutations.  Conductor
+      # shares MCP servers across agents (no per-agent restart), so
+      # downstream agents would query an outdated index.  The Copilot
+      # SDK's built-in file/search tools are sufficient.
+      playwright:
+        command: npx
+        args: ["@anthropic/playwright-mcp@latest"]
+        env:
+          BASE_URL: http://localhost:${STOREFRONT_PORT:-3000}
+        tools: ["*"]
+
+# ---------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------
+input:
+  slug:
+    type: string
+    required: true
+    description: "Feature slug (e.g. plp-quick-view)"
+  app:
+    type: string
+    required: true
+    description: "App root relative to repo (e.g. apps/commerce-storefront)"
+  spec_folder:
+    type: string
+    required: true
+    description: "Path to the spec-kit kickoff folder"
+
+# ---------------------------------------------------------------------------
+# Agents
+# ---------------------------------------------------------------------------
+agents:
+  # ── 0. LOAD KICKOFF FILES ────────────────────────────────────────────────
+  # Reads all spec-kit artifacts from the spec folder into structured JSON.
+  # Downstream agents reference individual fields via Jinja2 templates.
+  # JSON stdout is auto-parsed by Conductor into load_kickoff.output.*
+  - name: load_kickoff
+    type: script
+    description: "Load spec-kit kickoff files into workflow context"
+    command: python3
+    args:
+      - "-c"
+      - |
+        import json, os, sys
+        folder = sys.argv[1]
+        files = {
+            "spec": "spec.md",
+            "plan": "plan.md",
+            "research": "research.md",
+            "data_model": "data-model.md",
+            "quickstart": "quickstart.md",
+            "tasks": "tasks.md",
+            "clarifications": "clarifications.md",
+            "unit_tests": "unit-tests.md",
+            "unit_tasks": "unit-tasks.md",
+            "e2e_contract": "e2e-contract.md",
+            "e2e_tasks": "e2e-tasks.md",
+            "baseline": "baseline.json",
+        }
+        # Agent instruction files (role prompts)
+        agent_files = {
+            "agent_baseline": os.path.join("demo", "agents", "baseline-analyzer.md"),
+            "agent_dev": os.path.join("demo", "agents", "storefront-dev.md"),
+            "agent_unit_test": os.path.join("demo", "agents", "storefront-unit-test.md"),
+            "agent_e2e_author": os.path.join("demo", "agents", "e2e-author.md"),
+            "agent_e2e_debug": os.path.join("demo", "agents", "e2e-debug.md"),
+        }
+        result = {}
+        for key, fname in files.items():
+            path = os.path.join(folder, fname)
+            if os.path.exists(path):
+                result[key] = open(path).read()
+        # Load agent instruction files from repo root
+        for key, fpath in agent_files.items():
+            if os.path.exists(fpath):
+                result[key] = open(fpath).read()
+        cdir = os.path.join(folder, "contracts")
+        if os.path.isdir(cdir):
+            contracts = {}
+            for f in sorted(os.listdir(cdir)):
+                if f.endswith(".md"):
+                    contracts[f] = open(os.path.join(cdir, f)).read()
+            result["contracts"] = contracts
+        print(json.dumps(result))
+      - "{{ workflow.input.spec_folder }}"
+    timeout: 10
+    routes:
+      - to: baseline
+        when: "exit_code == 0"
+      - to: pr_creation
+
+  # ── 1. BASELINE ──────────────────────────────────────────────────────────
+  - name: baseline
+    description: >
+      Page-health auditor. Captures pre-feature console/network errors on
+      pages the feature will touch. Downstream agents subtract this noise.
+    model: claude-opus-4.6
+    prompt: |
+      {{ load_kickoff.output.agent_baseline }}
+
+      ---
+      ## Kickoff: Spec
+      {{ load_kickoff.output.spec }}
+    # All 23 core Playwright tools — agent prompt constrains behavior
+    output:
+      baseline_json:
+        type: object
+        description: "Structured baseline (console_errors, network_failures, uncaught_exceptions)"
+      status:
+        type: string
+        description: "completed or failed"
+    routes:
+      - to: dev
+        when: "{{ baseline.output.status == 'completed' }}"
+      - to: pr_creation
+        when: "{{ baseline.output.status == 'failed' }}"
+
+  # ── 2. DEV ───────────────────────────────────────────────────────────────
+  - name: dev
+    description: >
+      React developer specializing in Salesforce PWA Kit storefronts.
+      Builds pages, components, hooks using Chakra UI and commerce-sdk-react.
+    model: claude-opus-4.6
+    prompt: |
+      {{ load_kickoff.output.agent_dev }}
+
+      ---
+      ## Kickoff: Spec
+      {{ load_kickoff.output.spec }}
+
+      {% if load_kickoff.output.plan is defined %}
+      ## Plan
+      {{ load_kickoff.output.plan }}
+      {% endif %}
+
+      {% if load_kickoff.output.research is defined %}
+      ## Research
+      {{ load_kickoff.output.research }}
+      {% endif %}
+
+      {% if load_kickoff.output.data_model is defined %}
+      ## Data model
+      {{ load_kickoff.output.data_model }}
+      {% endif %}
+
+      {% if load_kickoff.output.quickstart is defined %}
+      ## Quickstart
+      {{ load_kickoff.output.quickstart }}
+      {% endif %}
+
+      {% if load_kickoff.output.tasks is defined %}
+      ## Tasks
+      {{ load_kickoff.output.tasks }}
+      {% endif %}
+
+      {% if load_kickoff.output.clarifications is defined %}
+      ## Clarifications
+      {{ load_kickoff.output.clarifications }}
+      {% endif %}
+
+      {% if load_kickoff.output.contracts is defined %}
+      {% for name, body in load_kickoff.output.contracts.items() %}
+      ## Module contract: {{ name }}
+      {{ body }}
+      {% endfor %}
+      {% endif %}
+    tools: []              # SDK builtins only — no MCP tools needed
+    output:
+      files_changed:
+        type: array
+        description: "List of files created or modified"
+      status:
+        type: string
+        description: "completed or failed"
+    routes:
+      - to: unit_test
+        when: "{{ dev.output.status == 'completed' }}"
+      - to: pr_creation
+        when: "{{ dev.output.status == 'failed' }}"
+
+  # ── 3. UNIT-TEST ─────────────────────────────────────────────────────────
+  - name: unit_test
+    description: >
+      Unit test specialist. Writes and runs Jest + React Testing Library
+      tests. Does NOT modify application source — only test files.
+    model: claude-opus-4.6
+    prompt: |
+      {{ load_kickoff.output.agent_unit_test }}
+
+      ---
+      ## Kickoff: Spec
+      {{ load_kickoff.output.spec }}
+
+      {% if load_kickoff.output.unit_tests is defined %}
+      ## Unit-test plan
+      {{ load_kickoff.output.unit_tests }}
+      {% endif %}
+
+      {% if load_kickoff.output.unit_tasks is defined %}
+      ## Unit-task list
+      {{ load_kickoff.output.unit_tasks }}
+      {% endif %}
+
+      {% if load_kickoff.output.contracts is defined %}
+      {% for name, body in load_kickoff.output.contracts.items() %}
+      ## Module contract: {{ name }}
+      {{ body }}
+      {% endfor %}
+      {% endif %}
+    tools: []              # SDK builtins only — no MCP tools needed
+    output:
+      test_files:
+        type: array
+        description: "Test files created or updated"
+      pass_count:
+        type: number
+        description: "Number of passing tests"
+      status:
+        type: string
+        description: "completed or failed"
+    routes:
+      - to: e2e_author
+        when: "{{ unit_test.output.status == 'completed' }}"
+      - to: pr_creation
+        when: "{{ unit_test.output.status == 'failed' }}"
+
+  # ── 4. E2E-AUTHOR ────────────────────────────────────────────────────────
+  - name: e2e_author
+    description: >
+      SDET expert. Authors Playwright E2E tests from the acceptance contract.
+      Does NOT execute tests. Blind to implementation (no app/ reads).
+    model: claude-opus-4.6
+    prompt: |
+      {{ load_kickoff.output.agent_e2e_author }}
+
+      ---
+      ## Kickoff: Spec
+      {{ load_kickoff.output.spec }}
+
+      {% if load_kickoff.output.e2e_contract is defined %}
+      ## E2E contract
+      {{ load_kickoff.output.e2e_contract }}
+      {% endif %}
+
+      {% if load_kickoff.output.e2e_tasks is defined %}
+      ## E2E task list
+      {{ load_kickoff.output.e2e_tasks }}
+      {% endif %}
+
+      {% if load_kickoff.output.baseline is defined %}
+      ## Baseline (pre-feature noise)
+      {{ load_kickoff.output.baseline }}
+      {% endif %}
+    # All 23 core Playwright tools — agent prompt constrains behavior
+    output:
+      spec_files:
+        type: array
+        description: "Playwright spec files authored"
+      status:
+        type: string
+        description: "completed or failed"
+    routes:
+      - to: e2e_debug
+        when: "{{ e2e_author.output.status == 'completed' }}"
+      - to: pr_creation
+        when: "{{ e2e_author.output.status == 'failed' }}"
+
+  # ── 5. E2E-DEBUG ─────────────────────────────────────────────────────────
+  - name: e2e_debug
+    description: >
+      E2E debug agent. Runs Playwright tests, diagnoses failures, patches
+      either application code or test code, loops until green (max 3 cycles).
+    model: claude-opus-4.6
+    prompt: |
+      {{ load_kickoff.output.agent_e2e_debug }}
+
+      ---
+      ## Kickoff: Spec
+      {{ load_kickoff.output.spec }}
+
+      {% if load_kickoff.output.plan is defined %}
+      ## Plan
+      {{ load_kickoff.output.plan }}
+      {% endif %}
+
+      {% if load_kickoff.output.research is defined %}
+      ## Research
+      {{ load_kickoff.output.research }}
+      {% endif %}
+
+      {% if load_kickoff.output.e2e_contract is defined %}
+      ## E2E contract
+      {{ load_kickoff.output.e2e_contract }}
+      {% endif %}
+
+      {% if load_kickoff.output.baseline is defined %}
+      ## Baseline (pre-feature noise)
+      {{ load_kickoff.output.baseline }}
+      {% endif %}
+
+      {% if load_kickoff.output.contracts is defined %}
+      {% for name, body in load_kickoff.output.contracts.items() %}
+      ## Module contract: {{ name }}
+      {{ body }}
+      {% endfor %}
+      {% endif %}
+    # All 23 core Playwright tools — agent prompt constrains behavior
+    output:
+      test_results:
+        type: object
+        description: "Final test run results (passed, failed, skipped counts)"
+      fixes_applied:
+        type: array
+        description: "List of fixes applied (file + description)"
+      status:
+        type: string
+        description: "completed or failed"
+    routes:
+      - to: pr_creation
+
+  # ── 6. PR-CREATION (finalizer) ──────────────────────────────────────────
+  - name: pr_creation
+    description: >
+      Pipeline finalizer. ALWAYS runs — on success or failure.
+      Stages all changes, pushes feature branch, opens a Draft GitHub PR
+      with a Markdown summary of the entire pipeline run.
+    model: claude-opus-4.6
+    prompt: |
+      You are the **pr-creation** finalizer for feature **{{ workflow.input.slug }}**.
+
+      ## Prior node outputs
+
+      {% if baseline.output is defined %}
+      ### baseline
+      {{ baseline.output | tojson(indent=2) }}
+      {% endif %}
+
+      {% if dev.output is defined %}
+      ### dev
+      {{ dev.output | tojson(indent=2) }}
+      {% endif %}
+
+      {% if unit_test.output is defined %}
+      ### unit-test
+      {{ unit_test.output | tojson(indent=2) }}
+      {% endif %}
+
+      {% if e2e_author.output is defined %}
+      ### e2e-author
+      {{ e2e_author.output | tojson(indent=2) }}
+      {% endif %}
+
+      {% if e2e_debug.output is defined %}
+      ### e2e-debug
+      {{ e2e_debug.output | tojson(indent=2) }}
+      {% endif %}
+
+      ## Your job
+
+      1. Stage everything with: `bash demo/scripts/agent-commit.sh all "demo: {{ workflow.input.slug }}"`
+      2. Push the feature branch to origin.
+      3. Open a draft PR with `gh pr create --draft`:
+         - Title: `[demo] {{ workflow.input.slug }}`
+         - Body: pipeline status table showing each node's final status.
+      4. Return the PR URL.
+    tools: []              # SDK builtins only (git/gh via shell)
+    output:
+      pr_url:
+        type: string
+        description: "URL of the created draft PR"
+      status:
+        type: string
+    routes:
+      - to: $end
+
+# ---------------------------------------------------------------------------
+# Workflow output
+# ---------------------------------------------------------------------------
+output:
+  pr_url: "{{ pr_creation.output.pr_url }}"
+  pipeline_status: >
+    baseline={{ baseline.output.status | default('skipped') }},
+    dev={{ dev.output.status | default('skipped') }},
+    unit_test={{ unit_test.output.status | default('skipped') }},
+    e2e_author={{ e2e_author.output.status | default('skipped') }},
+    e2e_debug={{ e2e_debug.output.status | default('skipped') }},
+    pr_creation={{ pr_creation.output.status | default('skipped') }}
